@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
@@ -29,8 +28,8 @@ See COPYRIGHT and LICENSE files for more details.
 
 <table class="generic-table users">
   <colgroup>
-    <col opHighlightCol>
     <col>
+    <col data-highlight="false">
   </colgroup>
   <thead>
   <tr>
@@ -50,10 +49,11 @@ See COPYRIGHT and LICENSE files for more details.
       <tr id="user-<%= user.id %>">
         <td class="user"><%= link_to_user user %></td>
         <td class="buttons">
-          <%= link_to '', member_of_group_path(@group, user),
-                          method: :delete,
-                          class: 'icon icon-remove',
-                          title: t(:button_remove) %>
+          <%= link_to "",
+                      member_of_group_path(@group, user),
+                      data: { turbo_method: :delete },
+                      class: "icon icon-remove",
+                      title: t(:button_remove) %>
         </td>
       </tr>
   <% end %>

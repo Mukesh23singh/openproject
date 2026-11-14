@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module UserPreferences
   class ParamsContract < ::ParamsContract
+    DATE_ALERT_DURATIONS = [nil, 0, 1, 3, 7].freeze
+    DATE_ALERT_OVERDUE_DURATIONS = [nil, 1, 3, 7].freeze
+
     validate :only_one_global_setting,
              if: -> { notifications.present? }
-
     validate :global_email_alerts,
+             if: -> { notifications.present? }
+    validate :date_alerts,
              if: -> { notifications.present? }
 
     protected
@@ -48,6 +51,18 @@ module UserPreferences
       if project_notifications.any?(method(:email_alerts_set?))
         errors.add :notification_settings, :email_alerts_global
       end
+    end
+
+    def date_alerts
+      if notifications.any?(method(:date_fields_fail_validation?))
+        errors.add :notification_settings, :wrong_date
+      end
+    end
+
+    def date_fields_fail_validation?(setting)
+      DATE_ALERT_DURATIONS.exclude?(setting[:start_date]) ||
+      DATE_ALERT_DURATIONS.exclude?(setting[:due_date]) ||
+      DATE_ALERT_OVERDUE_DURATIONS.exclude?(setting[:overdue])
     end
 
     ##
@@ -67,7 +82,7 @@ module UserPreferences
     end
 
     def notifications
-      params[:notification_settings]
+      params[:notification_settings] || []
     end
   end
 end

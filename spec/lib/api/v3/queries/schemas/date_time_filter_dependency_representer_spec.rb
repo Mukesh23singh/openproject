@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,100 +22,113 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Queries::Schemas::DateTimeFilterDependencyRepresenter, clear_cache: true do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Queries::Schemas::DateTimeFilterDependencyRepresenter do
+  include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.build_stubbed(:project) }
-  let(:query) { FactoryBot.build_stubbed(:query, project: project) }
+  let(:project) { build_stubbed(:project) }
+  let(:query) { build_stubbed(:query, project:) }
   let(:filter) { Queries::WorkPackages::Filter::CreatedAtFilter.create!(context: query) }
   let(:form_embedded) { false }
 
   let(:instance) do
     described_class.new(filter,
                         operator,
-                        form_embedded: form_embedded)
+                        form_embedded:)
   end
 
   subject(:generated) { instance.to_json }
 
-  context 'generation' do
-    context 'properties' do
-      describe 'values' do
-        let(:path) { 'values' }
-        let(:type) { '[1]Integer' }
+  context "generation" do
+    context "properties" do
+      describe "values" do
+        let(:path) { "values" }
+        let(:type) { "[1]Integer" }
 
         context "for operator 'Queries::Operators::LessThanAgo" do
           let(:operator) { Queries::Operators::LessThanAgo }
 
-          it_behaves_like 'filter dependency'
+          it_behaves_like "filter dependency"
         end
 
         context "for operator 'Queries::Operators::MoreThanAgo'" do
           let(:operator) { Queries::Operators::MoreThanAgo }
 
-          it_behaves_like 'filter dependency'
+          it_behaves_like "filter dependency"
         end
 
         context "for operator 'Queries::Operators::Ago'" do
           let(:operator) { Queries::Operators::Ago }
 
-          it_behaves_like 'filter dependency'
+          it_behaves_like "filter dependency"
         end
 
         context "for operator 'Queries::Operators::Today'" do
           let(:operator) { Queries::Operators::Today }
 
-          it_behaves_like 'filter dependency empty'
+          it_behaves_like "filter dependency empty"
         end
 
         context "for operator 'Queries::Operators::ThisWeek'" do
           let(:operator) { Queries::Operators::ThisWeek }
 
-          it_behaves_like 'filter dependency empty'
+          it_behaves_like "filter dependency empty"
         end
 
         context "for operator 'Queries::Operators::OnDate'" do
           let(:operator) { Queries::Operators::OnDateTime }
 
-          let(:type) { '[1]DateTime' }
+          let(:type) { "[1]DateTime" }
 
-          it_behaves_like 'filter dependency'
+          it_behaves_like "filter dependency"
         end
 
         context "for operator 'Queries::Operators::BetweenDate'" do
           let(:operator) { Queries::Operators::BetweenDateTime }
-          let(:type) { '[2]DateTime' }
+          let(:type) { "[2]DateTime" }
 
-          it_behaves_like 'filter dependency'
+          it_behaves_like "filter dependency"
+        end
+
+        context "for operator 'Queries::Operators::GreaterOrEqualDateTime'" do
+          let(:operator) { Queries::Operators::GreaterOrEqualDateTime }
+          let(:type) { "[1]DateTime" }
+
+          it_behaves_like "filter dependency"
+        end
+
+        context "for operator 'Queries::Operators::LessOrEqualDateTime'" do
+          let(:operator) { Queries::Operators::LessOrEqualDateTime }
+          let(:type) { "[1]DateTime" }
+
+          it_behaves_like "filter dependency"
         end
       end
     end
 
-    describe 'caching' do
+    describe "caching" do
       let(:operator) { Queries::Operators::Equals }
-      let(:other_project) { FactoryBot.build_stubbed(:project) }
+      let(:other_project) { build_stubbed(:project) }
 
       before do
         # fill the cache
         instance.to_json
       end
 
-      it 'is cached' do
+      it "is cached" do
         expect(instance)
           .not_to receive(:to_hash)
 
         instance.to_json
       end
 
-      it 'busts the cache on a different operator' do
+      it "busts the cache on a different operator" do
         instance.send(:operator=, Queries::Operators::NotEquals)
 
         expect(instance)
@@ -122,7 +137,7 @@ describe ::API::V3::Queries::Schemas::DateTimeFilterDependencyRepresenter, clear
         instance.to_json
       end
 
-      it 'busts the cache on changes to the locale' do
+      it "busts the cache on changes to the locale" do
         expect(instance)
           .to receive(:to_hash)
 
@@ -131,7 +146,7 @@ describe ::API::V3::Queries::Schemas::DateTimeFilterDependencyRepresenter, clear
         end
       end
 
-      it 'busts the cache on different form_embedded' do
+      it "busts the cache on different form_embedded" do
         embedded_instance = described_class.new(filter,
                                                 operator,
                                                 form_embedded: !form_embedded)

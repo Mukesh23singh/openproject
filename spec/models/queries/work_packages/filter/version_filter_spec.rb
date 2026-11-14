@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,107 +22,233 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::VersionFilter, type: :model do
-  let(:version) { FactoryBot.build_stubbed(:version) }
+RSpec.describe Queries::WorkPackages::Filter::VersionFilter do
+  let(:actual_project) { create(:project) }
+  let(:version) { create(:version, project: actual_project) }
+  let(:other_project_version) { create(:version, project: create(:project)) }
 
-  it_behaves_like 'basic query filter' do
+  let(:role) { create(:project_role, permissions: %i[view_work_packages]) }
+  let(:user) { create(:user, member_with_roles: { actual_project => role }) }
+
+  before { login_as(user) }
+
+  describe ".stored_key" do
+    it "is target_version_id" do
+      expect(described_class.stored_key).to eq(:target_version_id)
+    end
+  end
+
+  it_behaves_like "basic query filter" do
+    let(:project) { actual_project }
     let(:type) { :list_optional }
     let(:class_key) { :version_id }
     let(:values) { [version.id.to_s] }
-    let(:name) { WorkPackage.human_attribute_name('version') }
+    let(:name) { WorkPackage.human_attribute_name("version") }
 
-    before do
-      if project
-        allow(project)
-          .to receive_message_chain(:shared_versions, :pluck)
-          .and_return [version.id]
-      else
-        allow(Version)
-          .to receive_message_chain(:visible, :systemwide, :pluck)
-          .and_return [version.id]
+    describe "#available?" do
+      context "with the setting enabled",
+              with_settings: { work_package_multiple_versions: true } do
+        it "is not available" do
+          expect(instance).not_to be_available
+        end
+      end
+
+      context "with the setting disabled",
+              with_settings: { work_package_multiple_versions: false } do
+        it "is available" do
+          expect(instance).to be_available
+        end
       end
     end
 
-    describe '#valid?' do
-      context 'within a project' do
-        it 'is true if the value exists as a version' do
-          expect(instance).to be_valid
+    describe "#valid?" do
+      context "within a project" do
+        context "and the version belongs to the project" do
+          it "is valid" do
+            expect(instance).to be_valid
+          end
         end
 
-        it 'is false if the value does not exist as a version' do
-          allow(project)
-            .to receive_message_chain(:shared_versions, :pluck)
-            .and_return []
+        context "and the version is from another project" do
+          let(:values) { [other_project_version.id.to_s] }
 
-          expect(instance).to_not be_valid
+          it "is not valid" do
+            expect(instance).not_to be_valid
+          end
         end
       end
 
-      context 'outside of a project' do
+      context "without a project" do
         let(:project) { nil }
 
-        it 'is true if the value exists as a version' do
-          expect(instance).to be_valid
+        context "and the version is visible to the user" do
+          it "is valid" do
+            expect(instance).to be_valid
+          end
         end
 
-        it 'is false if the value does not exist as a version' do
-          allow(Version)
-            .to receive_message_chain(:visible, :systemwide, :pluck)
-            .and_return []
+        context "and the version does not exist" do
+          let(:values) { ["12345"] }
 
-          expect(instance).to_not be_valid
-        end
-      end
-    end
-
-    describe '#allowed_values' do
-      context 'within a project' do
-        before do
-          expect(instance.allowed_values)
-            .to match_array [[version.id.to_s, version.id.to_s]]
-        end
-      end
-
-      context 'outside of a project' do
-        let(:project) { nil }
-
-        before do
-          expect(instance.allowed_values)
-            .to match_array [[version.id.to_s, version.id.to_s]]
+          it "is not valid" do
+            expect(instance).not_to be_valid
+          end
         end
       end
     end
 
-    describe '#ar_object_filter?' do
-      it 'is true' do
+    it_behaves_like "version filter options"
+
+    describe "#ar_object_filter?" do
+      it "is true" do
         expect(instance)
           .to be_ar_object_filter
       end
     end
 
-    describe '#value_objects' do
-      let(:version1) { FactoryBot.build_stubbed(:version) }
-      let(:version2) { FactoryBot.build_stubbed(:version) }
+    describe "#value_objects" do
+      let!(:other_version) { create(:version, project: actual_project) }
 
-      before do
-        allow(project)
-          .to receive(:shared_versions)
-          .and_return([version1, version2])
+      it "returns the Version records matching the filter values" do
+        expect(instance.value_objects).to contain_exactly(version)
+      end
+    end
 
-        instance.values = [version1.id.to_s]
+    describe "#available_operators" do
+      it "includes the version status operators" do
+        expect(instance.available_operators).to include(
+          Queries::Operators::Versions::OpenStatus,
+          Queries::Operators::Versions::ClosedStatus,
+          Queries::Operators::Versions::LockedStatus
+        )
+      end
+    end
+
+    describe "#operator_strategy" do
+      context "for open status operator" do
+        let(:operator) { "o" }
+
+        it "returns OpenStatus operator" do
+          expect(instance.operator_strategy).to eq(Queries::Operators::Versions::OpenStatus)
+        end
       end
 
-      it 'returns an array of versions' do
-        expect(instance.value_objects)
-          .to match_array([version1])
+      context "for closed status operator" do
+        let(:operator) { "c" }
+
+        it "returns ClosedStatus operator" do
+          expect(instance.operator_strategy).to eq(Queries::Operators::Versions::ClosedStatus)
+        end
+      end
+
+      context "for locked status operator" do
+        let(:operator) { "l" }
+
+        it "returns LockedStatus operator" do
+          expect(instance.operator_strategy).to eq(Queries::Operators::Versions::LockedStatus)
+        end
+      end
+    end
+
+    describe "#joins" do
+      %w[= ! * !* o c l].each do |op|
+        context "with operator '#{op}'" do
+          let(:operator) { op }
+
+          it "returns nil, as the conditions are self-contained subqueries" do
+            expect(instance.joins).to be_nil
+          end
+        end
+      end
+    end
+
+    describe "#where" do
+      let(:where_project) { create(:project) }
+      let(:open_version) { create(:version, project: where_project) }
+      let(:closed_version) { create(:version, project: where_project, status: "closed") }
+
+      let!(:wp_targeting_open) do
+        create(:work_package, project: where_project).tap do |wp|
+          create(:work_package_version, work_package: wp, version: open_version, kind: :target)
+        end
+      end
+      let!(:wp_targeting_closed) do
+        create(:work_package, project: where_project).tap do |wp|
+          create(:work_package_version, work_package: wp, version: closed_version, kind: :target)
+        end
+      end
+      let!(:wp_observed_only) do
+        create(:work_package, project: where_project).tap do |wp|
+          create(:work_package_version, work_package: wp, version: open_version, kind: :observed_in)
+        end
+      end
+      let!(:wp_without_versions) { create(:work_package, project: where_project) }
+
+      subject(:result) { WorkPackage.where(instance.where) }
+
+      it "does not filter on the version_id column" do
+        expect(instance.where)
+          .not_to include("#{WorkPackage.table_name}.version_id")
+      end
+
+      context 'for "=" with a version' do
+        let(:values) { [open_version.id.to_s] }
+
+        it "returns work packages targeting that version" do
+          expect(result).to contain_exactly(wp_targeting_open)
+        end
+      end
+
+      context 'for "!" with a version' do
+        let(:operator) { "!" }
+        let(:values) { [open_version.id.to_s] }
+
+        it "returns work packages not targeting that version, including ones without target versions" do
+          expect(result).to contain_exactly(wp_targeting_closed, wp_observed_only, wp_without_versions)
+        end
+      end
+
+      context 'for "*" (any target version)' do
+        let(:operator) { "*" }
+        let(:values) { [] }
+
+        it "returns work packages with at least one target version" do
+          expect(result).to contain_exactly(wp_targeting_open, wp_targeting_closed)
+        end
+      end
+
+      context 'for "!*" (no target version)' do
+        let(:operator) { "!*" }
+        let(:values) { [] }
+
+        it "returns work packages without any target version" do
+          expect(result).to contain_exactly(wp_observed_only, wp_without_versions)
+        end
+      end
+
+      context 'for "o" (open version)' do
+        let(:operator) { "o" }
+        let(:values) { [] }
+
+        it "returns work packages targeting an open version" do
+          expect(result).to contain_exactly(wp_targeting_open)
+        end
+      end
+
+      context 'for "c" (closed version)' do
+        let(:operator) { "c" }
+        let(:values) { [] }
+
+        it "returns work packages targeting a closed version" do
+          expect(result).to contain_exactly(wp_targeting_closed)
+        end
       end
     end
   end

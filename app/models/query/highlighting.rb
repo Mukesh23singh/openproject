@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,11 +22,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 #
 module Query::Highlighting
   extend ActiveSupport::Concern
@@ -43,12 +43,11 @@ module Query::Highlighting
 
     QUERY_HIGHLIGHTING_MODES = %i[inline none status type priority].freeze
 
-    serialize :highlighted_attributes, Array
+    serialize :highlighted_attributes, type: Array
 
-    validates_inclusion_of :highlighting_mode,
-                           in: QUERY_HIGHLIGHTING_MODES,
-                           allow_nil: true,
-                           allow_blank: true
+    validates :highlighting_mode,
+              inclusion: { in: QUERY_HIGHLIGHTING_MODES,
+                           allow_blank: true }
 
     validate :attributes_highlightable?
 
@@ -57,7 +56,7 @@ module Query::Highlighting
     end
 
     def available_highlighting_columns
-      @available_highlighting_columns ||= available_columns.select(&:highlightable?)
+      @available_highlighting_columns ||= displayable_columns.select(&:highlightable?)
     end
 
     def highlighted_columns
@@ -70,8 +69,6 @@ module Query::Highlighting
     end
 
     def highlighted_attributes
-      return [] unless EnterpriseToken.allows_to?(:conditional_highlighting)
-
       val = super
 
       if val.present?
@@ -82,8 +79,6 @@ module Query::Highlighting
     end
 
     def highlighting_mode
-      return :none unless EnterpriseToken.allows_to?(:conditional_highlighting)
-
       val = super
 
       if val.present?
@@ -103,7 +98,7 @@ module Query::Highlighting
       if difference.any?
         errors.add(:highlighted_attributes,
                    I18n.t(:error_attribute_not_highlightable,
-                          attributes: difference.map(&:to_s).map(&:capitalize).join(', ')))
+                          attributes: difference.map { |attribute| attribute.to_s.capitalize }.join(", ")))
       end
     end
 

@@ -1,152 +1,274 @@
-require_relative '../../../spec_helper'
-require_relative './../authentication_controller_shared_examples'
+# frozen_string_literal: true
 
-describe ::TwoFactorAuthentication::Users::TwoFactorDevicesController, with_2fa_ee: true do
-  let(:admin) { FactoryBot.create :admin }
-  let(:user) { FactoryBot.create(:user, login: 'foobar') }
-  let(:other_user) { FactoryBot.create(:user) }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../../../spec_helper"
+require_relative "../authentication_controller_shared_examples"
+
+RSpec.describe TwoFactorAuthentication::Users::TwoFactorDevicesController do
+  let(:admin) { create(:admin) }
+  let(:user) { create(:user, login: "foobar") }
+  let(:other_user) { create(:user) }
   let(:logged_in_user) { admin }
   let(:active_strategies) { [:developer] }
   let(:config) { {} }
 
-  before do
-    allow(User).to receive(:current).and_return(logged_in_user)
-    allow(OpenProject::Configuration).to receive(:[]).and_call_original
-    allow(OpenProject::Configuration)
-      .to receive(:[]).with('2fa')
-      .and_return({ active_strategies: active_strategies }.merge(config).with_indifferent_access)
-    allow(OpenProject::TwoFactorAuthentication::TokenStrategyManager)
-      .to receive(:add_default_strategy?)
-      .and_return false
+  include_context "with settings" do
+    let(:settings) do
+      {
+        plugin_openproject_two_factor_authentication: {
+          "active_strategies" => active_strategies
+        }.merge(config)
+      }
+    end
   end
 
-  describe 'accessing' do
+  before do
+    allow(User).to receive(:current).and_return(logged_in_user)
+    allow(OpenProject::TwoFactorAuthentication::TokenStrategyManager)
+      .to receive(:add_default_strategy?)
+            .and_return false
+  end
+
+  describe "accessing" do
     before do
-      get :new, params: { id: user.id }
+      get :new, params: { id: user.id, type: :sms }
     end
 
-    context 'when the same user' do
+    context "when the same user" do
       let(:logged_in_user) { other_user }
 
-      it 'does not give access' do
-        expect(response.status).to eq 403
+      it "does not give access" do
+        expect(response).to have_http_status :not_found
       end
     end
 
-    context 'when not the same user' do
+    context "when not the same user" do
       let(:logged_in_user) { user }
 
-      it 'does not give access' do
-        expect(response.status).to eq 403
+      it "does not give access" do
+        expect(response).to have_http_status :forbidden
       end
     end
 
-    context 'when not the same user and admin' do
+    context "when not the same user and admin" do
       let(:logged_in_user) { admin }
 
-      it 'renders the page' do
+      it "renders the page" do
         expect(response).to be_successful
-        expect(response).to render_template 'new_type'
+        expect(response).to render_template "new"
       end
 
-      context 'when no active strategies' do
+      context "when no active strategies" do
         let(:active_strategies) { [] }
 
-        it 'renders a 404 because no strategies enabled' do
-          expect(response.status).to eq 404
+        it "renders a 404 because no strategies enabled" do
+          expect(response).to have_http_status :not_found
         end
       end
     end
   end
 
-  describe 'with active strategy' do
+  describe "with active strategy" do
     let(:active_strategies) { [:developer] }
 
-    describe '#new' do
-      context 'without type' do
+    describe "#new" do
+      context "without type" do
         before do
           get :new, params: { id: user.id }
         end
 
-        it 'renders the new form' do
-          expect(response).to be_successful
-          expect(response).to render_template 'new_type'
+        it "shows an error" do
+          expect(response).to have_http_status(:bad_request)
         end
       end
 
-      context 'with type' do
+      context "with unsupported type" do
+        before do
+          get :new, params: { id: user.id, type: :totp }
+        end
+
+        it "shows an error" do
+          expect(response).to have_http_status(:bad_request)
+        end
+      end
+
+      context "with type" do
         before do
           get :new, params: { id: user.id, type: :sms }
         end
 
-        it 'renders the new form' do
+        it "renders the new form" do
           expect(response).to be_successful
-          expect(response).to render_template 'new'
+          expect(response).to render_template "new"
         end
       end
     end
 
-    describe '#register' do
-      before do
-        post :register, params: { id: user.id, key: :sms, device: params }
-      end
+    describe "#register" do
+      context "with missing phone" do
+        let(:params) { { identifier: "foo" } }
 
-      context 'with missing phone' do
-        let(:params) { { identifier: 'foo' } }
+        it "renders action new" do
+          post :register, params: { id: user.id, key: :sms, device: params }
 
-        it 'renders action new' do
-          expect(response).to be_successful
-          expect(response).to render_template 'new'
+          expect(response).to have_http_status :unprocessable_entity
+          expect(response).to render_template "new"
           expect(assigns[:device]).to be_invalid
         end
       end
 
-      context 'with valid params' do
-        let(:params) { { phone_number: '+49123456789', identifier: 'foo' } }
+      context "with valid params" do
+        let(:params) { { phone_number: "+49123456789", identifier: "foo" } }
 
-        it 'redirects to result' do
+        it "redirects to result" do
+          post :register, params: { id: user.id, key: :sms, device: params }
+
           device = user.otp_devices.reload.last
           expect(response).to redirect_to edit_user_path(user.id, tab: :two_factor_authentication)
 
-          expect(device.identifier).to eq 'foo (+49123456789)'
-          expect(device.phone_number).to eq '+49123456789'
+          expect(device.identifier).to eq "foo (+49123456789)"
+          expect(device.phone_number).to eq "+49123456789"
           expect(device.default).to be_truthy
           expect(device.active).to be_truthy
+        end
+
+        context "when user has active sessions" do
+          let!(:plain_session1) { create(:user_session, user:) }
+          let!(:user_session1) { Sessions::UserSession.find_by(session_id: plain_session1.session_id) }
+
+          let!(:plain_session2) { create(:user_session, user:) }
+          let!(:user_session2) { Sessions::UserSession.find_by(session_id: plain_session2.session_id) }
+
+          let!(:other_plain_session) { create(:user_session, user: other_user) }
+          let!(:other_session) { Sessions::UserSession.find_by(session_id: other_plain_session.session_id) }
+
+          it "drops all sessions of that user" do
+            post :register, params: { id: user.id, key: :sms, device: params }
+
+            expect { user_session1.reload }.to raise_error(ActiveRecord::RecordNotFound)
+            expect { user_session2.reload }.to raise_error(ActiveRecord::RecordNotFound)
+
+            expect { other_session.reload }.not_to raise_error
+          end
+
+          context "when user has an active device" do
+            let!(:device) { create(:two_factor_authentication_device_totp, user:, default: true) }
+
+            it "does nothing" do
+              post :register, params: { id: user.id, key: :sms, device: params }
+
+              expect(user.otp_devices.count).to eq 2
+              expect(device.reload).to be_default
+              expect(user.otp_devices.last).to be_active
+              expect(user.otp_devices.last).not_to be_default
+
+              expect { user_session1.reload }.not_to raise_error
+              expect { user_session2.reload }.not_to raise_error
+
+              expect { other_session.reload }.not_to raise_error
+            end
+          end
         end
       end
     end
 
-    describe '#destroy' do
-      it 'croaks on missing id' do
-        delete :destroy, params: { id: user.id, device_id: '1234' }
-        expect(response.status).to eq 404
+    describe "#confirm" do
+      it "fails on GET" do
+        expect { get :confirm }.to raise_error(ActionController::UrlGenerationError)
       end
 
-      context 'with existing non-default device' do
-        let!(:device) { FactoryBot.create :two_factor_authentication_device_totp, user: user, default: false }
+      it "fails on POST" do
+        expect { post :confirm }.to raise_error(ActionController::UrlGenerationError)
+      end
+    end
 
-        it 'deletes it' do
+    describe "#delete_all" do
+      context "with no devices" do
+        it "redirects to the user 2FA tab" do
+          post :delete_all, params: { id: user.id }
+          expect(response).to redirect_to edit_user_path(user, tab: :two_factor_authentication)
+        end
+      end
+
+      context "with existing devices" do
+        let!(:device1) { create(:two_factor_authentication_device_totp, user:, default: true) }
+        let!(:device2) { create(:two_factor_authentication_device_sms, user:, default: false) }
+
+        it "deletes all devices and redirects" do
+          post :delete_all, params: { id: user.id }
+          expect(response).to redirect_to edit_user_path(user, tab: :two_factor_authentication)
+          expect(user.otp_devices.reload).to be_empty
+        end
+      end
+
+      context "when admin shares no project or group with the user" do
+        let!(:device) { create(:two_factor_authentication_device_totp, user:, default: true) }
+
+        it "still deletes all devices (regression: User.visible excluded the user)" do
+          post :delete_all, params: { id: user.id }
+          expect(response).to redirect_to edit_user_path(user, tab: :two_factor_authentication)
+          expect(user.otp_devices.reload).to be_empty
+        end
+      end
+    end
+
+    describe "#destroy" do
+      it "croaks on missing id" do
+        delete :destroy, params: { id: user.id, device_id: "1234" }
+        expect(response).to have_http_status :not_found
+      end
+
+      context "with existing non-default device" do
+        let!(:device) { create(:two_factor_authentication_device_totp, user:, default: false) }
+
+        it "deletes it" do
           delete :destroy, params: { id: user.id, device_id: device.id }
           expect(response).to redirect_to edit_user_path(user, tab: :two_factor_authentication)
           expect(user.otp_devices.reload).to eq []
         end
       end
 
-      context 'with existing default device' do
-        let!(:device) { FactoryBot.create :two_factor_authentication_device_totp, user: user, default: true }
+      context "with existing default device" do
+        let!(:device) { create(:two_factor_authentication_device_totp, user:, default: true) }
 
-        it 'deletes it' do
+        it "deletes it" do
           delete :destroy, params: { id: user.id, device_id: device.id }
           expect(response).to redirect_to edit_user_path(user, tab: :two_factor_authentication)
           expect(user.otp_devices.reload).to eq []
         end
       end
 
-      context 'with existing default device AND enforced' do
-        let!(:device) { FactoryBot.create :two_factor_authentication_device_totp, user: user, default: true }
+      context "with existing default device AND enforced" do
+        let!(:device) { create(:two_factor_authentication_device_totp, user:, default: true) }
         let(:config) { { enforced: true } }
 
-        it 'cannot be deleted' do
+        it "cannot be deleted" do
           delete :destroy, params: { id: user.id, device_id: device.id }
           expect(user.otp_devices.reload).to eq [device]
         end

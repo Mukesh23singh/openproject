@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 if defined?(Bullet) && Rails.env.development?
-  OpenProject::Application.configure do
+  Rails.application.configure do
     config.after_initialize do
       Bullet.enable = true
       # Bullet.alert = true
-      Bullet.bullet_logger = true if File.directory?('log') # fails if run from an engine
+      Bullet.bullet_logger = true if File.directory?("log") # fails if run from an engine
       Bullet.console = true
       # Bullet.growl = true
       Bullet.rails_logger = true

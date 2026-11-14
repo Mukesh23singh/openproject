@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,30 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Journal::NotificationConfiguration
   class << self
+    DEFAULT = true
+
     # Allows controlling whether notifications are sent out for created journals.
     # After the block is executed, the setting is returned to its original state which is true by default.
     # In case the method is called multiple times within itself, the first setting prevails.
     # This allows to control the setting globally without having to pass the setting down the call stack in
     # order to ensure all subsequent code follows the provided setting.
-    def with(send_notifications, &block)
-      if already_set?
+    def with(send_notifications, &)
+      if send_notifications.nil?
+        yield
+      elsif already_set?
         log_warning(send_notifications)
         yield
       else
-        with_first(send_notifications, &block)
+        with_first(send_notifications, &)
       end
     end
 
     def active?
-      active.value
+      @active ||= Concurrent::ThreadLocalVar.new(DEFAULT)
+      @active.value
     end
 
     protected
@@ -63,28 +67,21 @@ class Journal::NotificationConfiguration
     end
 
     def log_warning(send_notifications)
-      return if active == send_notifications
+      return if active? == send_notifications
 
       message = <<~MSG
-        Ignoring setting journal notifications to '#{send_notifications}' as a parent block already set it to #{active}"
+        Ignoring setting journal notifications to '#{send_notifications}' as a parent block already set it to #{active?}
       MSG
-      Rails.logger.debug message
-    end
-
-    def active
-      @active ||= Concurrent::ThreadLocalVar.new(true)
-    end
-
-    def already_set
-      @already_set ||= Concurrent::ThreadLocalVar.new(false)
-    end
-
-    def already_set?
-      already_set.value
+      Rails.logger.debug message.strip
     end
 
     def active=(value)
       @active.value = value
+    end
+
+    def already_set?
+      @already_set ||= Concurrent::ThreadLocalVar.new(false)
+      @already_set.value
     end
 
     def already_set=(value)

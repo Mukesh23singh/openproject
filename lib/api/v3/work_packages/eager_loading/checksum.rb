@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -50,34 +49,60 @@ module API
               WorkPackage
                 .where(id: work_packages.map(&:id).uniq)
                 .left_joins(*checksum_associations)
-                .pluck('work_packages.id', Arel.sql(md5_concat.squish))
+                .pluck("work_packages.id", Arel.sql(md5_concat.squish))
                 .to_h
+            end
+
+            def checksum_associations
+              @checksum_associations ||= %i[status author responsible assigned_to priority category type]
+            end
+
+            # Only singular associations (belongs_to/has_one) are supported, as a has_many
+            # would multiply the rows of the left_joins in fetch_checksums_for.
+            def add_checksum_associations(*association_names)
+              @checksum_associations = checksum_associations | association_names
             end
 
             protected
 
+            # Versions and labels are has_many and enter as aggregated subqueries;
+            # joining them in the pluck above would multiply the rows. A version
+            # can attach under more than one kind, so the kind is part of the
+            # value and of the order.
+            VERSIONS_CHECKSUM_SQL = <<~SQL.squish
+              (SELECT COALESCE(STRING_AGG(CONCAT(wpv.kind, v.id, v.updated_at), ',' ORDER BY wpv.kind, v.id), '')
+                 FROM work_package_versions wpv
+                 INNER JOIN versions v ON v.id = wpv.version_id
+                WHERE wpv.work_package_id = work_packages.id)
+            SQL
+
+            LABELS_CHECKSUM_SQL = <<~SQL.squish
+              (SELECT COALESCE(STRING_AGG(CONCAT(l.id, l.updated_at), ',' ORDER BY l.id), '')
+                 FROM labelings lg
+                 INNER JOIN labels l ON l.id = lg.label_id
+                WHERE lg.labelable_type = '#{WorkPackage.polymorphic_name}' AND lg.labelable_id = work_packages.id)
+            SQL
+
             def md5_concat
-              md5_parts = checksum_associations.map do |association_name|
+              md5_parts = checksum_associations.flat_map do |association_name|
                 table_name = md5_checksum_table_name(association_name)
 
                 %W[#{table_name}.id #{table_name}.updated_at]
-              end.flatten
+              end
+              md5_parts << VERSIONS_CHECKSUM_SQL
+              md5_parts << LABELS_CHECKSUM_SQL
 
               <<-SQL
                 MD5(CONCAT(#{md5_parts.join(', ')}))
               SQL
             end
 
-            def checksum_associations
-              %i[status author responsible assigned_to version priority category type]
-            end
-
             def md5_checksum_table_name(association_name)
               case association_name
               when :responsible
-                'responsibles_work_packages'
+                "responsibles_work_packages"
               when :assigned_to
-                'assigned_tos_work_packages'
+                "assigned_tos_work_packages"
               else
                 association_class(association_name).table_name
               end

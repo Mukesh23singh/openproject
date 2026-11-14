@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -44,24 +43,26 @@ module ::Query::Results::Sums
   def all_group_sums
     return nil unless query.grouped?
 
-    sums_by_id = sums_select(true).inject({}) do |result, group_sum|
-      result[group_sum['id']] = {}
-
-      query.summed_up_columns.each do |column|
-        result[group_sum['id']][column] = group_sum[column.name.to_s]
-      end
-
-      result
-    end
-
-    transform_group_keys(sums_by_id)
+    transform_group_keys(sums_by_group_id)
   end
 
   private
 
-  def sums_select(grouped = false)
+  def sums_by_group_id
+    sums_select(grouped: true).inject({}) do |result, group_sum|
+      result[group_sum["group_id"]] = {}
+
+      query.summed_up_columns.each do |column|
+        result[group_sum["group_id"]][column] = group_sum[column.name.to_s]
+      end
+
+      result
+    end
+  end
+
+  def sums_select(grouped: false)
     select = if grouped
-               ["work_packages.id"]
+               ["work_packages.group_id"]
              else
                []
              end
@@ -88,7 +89,7 @@ module ::Query::Results::Sums
             .select(sums_work_package_scope_selects(grouped))
 
     if grouped
-      scope.group(query.group_by_statement)
+      scope.joins(query.group_by_join_statement).group(query.group_by_statement)
     else
       scope
     end
@@ -98,24 +99,36 @@ module ::Query::Results::Sums
     callable_summed_up_columns
       .map do |c|
         join_condition = if grouped
-                           "#{c.name}.id = work_packages.id OR #{c.name}.id IS NULL AND work_packages.id IS NULL"
+                           "#{c.name}.group_id = work_packages.group_id OR " \
+                             "#{c.name}.group_id IS NULL AND work_packages.group_id IS NULL"
                          else
                            "TRUE"
                          end
 
         "LEFT OUTER JOIN (#{c.summable.(query, grouped).to_sql}) #{c.name} ON #{join_condition}"
       end
-      .join(' ')
+      .join(" ")
   end
 
   def sums_work_package_scope_selects(grouped)
-    select = if grouped
-               ["#{query.group_by_statement} id"]
-             else
-               []
-             end
+    group_statement =
+      if grouped
+        [Queries::WorkPackages::Selects::WorkPackageSelect.select_group_by(query.group_by_select)]
+      else
+        []
+      end
 
-    select + query.summed_up_columns.map(&:summable_work_packages_select).compact.map { |c| "SUM(#{c}) #{c}" }
+    group_statement + summed_columns + counted_summed_columns
+  end
+
+  def summed_columns
+    query.summed_up_columns.filter_map(&:summable_work_packages_select).map { |c| "SUM(#{c}) #{c}" }
+  end
+
+  def counted_summed_columns
+    query.summed_up_columns
+         .select(&:summable_work_packages_count_select)
+         .map { |col| "COUNT(#{col.name}) #{col.name}_count" }
   end
 
   def callable_summed_up_columns

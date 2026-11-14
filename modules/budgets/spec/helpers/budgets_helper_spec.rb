@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.dirname(__FILE__) + '/../spec_helper'
+require_relative "../spec_helper"
 
-describe BudgetsHelper, type: :helper do
-  let(:project) { FactoryBot.build(:project) }
-  let(:budget) { FactoryBot.build(:budget, project: project) }
+RSpec.describe BudgetsHelper do
+  let(:project) { build(:project) }
+  let(:budget) { build(:budget, project:) }
 
-  describe '#budgets_to_csv' do
-    describe 'WITH a list of one cost object' do
-      it 'should output the cost objects attributes' do
+  describe "#budgets_to_csv" do
+    describe "WITH a list of one cost object" do
+      it "outputs the cost objects attributes" do
         expected = [
           budget.id,
           budget.project.name,
@@ -52,9 +51,27 @@ describe BudgetsHelper, type: :helper do
         expect(budgets_to_csv([budget]).include?(expected)).to be_truthy
       end
 
-      it 'should start with a header explaining the fields' do
+      context "with a formula-injection payload in user-controlled fields",
+              with_settings: { csv_escape_formulas: true } do
+        let(:budget) do
+          build(:budget,
+                project:,
+                subject: "=1+1",
+                description: '=HYPERLINK("https://example.com","x")')
+        end
+
+        it "escapes the formula value by prepending a single quote" do
+          csv = budgets_to_csv([budget])
+
+          expect(csv).to include("'=1+1")
+          expect(csv).to include(%('=HYPERLINK))
+          expect(csv).not_to match(/(?<!')=1\+1/)
+        end
+      end
+
+      it "starts with a header explaining the fields" do
         expected = [
-          '#',
+          "#",
           Project.model_name.human,
           Budget.human_attribute_name(:subject),
           Budget.human_attribute_name(:author),
@@ -69,6 +86,31 @@ describe BudgetsHelper, type: :helper do
 
         expect(budgets_to_csv([budget]).start_with?(expected)).to be_truthy
       end
+    end
+  end
+
+  describe "#labor_budget_item_user_filters" do
+    let(:project) { build_stubbed(:project) }
+
+    subject(:filters) { helper.labor_budget_item_user_filters(project) }
+
+    # Groups and placeholder users are budgeted with 0.0 costs as they cannot
+    # hold an hourly rate, but they remain valid assignees (wp/74197).
+    it "offers every principal type that can be assigned" do
+      expect(filters)
+        .to include(a_hash_including(name: "type", values: %w[User Group PlaceholderUser]))
+    end
+
+    it "excludes locked principals" do
+      expect(filters)
+        .to include(a_hash_including(name: "status",
+                                     operator: "!",
+                                     values: [Principal.statuses["locked"].to_s]))
+    end
+
+    it "restricts the candidates to members of the project" do
+      expect(filters)
+        .to include(a_hash_including(name: "member", operator: "=", values: [project.id.to_s]))
     end
   end
 end

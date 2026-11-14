@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,31 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
-#++require 'rspec'
+#++
 
-require 'spec_helper'
-require_relative './eager_loading_mock_wrapper'
+require "spec_helper"
+require_relative "eager_loading_mock_wrapper"
 
-describe ::API::V3::WorkPackages::EagerLoading::Checksum do
-  let(:responsible) { FactoryBot.create(:user) }
-  let(:assignee) { FactoryBot.create(:user) }
-  let(:category) { FactoryBot.create(:category) }
-  let(:version) { FactoryBot.create(:version) }
+RSpec.describe API::V3::WorkPackages::EagerLoading::Checksum do
+  let(:project) { create(:project) }
+  let(:responsible) { create(:user) }
+  let(:assignee) { create(:user) }
+  let(:category) { create(:category) }
+  let(:version) { create(:version) }
   let!(:work_package) do
-    FactoryBot.create(:work_package,
-                      responsible: responsible,
-                      assigned_to: assignee,
-                      version: version,
-                      category: category)
+    create(:work_package,
+           project:,
+           responsible:,
+           assigned_to: assignee,
+           version:,
+           category:)
   end
   let!(:type) { work_package.type }
-  let!(:project) { work_package.project }
 
-  describe '.apply' do
+  describe ".apply" do
     let!(:orig_checksum) do
       EagerLoadingMockWrapper
         .wrap(described_class, [work_package])
@@ -61,116 +61,257 @@ describe ::API::V3::WorkPackages::EagerLoading::Checksum do
         .cache_checksum
     end
 
-    it 'produces a different checksum on changes to the status id' do
-      WorkPackage.where(id: work_package.id).update_all(status_id: 0)
+    it "produces a different checksum on changes to the status id" do
+      new_status = create(:status)
+
+      WorkPackage.where(id: work_package.id).update_all(status_id: new_status.id)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the status' do
-      work_package.status.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the status" do
+      work_package.status.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the author id' do
+    it "produces a different checksum on changes to the author id" do
       WorkPackage.where(id: work_package.id).update_all(author_id: 0)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the author' do
-      work_package.author.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the author" do
+      work_package.author.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the assigned_to id' do
+    it "produces a different checksum on changes to the assigned_to id" do
       WorkPackage.where(id: work_package.id).update_all(assigned_to_id: 0)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the assigned_to' do
-      work_package.assigned_to.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the assigned_to" do
+      work_package.assigned_to.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the responsible id' do
+    it "produces a different checksum on changes to the responsible id" do
       WorkPackage.where(id: work_package.id).update_all(responsible_id: 0)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the responsible' do
-      work_package.responsible.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the responsible" do
+      work_package.responsible.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the version id' do
-      WorkPackage.where(id: work_package.id).update_all(version_id: 0)
+    it "produces a different checksum on reassigning the target version" do
+      other_version = create(:version, project:)
+      work_package.work_package_versions.where(kind: "target").update_all(version_id: other_version.id)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the version' do
-      work_package.version.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the target version" do
+      work_package.target_versions.first.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the type id' do
-      WorkPackage.where(id: work_package.id).update_all(type_id: 0)
+    it "produces a different checksum on changes to an additional target version" do
+      other_version = create(:version, project:)
+      work_package.work_package_versions.create!(version: other_version, kind: "target")
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the type' do
-      work_package.type.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to an additional observed_in version" do
+      other_version = create(:version, project:)
+      work_package.work_package_versions.create!(version: other_version, kind: "observed_in")
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the priority id' do
+    it "produces a different checksum on changes to an observed_in version" do
+      other_version = create(:version, project:)
+      work_package.work_package_versions.create!(version: other_version, kind: "observed_in")
+
+      previous_checksum = EagerLoadingMockWrapper
+        .wrap(described_class, [work_package])
+        .first
+        .cache_checksum
+
+      other_version.update_attribute(:updated_at, 10.seconds.from_now)
+
+      expect(new_checksum)
+        .not_to eql previous_checksum
+    end
+
+    it "produces a different checksum on moving a version between kinds" do
+      work_package.work_package_versions.where(kind: "target").update_all(kind: "observed_in")
+
+      expect(new_checksum)
+        .not_to eql orig_checksum
+    end
+
+    it "produces a different checksum on changes to the type id" do
+      new_type = create(:type)
+      WorkPackage.where(id: work_package.id).update_all(type_id: new_type.id)
+
+      expect(new_checksum)
+        .not_to eql orig_checksum
+    end
+
+    it "produces a different checksum on changes to the type" do
+      work_package.type.update_attribute(:updated_at, 10.seconds.from_now)
+
+      expect(new_checksum)
+        .not_to eql orig_checksum
+    end
+
+    it "produces a different checksum on changes to the priority id" do
       WorkPackage.where(id: work_package.id).update_all(priority_id: 0)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the priority' do
-      work_package.priority.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the priority" do
+      work_package.priority.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the category id' do
+    it "produces a different checksum on changes to the category id" do
       WorkPackage.where(id: work_package.id).update_all(category_id: 0)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the category' do
-      work_package.category.update_attribute(:updated_at, Time.now + 10.seconds)
+    it "produces a different checksum on changes to the category" do
+      work_package.category.update_attribute(:updated_at, 10.seconds.from_now)
 
       expect(new_checksum)
         .not_to eql orig_checksum
+    end
+
+    it "produces a different checksum when a label is added to the work package" do
+      label = create(:label)
+
+      create(:labeling, labelable: work_package, label:)
+
+      expect(new_checksum)
+        .not_to eql orig_checksum
+    end
+
+    it "produces a different checksum when a label is removed from the work package" do
+      label = create(:label)
+      labeling = create(:labeling, labelable: work_package, label:)
+
+      previous_checksum = EagerLoadingMockWrapper
+        .wrap(described_class, [work_package])
+        .first
+        .cache_checksum
+
+      labeling.destroy!
+
+      expect(new_checksum)
+        .not_to eql previous_checksum
+    end
+
+    it "produces a different checksum when an assigned label is renamed" do
+      label = create(:label)
+      create(:labeling, labelable: work_package, label:)
+
+      previous_checksum = EagerLoadingMockWrapper
+        .wrap(described_class, [work_package])
+        .first
+        .cache_checksum
+
+      label.update_attribute(:name, "Renamed label #{label.id}")
+
+      expect(new_checksum)
+        .not_to eql previous_checksum
+    end
+
+    it "produces the same checksum when a label not assigned to the work package changes" do
+      assigned_label = create(:label)
+      create(:labeling, labelable: work_package, label: assigned_label)
+      unassigned_label = create(:label)
+      create(:labeling, labelable: create(:work_package, project:), label: unassigned_label)
+
+      previous_checksum = EagerLoadingMockWrapper
+        .wrap(described_class, [work_package])
+        .first
+        .cache_checksum
+
+      unassigned_label.update_attribute(:name, "Renamed label #{unassigned_label.id}")
+
+      expect(new_checksum)
+        .to eql previous_checksum
+    end
+  end
+
+  describe ".add_checksum_associations" do
+    around do |example|
+      original_associations = described_class.checksum_associations
+      example.run
+    ensure
+      described_class.instance_variable_set(:@checksum_associations, original_associations)
+    end
+
+    def checksum
+      EagerLoadingMockWrapper
+        .wrap(described_class, [work_package])
+        .first
+        .cache_checksum
+    end
+
+    it "includes the added association in the checksum" do
+      described_class.add_checksum_associations(:project)
+      orig_checksum = checksum
+
+      project.update_attribute(:updated_at, 10.seconds.from_now)
+
+      expect(checksum)
+        .not_to eql orig_checksum
+    end
+
+    it "does not include changes to associations that were not added" do
+      orig_checksum = checksum
+
+      project.update_attribute(:updated_at, 10.seconds.from_now)
+
+      expect(checksum)
+        .to eql orig_checksum
+    end
+
+    it "adds an association only once" do
+      described_class.add_checksum_associations(:project)
+      described_class.add_checksum_associations(:project)
+
+      expect(described_class.checksum_associations.count(:project))
+        .to eq 1
     end
   end
 end

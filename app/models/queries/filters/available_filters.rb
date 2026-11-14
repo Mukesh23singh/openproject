@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require_dependency 'queries/filters'
 
 module Queries
   module Filters
@@ -40,6 +37,10 @@ module Queries
       module ClassMethods
         def registered_filters
           ::Queries::Register.filters[self]
+        end
+
+        def excluded_filters
+          ::Queries::Register.excluded_filters[self]
         end
 
         def find_registered_filter(key)
@@ -57,6 +58,15 @@ module Queries
         end
 
         initialized_filters.select(&:available?)
+      end
+
+      def available_advanced_filters
+        available_filters.reject do |filter|
+          # Skip the name filter as we have it present as a permanent filter with a text input.
+          filter.is_a?(::Queries::Projects::Filters::NameAndIdentifierFilter) ||
+            # Only used by the projects tab of a custom field.
+            filter.is_a?(::Queries::Projects::Filters::ProjectSpecificValuesFilter)
+        end
       end
 
       def filter_for(key, no_memoization: false)
@@ -78,7 +88,12 @@ module Queries
       private
 
       def non_existing_filter(key)
-        ::Queries::Filters::NotExistingFilter.create!(name: key)
+        case key.to_sym
+        when :typeahead
+          ::Queries::Filters::EmptyFilter.create!(name: key)
+        else
+          ::Queries::Filters::NotExistingFilter.create!(name: key)
+        end
       end
 
       def get_initialized_filter(key, no_memoization)

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,12 +30,28 @@
 class Type::FormGroup
   attr_accessor :key,
                 :attributes,
-                :type
+                :type,
+                :display_name,
+                :record_id
 
-  def initialize(type, key, attributes)
+  def self.next_untitled_key(seen_keys)
+    base_name = I18n.t("types.edit.form_configuration.untitled_group")
+    candidate = base_name
+    suffix = 2
+
+    while seen_keys.include?(candidate)
+      candidate = "#{base_name} #{suffix}"
+      suffix += 1
+    end
+
+    candidate
+  end
+
+  def initialize(type, key, attributes, display_name: nil)
     self.key = key
     self.attributes = attributes
     self.type = type
+    self.display_name = display_name
   end
 
   ##
@@ -49,18 +64,22 @@ class Type::FormGroup
   # Translate the given attribute group if its internal
   # (== if it's a symbol)
   def translated_key
-    if internal_key?
-      I18n.t(Type.default_groups[key], default: key.to_s)
-    else
+    if display_name.present?
+      display_name
+    elsif internal_key?
+      I18n.t(TypeVariant.default_groups[key], default: key.to_s)
+    elsif key.present?
       key
+    else
+      I18n.t("types.edit.form_configuration.untitled_group")
     end
   end
 
   def members
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   def active_members(_project)
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 end

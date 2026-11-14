@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,38 +20,39 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { NgModule } from '@angular/core';
+import { Injector, NgModule, inject } from '@angular/core';
 import { OpenprojectWorkPackagesModule } from 'core-app/features/work-packages/openproject-work-packages.module';
 import { GlobalSearchInputComponent } from 'core-app/core/global_search/input/global-search-input.component';
 import { GlobalSearchWorkPackagesComponent } from 'core-app/core/global_search/global-search-work-packages.component';
-import { GlobalSearchTabsComponent } from 'core-app/core/global_search/tabs/global-search-tabs.component';
-import { GlobalSearchTitleComponent } from 'core-app/core/global_search/title/global-search-title.component';
 import { GlobalSearchService } from 'core-app/core/global_search/services/global-search.service';
-import { GlobalSearchWorkPackagesEntryComponent } from 'core-app/core/global_search/global-search-work-packages-entry.component';
-import { OpenprojectAutocompleterModule } from 'core-app/shared/components/autocompleter/openproject-autocompleter.module';
-import { OPSharedModule } from 'core-app/shared/shared.module';
+import {
+  OpenprojectAutocompleterModule,
+} from 'core-app/shared/components/autocompleter/openproject-autocompleter.module';
+import { OpSharedModule } from 'core-app/shared/shared.module';
+import { OpTooltipDirective } from 'core-app/shared/components/primer/tooltip.directive';
+import { RecentItemsService } from 'core-app/core/recent-items.service';
 
 @NgModule({
   imports: [
-    OPSharedModule,
+    OpSharedModule,
     OpenprojectWorkPackagesModule,
     OpenprojectAutocompleterModule,
+    OpTooltipDirective,
   ],
   providers: [
     GlobalSearchService,
+    RecentItemsService,
   ],
   declarations: [
     GlobalSearchInputComponent,
-    GlobalSearchWorkPackagesEntryComponent,
     GlobalSearchWorkPackagesComponent,
-    GlobalSearchTabsComponent,
-    GlobalSearchTitleComponent,
   ],
 })
-export class OpenprojectGlobalSearchModule { }
+export class OpenprojectGlobalSearchModule {
+  readonly injector = inject(Injector);
+}

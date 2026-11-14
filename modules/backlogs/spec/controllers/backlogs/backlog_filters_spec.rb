@@ -1,0 +1,310 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "rails_helper"
+
+RSpec.describe Backlogs::BacklogFilters, type: :model do
+  subject(:filters) { described_class.from_params(params) }
+
+  describe "#bucket_ids" do
+    context "when bucket_ids are absent" do
+      let(:params) { {} }
+
+      it { expect(filters.bucket_ids).to be_nil }
+    end
+
+    context "when bucket_ids are string integers" do
+      let(:params) { { bucket_ids: %w[1 2 3].to_json } }
+
+      it "coerces them to integers" do
+        expect(filters.bucket_ids).to eq([1, 2, 3])
+      end
+    end
+
+    context "when bucket_ids is a single string integer" do
+      let(:params) { { bucket_ids: "3".to_json } }
+
+      it "coerces it to integer" do
+        expect(filters.bucket_ids).to eq([3])
+      end
+    end
+
+    context "when bucket_ids contain blank strings" do
+      let(:params) { { bucket_ids: ["1", "", "2"].to_json } }
+
+      it "filters out blanks" do
+        expect(filters.bucket_ids).to eq([1, 2])
+      end
+    end
+
+    context "when bucket_ids contain inbox" do
+      let(:params) { { bucket_ids: %w[1 inbox].to_json } }
+
+      it "keeps inbox as a string" do
+        expect(filters.bucket_ids).to eq([1, "inbox"])
+      end
+    end
+
+    context "when bucket_ids are malformed JSON" do
+      let(:params) { { bucket_ids: "[1," } }
+
+      it { expect(filters.bucket_ids).to be_nil }
+    end
+
+    context "when bucket_ids is an empty JSON array" do
+      let(:params) { { bucket_ids: "[]" } }
+
+      it { expect(filters.bucket_ids).to be_nil }
+    end
+
+    context "when bucket_ids is valid JSON but not a list of ids" do
+      %w[{"a":1} [[1]] true null].each do |value|
+        it "ignores #{value}" do
+          expect(described_class.from_params(bucket_ids: value).bucket_ids).to be_nil
+        end
+      end
+    end
+
+    context "when bucket_ids mix valid ids with non-scalar values" do
+      let(:params) { { bucket_ids: '[1, {"a":1}, "inbox", [2]]' } }
+
+      it "keeps only the valid ids" do
+        expect(filters.bucket_ids).to eq([1, "inbox"])
+      end
+    end
+
+    context "when bucket_ids are duplicate" do
+      let(:params) { { bucket_ids: '[1, "inbox", 1, "1"]' } }
+
+      it "keeps only the deduplicated valid ids" do
+        expect(filters.bucket_ids).to eq([1, "inbox"])
+      end
+    end
+  end
+
+  describe "#bucket_ids_without_inbox" do
+    context "when bucket_ids are absent" do
+      let(:params) { {} }
+
+      it { expect(filters.bucket_ids_without_inbox).to be_nil }
+    end
+
+    context "when bucket_ids only contain real bucket ids" do
+      let(:params) { { bucket_ids: %w[1 2].to_json } }
+
+      it "returns them unchanged" do
+        expect(filters.bucket_ids_without_inbox).to eq([1, 2])
+      end
+    end
+
+    context "when bucket_ids only contain inbox" do
+      let(:params) { { bucket_ids: "inbox".to_json } }
+
+      it "returns an empty array" do
+        expect(filters.bucket_ids_without_inbox).to eq([])
+      end
+    end
+
+    context "when bucket_ids contain both real bucket ids and inbox" do
+      let(:params) { { bucket_ids: %w[1 inbox 2].to_json } }
+
+      it "strips out inbox and keeps the real bucket ids" do
+        expect(filters.bucket_ids_without_inbox).to eq([1, 2])
+      end
+    end
+  end
+
+  describe "#sprint_ids" do
+    context "when sprint_ids are absent" do
+      let(:params) { {} }
+
+      it { expect(filters.sprint_ids).to be_nil }
+    end
+
+    context "when sprint_ids are string integers" do
+      let(:params) { { sprint_ids: %w[5 6].to_json } }
+
+      it "coerces them to integers" do
+        expect(filters.sprint_ids).to eq([5, 6])
+      end
+    end
+
+    context "when sprint_ids is a single string integer" do
+      let(:params) { { sprint_ids: "3".to_json } }
+
+      it "coerces it to integer" do
+        expect(filters.sprint_ids).to eq([3])
+      end
+    end
+
+    context "when sprint_ids are duplicate" do
+      let(:params) { { sprint_ids: '[1, 1, 2, "2"]' } }
+
+      it "keeps only the deduplicated valid ids" do
+        expect(filters.sprint_ids).to eq([1, 2])
+      end
+    end
+
+    context "when sprint_ids contain inbox" do
+      let(:params) { { sprint_ids: %w[1 inbox].to_json } }
+
+      it "drops inbox" do
+        expect(filters.sprint_ids).to eq([1])
+      end
+    end
+
+    context "when sprint_ids only contain inbox" do
+      let(:params) { { sprint_ids: "inbox".to_json } }
+
+      it { expect(filters.sprint_ids).to be_nil }
+    end
+  end
+
+  describe "#show_all?" do
+    context "when the all param is absent" do
+      let(:params) { {} }
+
+      it { expect(filters.show_all?).to be false }
+    end
+
+    context "when the all param is '1'" do
+      let(:params) { { all: "1" } }
+
+      it { expect(filters.show_all?).to be true }
+    end
+
+    context "when the all param is '0'" do
+      let(:params) { { all: "0" } }
+
+      it { expect(filters.show_all?).to be false }
+    end
+
+    context "when the all param is 'false'" do
+      let(:params) { { all: "false" } }
+
+      it { expect(filters.show_all?).to be false }
+    end
+  end
+
+  describe "#filters_string" do
+    context "when filters are absent" do
+      let(:params) { {} }
+
+      it { expect(filters.filters_string).to be_nil }
+    end
+
+    context "when filters is a params-format string" do
+      let(:params) { { filters: 'status_id = "1"' } }
+
+      it "keeps the raw string" do
+        expect(filters.filters_string).to eq('status_id = "1"')
+      end
+    end
+
+    context "when filters is blank" do
+      let(:params) { { filters: "" } }
+
+      it { expect(filters.filters_string).to be_nil }
+    end
+  end
+
+  describe "#to_h" do
+    context "with no params" do
+      let(:params) { {} }
+
+      it "returns an empty hash" do
+        expect(filters.to_h).to eq({})
+      end
+    end
+
+    context "with show_all" do
+      let(:params) { { all: "1" } }
+
+      it "includes all: 1" do
+        expect(filters.to_h).to eq({ all: true })
+      end
+    end
+
+    context "with bucket_ids and sprint_ids" do
+      let(:params) { { bucket_ids: %w[1 2].to_json, sprint_ids: "3".to_json } }
+
+      it "includes both" do
+        expect(filters.to_h).to eq({ bucket_ids: %w[1 2].to_json, sprint_ids: "3".to_json })
+      end
+    end
+
+    context "with all params combined" do
+      let(:params) { { all: "1", bucket_ids: %w[1].to_json, sprint_ids: "2".to_json } }
+
+      it "includes everything" do
+        expect(filters.to_h).to eq({ all: true, bucket_ids: "1".to_json, sprint_ids: "2".to_json })
+      end
+    end
+
+    context "with filters" do
+      let(:params) { { filters: 'status_id = "1"' } }
+
+      it "includes the raw filters string" do
+        expect(filters.to_h).to eq({ filters: 'status_id = "1"' })
+      end
+    end
+
+    context "with inbox among the bucket_ids" do
+      let(:params) { { bucket_ids: %w[1 inbox].to_json } }
+
+      it "serializes inbox alongside the ids" do
+        expect(filters.to_h).to eq({ bucket_ids: %w[1 inbox].to_json })
+      end
+    end
+
+    context "when fed back into from_params" do
+      let(:params) { { all: "1", bucket_ids: %w[1 inbox].to_json, sprint_ids: "2".to_json, filters: 'status_id = "1"' } }
+
+      it "round-trips" do
+        expect(described_class.from_params(filters.to_h)).to eq(filters)
+      end
+    end
+  end
+
+  describe "#with" do
+    let(:params) { { bucket_ids: %w[1 inbox].to_json, all: "1" } }
+
+    it "returns a copy with the given members replaced" do
+      expect(filters.with(show_all: false)).to have_attributes(bucket_ids: [1, "inbox"], show_all: false)
+    end
+  end
+
+  describe "#to_hash" do
+    let(:params) { { bucket_ids: %w[1 2].to_json } }
+
+    it "is an alias for to_h, enabling ** spreading" do
+      expect(filters.to_hash).to eq(filters.to_h)
+    end
+  end
+end

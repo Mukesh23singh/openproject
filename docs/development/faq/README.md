@@ -1,9 +1,8 @@
 ---
 sidebar_navigation:
-  title: OpenProject FAQ
+  title: Development FAQ
   priority: 980
 description: Frequently asked questions for development
-robots: index, follow
 keywords: FAQ, change code, developing, plug-in
 ---
 # Frequently asked questions (FAQ) for development
@@ -20,7 +19,14 @@ The documentation for creating plugins is indeed limited at the moment. What we 
 
 We use MessageBird. At the moment this can't be changed.
 
-## Additional information
+## Why does Docker report that database.yml exists?
 
-For additional information and FAQ have a look at the other FAQ sections, e.g. [in the Installation and upgrade guide](../../installation-and-operations/installation-faq).
+The Docker development setup requires `config/database.yml` to be absent. If you also use a native development environment, rename the file to keep its configuration before starting Docker. Follow the [Docker setup guide](../development-environment/docker/) for configuration and commands.
 
+## Why does the frontend Docker container exit with status 137?
+
+The container may have run out of memory. Check the container logs and increase Docker's memory allocation to at least 4 GB if memory exhaustion is the cause.
+
+## How do I repair missing frontend assets or a blank development page?
+
+For a configured native development environment, run `bin/setup_dev` to refresh dependencies, migrate the database, and clear stale compiled assets. Restart the development servers afterwards. For a Docker environment, use the [Docker setup commands](../development-environment/docker/) inside the containers.

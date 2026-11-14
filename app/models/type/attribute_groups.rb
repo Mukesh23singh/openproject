@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,21 +33,22 @@ module Type::AttributeGroups
   included do
     before_save :write_attribute_groups_objects
     after_save :unset_attribute_groups_objects
-    after_destroy :remove_attribute_groups_queries
 
-    serialize :attribute_groups, Array
     attr_accessor :attribute_groups_objects
 
     # Mapping from AR attribute name to a default group
     # May be extended by plugins
     mattr_accessor :default_group_map do
       {
-        author: :people,
         assignee: :people,
         responsible: :people,
-        estimated_time: :estimates_and_time,
-        spent_time: :estimates_and_time,
-        priority: :details
+        estimated_time: :estimates_and_progress,
+        remaining_time: :estimates_and_progress,
+        percentage_done: :estimates_and_progress,
+        priority: :details,
+        labels: :details,
+        # `:excluded` is not a "real" group. It's meant to exclude built in fields from the form
+        observed_in_versions: :excluded
       }
     end
 
@@ -56,10 +56,10 @@ module Type::AttributeGroups
     mattr_accessor :default_groups do
       {
         people: :label_people,
-        estimates_and_time: :label_estimates_and_time,
+        estimates_and_progress: :label_estimates_and_progress,
         details: :label_details,
         other: :label_other,
-        children: :'activerecord.attributes.work_package.children'
+        children: :"activerecord.attributes.work_package.children"
       }
     end
   end
@@ -87,7 +87,9 @@ module Type::AttributeGroups
   ##
   # Read the serialized attribute groups, if customized.
   # Otherwise, return +default_attribute_groups+
-  def attribute_groups
+  def attribute_groups = form_attribute_groups
+
+  def form_attribute_groups
     self.attribute_groups_objects ||= begin
       groups = custom_attribute_groups || default_attribute_groups
 
@@ -100,10 +102,8 @@ module Type::AttributeGroups
   ##
   # Resets the default attribute groups
   def reset_attribute_groups
-    # Remove all active custom fields
-    self.custom_field_ids = []
-
-    self.attribute_groups_objects = to_attribute_group_class(default_attribute_groups)
+    attribute_groups_will_change!
+    self.attribute_groups_objects = to_attribute_group_class(default_attribute_groups(custom_field_ids: []))
   end
 
   ##
@@ -116,8 +116,9 @@ module Type::AttributeGroups
   ##
   # Returns the default +attribute_groups+ put together by
   # the default group map.
-  def default_attribute_groups
-    values = work_package_attributes_by_default_group_key
+  def default_attribute_groups(custom_field_ids: self.custom_field_ids)
+    values = work_package_attributes_by_default_group_key(custom_field_ids)
+    values.reject! { |k, _| k == :estimates_and_progress } if is_milestone?
 
     default_groups.keys.each_with_object([]) do |groupkey, array|
       members = values[groupkey]
@@ -139,19 +140,19 @@ module Type::AttributeGroups
   def write_attribute_groups_objects
     return if attribute_groups_objects.nil?
 
-    groups = if attribute_groups_objects == to_attribute_group_class(default_attribute_groups)
-               nil
-             else
-               to_attribute_group_array(attribute_groups_objects)
-             end
+    attribute_groups_record&.stage_attribute_groups(attribute_groups_objects)
+  end
 
-    write_attribute(:attribute_groups, groups)
+  def attribute_groups_record = self
 
-    cleanup_query_groups_queries
+  def attribute_group_members
+    attribute_groups.flat_map do |group|
+      group.group_type == :attribute ? group.attributes.map(&:to_s) : []
+    end
   end
 
   def custom_attribute_groups
-    read_attribute(:attribute_groups).presence
+    attribute_groups_record&.stored_attribute_groups
   end
 
   def default_group_key(key)
@@ -162,82 +163,49 @@ module Type::AttributeGroups
     end
   end
 
-  ##
-  # Get the default attribute groups for this type.
-  # If it has activated custom fields through +custom_field_ids=+,
-  # it will put them into the other group.
-  def work_package_attributes_by_default_group_key
-    active_cfs = active_custom_field_attributes
+  def work_package_attributes_by_default_group_key(custom_field_ids)
+    active_cfs = custom_field_keys(custom_field_ids)
+
     work_package_attributes
       .keys
       .select { |key| default_attribute?(active_cfs, key) }
+      .sort_by { |key| default_group_map.keys.index(key.to_sym) || default_group_map.keys.size }
       .group_by { |key| default_group_key(key.to_sym) }
   end
+
+  def custom_field_keys(custom_field_ids) = custom_field_ids.map { |id| "custom_field_#{id}" }
 
   ##
   # Custom fields should not get included into the default form configuration.
   # This method might get patched by modules.
   def default_attribute?(active_cfs, key)
-    !(CustomField.custom_field_attribute?(key) && !active_cfs.include?(key))
+    !(CustomField.custom_field_attribute?(key) && active_cfs.exclude?(key))
   end
 
   def to_attribute_group_class(groups)
-    groups.map do |group|
-      attributes = group[1]
-      first_attribute = attributes[0]
-      key = group[0]
-
-      if first_attribute.is_a?(Query)
-        new_query_group(key, first_attribute)
-      elsif first_attribute.is_a?(Symbol) && Type::QueryGroup.query_attribute?(first_attribute)
-        query = Query.find_by(id: Type::QueryGroup.query_attribute_id(first_attribute))
-        new_query_group(key, query)
-      else
-        new_attribute_group(key, attributes)
-      end
-    end
+    groups.map { |group| group.is_a?(Type::FormGroup) ? group : group_from_tuple(*group) }
   end
 
-  def to_attribute_group_array(groups)
-    groups.map do |group|
-      attributes = if group.is_a?(Type::QueryGroup)
-                     query = group.query
+  def group_from_tuple(key, attributes, display_name = nil, record_id = nil)
+    first_attribute = attributes[0]
 
-                     query.save
+    group = if first_attribute.is_a?(Query)
+              new_query_group(key, first_attribute, display_name:)
+            elsif first_attribute.is_a?(Symbol) && Type::QueryGroup.query_attribute?(first_attribute)
+              query = Query.find_by(id: Type::QueryGroup.query_attribute_id(first_attribute))
+              new_query_group(key, query, display_name:)
+            else
+              new_attribute_group(key, attributes, display_name:)
+            end
 
-                     [group.query_attribute_name]
-                   else
-                     group.attributes
-                   end
-      [group.key, attributes]
-    end
+    group.tap { it.record_id = record_id }
   end
 
-  def new_attribute_group(key, attributes)
-    Type::AttributeGroup.new(self, key, attributes)
+  def new_attribute_group(key, attributes, display_name: nil)
+    Type::AttributeGroup.new(self, key, attributes, display_name:)
   end
 
-  def new_query_group(key, query)
-    Type::QueryGroup.new(self, key, query)
-  end
-
-  def cleanup_query_groups_queries
-    return unless attribute_groups_changed?
-
-    new_groups = read_attribute(:attribute_groups)
-    old_groups = attribute_groups_was
-
-    ids = (old_groups.map(&:last).flatten - new_groups.map(&:last).flatten)
-          .map { |k| ::Type::QueryGroup.query_attribute_id(k) }
-          .compact
-
-    Query.where(id: ids).destroy_all
-  end
-
-  def remove_attribute_groups_queries
-    attribute_groups
-      .select { |g| g.is_a?(Type::QueryGroup) }
-      .map(&:query)
-      .each(&:destroy)
+  def new_query_group(key, query, display_name: nil)
+    Type::QueryGroup.new(self, key, query, display_name:)
   end
 end

@@ -1,27 +1,34 @@
 <ng-container>
   <!-- Name -->
   <label
-      for="operators-{{filter.id}}"
-      class="advanced-filters--filter-name"
-      [textContent]="filter.name"
-      [attr.title]="filter.name"
-  >
+    for="operators-{{filter.id}}"
+    class="advanced-filters--filter-name"
+    [class.op-query-filter--icon-label]="baselineIncompatibleFilter"
+    >
+    <span [textContent]="filter.name" [attr.title]="filter.name"></span>
+    @if (baselineIncompatibleFilter) {
+      <span
+        [title]="text.incompatible_filter"
+        data-test-selector="query-filter-baseline-incompatible">
+        <svg alert-icon size="small" />
+      </span>
+    }
   </label>
 
   <!-- Operator -->
   <div class="advanced-filters--filter-operator">
 
     <label
-        for="operators-{{filter.id}}"
-        class="hidden-for-sighted"
-    >
+      for="operators-{{filter.id}}"
+      class="sr-only"
+      >
       {{ filter.name }}
       {{ text.open_filter }}
     </label>
 
-    <select
+    @if (valueType !== '[1]Boolean') {
+      <select
         required
-        *ngIf="valueType !== '[1]Boolean'"
         class="advanced-filters--select"
         id="operators-{{filter.id}}"
         name="op[{{filter.id}}]"
@@ -29,101 +36,110 @@
         (ngModelChange)="onFilterUpdated(filter)"
         [compareWith]="compareByHref"
         style="vertical-align: top;"
-    >
-      <option
-          *ngFor="let operator of availableOperators"
-          [textContent]="operator.name"
-          [ngValue]="operator"
-      >
-      </option>
-    </select>
+        >
+        @for (operator of availableOperators; track operator.href) {
+          <option
+            [textContent]="operator.name"
+            [ngValue]="operator"
+            >
+          </option>
+        }
+      </select>
+    }
 
-    <filter-boolean-value
-        *ngIf="valueType == '[1]Boolean'"
-        (filterChanged)="onFilterUpdated($event)"
+    @if (valueType === '[1]Boolean') {
+      <op-filter-boolean-value (filterChanged)="onFilterUpdated($event)"
         [shouldFocus]="shouldFocus"
         [filter]="filter"
-    ></filter-boolean-value>
+       />
+    }
   </div>
   <!-- Values -->
-  <ng-container *ngIf="showValuesInput && valueType">
-    <div class="advanced-filters--filter-value" [ngSwitch]="valueType">
-      <filter-integer-value
-          *ngSwitchCase="'[1]Integer'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-integer-value>
-
-      <filter-date-value
-          *ngSwitchCase="'[1]Date'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-date-value>
-
-      <filter-dates-value
-          *ngSwitchCase="'[2]Date'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-dates-value>
-
-      <filter-date-time-value
-          *ngSwitchCase="'[1]DateTime'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-date-time-value>
-
-      <filter-date-times-value
-          *ngSwitchCase="'[2]DateTime'"
-          [shouldFocus]="shouldFocus"
-          (filterChanged)="onFilterUpdated($event)"
-          [filter]="filter"
-      ></filter-date-times-value>
-
-      <filter-string-value
-          *ngSwitchCase="'[1]String'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-string-value>
-
-      <filter-string-value
-          *ngSwitchCase="'[1]Float'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-string-value>
-
-      <filter-searchable-multiselect-value
-          *ngSwitchCase="'[]WorkPackage'"
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-searchable-multiselect-value>
-
-      <filter-toggled-multiselect-value
-          *ngSwitchDefault
-          (filterChanged)="onFilterUpdated($event)"
-          [shouldFocus]="shouldFocus"
-          [filter]="filter"
-      ></filter-toggled-multiselect-value>
+  @if (showValuesInput && valueType) {
+    <div class="advanced-filters--filter-value">
+      @switch (valueType) {
+        @case ('[1]Integer') {
+          <op-filter-integer-value (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @case ('[1]Date') {
+          <op-filter-date-value (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @case ('[2]Date') {
+          <op-filter-dates-value (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @case ('[1]DateTime') {
+          <op-filter-date-time-value (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @case ('[2]DateTime') {
+          <op-filter-date-times-value [shouldFocus]="shouldFocus"
+            (filterChanged)="onFilterUpdated($event)"
+            [filter]="filter"
+           />
+        }
+        @case ('[1]String') {
+          <op-filter-string-value (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @case ('[1]Float') {
+          <op-filter-string-value (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @case ('[]Project') {
+          <op-filter-project (filterChanged)="onFilterUpdated($event)"
+            [shouldFocus]="shouldFocus"
+            [filter]="filter"
+           />
+        }
+        @default {
+          @if (filter.currentSchema; as schema) {
+            @if (schema.loadedAllowedValues()) {
+              <op-filter-toggled-multiselect-value (filterChanged)="onFilterUpdated($event)"
+                [shouldFocus]="shouldFocus"
+                [filter]="filter"
+               />
+            } @else {
+              <op-filter-searchable-multiselect-value (filterChanged)="onFilterUpdated($event)"
+                [shouldFocus]="shouldFocus"
+                [filter]="filter"
+               />
+            }
+          }
+        }
+      }
     </div>
-  </ng-container>
+  }
 
-  <div class="advanced-filters--filter-value" *ngIf="!showValuesInput">
-  </div>
+  @if (!showValuesInput) {
+    <div
+      class="advanced-filters--filter-value"
+    ></div>
+  }
 
   <div class="advanced-filters--remove-filter">
     <button
-        type="button"
-        class="op-link"
-        [title]="text.button_delete"
-        (click)="removeThisFilter()"
-    >
-      <op-icon icon-classes="icon-close advanced-filters--remove-filter-icon"></op-icon>
+      type="button"
+      class="spot-link"
+      opTooltip
+      [label]="text.button_delete"
+      (click)="removeThisFilter()"
+      >
+      <op-icon icon-classes="icon-close advanced-filters--remove-filter-icon" />
     </button>
   </div>
 </ng-container>

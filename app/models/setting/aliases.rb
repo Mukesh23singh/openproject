@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,10 +32,33 @@ class Setting
   # Shorthand to common setting aliases to avoid checking values
   module Aliases
     ##
-    # Whether the application is configured to use or force SSL output
-    # for cookie storage et al.
-    def https?
-      Setting.protocol == 'https' || Rails.configuration.force_ssl
+    # Restore the previous Setting.protocol now replaced by https?
+    def protocol
+      if OpenProject::Configuration.https?
+        "https"
+      else
+        "http"
+      end
+    end
+
+    ##
+    # Host name without protocol
+    def host_without_protocol
+      Setting.host_name&.split(":")&.first
+    end
+
+    ##
+    # Port from host_name if set
+    def optional_port_from_host_name
+      Setting.host_name&.split(":")&.[](1)
+    end
+
+    ##
+    # Get the names of working days
+    # @return [Array<String>] the names of the working days
+    def working_day_names
+      weekdays = %i[monday tuesday wednesday thursday friday saturday sunday]
+      Setting.working_days.map { |day| weekdays[day - 1] }
     end
   end
 end

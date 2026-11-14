@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +22,27 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
+require "contracts/shared/model_contract_shared_context"
 
-describe WorkPackages::BaseContract do
+RSpec.describe WorkPackages::BaseContract do
+  include_context "ModelContract shared context"
+
   let(:work_package) do
-    FactoryBot.build_stubbed(:stubbed_work_package,
-                             type: type,
-                             done_ratio: 50,
-                             estimated_hours: 6.0,
-                             project: project)
+    build_stubbed(:work_package,
+                  type:,
+                  done_ratio: 50,
+                  estimated_hours: 6.0,
+                  remaining_hours: 3.0,
+                  project:)
   end
-  let(:type) { FactoryBot.build_stubbed(:type) }
-  let(:member) do
-    u = FactoryBot.build_stubbed(:user)
-
-    allow(u)
-      .to receive(:allowed_to?)
-      .and_return(false)
-
-    permissions.each do |permission|
-      allow(u)
-        .to receive(:allowed_to?)
-        .with(permission, project, global: project.nil?)
-        .and_return(true)
-    end
-
-    u
-  end
-  let(:project) { FactoryBot.build_stubbed(:project) }
+  let(:project) { build_stubbed(:project) }
   let(:current_user) { member }
-  let!(:assignable_assignees_scope) do
-    scope = double 'assignable assignees scope'
-
-    allow(Principal)
-      .to receive(:possible_assignee)
-      .and_return scope
-
-    scope
-  end
   let(:permissions) do
     %i(
       view_work_packages
@@ -72,15 +51,25 @@ describe WorkPackages::BaseContract do
       add_work_package_watchers
       delete_work_package_watchers
       manage_work_package_relations
-      add_work_package_notes
+      add_work_package_comments
       assign_versions
     )
   end
   let(:changed_values) { [] }
+  let(:type) { build_stubbed(:type, is_milestone:) }
+  let(:is_milestone) { false }
+
+  let(:member) { build_stubbed(:user) }
+
+  before do
+    mock_permissions_for(member) do |mock|
+      mock.allow_in_project *permissions, project:
+    end
+  end
 
   subject(:contract) { described_class.new(work_package, current_user) }
 
-  shared_examples_for 'invalid if changed' do |attribute|
+  shared_examples_for "invalid if changed" do |attribute|
     before do
       allow(work_package).to receive(:changed).and_return(changed_values.map(&:to_s))
     end
@@ -89,27 +78,27 @@ describe WorkPackages::BaseContract do
       contract.validate
     end
 
-    context 'has changed' do
+    context "when has changed" do
       let(:changed_values) { [attribute] }
 
-      it('is invalid') do
-        expect(contract.errors.symbols_for(attribute)).to match_array([:error_readonly])
+      it("is invalid") do
+        expect(contract.errors.symbols_for(attribute)).to contain_exactly(:error_readonly)
       end
     end
 
-    context 'has not changed' do
+    context "when not changed" do
       let(:changed_values) { [] }
 
-      it('is valid') { expect(contract.errors).to be_empty }
+      it("is valid") { expect(contract.errors).to be_empty }
     end
   end
 
-  shared_examples 'a parent unwritable property' do |attribute, schedule_sensitive: false|
+  shared_examples "a parent unwritable property" do |attribute, schedule_sensitive: false|
     before do
       allow(work_package).to receive(:changed).and_return(changed_values.map(&:to_s))
     end
 
-    context 'is no parent' do
+    context "when no parent" do
       before do
         allow(work_package)
           .to receive(:leaf?)
@@ -118,20 +107,20 @@ describe WorkPackages::BaseContract do
         contract.validate
       end
 
-      context 'has not changed' do
+      context "when not changed" do
         let(:changed_values) { [] }
 
-        it('is valid') { expect(contract.errors).to be_empty }
+        it("is valid") { expect(contract.errors).to be_empty }
       end
 
-      context 'has changed' do
+      context "when has changed" do
         let(:changed_values) { [attribute] }
 
-        it('is valid') { expect(contract.errors).to be_empty }
+        it("is valid") { expect(contract.errors).to be_empty }
       end
     end
 
-    context 'is a parent' do
+    context "when is a parent" do
       let(:schedule_manually) { false }
 
       before do
@@ -143,97 +132,134 @@ describe WorkPackages::BaseContract do
         contract.validate
       end
 
-      context 'has not changed' do
+      context "when not changed" do
         let(:changed_values) { [] }
 
-        it('is valid') { expect(contract.errors).to be_empty }
+        it("is valid") { expect(contract.errors).to be_empty }
       end
 
-      context 'has changed' do
+      context "when has changed" do
         let(:changed_values) { [attribute] }
 
-        it('is invalid (read only)') do
-          expect(contract.errors.symbols_for(attribute)).to match_array([:error_readonly])
+        it("is invalid (read only)") do
+          expect(contract.errors.symbols_for(attribute)).to contain_exactly(:error_readonly)
         end
       end
 
       if schedule_sensitive
-        context 'is scheduled manually' do
+        context "when is scheduled manually" do
           let(:schedule_manually) { true }
 
-          context 'has changed' do
+          context "when has changed" do
             let(:changed_values) { [attribute] }
 
-            it('is valid') { expect(contract.errors).to be_empty }
+            it("is valid") { expect(contract.errors).to be_empty }
           end
         end
       end
     end
   end
 
-  describe 'status' do
-    context 'on a readonly status' do
+  describe "status" do
+    context "for readonly status" do
       before do
         allow(work_package)
           .to receive(:readonly_status?)
           .and_return true
       end
 
-      it 'only sets status to allowed' do
+      it "only sets status to allowed" do
         expect(contract.writable_attributes).to eq(%w[status status_id])
       end
     end
 
-    context 'work_package has a closed version and status' do
+    context "when work_package has a closed version and status" do
       before do
-        version = FactoryBot.build_stubbed(:version, status: 'closed')
+        version = build_stubbed(:version, status: "closed")
 
-        work_package.version = version
+        allow(work_package)
+          .to receive(:effective_target_versions)
+          .and_return([version])
         allow(work_package.status)
-          .to receive(:is_closed?)
+          .to receive(:closed?)
           .and_return(true)
       end
 
-      it 'is not writable' do
-        expect(contract.writable?(:status)).to be_falsey
+      it "is not writable" do
+        expect(contract).not_to be_writable(:status)
       end
 
-      context 'if we only switched into that status now' do
+      context "when we only switched into that status now" do
         before do
           allow(work_package)
             .to receive(:status_id_change)
             .and_return [1, 2]
         end
 
-        it 'is writable' do
-          expect(contract.writable?(:status)).to be_truthy
+        it "is writable" do
+          expect(contract).to be_writable(:status)
         end
       end
     end
 
-    context 'is an inexistent status' do
+    context "when work_package has multiple versions of which only one is closed" do
+      before do
+        open_version = build_stubbed(:version)
+        closed_version = build_stubbed(:version, status: "closed")
+
+        allow(work_package)
+          .to receive(:effective_target_versions)
+          .and_return([open_version, closed_version])
+        allow(work_package.status)
+          .to receive(:closed?)
+          .and_return(true)
+      end
+
+      it "is not writable" do
+        expect(contract).not_to be_writable(:status)
+      end
+    end
+
+    context "when work_package is being moved out of a closed version while the status is closed" do
+      before do
+        closed_version = build_stubbed(:version, status: "closed")
+        open_version = build_stubbed(:version)
+
+        allow(work_package)
+          .to receive_messages(target_versions: [closed_version], effective_target_versions: [open_version])
+        allow(work_package.status)
+          .to receive(:closed?)
+          .and_return(true)
+      end
+
+      it "is writable" do
+        expect(contract).to be_writable(:status)
+      end
+    end
+
+    context "when status is inexistent" do
       before do
         work_package.status = Status::InexistentStatus.new
       end
 
-      it 'is invalid' do
+      it "is invalid" do
         contract.validate
 
         expect(subject.errors.symbols_for(:status))
-          .to match_array [:does_not_exist]
+          .to contain_exactly(:does_not_exist)
       end
     end
 
-    context 'transitions' do
-      let(:roles) { [FactoryBot.build_stubbed(:role)] }
+    describe "transitions" do
+      let(:roles) { [build_stubbed(:project_role)] }
       let(:valid_transition_result) { true }
-      let(:new_status) { FactoryBot.build_stubbed(:status) }
+      let(:new_status) { build_stubbed(:status) }
       let(:from_id) { work_package.status_id }
       let(:to_id) { new_status.id }
       let(:status_change) { work_package.status = new_status }
 
       before do
-        new_statuses_scope = double('new statuses scope')
+        new_statuses_scope = double("new statuses scope") # rubocop:disable RSpec/VerifiedDoubles
 
         allow(Status)
           .to receive(:find_by)
@@ -262,99 +288,107 @@ describe WorkPackages::BaseContract do
         contract.validate
       end
 
-      context 'valid transition' do
-        it 'is valid' do
-          expect(subject.errors.symbols_for(:status_id))
+      context "when valid transition" do
+        it "is valid" do
+          expect(subject.errors.symbols_for(:status))
             .to be_empty
         end
       end
 
-      context 'invalid transition' do
+      context "when invalid transition" do
         let(:valid_transition_result) { false }
 
-        it 'is invalid' do
-          expect(subject.errors.symbols_for(:status_id))
-            .to match_array [:status_transition_invalid]
+        it "is invalid" do
+          expect(subject.errors.symbols_for(:status))
+            .to contain_exactly(:status_transition_invalid)
         end
       end
 
-      context 'status is nil' do
+      context "when status is nil" do
         let(:status_change) { work_package.status = nil }
 
-        it 'is invalid' do
+        it "is invalid" do
           expect(subject.errors.symbols_for(:status))
-            .to match_array [:blank]
+            .to contain_exactly(:blank)
         end
       end
 
-      context 'invalid transition but the type changed as well' do
+      context "when invalid transition but the type changed as well" do
         let(:valid_transition_result) { false }
         let(:status_change) do
           work_package.status = new_status
-          work_package.type = FactoryBot.build_stubbed(:type)
+          work_package.type = build_stubbed(:type)
         end
 
-        it 'is valid' do
-          expect(subject.errors.symbols_for(:status_id))
+        it "is valid" do
+          expect(subject.errors.symbols_for(:status))
             .to be_empty
         end
       end
     end
   end
 
-  describe 'estimated hours' do
-    let(:estimated_hours) { 1 }
-
+  describe "work (estimated hours)" do
     before do
       work_package.estimated_hours = estimated_hours
+      work_package.remaining_hours = remaining_hours
+      work_package.done_ratio = done_ratio
     end
 
-    context '> 0' do
-      let(:estimated_hours) { 1 }
+    context "when only one being set" do
+      let(:estimated_hours) { 3.0 }
+      let(:remaining_hours) { nil }
+      let(:done_ratio) { nil }
 
-      it 'is valid' do
-        contract.validate
-
-        expect(subject.errors.symbols_for(:estimated_hours))
-          .to be_empty
-      end
+      it_behaves_like "contract is valid"
     end
 
-    context '0' do
-      let(:estimated_hours) { 0 }
-
-      it 'is valid' do
-        contract.validate
-
-        expect(subject.errors.symbols_for(:estimated_hours))
-          .to be_empty
-      end
-    end
-
-    context 'nil' do
+    context "when empty while remaining work and % complete are set" do
       let(:estimated_hours) { nil }
+      let(:remaining_hours) { 2.0 }
+      let(:done_ratio) { 50 }
 
-      it 'is valid' do
-        contract.validate
-
-        expect(subject.errors.symbols_for(:estimated_hours))
-          .to be_empty
-      end
+      it_behaves_like "contract is invalid", estimated_hours: :must_be_set_when_remaining_work_and_percent_complete_are_set
     end
 
-    context '< 0' do
+    context "when empty while remaining work is set and % complete is set to an invalid value" do
+      let(:estimated_hours) { nil }
+      let(:remaining_hours) { 2.0 }
+      let(:done_ratio) { 200 }
+
+      it_behaves_like "contract is invalid", estimated_hours: nil,
+                                             remaining_hours: nil,
+                                             done_ratio: :inclusion
+    end
+
+    context "when empty while % complete is set and remaining work is set to an invalid value" do
+      let(:estimated_hours) { nil }
+      let(:remaining_hours) { -2.0 }
+      let(:done_ratio) { 50 }
+
+      it_behaves_like "contract is invalid", estimated_hours: nil,
+                                             remaining_hours: :greater_than_or_equal_to,
+                                             done_ratio: nil
+    end
+
+    context "when < 0" do
       let(:estimated_hours) { -1 }
+      let(:remaining_hours) { nil }
+      let(:done_ratio) { nil }
 
-      it 'is invalid' do
-        contract.validate
+      it_behaves_like "contract is invalid", estimated_hours: :greater_than_or_equal_to
+    end
 
-        expect(subject.errors.symbols_for(:estimated_hours))
-          .to match_array [:only_values_greater_or_equal_zeroes_allowed]
-      end
+    context "when inferior to remaining work" do
+      let(:estimated_hours) { 5.0 }
+      let(:remaining_hours) { 7.0 }
+      let(:done_ratio) { 50 }
+
+      it_behaves_like "contract is invalid", estimated_hours: :cant_be_inferior_to_remaining_work
     end
   end
 
-  describe 'derived estimated hours' do
+  describe "total work (derived estimated hours)" do
     let(:changed_values) { [] }
     let(:attribute) { :derived_estimated_hours }
 
@@ -364,208 +398,1013 @@ describe WorkPackages::BaseContract do
       contract.validate
     end
 
-    context 'has not changed' do
+    context "when has not changed" do
       let(:changed_values) { [] }
 
-      it('is valid') { expect(contract.errors).to be_empty }
+      it("is valid") { expect(contract.errors).to be_empty }
     end
 
-    context 'has changed' do
+    context "when has changed" do
       let(:changed_values) { [attribute] }
 
-      it('is invalid (read only)') do
-        expect(contract.errors.symbols_for(attribute)).to match_array([:error_readonly])
+      it("is invalid (read only)") do
+        expect(contract.errors.symbols_for(attribute)).to contain_exactly(:error_readonly)
       end
     end
   end
 
-  shared_examples_for 'a date attribute' do |attribute|
-    context 'a date' do
+  describe "remaining work (remaining hours)" do
+    before do
+      work_package.estimated_hours = estimated_hours
+      work_package.remaining_hours = remaining_hours
+      work_package.done_ratio = done_ratio
+    end
+
+    context "when it's the same as work" do
+      let(:estimated_hours) { 5.0 }
+      let(:remaining_hours) { 5.0 }
+      let(:done_ratio) { 0 }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when it's less than work" do
+      let(:estimated_hours) { 5.0 }
+      let(:remaining_hours) { 4.0 }
+      let(:done_ratio) { 20 }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when it's greater than work" do
+      let(:estimated_hours) { 5.0 }
+      let(:remaining_hours) { 6.0 }
+      let(:done_ratio) { 0 }
+
+      it_behaves_like "contract is invalid", remaining_hours: :cant_exceed_work
+    end
+
+    context "when only one being set" do
+      let(:estimated_hours) { nil }
+      let(:remaining_hours) { 1.5 }
+      let(:done_ratio) { nil }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when empty while work and % complete are set" do
+      let(:estimated_hours) { 3 }
+      let(:remaining_hours) { nil }
+      let(:done_ratio) { 50 }
+
+      it_behaves_like "contract is invalid", remaining_hours: :must_be_set_when_work_and_percent_complete_are_set
+    end
+
+    context "when empty while work is set and % complete is set to an invalid value" do
+      let(:estimated_hours) { 3 }
+      let(:remaining_hours) { nil }
+      let(:done_ratio) { -1 }
+
+      it_behaves_like "contract is invalid", estimated_hours: nil,
+                                             remaining_hours: nil,
+                                             done_ratio: :inclusion
+    end
+
+    context "when empty while % complete is set and work is set to a negative value" do
+      let(:estimated_hours) { -3 }
+      let(:remaining_hours) { nil }
+      let(:done_ratio) { 50 }
+
+      it_behaves_like "contract is invalid", estimated_hours: :greater_than_or_equal_to,
+                                             remaining_hours: nil,
+                                             done_ratio: nil
+    end
+  end
+
+  describe "percent complete" do
+    context "when in status-based progress calculation mode (inferred by status)",
+            with_settings: { work_package_done_ratio: "status" } do
+      it_behaves_like "invalid if changed", :done_ratio
+    end
+
+    context "when in work-based progress calculation mode",
+            with_settings: { work_package_done_ratio: "field" } do
       before do
-        work_package.send(:"#{attribute}=", Date.today)
+        work_package.estimated_hours = estimated_hours
+        work_package.remaining_hours = remaining_hours
+        work_package.done_ratio = done_ratio
+      end
+
+      context "when less than 0" do
+        let(:estimated_hours) { nil }
+        let(:remaining_hours) { nil }
+        let(:done_ratio) { -1 }
+
+        it_behaves_like "contract is invalid", done_ratio: :inclusion
+      end
+
+      context "when more than 100" do
+        let(:estimated_hours) { nil }
+        let(:remaining_hours) { nil }
+        let(:done_ratio) { 101 }
+
+        it_behaves_like "contract is invalid", done_ratio: :inclusion
+      end
+
+      context "when not a number" do
+        let(:estimated_hours) { nil }
+        let(:remaining_hours) { nil }
+        let(:done_ratio) { "abc" }
+
+        it_behaves_like "contract is invalid", done_ratio: :not_a_number
+      end
+
+      context "when only one being set" do
+        let(:estimated_hours) { nil }
+        let(:remaining_hours) { nil }
+        let(:done_ratio) { 42 }
+
+        it_behaves_like "contract is valid"
+      end
+
+      context "when empty while work and remaining work are set" do
+        let(:estimated_hours) { 4 }
+        let(:remaining_hours) { 3 }
+        let(:done_ratio) { nil }
+
+        it_behaves_like "contract is invalid", done_ratio: :must_be_set_when_work_and_remaining_work_are_set
+      end
+
+      context "when empty while work is set and remaining work is set to a negative value" do
+        let(:estimated_hours) { 4 }
+        let(:remaining_hours) { -3 }
+        let(:done_ratio) { nil }
+
+        it_behaves_like "contract is invalid", estimated_hours: nil,
+                                               remaining_hours: :greater_than_or_equal_to,
+                                               done_ratio: nil
+      end
+
+      context "when set while work is set and remaining work is set to a negative value" do
+        let(:estimated_hours) { 4 }
+        let(:remaining_hours) { -3 }
+        let(:done_ratio) { 50 }
+
+        it_behaves_like "contract is invalid", estimated_hours: nil,
+                                               remaining_hours: :greater_than_or_equal_to,
+                                               done_ratio: nil
+      end
+
+      context "when empty while remaining work is set and work is set to a negative value" do
+        let(:estimated_hours) { -4 }
+        let(:remaining_hours) { 3 }
+        let(:done_ratio) { nil }
+
+        it_behaves_like "contract is invalid", estimated_hours: :greater_than_or_equal_to,
+                                               remaining_hours: nil,
+                                               done_ratio: nil
+      end
+
+      context "when set while remaining work is set and work is set to a negative value" do
+        let(:estimated_hours) { -4 }
+        let(:remaining_hours) { 3 }
+        let(:done_ratio) { 50 }
+
+        it_behaves_like "contract is invalid", estimated_hours: :greater_than_or_equal_to,
+                                               remaining_hours: nil,
+                                               done_ratio: nil
+      end
+
+      context "when set while work and remaining work are both set to a negative values (and work > remaining work)" do
+        let(:estimated_hours) { -4 }
+        let(:remaining_hours) { -12 }
+        let(:done_ratio) { 50 }
+
+        it_behaves_like "contract is invalid", estimated_hours: :greater_than_or_equal_to,
+                                               remaining_hours: :greater_than_or_equal_to,
+                                               done_ratio: nil
+      end
+    end
+  end
+
+  describe "work, remaining work, and % complete" do
+    before do
+      work_package.estimated_hours = estimated_hours
+      work_package.remaining_hours = remaining_hours
+      work_package.done_ratio = done_ratio
+    end
+
+    context "when remaining work exceeds work" do
+      let(:estimated_hours) { 5.0 }
+      let(:remaining_hours) { 6.0 }
+      let(:done_ratio) { 50 }
+
+      # no errors should be reported for % complete in this case to not overload
+      # the progress modal with error messages.
+      it_behaves_like "contract is invalid", estimated_hours: :cant_be_inferior_to_remaining_work,
+                                             remaining_hours: :cant_exceed_work,
+                                             done_ratio: nil
+
+      context "and % complete is 100%" do
+        let(:done_ratio) { 100 }
+
+        it_behaves_like "contract is invalid",
+                        estimated_hours: nil,
+                        remaining_hours: :must_be_set_to_zero_hours_when_work_is_set_and_percent_complete_is_100p,
+                        done_ratio: nil
+      end
+    end
+
+    context "when remaining work exceeds work and done_ratio is empty" do
+      let(:estimated_hours) { 5.0 }
+      let(:remaining_hours) { 6.0 }
+      let(:done_ratio) { nil }
+
+      # no errors should be reported for % complete in this case to not overload
+      # the progress modal with error messages.
+      it_behaves_like "contract is invalid", estimated_hours: :cant_be_inferior_to_remaining_work,
+                                             remaining_hours: :cant_exceed_work,
+                                             done_ratio: nil
+    end
+
+    context "when work is not a valid duration (an invalid string for instance)" do
+      let(:estimated_hours) { "invalid" }
+      let(:remaining_hours) { 6.0 }
+      let(:done_ratio) { 50 }
+
+      # no errors should be reported for % complete in this case to not overload
+      # the progress modal with error messages.
+      it_behaves_like "contract is invalid", estimated_hours: :not_a_number,
+                                             remaining_hours: nil,
+                                             done_ratio: nil
+    end
+
+    context "when remaining work is not a valid duration (an invalid string for instance)" do
+      let(:estimated_hours) { 10.0 }
+      let(:remaining_hours) { "invalid" }
+      let(:done_ratio) { 50 }
+
+      # no errors should be reported for % complete in this case to not overload
+      # the progress modal with error messages.
+      it_behaves_like "contract is invalid", estimated_hours: nil,
+                                             remaining_hours: :not_a_number,
+                                             done_ratio: nil
+    end
+
+    context "when work is 0h and remaining work is not a valid duration (an invalid string for instance)" do
+      let(:estimated_hours) { 0.0 }
+      let(:remaining_hours) { "invalid" }
+      let(:done_ratio) { 50 }
+
+      # no errors should be reported for % complete in this case to not overload
+      # the progress modal with error messages.
+      it_behaves_like "contract is invalid", estimated_hours: nil,
+                                             remaining_hours: :not_a_number,
+                                             done_ratio: nil
+    end
+
+    context "when all three empty" do
+      let(:estimated_hours) { nil }
+      let(:remaining_hours) { nil }
+      let(:done_ratio) { nil }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when all three set with consistent values" do
+      let(:estimated_hours) { 10 }
+      let(:remaining_hours) { 6.0 }
+      let(:done_ratio) { 40 }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "with inexact calculated % complete value (rounded to 1% VS 0.05% actual)" do
+      let(:estimated_hours) { 2000 }
+      let(:remaining_hours) { 1999 }
+      let(:done_ratio) { 1 }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "with inexact calculated remaining work value - Bug #66592 " \
+            "(work = 0.25h, % complete = 75% => remaining work = 0.06h)" do
+      let(:estimated_hours) { 0.25 }
+      let(:remaining_hours) { 0.06 }
+      let(:done_ratio) { 75 }
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when all three set with inconsistent values" do
+      let(:estimated_hours) { 10 }
+      let(:remaining_hours) { 0 }
+      let(:done_ratio) { 50 }
+
+      it_behaves_like "contract is invalid", done_ratio: :does_not_match_work_and_remaining_work
+    end
+
+    context "when work and remaining work are both 0h" do
+      let(:estimated_hours) { 0 }
+      let(:remaining_hours) { 0 }
+
+      context "when % complete is set to any value" do
+        let(:done_ratio) { 50 }
+
+        it_behaves_like "contract is invalid", done_ratio: :cannot_be_set_when_work_is_zero
+      end
+
+      context "when % complete is set to 100%" do
+        let(:done_ratio) { 100 }
+
+        it_behaves_like "contract is invalid", done_ratio: :cannot_be_set_when_work_is_zero
+      end
+
+      context "when % complete is empty" do
+        let(:done_ratio) { nil }
+
+        it_behaves_like "contract is valid"
+      end
+    end
+
+    context "when % complete is 100%" do
+      let(:done_ratio) { 100 }
+
+      context "and work and remaining are both set to 0h" do
+        let(:estimated_hours) { 0 }
+        let(:remaining_hours) { 0 }
+
+        it_behaves_like "contract is invalid",
+                        estimated_hours: nil,
+                        remaining_hours: nil,
+                        done_ratio: :cannot_be_set_when_work_is_zero
+      end
+
+      context "and work is set" do
+        let(:estimated_hours) { 10 }
+
+        context "and remaining work is empty" do
+          let(:remaining_hours) { nil }
+
+          it_behaves_like "contract is invalid",
+                          estimated_hours: nil,
+                          remaining_hours: :must_be_set_to_zero_hours_when_work_is_set_and_percent_complete_is_100p,
+                          done_ratio: nil
+        end
+
+        context "and remaining is set to 0h" do
+          let(:remaining_hours) { 0 }
+
+          it_behaves_like "contract is valid"
+        end
+
+        context "and remaining is set (but not 0h)" do
+          let(:remaining_hours) { 5 }
+
+          it_behaves_like "contract is invalid",
+                          estimated_hours: nil,
+                          remaining_hours: :must_be_set_to_zero_hours_when_work_is_set_and_percent_complete_is_100p,
+                          done_ratio: nil
+        end
+      end
+
+      context "and work is empty" do
+        let(:estimated_hours) { nil }
+
+        context "and remaining work is empty" do
+          let(:remaining_hours) { nil }
+
+          it_behaves_like "contract is valid"
+        end
+
+        context "and remaining is set to 0h" do
+          let(:remaining_hours) { 0 }
+
+          it_behaves_like "contract is invalid", estimated_hours: nil,
+                                                 remaining_hours: :must_be_empty_when_work_is_empty_and_percent_complete_is_100p,
+                                                 done_ratio: nil
+        end
+
+        context "and remaining is set (but not 0h)" do
+          let(:remaining_hours) { 5 }
+
+          it_behaves_like "contract is invalid", estimated_hours: nil,
+                                                 remaining_hours: :must_be_empty_when_work_is_empty_and_percent_complete_is_100p,
+                                                 done_ratio: nil
+        end
+      end
+    end
+
+    context "when work and remaining work are both empty" do
+      let(:estimated_hours) { nil }
+      let(:remaining_hours) { nil }
+
+      context "when % complete is set to any value" do
+        let(:done_ratio) { 50 }
+
+        it_behaves_like "contract is valid"
+      end
+
+      context "when % complete is empty" do
+        let(:done_ratio) { nil }
+
+        it_behaves_like "contract is valid"
+      end
+    end
+  end
+
+  shared_examples_for "a date attribute" do |attribute|
+    context "for a date" do
+      before do
+        work_package.send(:"#{attribute}=", Time.zone.today)
         contract.validate
       end
 
-      it 'is valid' do
+      it "is valid" do
         expect(subject.errors.symbols_for(attribute))
           .to be_empty
       end
     end
 
-    context 'a string representing a date' do
+    context "for a string representing a date" do
       before do
-        work_package.send(:"#{attribute}=", '01/01/17')
+        work_package.send(:"#{attribute}=", "01/01/17")
         contract.validate
       end
 
-      it 'is valid' do
+      it "is valid" do
         expect(subject.errors.symbols_for(attribute))
           .to be_empty
       end
     end
 
-    context 'not a date' do
+    context "for a non-date" do
       before do
-        work_package.send(:"#{attribute}=", 'not a date')
+        work_package.send(:"#{attribute}=", "not a date")
         contract.validate
       end
 
-      it 'is invalid' do
+      it "is invalid" do
         expect(subject.errors.symbols_for(attribute))
-          .to match_array [:not_a_date]
+          .to contain_exactly(:not_a_date)
       end
     end
   end
 
-  describe 'start date' do
-    it_behaves_like 'a parent unwritable property', :start_date, schedule_sensitive: true
-    it_behaves_like 'a date attribute', :start_date
+  describe "start date" do
+    it_behaves_like "a parent unwritable property", :start_date, schedule_sensitive: true
+    it_behaves_like "a date attribute", :start_date
 
-    context 'before soonest start date of parent' do
+    context "as before soonest start date of parent" do
       let(:schedule_manually) { false }
 
       before do
         work_package.schedule_manually = schedule_manually
-        work_package.parent = FactoryBot.build_stubbed(:work_package)
+        allow(work_package)
+          .to receive(:parent)
+          .and_return(build_stubbed(:work_package))
         allow(work_package)
           .to receive(:soonest_start)
-          .and_return(Date.today + 4.days)
+          .and_return(Time.zone.today + 4.days)
 
-        work_package.start_date = Date.today + 2.days
+        work_package.start_date = Time.zone.today + 2.days
       end
 
-      context 'scheduled automatically' do
-        it 'notes the error' do
+      context "when scheduled automatically" do
+        it "notes the error" do
           contract.validate
 
-          message = I18n.t('activerecord.errors.models.work_package.attributes.start_date.violates_relationships',
-                           soonest_start: Date.today + 4.days)
+          message = I18n.t("activerecord.errors.models.work_package.attributes.start_date.violates_relationships",
+                           soonest_start: Time.zone.today + 4.days)
 
           expect(contract.errors[:start_date])
-            .to match_array [message]
+            .to contain_exactly(message)
         end
       end
 
-      context 'scheduled manually' do
+      context "when scheduled manually" do
         let(:schedule_manually) { true }
 
-        it 'is valid' do
-          contract.validate
-
-          expect(contract.errors[:start_date])
-            .to be_empty
-        end
+        it_behaves_like "contract is valid"
       end
+    end
+
+    context "when setting due date and duration without start date" do
+      before do
+        work_package.duration = 1
+        work_package.start_date = nil
+        work_package.due_date = Time.zone.today
+      end
+
+      it_behaves_like "contract is invalid", start_date: :cannot_be_null
     end
   end
 
-  describe 'finish date' do
-    it_behaves_like 'a parent unwritable property', :due_date, schedule_sensitive: true
-    it_behaves_like 'a date attribute', :due_date
+  describe "due date" do
+    it_behaves_like "a parent unwritable property", :due_date, schedule_sensitive: true
+    it_behaves_like "a date attribute", :due_date
 
-    it 'returns an error when trying to set it before the start date' do
-      work_package.start_date = Date.today + 2.days
-      work_package.due_date = Date.today
+    it "returns an error when trying to set it before the start date" do
+      work_package.start_date = Time.zone.today + 2.days
+      work_package.due_date = Time.zone.today
 
       contract.validate
 
-      message = I18n.t('activerecord.errors.messages.greater_than_or_equal_to_start_date')
+      message = I18n.t("activerecord.errors.messages.greater_than_or_equal_to_start_date")
 
       expect(contract.errors[:due_date])
         .to include message
     end
-  end
 
-  describe 'percentage done' do
-    it_behaves_like 'a parent unwritable property', :done_ratio
-
-    context 'done ratio inferred by status' do
-      before do
-        allow(Setting).to receive(:work_package_done_ratio).and_return('status')
-      end
-
-      it_behaves_like 'invalid if changed', :done_ratio
-    end
-
-    context 'done ratio disabled' do
-      let(:changed_values) { [:done_ratio] }
+    context "when start date is not set and due date is before soonest start date of parent" do
+      let(:schedule_manually) { false }
 
       before do
-        allow(Setting).to receive(:work_package_done_ratio).and_return('disabled')
+        work_package.schedule_manually = schedule_manually
+        allow(work_package)
+          .to receive(:parent)
+          .and_return(build_stubbed(:work_package))
+        allow(work_package)
+          .to receive(:soonest_start)
+          .and_return(Time.zone.today + 4.days)
+
+        work_package.start_date = nil
+        work_package.due_date = Time.zone.today + 2.days
       end
 
-      it_behaves_like 'invalid if changed', :done_ratio
+      context "when scheduled automatically" do
+        it "notes the error" do
+          contract.validate
+
+          message = I18n.t("activerecord.errors.models.work_package.attributes.start_date.violates_relationships",
+                           soonest_start: Time.zone.today + 4.days)
+
+          expect(contract.errors[:due_date])
+            .to contain_exactly(message)
+        end
+      end
+
+      context "when scheduled manually" do
+        let(:schedule_manually) { true }
+
+        it_behaves_like "contract is valid"
+      end
+    end
+
+    context "when setting start date and duration without due date" do
+      before do
+        work_package.duration = 1
+        work_package.start_date = Time.zone.today
+        work_package.due_date = nil
+      end
+
+      it_behaves_like "contract is invalid", due_date: :cannot_be_null
     end
   end
 
-  describe 'version' do
+  describe "duration" do
+    context "when setting duration to a positive integer value" do
+      before do
+        work_package.duration = 5
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when setting duration to a positive integer value using a string padded with spaces" do
+      before do
+        work_package.duration = " 5 "
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when setting duration for a milestone type work package" do
+      let(:is_milestone) { true }
+
+      before do
+        work_package.duration = 5
+      end
+
+      it_behaves_like "contract is invalid", duration: :not_available_for_milestones
+    end
+
+    context "when setting duration to nil for a milestone type work package" do
+      let(:is_milestone) { true }
+
+      before do
+        work_package.duration = nil
+      end
+
+      it_behaves_like "contract is invalid"
+    end
+
+    context "when setting duration to 1 for a milestone type work package" do
+      let(:is_milestone) { true }
+
+      before do
+        work_package.duration = 1
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when setting duration to 0" do
+      before do
+        work_package.duration = 0
+      end
+
+      it_behaves_like "contract is invalid", duration: :greater_than
+    end
+
+    context "when setting duration to a floating point" do
+      before do
+        work_package.duration = 4.5
+      end
+
+      it_behaves_like "contract is invalid", duration: :not_an_integer
+    end
+
+    context "when setting duration to a negative value" do
+      before do
+        work_package.duration = -5
+      end
+
+      it_behaves_like "contract is invalid", duration: :greater_than
+    end
+
+    context "when setting duration to an invalid string" do
+      before do
+        work_package.duration = "I am invalid"
+      end
+
+      it_behaves_like "contract is invalid", duration: :not_an_integer
+
+      context "and start date is set" do
+        before do
+          work_package.start_date = Date.current
+        end
+
+        # no extra errors on start and/or due dates
+        it_behaves_like "contract is invalid", duration: :not_an_integer, start_date: nil, due_date: nil
+      end
+
+      context "and due date is set" do
+        before do
+          work_package.due_date = Date.current
+        end
+
+        # no extra errors on start and/or due dates
+        it_behaves_like "contract is invalid", duration: :not_an_integer, start_date: nil, due_date: nil
+      end
+    end
+
+    context "when setting duration and dates" do
+      before do
+        work_package.ignore_non_working_days = true
+        work_package.duration = 6
+        work_package.start_date = Time.zone.today - 4.days
+        work_package.due_date = Time.zone.today + 1.day
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when setting duration and dates while covering non-working days" do
+      before do
+        week_with_saturday_and_sunday_as_weekend
+        work_package.ignore_non_working_days = false
+        work_package.duration = 6
+        work_package.start_date = "2022-08-22"
+        work_package.due_date = "2022-08-29"
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when setting duration and dates and duration is too small" do
+      before do
+        work_package.ignore_non_working_days = true
+        work_package.duration = 5
+        work_package.start_date = Time.zone.today - 4.days
+        work_package.due_date = Time.zone.today + 1.day
+      end
+
+      it_behaves_like "contract is invalid", duration: :smaller_than_dates
+    end
+
+    context "when setting duration and dates while covering non-working days and duration is too small" do
+      before do
+        week_with_saturday_and_sunday_as_weekend
+        work_package.ignore_non_working_days = false
+        work_package.duration = 1
+        work_package.start_date = "2022-08-22"
+        work_package.due_date = "2022-08-29"
+      end
+
+      it_behaves_like "contract is invalid", duration: :smaller_than_dates
+    end
+
+    context "when setting duration and dates and duration is too big" do
+      before do
+        work_package.ignore_non_working_days = true
+        work_package.duration = 7
+        work_package.start_date = Time.zone.today - 4.days
+        work_package.due_date = Time.zone.today + 1.day
+      end
+
+      it_behaves_like "contract is invalid", duration: :larger_than_dates
+    end
+
+    context "when setting duration and dates while covering non-working days and duration is too big" do
+      before do
+        week_with_saturday_and_sunday_as_weekend
+        work_package.ignore_non_working_days = false
+        work_package.duration = 99
+        work_package.start_date = "2022-08-22"
+        work_package.due_date = "2022-08-29"
+      end
+
+      it_behaves_like "contract is invalid", duration: :larger_than_dates
+    end
+
+    context "when setting start date and due date without duration" do
+      before do
+        work_package.duration = nil
+        work_package.start_date = Time.zone.today
+        work_package.due_date = Time.zone.today
+      end
+
+      it_behaves_like "contract is invalid", duration: :cannot_be_null
+    end
+  end
+
+  describe "ignore_non_working_days" do
+    context "when setting the value to true" do
+      before do
+        work_package.ignore_non_working_days = true
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "when setting the value to false" do
+      before do
+        work_package.ignore_non_working_days = false
+      end
+
+      it_behaves_like "contract is valid"
+    end
+  end
+
+  describe "version" do
     subject(:contract) { described_class.new(work_package, current_user) }
 
-    let(:assignable_version) { FactoryBot.build_stubbed(:version) }
-    let(:invalid_version) { FactoryBot.build_stubbed(:version) }
+    let(:assignable_version) { build_stubbed(:version) }
 
     before do
-      allow(work_package)
-        .to receive(:assignable_versions)
-        .and_return [assignable_version]
+      allow(work_package).to receive(:assignable_versions).and_return [assignable_version]
     end
 
-    context 'for assignable version' do
-      before do
-        work_package.version = assignable_version
-        subject.validate
-      end
+    context "for a closed version" do
+      let(:assignable_version) { build_stubbed(:version, status: "closed") }
 
-      it 'is valid' do
-        expect(subject.errors).to be_empty
-      end
-    end
-
-    context 'for non assignable version' do
-      before do
-        work_package.version = invalid_version
-        subject.validate
-      end
-
-      it 'is invalid' do
-        expect(subject.errors.symbols_for(:version_id)).to eql [:inclusion]
-      end
-    end
-
-    context 'for a closed version' do
-      let(:assignable_version) { FactoryBot.build_stubbed(:version, status: 'closed') }
-
-      context 'when reopening a work package' do
+      context "when the closed version is assigned through target_versions" do
         before do
           allow(work_package)
-            .to receive(:reopened?)
-            .and_return(true)
-
-          work_package.version = assignable_version
-          subject.validate
+            .to receive(:target_versions)
+            .and_return([assignable_version])
         end
 
-        it 'is invalid' do
-          expect(subject.errors[:base]).to eql [I18n.t(:error_can_not_reopen_work_package_on_closed_version)]
-        end
-      end
+        context "and reopening the work package" do
+          before do
+            allow(work_package)
+              .to receive(:reopened?)
+              .and_return(true)
 
-      context 'when not reopening the work package' do
-        before do
-          work_package.version = assignable_version
-          subject.validate
+            subject.validate
+          end
+
+          it "is invalid" do
+            expect(subject.errors[:base]).to eql [I18n.t(:error_can_not_reopen_work_package_on_closed_version)]
+          end
         end
 
-        it 'is valid' do
-          expect(subject.errors).to be_empty
+        context "and not reopening the work package" do
+          before do
+            subject.validate
+          end
+
+          it "is valid" do
+            expect(subject.errors).to be_empty
+          end
         end
       end
     end
   end
 
-  describe 'parent' do
-    let(:child) { FactoryBot.build_stubbed(:stubbed_work_package) }
-    let(:parent) { FactoryBot.build_stubbed(:stubbed_work_package) }
+  describe "versions" do
+    subject(:contract) { described_class.new(work_package, current_user) }
+
+    let(:assignable_version) { build_stubbed(:version) }
+    let(:non_assignable_version) { build_stubbed(:version) }
+
+    before do
+      allow(work_package).to receive(:assignable_versions).and_return([assignable_version])
+    end
+
+    describe "permissions" do
+      context "when user has assign_versions permission" do
+        before do
+          work_package.target_version_ids_replacements = [assignable_version.id]
+          contract.validate
+        end
+
+        it "is valid" do
+          expect(contract.errors).to be_empty
+        end
+      end
+
+      context "when user lacks assign_versions permission" do
+        let(:permissions) do
+          %i(view_work_packages edit_work_packages)
+        end
+
+        it "is invalid for target version" do
+          work_package.target_version_ids_replacements = [assignable_version.id]
+          contract.validate
+          expect(contract.errors.symbols_for(:target_versions)).to include(:error_readonly)
+        end
+
+        it "is invalid for observed_in version" do
+          work_package.observed_in_version_ids_replacements = [assignable_version.id]
+          contract.validate
+          expect(contract.errors.symbols_for(:observed_in_versions)).to include(:error_readonly)
+        end
+      end
+
+      context "when neither is overridden" do
+        let(:permissions) do
+          %i(view_work_packages edit_work_packages)
+        end
+
+        before do
+          contract.validate
+        end
+
+        it "is valid (no permission error)" do
+          expect(contract.errors).to be_empty
+        end
+      end
+
+      context "when the override assigns the versions already assigned" do
+        let(:permissions) do
+          %i(view_work_packages edit_work_packages)
+        end
+
+        before do
+          allow(work_package).to receive(:assigned_version_ids).with("target").and_return([assignable_version.id])
+          allow(work_package).to receive(:assigned_version_ids).with("observed_in").and_return([])
+
+          work_package.target_version_ids_replacements = [assignable_version.id]
+          work_package.observed_in_version_ids_replacements = []
+
+          contract.validate
+        end
+
+        it "is valid (no permission error)" do
+          expect(contract.errors).to be_empty
+        end
+      end
+    end
+
+    describe "target versions assignability" do
+      context "with assignable IDs" do
+        before do
+          work_package.target_version_ids_replacements = [assignable_version.id]
+          contract.validate
+        end
+
+        it "is valid" do
+          expect(contract.errors.symbols_for(:target_versions)).to be_empty
+        end
+      end
+
+      context "with non-assignable IDs" do
+        before do
+          work_package.target_version_ids_replacements = [non_assignable_version.id]
+          contract.validate
+        end
+
+        it "is invalid" do
+          expect(contract.errors.symbols_for(:target_versions)).to include(:inclusion)
+        end
+      end
+
+      context "with a closed version" do
+        let(:closed_version) { build_stubbed(:version, status: "closed") }
+
+        before do
+          work_package.target_version_ids_replacements = [closed_version.id]
+          contract.validate
+        end
+
+        it "is invalid (only open versions may be targeted)" do
+          expect(contract.errors.symbols_for(:target_versions)).to include(:inclusion)
+        end
+      end
+
+      context "with empty array" do
+        before do
+          work_package.target_version_ids_replacements = []
+          contract.validate
+        end
+
+        it "is valid" do
+          expect(contract.errors.symbols_for(:target_versions)).to be_empty
+        end
+      end
+
+      context "when not overridden (nil)" do
+        before do
+          contract.validate
+        end
+
+        it "is valid" do
+          expect(contract.errors.symbols_for(:target_versions)).to be_empty
+        end
+      end
+    end
+
+    describe "target versions length" do
+      let(:other_assignable_version) { build_stubbed(:version) }
+
+      before do
+        allow(work_package).to receive(:assignable_versions)
+          .and_return([assignable_version, other_assignable_version])
+        work_package.target_version_ids_replacements = [assignable_version.id, other_assignable_version.id]
+      end
+
+      context "when the multiple-versions feature is disabled",
+              with_settings: { work_package_multiple_versions: false } do
+        before { contract.validate }
+
+        it "rejects more than one target version" do
+          expect(contract.errors.symbols_for(:base)).to include(:target_versions_only_allow_single_value)
+        end
+      end
+
+      context "when the multiple-versions feature is enabled",
+              with_settings: { work_package_multiple_versions: true } do
+        before { contract.validate }
+
+        it "allows more than one target version" do
+          expect(contract.errors.symbols_for(:base)).not_to include(:target_versions_only_allow_single_value)
+        end
+      end
+    end
+
+    describe "observed_in versions assignability" do
+      context "with assignable IDs" do
+        before do
+          work_package.observed_in_version_ids_replacements = [assignable_version.id]
+          contract.validate
+        end
+
+        it "is valid" do
+          expect(contract.errors.symbols_for(:observed_in_versions)).to be_empty
+        end
+      end
+
+      context "with non-assignable IDs" do
+        before do
+          work_package.observed_in_version_ids_replacements = [non_assignable_version.id]
+          contract.validate
+        end
+
+        it "is invalid" do
+          expect(contract.errors.symbols_for(:observed_in_versions)).to include(:inclusion)
+        end
+      end
+
+      context "with a closed version" do
+        let(:closed_version) { build_stubbed(:version, status: "closed") }
+
+        before do
+          allow(work_package).to receive(:assignable_versions).with(only_open: false).and_return([closed_version])
+          work_package.observed_in_version_ids_replacements = [closed_version.id]
+          contract.validate
+        end
+
+        it "is valid (a defect can be observed in a past, closed release)" do
+          expect(contract.errors.symbols_for(:observed_in_versions)).to be_empty
+        end
+      end
+    end
+  end
+
+  describe "parent" do
+    let(:parent) { build_stubbed(:work_package) }
 
     before do
       work_package.parent = parent
@@ -574,63 +1413,61 @@ describe WorkPackages::BaseContract do
     subject do
       contract.validate
 
-      # while we do validate the parent
-      # the errors are still put on :base so that the messages can be reused
-      contract.errors.symbols_for(:base)
+      contract.errors.symbols_for(:parent)
     end
 
-    context 'when self assigning' do
+    context "when self assigning" do
       let(:parent) { work_package }
 
-      it 'returns an error for the aparent' do
-        expect(contract.validate).to eq false
-        expect(contract.errors.symbols_for(:parent)).to eq [:cannot_be_self_assigned]
+      it "returns an error for the parent" do
+        expect(subject)
+          .to eq [:cannot_be_self_assigned]
+        expect(contract.errors.attribute_names).to contain_exactly(:parent)
       end
     end
 
-    context 'a relation exists between the parent and its ancestors and the work package and its descendants' do
-      let(:parent) { child }
-
+    context "when the intended parent is not relatable" do
       before do
-        from_parent_stub = double('from parent stub')
-        allow(Relation)
-          .to receive(:from_parent_to_self_and_descendants)
-          .with(work_package)
-          .and_return(from_parent_stub)
+        scope = instance_double(ActiveRecord::Relation)
 
-        from_descendants_stub = double('from descendants stub')
-        allow(Relation)
-          .to receive(:from_self_and_descendants_to_ancestors)
-          .with(work_package)
-          .and_return(from_descendants_stub)
+        allow(WorkPackage)
+          .to receive(:relatable)
+                .with(work_package, Relation::TYPE_PARENT)
+                .and_return(scope)
 
-        allow(from_parent_stub)
-          .to receive(:or)
-          .with(from_descendants_stub)
-          .and_return(from_parent_stub)
-
-        allow(from_parent_stub)
-          .to receive_message_chain(:direct, :exists?)
-          .and_return(true)
+        allow(scope)
+          .to receive(:where)
+                .with(id: parent.id)
+                .and_return([])
       end
 
-      it 'is invalid' do
-        expect(subject.include?(:cant_link_a_work_package_with_a_descendant))
-          .to be_truthy
+      it "is invalid" do
+        expect(subject)
+          .to include(:cant_link_a_work_package_with_a_descendant)
+      end
+    end
+
+    context "when an invalid parent_id is set" do
+      before do
+        work_package.parent = nil
+        work_package.parent_id = -1
+      end
+
+      it "is invalid" do
+        expect(subject)
+          .to include(:does_not_exist)
       end
     end
   end
 
-  describe 'type' do
-    context 'disabled type' do
+  describe "type" do
+    context "for disabled type" do
       before do
-        allow(project)
-          .to receive(:types)
-          .and_return([])
+        project.project_types.destroy_all
       end
 
-      describe 'not changing the type' do
-        it 'is valid' do
+      describe "not changing the type" do
+        it "is valid" do
           subject.validate
 
           expect(subject)
@@ -638,157 +1475,150 @@ describe WorkPackages::BaseContract do
         end
       end
 
-      describe 'changing the type' do
-        let(:other_type) { FactoryBot.build_stubbed(:type) }
+      describe "changing the type" do
+        let(:other_type) { build_stubbed(:type) }
 
-        it 'is invalid' do
+        it "is invalid" do
           work_package.type = other_type
 
           subject.validate
 
           expect(subject.errors.symbols_for(:type_id))
-            .to match_array [:inclusion]
+            .to contain_exactly(:inclusion)
         end
       end
 
-      describe 'changing the project (and that one not having the type)' do
-        let(:other_project) { FactoryBot.build_stubbed(:project) }
+      describe "changing the project (and that one not having the type)" do
+        let(:other_project) { build_stubbed(:project) }
 
-        it 'is invalid' do
+        it "is invalid" do
           work_package.project = other_project
 
           subject.validate
 
           expect(subject.errors.symbols_for(:type_id))
-            .to match_array [:inclusion]
+            .to contain_exactly(:inclusion)
         end
       end
     end
 
-    context 'inexistent type' do
+    context "for inexistent type" do
       before do
         work_package.type = Type::InexistentType.new
 
         contract.validate
       end
 
-      it 'is invalid' do
+      it "is invalid" do
         expect(contract.errors.symbols_for(:type))
-          .to match_array [:does_not_exist]
+          .to contain_exactly(:does_not_exist)
       end
     end
   end
 
-  context 'assigned_to' do
-    context 'inexistent user' do
+  describe "assigned_to" do
+    context "for inexistent user" do
       before do
         work_package.assigned_to = Users::InexistentUser.new
 
         contract.validate
       end
 
-      it 'is invalid' do
+      it "is invalid" do
         expect(contract.errors.symbols_for(:assigned_to))
-          .to match_array [:does_not_exist]
+          .to contain_exactly(:does_not_exist)
       end
     end
   end
 
-  describe 'category' do
-    let(:category) { FactoryBot.build_stubbed(:category) }
+  describe "category" do
+    let(:category) { build_stubbed(:category) }
 
-    context "one of the project's categories" do
+    context "for one of the project's categories" do
       before do
         allow(project)
           .to receive(:categories)
           .and_return [category]
 
         work_package.category = category
-
-        contract.validate
       end
 
-      it 'is valid' do
-        expect(contract.errors.symbols_for(:category))
-          .to be_empty
-      end
+      it_behaves_like "contract is valid"
     end
 
-    context 'empty' do
+    context "when empty" do
       before do
         work_package.category = nil
-
-        contract.validate
       end
 
-      it 'is valid' do
-        expect(contract.errors.symbols_for(:category))
-          .to be_empty
-      end
+      it_behaves_like "contract is valid"
     end
 
-    context 'inexistent category (e.g. removed)' do
+    context "for inexistent category (e.g. removed)" do
       before do
         work_package.category_id = 5
-
-        contract.validate
       end
 
-      it 'is invalid' do
-        expect(contract.errors.symbols_for(:category))
-          .to match_array [:does_not_exist]
-      end
+      it_behaves_like "contract is invalid", category: :does_not_exist
     end
 
-    context 'not of the project' do
+    context "when not of the project" do
       before do
         allow(project)
           .to receive(:categories)
           .and_return []
 
         work_package.category = category
-
-        contract.validate
       end
 
-      it 'is invalid' do
-        expect(contract.errors.symbols_for(:category))
-          .to match_array [:only_same_project_categories_allowed]
+      it_behaves_like "contract is invalid", category: :only_same_project_categories_allowed
+    end
+
+    context "when category is set but project isn't set" do
+      before do
+        allow(project)
+          .to receive(:categories)
+                .and_return [category]
+
+        work_package.category = category
+        work_package.project = nil
       end
+
+      it_behaves_like "contract is invalid", category: :only_same_project_categories_allowed
     end
   end
 
-  describe 'priority' do
-    let (:active_priority) { FactoryBot.build_stubbed(:priority) }
-    let (:inactive_priority) { FactoryBot.build_stubbed(:priority, active: false) }
+  describe "priority" do
+    let (:active_priority) { build_stubbed(:priority) }
+    let (:inactive_priority) { build_stubbed(:priority, active: false) }
 
-    context 'active priority' do
+    context "as active priority" do
       before do
         work_package.priority = active_priority
 
         contract.validate
       end
 
-      it 'is valid' do
+      it "is valid" do
         expect(contract.errors.symbols_for(:priority_id))
           .to be_empty
       end
     end
 
-    context 'inactive priority' do
+    context "as inactive priority" do
       before do
         work_package.priority = inactive_priority
 
         contract.validate
       end
 
-      it 'is invalid' do
+      it "is invalid" do
         expect(contract.errors.symbols_for(:priority_id))
-          .to match_array [:only_active_priorities_allowed]
+          .to contain_exactly(:only_active_priorities_allowed)
       end
     end
 
-    context 'inactive priority but priority not changed' do
+    context "as inactive priority but priority not changed" do
       before do
         work_package.priority = inactive_priority
         work_package.clear_changes_information
@@ -796,43 +1626,45 @@ describe WorkPackages::BaseContract do
         contract.validate
       end
 
-      it 'is valid' do
+      it "is valid" do
         expect(contract.errors.symbols_for(:priority_id))
           .to be_empty
       end
     end
 
-    context 'inexistent priority' do
+    context "as inexistent priority" do
       before do
         work_package.priority = Priority::InexistentPriority.new
 
         contract.validate
       end
 
-      it 'is invalid' do
+      it "is invalid" do
         expect(contract.errors.symbols_for(:priority))
-          .to match_array [:does_not_exist]
+          .to contain_exactly(:does_not_exist)
       end
     end
   end
 
-  describe '#assignable_statuses' do
-    let(:role) { FactoryBot.build_stubbed(:role) }
-    let(:type) { FactoryBot.build_stubbed(:type) }
-    let(:assignee_user) { FactoryBot.build_stubbed(:user) }
-    let(:author_user) { FactoryBot.build_stubbed(:user) }
-    let(:current_status) { FactoryBot.build_stubbed(:status) }
-    let(:version) { FactoryBot.build_stubbed(:version) }
+  describe "#assignable_statuses" do
+    let(:role) { build_stubbed(:project_role) }
+    let(:type) { build_stubbed(:type) }
+    # Transitions hang off the configuration in force, which is what the contract reads.
+    let(:variant) { build_stubbed(:type_variant, type:) }
+    let(:assignee_user) { build_stubbed(:user) }
+    let(:author_user) { build_stubbed(:user) }
+    let(:current_status) { build_stubbed(:status) }
+    let(:version) { build_stubbed(:version) }
     let(:work_package) do
-      FactoryBot.build_stubbed(:work_package,
-                               assigned_to: assignee_user,
-                               author: author_user,
-                               status: current_status,
-                               version: version,
-                               type: type)
+      build_stubbed(:work_package,
+                    assigned_to: assignee_user,
+                    author: author_user,
+                    status: current_status,
+                    version:,
+                    type:)
     end
     let!(:default_status) do
-      status = FactoryBot.build_stubbed(:status)
+      status = build_stubbed(:status)
 
       allow(Status)
         .to receive(:default)
@@ -845,87 +1677,91 @@ describe WorkPackages::BaseContract do
 
     before do
       allow(current_user)
-        .to receive(:roles_for_project)
-         .with(work_package.project)
+        .to receive(:roles_for_work_package)
+         .with(work_package)
          .and_return(roles)
+
+      allow(work_package).to receive(:type_variant).and_return(variant)
     end
 
-    shared_examples_for 'new_statuses_allowed_to' do
+    shared_examples_for "new_statuses_allowed_to" do
       let(:base_scope) do
-        from_workflows = Workflow
-                        .from_status(current_status.id, type.id, [role.id], author, assignee)
+        from_workflows = variant.workflows
+                        .from_status(current_status.id, [role.id], author:, assignee:)
                         .select(:new_status_id)
 
-        Status.where(id: from_workflows)
-          .or(Status.where(id: current_status.id))
+        Status.where(id: from_workflows).or(Status.where(id: current_status.id))
       end
 
-      it 'returns a scope that returns current_status and those available by workflow' do
+      it "returns a scope that returns current_status and those available by workflow" do
         expect(contract.assignable_statuses.to_sql)
           .to eql base_scope.order_by_position.to_sql
       end
 
-      it 'removes closed statuses if blocked' do
-        allow(work_package)
-          .to receive(:blocked?)
-          .and_return(true)
+      it "removes closed statuses if blocked" do
+        allow(work_package).to receive(:blocked?).and_return(true)
 
-        expected = base_scope.where(is_closed: false).order_by_position
+        expected = base_scope.not_closed.order_by_position
 
-        expect(contract.assignable_statuses.to_sql)
-          .to eql expected.to_sql
+        expect(contract.assignable_statuses.to_sql).to eql expected.to_sql
       end
 
-      context 'if the current status is closed and the version is closed as well' do
-        let(:version) { FactoryBot.build_stubbed(:version, status: 'closed') }
-        let(:current_status) { FactoryBot.build_stubbed(:status, is_closed: true) }
+      context "if the current status is closed and the version is closed as well" do
+        let(:version) { build_stubbed(:version, status: "closed") }
+        let(:current_status) { build_stubbed(:status, category: "closed") }
 
-        it 'only allows the current status' do
+        before do
+          allow(work_package)
+            .to receive(:target_versions)
+            .and_return([version])
+        end
+
+        it "only allows the current status" do
           expect(contract.assignable_statuses.to_sql)
             .to eql Status.where(id: current_status.id).to_sql
         end
       end
     end
 
-    context 'with somebody else asking' do
-      it_behaves_like 'new_statuses_allowed_to' do
+    context "with somebody else asking" do
+      it_behaves_like "new_statuses_allowed_to" do
         let(:author) { false }
         let(:assignee) { false }
       end
     end
 
-    context 'with the author asking' do
+    context "with the author asking" do
       let(:current_user) { author_user }
 
-      it_behaves_like 'new_statuses_allowed_to' do
+      it_behaves_like "new_statuses_allowed_to" do
         let(:author) { true }
         let(:assignee) { false }
       end
     end
 
-    context 'with the assignee asking' do
+    context "with the assignee asking" do
       let(:current_user) { assignee_user }
 
-      it_behaves_like 'new_statuses_allowed_to' do
+      it_behaves_like "new_statuses_allowed_to" do
         let(:author) { false }
         let(:assignee) { true }
       end
     end
 
-    context 'with the assignee changing and asking as new assignee' do
+    context "with the assignee changing and asking as new assignee" do
       before do
         work_package.assigned_to = current_user
       end
 
       # is using the former assignee
-      it_behaves_like 'new_statuses_allowed_to' do
+      it_behaves_like "new_statuses_allowed_to" do
         let(:author) { false }
         let(:assignee) { false }
       end
     end
 
-    context 'with the status having changed' do
-      let(:new_status) { FactoryBot.build_stubbed(:status) }
+    context "with the status having changed" do
+      let(:new_status) { build_stubbed(:status) }
 
       before do
         allow(work_package).to receive(:persisted?).and_return(true)
@@ -939,28 +1775,49 @@ describe WorkPackages::BaseContract do
         work_package.status = new_status
       end
 
-      it_behaves_like 'new_statuses_allowed_to' do
+      it_behaves_like "new_statuses_allowed_to" do
         let(:author) { false }
         let(:assignee) { false }
       end
     end
+
+    context "when the variant is linked to a source" do
+      let(:role) { create(:project_role) }
+      let(:source) { create(:type) }
+      let(:type) { create(:type) }
+      # These need the real chain rather than the stub above: resolving it is the point.
+      let(:variant) { type.default_variant }
+      let(:current_status) { create(:status) }
+      let(:target_status) { create(:status) }
+
+      before do
+        variant.update!(workflow: source.default_variant.workflow)
+        create(:workflow, role_id: role.id, type_variant: source.default_variant,
+                          old_status_id: current_status.id, new_status_id: target_status.id,
+                          author: false, assignee: false)
+      end
+
+      it "resolves allowed transitions through the shared workflow" do
+        expect(contract.assignable_statuses.pluck(:id)).to include(target_status.id)
+      end
+    end
   end
 
-  describe '#assignable_types' do
+  describe "#assignable_types" do
     let(:scope) do
-      double('type scope').tap do |s|
+      instance_double(ActiveRecord::Querying).tap do |s|
         allow(s)
           .to receive(:includes)
           .and_return(s)
       end
     end
 
-    context 'project nil' do
+    context "when project nil" do
       before do
         work_package.project = nil
       end
 
-      it 'is all types' do
+      it "is all types" do
         allow(Type)
           .to receive(:includes)
           .and_return(scope)
@@ -970,10 +1827,10 @@ describe WorkPackages::BaseContract do
       end
     end
 
-    context 'project defined' do
-      it 'is all types of the project' do
+    context "when project defined" do
+      it "is all types of the project" do
         allow(work_package.project)
-          .to receive(:types)
+          .to receive(:enabled_types)
           .and_return(scope)
 
         expect(contract.assignable_types)
@@ -982,25 +1839,26 @@ describe WorkPackages::BaseContract do
     end
   end
 
-  describe '#assignable_versions' do
+  describe "#assignable_versions" do
     let(:result) { double }
 
-    it 'calls through to the work package' do
-      expect(work_package).to receive(:assignable_versions).and_return(result)
+    it "calls through to the work package" do
+      allow(work_package).to receive(:assignable_versions).and_return(result)
       expect(subject.assignable_values(:version, current_user)).to eql(result)
+      expect(work_package).to have_received(:assignable_versions)
     end
   end
 
-  describe '#assignable_priorities' do
-    let(:active_priority) { FactoryBot.build(:priority, active: true) }
-    let(:inactive_priority) { FactoryBot.build(:priority, active: false) }
+  describe "#assignable_priorities" do
+    let(:active_priority) { build(:priority, active: true) }
+    let(:inactive_priority) { build(:priority, active: false) }
 
     before do
       active_priority.save!
       inactive_priority.save!
     end
 
-    it 'returns only active priorities' do
+    it "returns only active priorities" do
       expect(subject.assignable_values(:priority, current_user).size).to be >= 1
       subject.assignable_values(:priority, current_user).each do |priority|
         expect(priority.active).to be_truthy
@@ -1008,15 +1866,96 @@ describe WorkPackages::BaseContract do
     end
   end
 
-  describe '#assignable_categories' do
-    let(:category) { double('category') }
+  describe "#assignable_categories" do
+    let(:category) { instance_double(Category) }
 
     before do
       allow(project).to receive(:categories).and_return([category])
     end
 
-    it 'returns all categories of the project' do
-      expect(subject.assignable_values(:category, current_user)).to match_array([category])
+    it "returns all categories of the project" do
+      expect(subject.assignable_values(:category, current_user)).to contain_exactly(category)
+    end
+  end
+
+  it_behaves_like "contract reuses the model errors"
+
+  # The work package stores the family's type, so the subject pattern in force is the one the
+  # project's variant resolves to. Following the stored type alone would answer with the base
+  # pattern and silently ignore a variant owning its defaults.
+  describe "subject patterns when the project resolves the type to a variant" do
+    shared_let(:family_root) { create(:type, name: "Family root") }
+    shared_let(:variant) do
+      create(:type_variant, type: family_root, variant_name: "Variant").tap do |named|
+        link_configuration(named, aspect: TypeVariant::DEFAULTS)
+      end
+    end
+
+    let(:project) { create(:project, types: [variant]) }
+    let(:type) { family_root }
+    let(:work_package) { build_stubbed(:work_package, project:, type: family_root, subject: nil) }
+    let(:blueprint) { { subject: { blueprint: "{{type}}", enabled: true } } }
+
+    context "when the variant inherits the root's defaults" do
+      before { family_root.default_variant.update!(patterns: blueprint) }
+
+      it "accepts a blank subject, as the pattern generates it" do
+        contract.validate
+
+        expect(contract.errors.symbols_for(:subject)).to be_empty
+      end
+
+      it "makes the subject unwritable" do
+        expect(contract.writable_attributes).not_to include("subject")
+      end
+    end
+
+    context "when the variant owns its defaults and defines no pattern" do
+      before do
+        family_root.default_variant.update!(patterns: blueprint)
+        unlink_configuration(variant, aspect: TypeVariant::DEFAULTS)
+        variant.reload
+      end
+
+      it "requires a subject, as the variant generates none" do
+        contract.validate
+
+        expect(contract.errors.symbols_for(:subject)).to include(:blank)
+      end
+
+      it "makes the subject writable" do
+        expect(contract.writable_attributes).to include("subject")
+      end
+    end
+  end
+
+  # #new_statuses_by_workflow reads the workflows of the type in force, which is the variant the
+  # project resolves the stored type to.
+  describe "#assignable_statuses when the project resolves the type to a variant" do
+    shared_let(:family_root) { create(:type, name: "Family root") }
+    shared_let(:variant) { create(:type_variant, type: family_root, variant_name: "Variant") }
+    shared_let(:current_status) { create(:status, name: "Current") }
+    shared_let(:root_target) { create(:status, name: "Root target") }
+    shared_let(:variant_target) { create(:status, name: "Variant target") }
+
+    let(:project) { create(:project, types: [variant]) }
+    let(:type) { family_root }
+    let(:role) { create(:project_role, permissions:) }
+    let(:current_user) { create(:user, member_with_roles: { project => role }) }
+    let(:work_package) { create(:work_package, project:, type: family_root, status: current_status) }
+
+    before do
+      variant.update!(workflow: create(:named_workflow))
+
+      create(:workflow, type: family_root, role:,
+                        old_status_id: current_status.id, new_status_id: root_target.id)
+      create(:workflow, type: variant, role:,
+                        old_status_id: current_status.id, new_status_id: variant_target.id)
+    end
+
+    it "offers the transitions of the variant, not the stored root's" do
+      expect(contract.assignable_statuses).to include(variant_target)
+      expect(contract.assignable_statuses).not_to include(root_target)
     end
   end
 end

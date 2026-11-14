@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -43,7 +42,7 @@ module API
             end
 
             after_validation do
-              authorize(:view_work_packages, global: true, user: current_user)
+              authorize_in_any_work_package(:view_work_packages)
             end
 
             get do
@@ -51,10 +50,10 @@ module API
 
               collection_representer.new(filters,
                                          self_link: api_v3_paths.query_filter_instance_schemas,
-                                         current_user: current_user)
+                                         current_user:)
             end
 
-            route_param :id, type: String, regexp: /\A\w+\z/, desc: 'Filter schema ID' do
+            route_param :id, type: String, regexp: /\A\w+\z/, desc: "Filter schema ID" do
               get do
                 ar_name = ::API::Utilities::QueryFiltersNameConverter
                           .to_ar_name(params[:id], refer_to_ids: true)
@@ -66,7 +65,7 @@ module API
 
                 single_representer.new(filter,
                                        self_link: api_v3_paths.query_filter_instance_schema(params[:id]),
-                                       current_user: current_user)
+                                       current_user:)
               end
             end
           end

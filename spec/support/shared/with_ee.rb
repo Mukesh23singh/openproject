@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,40 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-def aggregate_parent_array(example, acc)
-  # We have to manually check parent groups for with_ee:,
-  # since they are being ignored otherwise
-  example.example_group.module_parents.each do |parent|
-    if parent.respond_to?(:metadata) && parent.metadata[:with_ee]
-      acc.merge(parent.metadata[:with_ee])
-    end
+RSpec.configure do |config|
+  config.define_derived_metadata :without_ee do
+    fail ArgumentError, "without_ee metadata does nothing"
   end
 
-  acc
-end
+  config.before do |example|
+    available_features = Array(example.metadata[:with_ee])
+    trial = !!example.metadata[:with_ee_trial]
+    next if available_features.empty? && !trial
 
-RSpec.configure do |config|
-  config.before(:each) do |example|
-    allowed = example.metadata[:with_ee]
-    if allowed.present?
-      allowed = aggregate_parent_array(example, allowed.to_set)
+    # partial double of OpenProject::Token with available features
+    token_object = OpenProject::Token.new
+    allow(token_object).to receive_messages(available_features:, trial?: trial)
 
-      allow(EnterpriseToken).to receive(:allows_to?).and_call_original
-      allowed.each do |k|
-        allow(EnterpriseToken)
-          .to receive(:allows_to?)
-          .with(k)
-          .and_return true
-      end
+    # partial double of EnterpriseToken returning the partial double of token object
+    enterprise_token = EnterpriseToken.new
+    allow(enterprise_token).to receive_messages(token_object:)
 
-      # Also disable banners to signal the frontend we're on EE
-      allow(EnterpriseToken).to receive(:show_banners?).and_return(allowed.empty?)
+    # To ensure tests don't trip up on the trial teaser banner
+    if trial
+      allow(enterprise_token).to receive(:days_left).and_return(42)
     end
+
+    # EnterpriseToken is mocked to return the partial double of enterprise
+    # token as active token
+    allow(EnterpriseToken).to receive(:active_tokens).and_return([enterprise_token])
   end
 end

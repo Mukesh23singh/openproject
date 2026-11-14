@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,28 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import * as moment from 'moment-timezone';
-import { Moment } from 'moment';
+import moment, { Moment, MomentInput } from 'moment-timezone';
+import { ChronicDurationOptions, outputChronicDuration } from '../../shared/helpers/chronic_duration';
 
 @Injectable({ providedIn: 'root' })
 export class TimezoneService {
-  constructor(
-    readonly configurationService:ConfigurationService,
-    readonly I18n:I18nService,
-  ) {
-    this.setupLocale();
-  }
+  readonly configurationService = inject(ConfigurationService);
+  readonly I18n = inject(I18nService);
 
-  public setupLocale() {
-    moment.locale(I18n.locale);
+
+  /**
+   * Returns the user's configured timezone or guesses it through moment
+   */
+  public userTimezone():string {
+    return this.configurationService.isTimezoneSet() ? this.configurationService.timezone() : moment.tz.guess();
   }
 
   /**
@@ -50,42 +49,13 @@ export class TimezoneService {
    * a local date time moment object.
    */
   public parseDatetime(datetime:string, format?:string):Moment {
-    const d = moment.utc(datetime, format);
-
-    if (this.configurationService.isTimezoneSet()) {
-      d.local();
-      d.tz(this.configurationService.timezone());
-    }
-
-    return d;
+    return moment
+      .utc(datetime, format)
+      .tz(this.userTimezone());
   }
 
-  public parseDate(date:Date|string, format?:string) {
+  public parseDate(date:MomentInput, format?:string):Moment {
     return moment(date, format);
-  }
-
-  /**
-   * Parses a string that is considered to be a local date and
-   * turns it into a utc date time moment object.
-   * 'Local' might mean the browsers default time zone or the one configured
-   * in the Configuration Service.
-   *
-   * @param {String} date
-   * @param {String} format
-   * @returns {Moment}
-   */
-  public parseLocalDateTime(date:string, format?:string) {
-    let result;
-    const timeFormat = format || this.getTimeFormat();
-
-    if (this.configurationService.isTimezoneSet()) {
-      result = moment.tz(date, timeFormat, this.configurationService.timezone());
-    } else {
-      result = moment(date, timeFormat);
-    }
-    result.utc();
-
-    return result;
   }
 
   /**
@@ -96,25 +66,17 @@ export class TimezoneService {
    * @param {String} datetime in 'YYYY-MM-DDTHH:mm:ssZ' format
    * @returns {Moment}
    */
-  public parseISODatetime(datetime:string) {
+  public parseISODatetime(datetime:string):Moment {
     return this.parseDatetime(datetime, 'YYYY-MM-DDTHH:mm:ssZ');
   }
 
-  public parseISODate(date:string) {
+  public parseISODate(date:string):Moment {
     return this.parseDate(date, 'YYYY-MM-DD');
   }
 
-  public formattedDate(date:string) {
+  public formattedDate(date:string, format = this.getDateFormat()):string {
     const d = this.parseDate(date);
-    return d.format(this.getDateFormat());
-  }
-
-  /**
-   * Return whether the date is in the past
-   * @param dateString
-   */
-  public inThePast(dateString:string):boolean {
-    return this.daysFromToday(dateString) <= -1;
+    return d.format(format);
   }
 
   /**
@@ -129,13 +91,24 @@ export class TimezoneService {
     return date.diff(today, 'days');
   }
 
-  public formattedTime(datetimeString:string) {
-    return this.parseDatetime(datetimeString).format(this.getTimeFormat());
+  public formattedTime(datetimeString:string, format?:string):string {
+    return this.parseDatetime(datetimeString).format(format || this.getTimeFormat());
   }
 
-  public formattedDatetime(datetimeString:string) {
+  public formattedDatetime(datetimeString:string):string {
     const c = this.formattedDatetimeComponents(datetimeString);
     return `${c[0]} ${c[1]}`;
+  }
+
+  /**
+   * The date a datetime falls on in the user's configured timezone, which is not what
+   * {@link formattedDate} answers: that one parses without a zone, as suits the 'YYYY-MM-DD'
+   * strings it is meant for.
+   *
+   * @param {String} datetimeString an instant, as 'YYYY-MM-DDTHH:mm:ssZ'
+   */
+  public formattedDatetimeAsDate(datetimeString:string):string {
+    return this.formattedDatetimeComponents(datetimeString)[0];
   }
 
   public formattedRelativeDateTime(datetimeString:string):string {
@@ -143,7 +116,7 @@ export class TimezoneService {
     return d.fromNow();
   }
 
-  public formattedDatetimeComponents(datetimeString:string) {
+  public formattedDatetimeComponents(datetimeString:string):string[] {
     const d = this.parseDatetime(datetimeString);
     return [
       d.format(this.getDateFormat()),
@@ -151,40 +124,114 @@ export class TimezoneService {
     ];
   }
 
-  public toHours(durationString:string) {
+  public toSeconds(durationString:string):number {
+    return Number(moment.duration(durationString).asSeconds().toFixed(2));
+  }
+
+  public toHours(durationString:string):number {
     return Number(moment.duration(durationString).asHours().toFixed(2));
   }
 
-  public formattedDuration(durationString:string) {
-    return this.I18n.t('js.units.hour', { count: this.toHours(durationString) });
+  public toDays(durationString:string):number {
+    return Number(moment.duration(durationString).asDays().toFixed(2));
   }
 
-  public formattedISODate(date:any) {
+  public toISODuration(input:string|number, unit:'hours'|'days'):string {
+    return moment.duration(input, unit).toISOString();
+  }
+
+  public utcDateToLocalDate(date:Date):Date {
+    return new Date(date.getTime() + date.getTimezoneOffset() * 60 * 1000);
+  }
+
+  public utcDateToISODateString(date:Date):string {
+    return moment.utc(date).format('YYYY-MM-DD');
+  }
+
+  public utcDatesToISODateStrings(dates:Date[]):string[] {
+    return dates.map((date) => this.utcDateToISODateString(date));
+  }
+
+  public formattedDuration(durationString:string, unit:'hour'|'days' = 'hour'):string {
+    switch (unit) {
+      case 'hour':
+        return this.I18n.t('js.units.hour', {
+          count: this.toHours(durationString),
+        });
+      case 'days':
+        return this.I18n.t('js.units.day', {
+          count: this.toDays(durationString),
+        });
+      default:
+        // Case fallthrough for eslint
+        return '';
+    }
+  }
+
+  public formattedChronicDuration(durationString:string, opts?:ChronicDurationOptions):string {
+    return this.formattedChronicDurationFromSeconds(this.toSeconds(durationString), opts);
+  }
+
+  public formattedChronicDurationFromHours(hours:number, opts?:ChronicDurationOptions):string {
+    return this.formattedChronicDurationFromSeconds(Math.round(hours * 3600), opts);
+  }
+
+  public formattedChronicDurationFromSeconds(seconds:number, opts:ChronicDurationOptions = {
+    format: this.configurationService.durationFormat(),
+    hoursPerDay: this.configurationService.hoursPerDay(),
+    daysPerMonth: this.configurationService.daysPerMonth(),
+  }):string {
+    // Keep in sync with app/services/duration_converter#output
+    return outputChronicDuration(seconds, opts) || '0h';
+  }
+
+  public formattedISODate(date:MomentInput):string {
     return this.parseDate(date).format('YYYY-MM-DD');
   }
 
-  public formattedISODateTime(datetime:any) {
+  public formattedISODateTime(datetime:Moment):string {
     return datetime.format();
   }
 
-  public isValidISODate(date:any) {
+  public isValidISODate(date:string):boolean {
     return this.isValid(date, 'YYYY-MM-DD');
   }
 
-  public isValidISODateTime(dateTime:string) {
+  public isValidISODateTime(dateTime:string):boolean {
     return this.isValid(dateTime, 'YYYY-MM-DDTHH:mm:ssZ');
   }
 
-  public isValid(date:string, dateFormat:string) {
+  public isValid(date:string, dateFormat:string):boolean {
     const format = dateFormat || this.getDateFormat();
     return moment(date, [format], true).isValid();
   }
 
-  public getDateFormat() {
+  public getDateFormat():string {
     return this.configurationService.dateFormatPresent() ? this.configurationService.dateFormat() : 'L';
   }
 
-  public getTimeFormat() {
+  public getTimeFormat():string {
     return this.configurationService.timeFormatPresent() ? this.configurationService.timeFormat() : 'LT';
+  }
+
+  /**
+   * Parses a date and time in the user's date and time format and time zone,
+   * as produced by formattedDatetime, and returns it as UTC ISO 8601 string.
+   *
+   * Uses moment instead of luxon, as the configured date and time formats are delivered
+   * as moment tokens (see API::V3::Configuration::ConfigurationRepresenter#date_format).
+   */
+  public parseFormattedDatetime(text:string):string|null {
+    const format = `${this.getDateFormat()} ${this.getTimeFormat()}`;
+    const parsed = moment.tz(text, format, true, this.userTimezone());
+
+    return parsed.isValid() ? parsed.utc().format() : null;
+  }
+
+  public uses24HourClock():boolean {
+    const format = this.getTimeFormat();
+    const expandedFormat = moment.localeData().longDateFormat(format as moment.LongDateFormatKey) || format;
+
+    return !/[aA]/.test(expandedFormat);
   }
 }

@@ -1,0 +1,219 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module WorkPackageTypes
+  class TypesController < ApplicationController
+    include PaginationHelper
+    include OpTurbo::ComponentStream
+    include SortableLists::DropRequestValidation
+
+    configure_drop_request list_type: ::Type.model_name.param_key, list_id_scoped: false
+
+    layout "admin"
+
+    before_action :require_admin
+    before_action :find_type, only: %i[move destroy duplicate menu deletion_dialog]
+
+    current_menu_item do
+      :types
+    end
+
+    def index
+      @expanded_type_id = expanded_type_id
+      @page_args = page_args
+      @query = params[:query].presence
+      @created_by_migration = params[:created_by_migration].presence
+      @migrated_variants_exist = TypeVariant.created_by_migration.exists?
+      @types = types_for_index
+
+      render layout: false if turbo_frame_request?
+    end
+
+    def type
+      @type
+    end
+
+    def move
+      if params.key?(:move_to)
+        render_ordering_result(move_in_direction, error_message: I18n.t(:error_type_could_not_be_saved))
+      else
+        render_ordering_result(move_after_anchor, error_message: I18n.t(:error_invalid_list_move_anchor))
+      end
+    end
+
+    def destroy
+      return refuse_deletion if @type.work_packages.exists?
+
+      service_call = WorkPackageTypes::DeleteService.new(user: current_user, model: @type).call
+
+      if service_call.success?
+        flash[:notice] = I18n.t(:notice_successful_delete)
+      else
+        flash[:error] = service_call.errors.full_messages
+      end
+
+      redirect_to action: "index", status: :see_other
+    end
+
+    def deletion_dialog
+      return refuse_deletion_via_turbo_stream if @type.work_packages.exists?
+
+      respond_with_dialog Types::TypeDeletionDialogComponent.new(type: @type)
+    end
+
+    def duplicate
+      service_call = WorkPackageTypes::DuplicateService.new(type: @type, user: current_user).call
+
+      if service_call.success?
+        flash[:notice] = t("types.index.duplicate_notice", name: @type.name)
+      else
+        flash[:error] = service_call.errors.full_messages
+      end
+
+      redirect_to types_path, status: :see_other
+    end
+
+    def menu
+      render Types::TypeActionsComponent.new(type: @type, page_args:, expanded_type_id:, filtered: filtered?),
+             layout: false
+    end
+
+    protected
+
+    def find_type
+      @type = ::Type.find(params.expect(:id))
+    end
+
+    def types_for_index
+      scope = ::Type
+        .includes(:color, :projects,
+                  variants: [:workflow, { form_configuration: :custom_fields }])
+      scope = scope.with_own_or_variant_name_like(@query) if @query
+      scope = scope.with_migrated_variants if migration_filter?
+
+      scope
+        .page(page_param)
+        .per_page(per_page_param)
+    end
+
+    def migration_filter? = params[:created_by_migration].presence == "t"
+
+    def filtered? = params[:query].present? || migration_filter?
+
+    def refuse_deletion
+      flash[:error] = destroy_error_message
+      redirect_to action: "index", status: :see_other
+    end
+
+    def refuse_deletion_via_turbo_stream
+      render_error_flash_message_via_turbo_stream(
+        message: helpers.safe_join(destroy_error_message, helpers.tag.br)
+      )
+
+      respond_to_with_turbo_streams
+    end
+
+    def destroy_error_message
+      error_message = [
+        ApplicationController.helpers.sanitize(
+          t(:"error_can_not_delete_type.explanation", url: belonging_wps_url(@type.id)),
+          attributes: %w(href target)
+        )
+      ]
+
+      if archived_projects.any?
+        error_message << ApplicationController.helpers.sanitize(
+          t(:error_can_not_delete_in_use_archived_work_packages,
+            archived_projects_urls: helpers.archived_projects_urls_for(archived_projects)),
+          attributes: %w(href target)
+        )
+      end
+
+      error_message
+    end
+
+    def belonging_wps_url(type_id)
+      work_packages_path query_props: { f: [{ n: "type", o: "=", v: [type_id] }] }.to_json
+    end
+
+    def archived_projects
+      @archived_projects ||= @type.projects.archived
+    end
+
+    private
+
+    def page_args
+      { page: page_param, per_page: per_page_param }
+    end
+
+    def expanded_type_id
+      Integer(params[:expand].to_s, exception: false)
+    end
+
+    def ordering_component
+      Types::GroupedListComponent.new(types: types_for_index, page_args:, expanded_type_id:)
+    end
+
+    def render_ordering_result(moved, error_message:)
+      if moved
+        update_via_turbo_stream(component: ordering_component, method: :morph)
+        render_success_flash_message_via_turbo_stream(message: I18n.t(:notice_successful_update))
+      else
+        render_error_flash_message_via_turbo_stream(message: error_message)
+      end
+      respond_with_turbo_streams(status: moved ? :ok : :unprocessable_entity)
+    end
+
+    def move_in_direction
+      direction = params[:move_to]
+      return false unless direction.in?(%w[highest higher lower lowest])
+
+      @type.update(move_to: direction)
+    end
+
+    def move_after_anchor
+      return false unless valid_drop_request?
+
+      predecessor = drop_params[:prev_id]
+      if predecessor.nil? || predecessor == ""
+        move_to_page_start
+      else
+        @type.move_after_anchor(predecessor, scope: ::Type.all)
+      end
+    end
+
+    def move_to_page_start
+      current_page = ::Type.page(page_param).per_page(per_page_param)
+      return false if current_page.empty?
+
+      predecessor = ::Type.offset(current_page.offset - 1).pick(:id) if current_page.offset.positive?
+      @type.move_after_anchor(predecessor, scope: ::Type.all)
+    end
+  end
+end

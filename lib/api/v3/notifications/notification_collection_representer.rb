@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,10 +29,22 @@ module API
   module V3
     module Notifications
       class NotificationCollectionRepresenter < ::API::Decorators::OffsetPaginatedCollection
-        def initialize(models, self_link:, current_user:, query: {}, page: nil, per_page: nil, groups: nil)
-          super
+        self.to_eager_load = []
+        self.to_preload = []
 
-          @represented = ::API::V3::Notifications::NotificationEagerLoadingWrapper.wrap(represented)
+        property :detailsSchemas,
+                 getter: ->(*) { details_schemas },
+                 exec_context: :decorator,
+                 embedded: true,
+                 if: ->(*) { details_schemas.any? }
+
+        def details_schemas
+          @details_schemas ||=
+            ::API::V3::Notifications::PropertyFactory.schemas_for(@represented)
+        end
+
+        def eager_loaded_paged_models(models)
+          ::API::V3::Notifications::NotificationEagerLoadingWrapper.wrap(models)
         end
       end
     end

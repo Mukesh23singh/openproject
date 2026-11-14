@@ -1,4 +1,44 @@
-import { createPointCB, getClientRect as getRect, pointInside } from 'dom-plane';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import {
+  type ClientRect,
+  createPointCB,
+  getClientRect as getRect,
+  type Point,
+  pointInside,
+} from 'dom-plane';
+
+export interface DomAutoscrollParams {
+  maxSpeed?:number;
+  margin?:number;
+  scrollWhenOutside?:boolean;
+  autoScroll:() => boolean|undefined;
+}
 
 export class DomAutoscrollService {
   public elements:Element[];
@@ -9,7 +49,7 @@ export class DomAutoscrollService {
 
   public scrollWhenOutside:boolean;
 
-  public autoScroll:() => boolean;
+  public autoScroll:() => boolean|undefined;
 
   public maxSpeed:number;
 
@@ -23,39 +63,49 @@ export class DomAutoscrollService {
 
   public outerScrollContainer:HTMLElement;
 
-  public point:any;
+  public point:Point;
 
-  public pointCB:any;
+  public pointCB:(event:Event) => void;
+
+  private abortController:AbortController;
 
   constructor(elements:Element[],
-    params:any) {
+    params:DomAutoscrollParams) {
     this.elements = elements;
-    this.scrollWhenOutside = params.scrollWhenOutside || false;
     this.maxSpeed = params.maxSpeed || 5;
     this.margin = params.margin || 10;
     this.scrollWhenOutside = params.scrollWhenOutside || false;
     this.autoScroll = params.autoScroll;
-    this.point = {};
+    this.point = {} as Point;
     this.pointCB = createPointCB(this.point);
 
     this.init();
   }
 
   public init() {
-    jQuery(window).on('mousemove.domautoscroll touchmove.domautoscroll', (evt:any) => {
+    this.abortController = new AbortController();
+    const { signal } = this.abortController;
+    const moveHandler = (evt:Event) => {
       if (this.down) {
         this.pointCB(evt);
         this.onMove(evt);
       }
-    });
-    jQuery(window).on('mousedown.domautoscroll touchstart.domautoscroll', () => { this.down = true; });
-    jQuery(window).on('mouseup.domautoscroll touchend.domautoscroll', () => this.onUp());
-    jQuery(window).on('scroll.domautoscroll', (evt:any) => this.setScroll(evt));
+    };
+    const downHandler = () => { this.down = true; };
+    const upHandler = () => { this.onUp(); };
+    const scrollHandler = (evt:Event) => { this.setScroll(evt); };
+
+    window.addEventListener('mousemove', moveHandler, { signal });
+    window.addEventListener('touchmove', moveHandler, { signal });
+    window.addEventListener('mousedown', downHandler, { signal });
+    window.addEventListener('touchstart', downHandler, { signal });
+    window.addEventListener('mouseup', upHandler, { signal });
+    window.addEventListener('touchend', upHandler, { signal });
+    window.addEventListener('scroll', scrollHandler, { signal });
   }
 
   public destroy() {
-    jQuery(window).off('.domautoscroll');
-
+    this.abortController.abort();
     this.elements = [];
     this.cleanAnimation();
   }
@@ -77,9 +127,9 @@ export class DomAutoscrollService {
     cancelAnimationFrame(this.windowAnimationFrame);
   }
 
-  public setScroll(e:any) {
-    for (let i = 0; i < this.elements.length; i++) {
-      if (this.elements[i] === e.target) {
+  public setScroll(e:Event) {
+    for (const element of this.elements) {
+      if (element === e.target) {
         this.scrolling = true;
         break;
       }
@@ -110,16 +160,16 @@ export class DomAutoscrollService {
   public getElementsUnderPoint():HTMLElement[] {
     const underPoint = [];
 
-    for (let i = 0; i < this.elements.length; i++) {
-      if (this.inside(this.point, this.elements[i])) {
-        underPoint.push(this.elements[i] as HTMLElement);
+    for (const element of this.elements) {
+      if (this.inside(this.point, element)) {
+        underPoint.push(element as HTMLElement); // eslint-disable-line @typescript-eslint/no-unnecessary-type-assertion
       }
     }
 
     return underPoint;
   }
 
-  public onMove(event:any) {
+  public onMove(event:Event & { dispatched?:boolean }) {
     if (!this.autoScroll()) {
       return;
     }
@@ -209,7 +259,6 @@ export class DomAutoscrollService {
     if (el === window) {
       window.scrollTo(el.pageXOffset, el.pageYOffset + amount);
     } else {
-      // eslint-disable-next-line no-param-reassign
       (el as Element).scrollTop += amount;
     }
   }
@@ -218,12 +267,11 @@ export class DomAutoscrollService {
     if (el === window) {
       window.scrollTo(el.pageXOffset + amount, el.pageYOffset);
     } else {
-      // eslint-disable-next-line no-param-reassign
       (el as Element).scrollLeft += amount;
     }
   }
 
-  public inside(point:any, el:Element, rect?:any) {
+  public inside(point:Pick<Point, 'x'|'y'>, el:Element, rect?:ClientRect) {
     if (!rect) {
       return pointInside(point, el);
     }

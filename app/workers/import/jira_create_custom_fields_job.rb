@@ -1,0 +1,56 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Import
+  class JiraCreateCustomFieldsJob < ApplicationJob
+    include Import::JiraOpenProjectReferenceCreation
+    include ::Import::JiraCreateProjectJob::JiraImportCustomFields
+    include Import::JiraJobUtils
+
+    def text
+      I18n.t(:"admin.jira.run.jobs.#{self.class.to_s.demodulize}.title")
+    end
+
+    # Creates the OP custom fields for the whole import run, before the per-project jobs fan out.
+    def perform(jira_import_id)
+      tagged_log("jira_import_id:#{jira_import_id}", "jira_object_type:customField") do
+        Rails.logger.debug "Creating custom fields started"
+        @jira_import = Import::JiraImport.find(jira_import_id)
+        @jira_id = @jira_import.jira.id
+        @system_user = User.system
+
+        build_custom_field_registry
+        store_custom_field_mapping
+        create_system_field_custom_fields
+
+        Rails.logger.debug "Creating custom fields finished"
+      end
+    end
+  end
+end

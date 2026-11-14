@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,41 +22,116 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-OpenProject::Application.routes.draw do
-  scope 'projects/:project_id', as: 'projects' do
-    resources :cost_entries, controller: 'costlog', only: %i[new create]
-
-    resources :hourly_rates, only: %i[show edit update] do
-      post :set_rate, on: :member
+Rails.application.routes.draw do
+  scope module: "grids" do
+    namespace :widgets do
+      resource :time_entries_current_user, controller: :time_entries_current_user, only: %i[show]
     end
   end
 
-  scope 'projects/:project_id', as: 'project', module: 'projects' do
-    namespace 'settings' do
-      resource :time_entry_activities, only: %i[show update]
+  resources :time_entries, only: %i[create update destroy] do
+    get :dialog, on: :collection
+    get :dialog, on: :member
+    get "/users/:user_id/tz_caption", action: :user_tz_caption, on: :collection
+    post :refresh_form, on: :collection
+    post :refresh_form, on: :member
+  end
+
+  scope "projects/:project_id", as: "projects" do
+    resources :cost_entries, controller: "costlog", only: %i[new create]
+
+    resources :hourly_rates, only: %i[show new create]
+
+    get "/time_entries/dialog" => "time_entries#dialog"
+  end
+
+  namespace "my" do
+    get "/hourly_rates" => "hourly_rates#show", as: "hourly_rates"
+
+    get "/timer" => "timer#show", as: "timers"
+  end
+
+  scope "projects/:project_id", as: "project", module: "projects" do
+    namespace "settings" do
+      resource :time_entry_activities, only: %i[show] do
+        post "toggle/:activity_id", action: :toggle, as: :toggle
+      end
+      resources :cost_types, only: %i[index] do
+        member { post :toggle }
+      end
     end
   end
 
-  scope 'work_packages/:work_package_id', as: 'work_packages' do
-    resources :cost_entries, controller: 'costlog', only: %i[new]
+  scope "work_packages/:work_package_id", as: "work_packages" do
+    resources :cost_entries, controller: "costlog", only: %i[new]
+    get "/time_entries/dialog" => "time_entries#dialog"
   end
 
-  resources :cost_entries, controller: 'costlog', only: %i[edit update destroy]
+  resources :cost_entries, controller: "costlog", only: %i[edit update destroy]
 
-  resources :cost_types, only: %i[index new edit update create destroy] do
-    member do
-      # TODO: check if this can be replaced with update method
-      put :set_rate
-      patch :restore
+  get "/cost_types", to: redirect("/admin/cost_types")
+
+  # Keyed by the rate, unlike the project scoped hourly_rates#show whose :id is
+  # the principal whose history is shown.
+  resources :hourly_rates, only: %i[edit update destroy] do
+    get :deletion_dialog, on: :member
+  end
+  resources :default_hourly_rates, only: %i[new create edit update destroy] do
+    get :deletion_dialog, on: :member
+  end
+
+  namespace :admin do
+    namespace :settings do
+      resources :time_entry_activities, except: [:show] do
+        member do
+          put :move
+          get :reassign
+        end
+      end
+
+      resources :time_entry_custom_fields, controller: "/admin/settings/time_entry_custom_fields" do
+        member do
+          delete "options/:option_id", action: "delete_option", as: :delete_option_of
+          post :reorder_alphabetical
+          put :drop
+
+          get :attribute_help_text
+          put :update_attribute_help_text
+
+          get :list_items
+
+          get :deletion_dialog
+        end
+      end
     end
-  end
 
-  # TODO: this is a duplicate from a route defined under project/:project_id, check whether we really want to do that
-  resources :hourly_rates, only: %i[edit update]
+    resources :cost_types, only: %i[index new edit update create destroy] do
+      member do
+        # TODO: check if this can be replaced with update method
+        put :set_rate
+        patch :restore
+        get :rates
+      end
+
+      scope module: :cost_types do
+        resources :projects, controller: :cost_type_projects, only: %i[index new create]
+        resource :project, controller: :cost_type_projects, only: :destroy
+      end
+    end
+
+    resource :costs,
+             only: %i[show update],
+             controller: "costs_settings",
+             as: "costs_settings"
+
+    resource :time,
+             only: %i[show update],
+             controller: "time_settings",
+             as: "time_settings"
+  end
 end

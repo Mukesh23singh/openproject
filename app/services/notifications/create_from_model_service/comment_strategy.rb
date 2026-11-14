@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,19 +32,19 @@ module Notifications::CreateFromModelService::CommentStrategy
     %i(watched subscribed)
   end
 
-  def self.permission
+  def self.permission(*)
     :view_news
   end
 
-  def self.supports_ian?
+  def self.supports_ian?(_reason)
     false
   end
 
-  def self.supports_mail_digest?
+  def self.supports_mail_digest?(_reason)
     false
   end
 
-  def self.supports_mail?
+  def self.supports_mail?(_reason)
     true
   end
 

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,88 +20,86 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef, Component, ElementRef, OnInit,
-} from '@angular/core';
-import { distinctUntilChanged } from 'rxjs/operators';
+import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal } from '@angular/core';
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { MainMenuToggleService } from 'core-app/core/main-menu/main-menu-toggle.service';
 import { ResizeDelta } from 'core-app/shared/components/resizer/resizer.component';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { MainMenuToggleService } from 'core-app/core/main-menu/main-menu-toggle.service';
 
-export const mainMenuResizerSelector = 'main-menu-resizer';
+const RESIZE_EVENT = 'main-menu-resize';
 
 @Component({
-  selector: mainMenuResizerSelector,
+  selector: 'opce-main-menu-resizer',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <resizer class="main-menu--resizer"
-             [customHandler]="true"
-             [cursorClass]="'col-resize'"
-             (end)="resizeEnd()"
-             (start)="resizeStart()"
-             (move)="resizeMove($event)">
-      <div class="resizer-toggle-container">
-        <button
-          class="op-link main-menu--navigation-toggler"
-          [attr.title]="toggleTitle"
-          [class.open]="toggleService.showNavigation"
-          (click)="toggleService.toggleNavigation($event)">
-          <op-icon icon-classes="icon-resizer-vertical-lines"></op-icon>
-        </button>
-      </div>
-    </resizer>
+    <op-resizer class="main-menu--resizer"
+                [customHandler]="true"
+                cursorClass="col-resize"
+                (resizeFinished)="resizeEnd()"
+                (resizeStarted)="resizeStart()"
+                (move)="resizeMove($event)">
+      <button
+        class="spot-link main-menu--navigation-toggler"
+        [attr.aria-label]="ariaLabel()"
+        [attr.aria-expanded]="isOpen()"
+        [class.open]="isOpen()"
+        (click)="toggle($event)"
+      >
+        <span class="resize-handle"><svg op-resizer-vertical-lines-icon size="small"></svg></span>
+        <span class="collapse-menu"><svg chevron-left-icon size="small"></svg></span>
+        <span class="expand-menu"><svg chevron-right-icon size="small"></svg></span>
+      </button>
+    </op-resizer>
   `,
+  standalone: false,
 })
+export class MainMenuResizerComponent extends UntilDestroyedMixin {
+  readonly toggleService = inject(MainMenuToggleService);
+  readonly I18n = inject(I18nService);
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
 
-export class MainMenuResizerComponent extends UntilDestroyedMixin implements OnInit {
-  public toggleTitle:string;
+  private readonly widthAtDragStart = signal<number>(0);
+  private readonly mainMenu = document.querySelector('#main-menu')!;
 
-  private resizeEvent:string;
+  readonly isOpen = this.toggleService.isOpen;
 
-  private localStorageKey:string;
+  readonly isResizing = signal<boolean>(false);
+  readonly ariaLabel = computed(() =>
+    this.isResizing()
+      ? this.text.menu_resize
+      : this.isOpen()
+        ? this.text.menu_collapse
+        : this.text.menu_expand
+  );
 
-  private elementWidth:number;
+  readonly text = {
+    menu_expand: this.I18n.t('js.label_expand_project_menu'),
+    menu_collapse: this.I18n.t('js.label_hide_project_menu'),
+    menu_resize: this.I18n.t('js.label_resize_project_menu')
+  };
 
-  private mainMenu = jQuery('#main-menu')[0];
-
-  public moving = false;
-
-  constructor(readonly toggleService:MainMenuToggleService,
-    readonly cdRef:ChangeDetectorRef,
-    readonly elementRef:ElementRef) {
-    super();
-  }
-
-  ngOnInit() {
-    this.toggleService.titleData$
-      .pipe(
-        distinctUntilChanged(),
-        this.untilDestroyed(),
-      )
-      .subscribe((setToggleTitle) => {
-        this.toggleTitle = setToggleTitle;
-        this.cdRef.detectChanges();
-      });
-
-    this.resizeEvent = 'main-menu-resize';
-    this.localStorageKey = 'openProject-mainMenuWidth';
+  public toggle(event:Event) {
+    event.stopPropagation();
+    event.preventDefault();
+    this.toggleService.toggle();
   }
 
   public resizeStart() {
-    this.elementWidth = this.mainMenu.clientWidth;
+    this.widthAtDragStart.set(this.mainMenu.clientWidth);
+    this.isResizing.set(true);
   }
 
   public resizeMove(deltas:ResizeDelta) {
-    this.toggleService.saveWidth(this.elementWidth + deltas.absolute.x);
+    this.toggleService.resizeTo(this.widthAtDragStart() + deltas.absolute.x);
   }
 
   public resizeEnd() {
-    const event = new Event(this.resizeEvent);
-    window.dispatchEvent(event);
+    this.isResizing.set(false);
+    window.dispatchEvent(new Event(RESIZE_EVENT));
   }
 }

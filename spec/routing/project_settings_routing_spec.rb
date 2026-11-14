@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,90 +22,110 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Projects::SettingsController, type: :routing do
-  describe 'show' do
+RSpec.describe Projects::SettingsController do
+  describe "show" do
     it do
-      expect(get('/projects/123/settings/general'))
+      expect(get("/projects/123/settings/general"))
         .to route_to(
-          controller: 'projects/settings/general', action: 'show', project_id: '123'
+          controller: "projects/settings/general", action: "show", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/modules'))
+      expect(patch("/projects/123/settings/general"))
         .to route_to(
-          controller: 'projects/settings/modules', action: 'show', project_id: '123'
+          controller: "projects/settings/general", action: "update", project_id: "123"
         )
     end
 
     it do
-      expect(patch('/projects/123/settings/modules'))
+      expect(get("/projects/123/settings/modules"))
         .to route_to(
-          controller: 'projects/settings/modules', action: 'update', project_id: '123'
+          controller: "projects/settings/modules", action: "show", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/custom_fields'))
+      expect(patch("/projects/123/settings/modules"))
         .to route_to(
-          controller: 'projects/settings/custom_fields', action: 'show', project_id: '123'
+          controller: "projects/settings/modules", action: "update", project_id: "123"
         )
     end
 
     it do
-      expect(patch('/projects/123/settings/custom_fields'))
+      expect(get("/projects/123/settings/versions"))
         .to route_to(
-          controller: 'projects/settings/custom_fields', action: 'update', project_id: '123'
+          controller: "projects/settings/versions", action: "show", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/versions'))
+      expect(get("/projects/123/settings/work_packages/categories"))
         .to route_to(
-          controller: 'projects/settings/versions', action: 'show', project_id: '123'
+          controller: "projects/settings/work_packages/categories", action: "show", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/categories'))
+      expect(get("/projects/123/settings/repository"))
         .to route_to(
-          controller: 'projects/settings/categories', action: 'show', project_id: '123'
+          controller: "projects/settings/repository", action: "show", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/repository'))
+      expect(get("/projects/123/settings/time_entry_activities"))
         .to route_to(
-          controller: 'projects/settings/repository', action: 'show', project_id: '123'
+          controller: "projects/settings/time_entry_activities", action: "show", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/time_entry_activities'))
+      expect(get("/projects/123/settings/work_packages/types"))
         .to route_to(
-          controller: 'projects/settings/time_entry_activities', action: 'show', project_id: '123'
+          controller: "projects/settings/work_packages/types", action: "index", project_id: "123"
         )
     end
 
     it do
-      expect(get('/projects/123/settings/types'))
+      expect(get("/projects/123/settings/work_packages/types/new"))
         .to route_to(
-          controller: 'projects/settings/types', action: 'show', project_id: '123'
+          controller: "projects/settings/work_packages/types", action: "new", project_id: "123"
         )
     end
 
     it do
-      expect(patch('/projects/123/settings/types'))
+      expect(post("/projects/123/settings/work_packages/types"))
         .to route_to(
-          controller: 'projects/settings/types', action: 'update', project_id: '123'
+          controller: "projects/settings/work_packages/types", action: "create", project_id: "123"
+        )
+    end
+
+    it do
+      expect(delete("/projects/123/settings/work_packages/types/5"))
+        .to route_to(
+          controller: "projects/settings/work_packages/types", action: "destroy", project_id: "123", id: "5"
+        )
+    end
+
+    it do
+      expect(get("/projects/123/settings/work_packages/internal_comments"))
+        .to route_to(
+          controller: "projects/settings/work_packages/internal_comments", action: "show", project_id: "123"
+        )
+    end
+
+    it do
+      expect(patch("/projects/123/settings/work_packages/internal_comments"))
+        .to route_to(
+          controller: "projects/settings/work_packages/internal_comments", action: "update", project_id: "123"
         )
     end
   end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,34 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { withTooltip } from 'core-app/shared/helpers/tooltip-helper';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import * as URI from 'urijs';
-import { TimeEntryCreateService } from 'core-app/shared/components/time_entries/create/create.service';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import URI from 'urijs';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { DurationDisplayField } from './duration-display-field.module';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { WorkDisplayField } from 'core-app/shared/components/fields/display/field-types/work-display-field.module';
+import moment from 'moment-timezone';
+import { DialogCloseDetail } from 'core-turbo/dialog-stream-action';
 
-export class WorkPackageSpentTimeDisplayField extends DurationDisplayField {
+export class WorkPackageSpentTimeDisplayField extends WorkDisplayField {
   public text = {
     linkTitle: this.I18n.t('js.work_packages.message_view_spent_time'),
     logTime: this.I18n.t('js.button_log_time'),
   };
 
-  @InjectField() PathHelper:PathHelperService;
+  @LazyInject() PathHelper:PathHelperService;
 
-  @InjectField(TimeEntryCreateService, null) timeEntryCreateService:TimeEntryCreateService;
+  @LazyInject() apiV3Service:ApiV3Service;
 
-  @InjectField() apiV3Service:APIV3Service;
+  private closeDialogHandler:EventListener = this.handleDialogClose.bind(this);
+  private workPackageForHandler:WorkPackageResource;
 
   public render(element:HTMLElement, displayText:string):void {
     if (!this.value) {
@@ -54,25 +56,31 @@ export class WorkPackageSpentTimeDisplayField extends DurationDisplayField {
 
     const link = document.createElement('a');
     link.textContent = displayText;
-    link.setAttribute('title', this.text.linkTitle);
 
     if (displayText === this.placeholder) {
-      link.setAttribute('class', 'time-logging--value time-logging--value_empty');
+      link.setAttribute(
+        'class',
+        'time-logging--value time-logging--value_empty',
+      );
     } else {
       link.setAttribute('class', 'time-logging--value');
     }
 
-    if (this.resource.project) {
+    if (this.resource.project && this.resource.id) {
       const wpID = this.resource.id.toString();
-      this
-        .apiV3Service
-        .projects
-        .id(this.resource.project)
+      this.apiV3Service.projects
+        .id(this.resource.project as ProjectResource)
         .get()
         .subscribe((project:ProjectResource) => {
           // Link to the cost report having the work package filter preselected. No grouping.
-          const href = URI(this.PathHelper.projectTimeEntriesPath(project.identifier))
-            .search(`fields[]=WorkPackageId&operators[WorkPackageId]=%3D&values[WorkPackageId]=${wpID}&set_filter=1`)
+          const href = URI(
+            this.PathHelper.projectTimeEntriesPath(
+              project.identifier,
+            ),
+          )
+            .search(
+              `fields[]=WorkPackageId&operators[WorkPackageId]=%3D_child_work_packages&values[WorkPackageId]=${wpID}&set_filter=1`,
+            )
             .toString();
 
           link.href = href;
@@ -80,29 +88,45 @@ export class WorkPackageSpentTimeDisplayField extends DurationDisplayField {
     }
 
     element.innerHTML = '';
-    element.appendChild(link);
+    element.appendChild(withTooltip(link, this.text.linkTitle, 'description'));
 
     this.appendTimelogLink(element);
   }
 
   private appendTimelogLink(element:HTMLElement) {
-    if (this.timeEntryCreateService && this.resource.logTime) {
+    if (this.resource.logTime) {
+      const workPackage = this.resource as WorkPackageResource;
       const timelogElement = document.createElement('a');
+      const url = `${this.PathHelper.timeEntryWorkPackageDialog(this.resource.id!)}?date=${moment().format('YYYY-MM-DD')}`;
       timelogElement.setAttribute('class', 'icon icon-time');
-      timelogElement.setAttribute('href', '');
-      timelogElement.setAttribute('title', this.text.logTime);
+      timelogElement.setAttribute('href', url);
+      timelogElement.dataset.turboStream = 'true';
 
-      element.appendChild(timelogElement);
+      element.appendChild(withTooltip(timelogElement, this.text.logTime, 'label'));
 
-      timelogElement.addEventListener('click', this.showTimelogWidget.bind(this, this.resource));
+      timelogElement.addEventListener(
+        'click',
+        (event) => this.showTimelogWidget(workPackage, event),
+      );
     }
   }
 
-  private showTimelogWidget(wp:WorkPackageResource) {
-    this.timeEntryCreateService
-      .create(moment(new Date()), wp, false)
-      .catch(() => {
-        // do nothing, the user closed without changes
-      });
+  private showTimelogWidget(wp:WorkPackageResource, event:MouseEvent) {
+    const url = `${this.PathHelper.timeEntryWorkPackageDialog(wp.id!)}?date=${moment().format('YYYY-MM-DD')}`;
+    (event.currentTarget as HTMLAnchorElement).href = url;
+
+    document.addEventListener('dialog:close', this.closeDialogHandler);
+    this.workPackageForHandler = wp;
+  }
+
+  private handleDialogClose(event:CustomEvent<DialogCloseDetail>):void {
+    document.removeEventListener('dialog:close', this.closeDialogHandler);
+
+    const { detail: { dialog, submitted } } = event;
+    if (dialog.id === 'time-entry-dialog' && submitted) {
+      void this.apiV3Service.work_packages
+        .id(this.workPackageForHandler.id!)
+        .refresh();
+    }
   }
 }

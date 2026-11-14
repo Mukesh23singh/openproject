@@ -1,0 +1,49 @@
+---
+pt-PT:
+  are_you_sure_delete_avatar: Tem a certeza de que deseja apagar o seu avatar?
+  avatar_deleted: Avatar apagado com sucesso.
+  avatars:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Avatar personalizado
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar alterado com sucesso.
+    preview: Pré-visualização
+    randomize_color: Randomize color
+    settings:
+      enable_gravatars: Ativar Gravatars de utilizadores
+      enable_local_avatars: Ativar avatares personalizados de utilizador
+      gravatar_default: Imagem Gravatar predefinida
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Imagem
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Por favor carregue uma imagem válida (jpg, png, gif)
+  error_image_size: A imagem é demasiado grande.
+  error_image_upload: Erro ao guardar a imagem.
+  label_avatar: Avatar
+  label_avatar_plural: Avatares
+  label_choose_avatar: Escolher Avatar a partir de ficheiro
+  label_current_avatar: Avatar Atual
+  message_avatar_uploaded: Avatar alterado com sucesso.
+  plugin_openproject_avatars:
+    description: Este plugin permite aos utilizadores do OpenProject carregar uma imagem para ser utilizada como avatar ou utilizar imagens registadas do Gravatar.
+    name: Avatares
+  unable_to_delete_avatar: Não foi possível eliminar o avatar.
+  wrong_file_format: Os formatos permitidos são jpg, png, gif

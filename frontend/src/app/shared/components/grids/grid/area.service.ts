@@ -1,4 +1,32 @@
-import { Injectable } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { range } from 'lodash-es';
+import { Injectable, inject } from '@angular/core';
 import { GridWidgetArea } from 'core-app/shared/components/grids/areas/grid-widget-area';
 import { GridArea } from 'core-app/shared/components/grids/areas/grid-area';
 import { GridGap } from 'core-app/shared/components/grids/areas/grid-gap';
@@ -8,15 +36,35 @@ import { SchemaResource } from 'core-app/features/hal/resources/schema-resource'
 import { WidgetChangeset } from 'core-app/shared/components/grids/widgets/widget-changeset';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { BehaviorSubject } from 'rxjs';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { Apiv3GridForm } from 'core-app/core/apiv3/endpoints/grids/apiv3-grid-form';
+import { BehaviorSubject, firstValueFrom } from 'rxjs';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3GridForm } from 'core-app/core/apiv3/endpoints/grids/apiv3-grid-form';
+import { map } from 'rxjs/operators';
+
+interface GridWidgetPayload {
+  id:string;
+  [key:string]:unknown;
+}
+
+interface GridPatchPayload {
+  id:string;
+  widgets?:GridWidgetPayload[];
+  [key:string]:unknown;
+}
+
+type ScrollIntoViewIfNeededElement = HTMLElement&{ scrollIntoViewIfNeeded?:() => void };
 
 @Injectable()
 export class GridAreaService {
+  private apiV3Service = inject(ApiV3Service);
+  private toastService = inject(ToastService);
+  private i18n = inject(I18nService);
+
   private resource:GridResource;
 
   public schema:SchemaResource;
+
+  public $schema = new BehaviorSubject<SchemaResource|null>(null);
 
   public numColumns = 0;
 
@@ -24,7 +72,7 @@ export class GridAreaService {
 
   public gridAreas:GridArea[];
 
-  public gridGaps:GridArea[];
+  public gridGaps:GridGap[];
 
   public widgetAreas:GridWidgetArea[];
 
@@ -35,10 +83,6 @@ export class GridAreaService {
   public $mousedOverArea = new BehaviorSubject(this.mousedOverArea);
 
   public helpMode = false;
-
-  constructor(private apiV3Service:APIV3Service,
-    private toastService:ToastService,
-    private i18n:I18nService) { }
 
   public set gridResource(value:GridResource) {
     this.resource = value;
@@ -62,7 +106,7 @@ export class GridAreaService {
 
   public cleanupUnusedAreas() {
     // array containing Numbers from this.numRows to 1
-    let unusedRows = _.range(this.numRows, 0, -1);
+    let unusedRows = range(this.numRows, 0, -1);
 
     this.widgetAreas.forEach((widget) => {
       unusedRows = unusedRows.filter((item) => item !== widget.startRow);
@@ -74,7 +118,7 @@ export class GridAreaService {
       }
     });
 
-    let unusedColumns = _.range(this.numColumns, 0, -1);
+    let unusedColumns = range(this.numColumns, 0, -1);
 
     this.widgetAreas.forEach((widget) => {
       unusedColumns = unusedColumns.filter((item) => item !== widget.startColumn);
@@ -96,30 +140,51 @@ export class GridAreaService {
     }
   }
 
-  public rebuildAndPersist() {
-    this.persist();
+  public async rebuildAndPersist():Promise<GridResource> {
+    const resource = await this.persist();
     this.buildAreas(false);
+    return resource;
   }
 
   public persist() {
-    this.resource.rowCount = this.numRows = (this.widgetAreas.map((area) => area.endRow).sort((a, b) => a - b).pop() || 2) - 1;
+    this.numRows = (this.widgetAreas.map((area) => area.endRow).sort((a, b) => a - b).pop() || 2) - 1;
+    this.resource.rowCount = this.numRows;
     this.resource.columnCount = this.numColumns;
 
     this.writeAreaChangesToWidgets();
-
-    this.saveGrid(this.resource, this.schema);
+    return this.saveGrid(this.resource, this.schema);
   }
 
-  public saveWidgetChangeset(changeset:WidgetChangeset) {
-    const payload:any = Apiv3GridForm.extractPayload(this.resource, this.schema);
+  public async saveWidgetChangeset(changeset:WidgetChangeset):Promise<GridResource> {
+    const payload = ApiV3GridForm.extractPayload(this.resource, this.schema) as GridPatchPayload;
+    const gridId = this.resource.id;
 
-    const payloadWidget = payload.widgets.find((w:any) => w.id === changeset.pristineResource.id);
+    const payloadWidget = payload.widgets?.find((widget) => widget.id === changeset.pristineResource.id);
+
+    if (!payloadWidget) {
+      throw new Error(`Missing widget payload for ${changeset.pristineResource.id}`);
+    }
+
+    if (!gridId) {
+      throw new Error('Missing grid id');
+    }
+
     Object.assign(payloadWidget, changeset.changes);
 
-    // Adding the id so that the url can be deduced
-    payload.id = this.resource.id;
+    /* Special case for the initial creation of the MyPage with two widgets:
+     * Synchronously update the in-memory widget resource so that concurrent
+     * saveWidgetChangeset calls see the updated state before the async save completes.
+     * Without this, the second call reads stale widget options and overwrites the
+     * first widget's queryId/queryProps with the old values, permanently breaking it. */
+    const inMemoryWidget = this.resource.widgets.find((w) => w.id === changeset.pristineResource.id);
+    if (inMemoryWidget) {
+      Object.assign(inMemoryWidget, changeset.changes);
+    }
 
-    this.saveGrid(payload);
+    // Adding the id so that the url can be deduced
+    payload.id = gridId;
+
+    return this.saveGrid(payload);
   }
 
   public isGap(area:GridArea) {
@@ -143,22 +208,32 @@ export class GridAreaService {
   // But as scrollIntoView will always readjust the viewport, the result would be an unbearable flicker
   // which causes e.g. dragging to be impossible.
   public scrollPlaceholderIntoView() {
-    const placeholder = jQuery('.grid--area.-placeholder');
+    const placeholder = document.querySelector<ScrollIntoViewIfNeededElement>('.grid--area.-placeholder')!;
 
-    if ((placeholder[0] as any).scrollIntoViewIfNeeded) {
-      setTimeout(() => (placeholder[0] as any).scrollIntoViewIfNeeded());
+    if (placeholder.scrollIntoViewIfNeeded) {
+      setTimeout(() => placeholder.scrollIntoViewIfNeeded!());
     }
   }
 
-  private saveGrid(resource:GridWidgetResource|any, schema?:SchemaResource) {
-    this
+  private async saveGrid(resource:GridResource|GridPatchPayload, schema?:SchemaResource):Promise<GridResource> {
+    const subscription = this
       .apiV3Service
       .grids
       .id(resource)
       .patch(resource, schema)
-      .subscribe((updatedGrid) => {
-        this.assignAreasWidget(updatedGrid);
-        this.toastService.addSuccess(this.i18n.t('js.notice_successful_update'));
+      .pipe(
+        map((updatedGrid) => {
+          this.assignAreasWidget(updatedGrid);
+          this.toastService.addSuccess(this.i18n.t('js.notice_successful_update'));
+
+          return updatedGrid;
+        }),
+      );
+
+    return firstValueFrom(subscription)
+      .catch((error:unknown) => {
+        this.toastService.addError(error instanceof Error ? error.message : String(error));
+        throw error;
       });
   }
 
@@ -194,7 +269,7 @@ export class GridAreaService {
   }
 
   private buildGridGaps() {
-    const cells:GridArea[] = [];
+    const cells:GridGap[] = [];
 
     // special case where we want no gaps
     if (this.isSingleCell) {
@@ -272,10 +347,10 @@ export class GridAreaService {
       const widget = this
         .rowWidgets(row)
         .sort((a, b) => a.startColumn - b.startColumn)
-        .find((widget) => !(widget.startRow < excludeRow && widget.endRow > excludeRow)
-                     && (widget.startColumn === column + 1
-                      || widget.endColumn === column + 1
-                      || widget.startColumn <= column && widget.endColumn > column));
+        .find((w) => !(w.startRow < excludeRow && w.endRow > excludeRow)
+          && (w.startColumn === column + 1
+            || w.endColumn === column + 1
+            || (w.startColumn <= column && w.endColumn > column)));
 
       if (widget) {
         movedWidgets.push(widget);
@@ -300,10 +375,10 @@ export class GridAreaService {
       const widget = this
         .columnWidgets(column)
         .sort((a, b) => a.startRow - b.startRow)
-        .find((widget) => !(widget.startColumn < excludeColumn && widget.endColumn > excludeColumn)
-                     && (widget.startRow === row + 1
-                       || widget.endRow === row + 1
-                       || widget.startRow <= row && widget.endRow > row));
+        .find((w) => !(w.startColumn < excludeColumn && w.endColumn > excludeColumn)
+          && (w.startRow === row + 1
+            || w.endRow === row + 1
+            || (w.startRow <= row && w.endRow > row)));
 
       if (widget) {
         movedWidgets.push(widget);
@@ -354,7 +429,7 @@ export class GridAreaService {
   }
 
   public resetAreas(ignoredArea:GridWidgetArea|null = null) {
-    this.widgetAreas.filter((area) => !ignoredArea || area.guid !== ignoredArea.guid).forEach((area) => area.reset());
+    this.widgetAreas.filter((area) => area.guid !== ignoredArea?.guid).forEach((area) => area.reset());
 
     this.numRows = this.resource.rowCount;
     this.numColumns = this.resource.columnCount;
@@ -378,22 +453,24 @@ export class GridAreaService {
       .id(this.resource)
       .form
       .post({})
-      .subscribe((form) => this.schema = form.schema);
+      .subscribe((form) => {
+        this.schema = form.schema;
+        this.$schema.next(form.schema);
+      });
   }
 
-  public removeWidget(removedWidget:GridWidgetResource) {
+  public removeWidget(removedWidget:GridWidgetResource):Promise<GridResource> {
     let index = this.resource.widgets.findIndex((widget) => widget.id === removedWidget.id);
     this.resource.widgets.splice(index, 1);
 
     index = this.widgetAreas.findIndex((area) => area.widget.id === removedWidget.id);
     this.widgetAreas.splice(index, 1);
     this.cleanupUnusedAreas();
-
-    this.rebuildAndPersist();
+    return this.rebuildAndPersist();
   }
 
   public get widgetResources() {
-    return (this.resource && this.resource.widgets) || [];
+    return this.resource?.widgets || [];
   }
 
   private rowWidgets(row:number) {

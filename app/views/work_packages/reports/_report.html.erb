@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
@@ -36,10 +35,10 @@ See COPYRIGHT and LICENSE files for more details.
   <% column_names = report.statuses.map(&:name) + [t(:label_open_work_packages), t(:label_closed_work_packages), t(:label_total)] %>
   <div class="generic-table--container">
     <div class="generic-table--results-container">
-      <table class="generic-table">
+      <table class="generic-table" data-controller="table-highlighting">
         <colgroup>
-         <% column_names.each do |name| %>
-            <col opHighlightCol>
+         <% column_names.size.times do %>
+            <col>
           <% end %>
         </colgroup>
       <thead>
@@ -59,44 +58,54 @@ See COPYRIGHT and LICENSE files for more details.
         </tr>
       </thead>
       <tbody>
-        <% for row in report.rows %>
+        <% report.rows.each do |row| %>
           <tr>
             <td>
               <%= link_to h(row.name),
-                  project_report_property_path((row.is_a?(Project) ? row : @project),
-                                               "#{report.field}",
-                                               row.id) %>
+                          project_report_property_path(
+                            (row.is_a?(Project) ? row : @project),
+                            report.field.to_s,
+                            row.id
+                          ) %>
             </td>
-            <% for status in report.statuses %>
+            <% report.statuses.each do |status| %>
               <td>
                 <%= aggregate_link report.data,
-                         { report.field => row.id, "status_id" => status.id },
-                         project_report_property_status_path((row.is_a?(Project) ? row : @project),
-                                                             status.id,
-                                                             "#{report.field}",
-                                                             row.id) %>
+                                   { report.field => row.id, "status_id" => status.id },
+                                   project_report_property_status_path(
+                                     (row.is_a?(Project) ? row : @project),
+                                     status.id,
+                                     report.field.to_s,
+                                     row.id
+                                   ) %>
               </td>
             <% end %>
             <td>
               <%= aggregate_link report.data,
-                         { report.field => row.id, "closed" => 0 },
-                           project_report_property_open_path((row.is_a?(Project) ? row : @project),
-                                                             "#{report.field}",
-                                                             row.id) %>
+                                 { report.field => row.id, "closed" => 0 },
+                                 project_report_property_open_path(
+                                   (row.is_a?(Project) ? row : @project),
+                                   report.field.to_s,
+                                   row.id
+                                 ) %>
             </td>
             <td>
               <%= aggregate_link report.data,
-                         { report.field => row.id, "closed" => 1 },
-                           project_report_property_closed_path((row.is_a?(Project) ? row : @project),
-                                                               "#{report.field}",
-                                                               row.id) %>
+                                 { report.field => row.id, "closed" => 1 },
+                                 project_report_property_closed_path(
+                                   (row.is_a?(Project) ? row : @project),
+                                   report.field.to_s,
+                                   row.id
+                                 ) %>
             </td>
             <td align="center">
               <%= aggregate_link report.data,
-                         { report.field => row.id },
-                         project_report_property_path((row.is_a?(Project) ? row : @project),
-                                                                 "#{report.field}",
-                                                                 row.id) %>
+                                 { report.field => row.id },
+                                 project_report_property_path(
+                                   (row.is_a?(Project) ? row : @project),
+                                   report.field.to_s,
+                                   row.id
+                                 ) %>
             </td>
           </tr>
         <% end %>

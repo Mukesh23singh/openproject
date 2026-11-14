@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,32 +22,29 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class HighlightingController < ApplicationController
-  before_action :determine_freshness
   skip_before_action :check_if_login_required, only: [:styles]
+  no_authorization_required! :styles
 
   def styles
     response.content_type = Mime[:css]
     request.format = :css
+    cache_key = Highlighting::Registry.cache_key
 
     expires_in 1.year, public: true, must_revalidate: false
-    if stale?(last_modified: Time.zone.parse(@max_updated_at), etag: @highlight_version_tag, public: true)
-      OpenProject::Cache.fetch('highlighting/styles', @highlight_version_tag) do
-        render template: 'highlighting/styles', formats: [:css]
-      end
+    return unless stale?(etag: cache_key, public: true)
+
+    # The cached value has to be rendered explicitly. Rendering inside the block only
+    # populates the response on a miss, leaving a hit with nothing rendered at all.
+    css = OpenProject::Cache.fetch(["highlighting/styles", cache_key]) do
+      render_to_string template: "highlighting/styles", formats: [:css]
     end
-  end
 
-  private
-
-  def determine_freshness
-    @max_updated_at = helpers.highlight_css_updated_at.to_s || Time.now.iso8601
-    @highlight_version_tag = helpers.highlight_css_version_tag(@max_updated_at)
+    render plain: css, content_type: Mime[:css].to_s
   end
 end

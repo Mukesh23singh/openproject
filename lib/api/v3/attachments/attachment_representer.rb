@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module V3
@@ -53,13 +50,13 @@ module API
             next unless embed_links && container_representer
 
             container_representer
-              .new(represented.container, current_user: current_user)
+              .create(represented.container, current_user:)
           end
         end
 
         def self.associated_container_link
           ->(*) do
-            return nil unless v3_container_name == 'nil_class' || api_v3_paths.respond_to?(v3_container_name)
+            return nil unless v3_container_name == "nil_class" || api_v3_paths.respond_to?(v3_container_name)
 
             ::API::Decorators::LinkObject
               .new(represented,
@@ -81,13 +78,8 @@ module API
         end
 
         link :downloadLocation do
-          location = if represented.external_storage?
-                       represented.external_url
-                     else
-                       api_v3_paths.attachment_content(represented.id)
-                     end
           {
-            href: location
+            href: api_v3_paths.attachment_content(represented.id)
           }
         end
 
@@ -108,17 +100,18 @@ module API
         formattable_property :description,
                              plain: true
 
+        property :status
         property :content_type
         property :digest,
                  getter: ->(*) {
-                   ::API::Decorators::Digest.new(digest, algorithm: 'md5')
+                   ::API::Decorators::Digest.new(digest, algorithm: "md5")
                  },
                  render_nil: true
 
         date_time_property :created_at
 
         def _type
-          'Attachment'
+          "Attachment"
         end
 
         def container_representer
@@ -130,7 +123,9 @@ module API
         end
 
         def v3_container_name
-          ::API::Utilities::PropertyNameConverter.from_ar_name(represented.container.class.name.underscore).underscore
+          ar_name = represented.container.class.name.underscore
+
+          ::API::Utilities::PropertyNameConverter.from_ar_name_with_aliases(ar_name, "journal" => "activity").underscore
         end
 
         def container_title_attribute

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,81 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
-<%= toolbar title: t('ifc_models.label_new_ifc_model') %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { t("ifc_models.label_new_ifc_model") }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       { href: defaults_bcf_project_ifc_models_path(@project.identifier), text: I18n.t(:"bcf.label_bcf") },
+       { href: bcf_project_ifc_models_path(@project.identifier), text: I18n.t(:"ifc_models.label_ifc_models") },
+       t("ifc_models.label_new_ifc_model")]
+    )
+  end
+%>
 
-<%= labelled_tabular_form_for @ifc_model, url: bcf_project_ifc_models_path(@project), html: { multipart: true } do |f| -%>
-  <%= error_messages_for_contract @ifc_model, @errors %>
-  <%= render :partial => 'form', locals: { f: f } %>
-  <%= styled_button_tag t(:button_create), class: "-highlight -with-icon icon-checkmark" %>
+<% if OpenProject::Configuration.direct_uploads? %>
+  <%=
+    primer_form_with(
+      model: @ifc_model,
+      url: @form[:uri],
+      multipart: true,
+      authenticity_token: false,
+      data: {
+        controller: "bim--ifc-model-direct-upload",
+        "bim--ifc-model-direct-upload-set-default-model-url-value": set_direct_upload_default_value_bcf_project_ifc_models_path,
+        "bim--ifc-model-direct-upload-set-model-title-url-value": set_direct_upload_file_name_bcf_project_ifc_models_path
+      }
+    ) do |f|
+  %>
+    <% @form.except(:uri).each do |key, value| %>
+      <input type="hidden" name="<%= key %>" value="<%= value %>">
+    <% end %>
+
+    <%=
+      render_inline_form(f) do |form|
+        form.file_field(
+          name: :file,
+          scope_name_to_model: false,
+          id: "ifc-direct-upload-file-input",
+          label: Bim::IfcModels::IfcModel.human_attribute_name(:ifc_attachment),
+          accept: ".ifc",
+          required: true,
+          data: { action: "change->bim--ifc-model-direct-upload#setSessionModelTitle" }
+        )
+        form.check_box(
+          name: :is_default,
+          label: Bim::IfcModels::IfcModel.human_attribute_name(:is_default),
+          data: {
+            action: "change->bim--ifc-model-direct-upload#setSessionDefaultValue"
+          }
+        )
+        form.submit(name: :save, label: I18n.t(:button_create), scheme: :primary)
+      end
+    %>
+  <% end %>
+<% else %>
+  <%=
+    primer_form_with(
+      model: @ifc_model,
+      url: bcf_project_ifc_models_path(@project),
+      method: :post,
+      multipart: true
+    ) do |f|
+      render_inline_form(f) do |form|
+        form.file_field(
+          name: :ifc_attachment,
+          label: Bim::IfcModels::IfcModel.human_attribute_name(:ifc_attachment),
+          accept: ".ifc",
+          required: true
+        )
+        form.check_box(name: :is_default, label: Bim::IfcModels::IfcModel.human_attribute_name(:is_default))
+        form.submit(name: :save, label: I18n.t(:button_create), scheme: :primary)
+      end
+    end
+  %>
 <% end %>

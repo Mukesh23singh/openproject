@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,6 +35,7 @@ module API
               set_journable(journals)
               set_predecessor(journals)
               set_data(journals)
+              set_notifications(journals)
             end
 
             super
@@ -74,15 +72,35 @@ module API
             end
           end
 
-          def journable_by_type_and_id(journals)
-            journals.map(&:journable_type).uniq.each_with_object(Hash.new([])) do |class_name, hash|
-              hash[class_name] = class_name
-                                   .constantize
-                                   .where(id: journals.map(&:journable_id))
-                                   .includes(:project)
-                                   .group_by(&:id)
-                                   .transform_values(&:first)
+          def set_notifications(journals)
+            notifications = Notification
+              .where(journal_id: journals.map(&:id))
+              .where(read_ian: false)
+              .group_by(&:journal_id)
+
+            journals.each do |journal|
+              journal.instance_variable_set(
+                :@unread_notifications,
+                notifications[journal.id]
+              )
             end
+          end
+
+          def journable_by_type_and_id(journals)
+            journals
+              .group_by(&:journable_type)
+              .each_with_object({}) do |(journable_type, journable_type_journals), hash|
+                journable_ids = journable_type_journals.map(&:journable_id).uniq
+                hash[journable_type] = journable_type
+                                         .constantize
+                                         .where(id: journable_ids)
+                                         .includes(includes_for(journable_type))
+                                         .index_by(&:id)
+              end
+          end
+
+          def includes_for(journable_type)
+            journable_type == "Project" ? [:project_custom_field_project_mappings] : [:project]
           end
 
           def data_by_type_and_id(journals)
@@ -91,13 +109,12 @@ module API
             # * previous has already been loaded by #set_predecessor
             journals
               .group_by(&:data_type)
-              .each_with_object(Hash.new({})) do |(class_name, class_journals), hash|
-              hash[class_name] = class_name
-                                   .constantize
-                                   .find(data_ids(class_journals))
-                                   .group_by(&:id)
-                                   .transform_values(&:first)
-            end
+              .each_with_object({}) do |(data_type, data_type_journals), hash|
+                hash[data_type] = data_type
+                                    .constantize
+                                    .find(data_ids(data_type_journals))
+                                    .index_by(&:id)
+              end
           end
 
           def predecessors_by_type_and_id(journals)
@@ -121,19 +138,19 @@ module API
               .from(
                 <<~SQL.squish
                   (SELECT DISTINCT ON (predecessors.journable_type, predecessors.journable_id, current.version)
-                  predecessors.*
+                    predecessors.*
                   FROM
-                  #{Journal.arel_table.grouping(Arel::Nodes::ValuesList.new(current)).as('current(journable_type, journable_id, version)').to_sql}
+                    #{Journal.arel_table.grouping(Arel::Nodes::ValuesList.new(current)).as('current(journable_type, journable_id, version)').to_sql}
                   JOIN journals predecessors
-                  ON
-                  current.journable_type = predecessors.journable_type
-                  AND current.journable_id = predecessors.journable_id
-                  AND current.version > predecessors.version
+                    ON current.journable_type = predecessors.journable_type
+                    AND current.journable_id = predecessors.journable_id
+                    AND current.version > predecessors.version
                   ORDER BY predecessors.journable_type, predecessors.journable_id, current.version, predecessors.version DESC
                   ) AS journals
                 SQL
               )
-              .includes(:attachable_journals, :customizable_journals)
+              .includes(:attachable_journals, :customizable_journals, :storable_journals, :target_version_journals,
+                        :label_journals, :observed_in_version_journals)
           end
         end
       end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,9 +32,13 @@ FactoryBot.define do
     sequence(:subject) { |n| "Budget No. #{n}" }
     sequence(:description) { |n| "I am Budget No. #{n}" }
     project
-    association :author, factory: :user
-    fixed_date { Date.today }
+    author factory: :user
+    fixed_date { Date.current }
     created_at { 3.days.ago }
     updated_at { 3.days.ago }
+
+    trait :with_base_amount do
+      base_amount { BigDecimal(250_000) }
+    end
   end
 end

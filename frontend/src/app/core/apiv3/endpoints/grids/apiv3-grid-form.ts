@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,19 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { APIv3FormResource } from 'core-app/core/apiv3/forms/apiv3-form-resource';
+import { ApiV3FormResource } from 'core-app/core/apiv3/forms/apiv3-form-resource';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
 import { HalPayloadHelper } from 'core-app/features/hal/schemas/hal-payload.helper';
 import { GridWidgetResource } from 'core-app/features/hal/resources/grid-widget-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { GridResource } from 'core-app/features/hal/resources/grid-resource';
 
-export class Apiv3GridForm extends APIv3FormResource {
+export class ApiV3GridForm extends ApiV3FormResource {
   /**
    * We need to override the grid widget extraction
    * to pass the correct payload to the API.
@@ -40,9 +40,9 @@ export class Apiv3GridForm extends APIv3FormResource {
    * @param resource
    * @param schema
    */
-  public static extractPayload(resource:HalResource|Object, schema:SchemaResource|null = null):Object {
+  public static extractPayload(resource:HalResource|object, schema:SchemaResource|null = null):object {
     if (resource instanceof HalResource && schema) {
-      const grid = resource;
+      const grid = resource as GridResource;
       const payload = HalPayloadHelper.extractPayloadFromSchema(grid, schema);
 
       // The widget only states the type of the widget resource but does not explain
@@ -71,7 +71,7 @@ export class Apiv3GridForm extends APIv3FormResource {
    * @param request
    * @param schema
    */
-  public extractPayload(request:HalResource|Object, schema:SchemaResource|null = null) {
-    return Apiv3GridForm.extractPayload(request, schema);
+  public extractPayload(request:HalResource|object, schema:SchemaResource|null = null) {
+    return ApiV3GridForm.extractPayload(request, schema);
   }
 }

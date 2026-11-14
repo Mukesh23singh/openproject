@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,6 +38,8 @@ module OpenProject::TextFormatting
       def self.regexp
         %r{
         \{\{opSetting:(.+?)\}\}
+        |
+        https?://[^% ]+?/%7B%7BopSetting:(base_url)%7D%7D
         }x
       end
 
@@ -46,8 +47,8 @@ module OpenProject::TextFormatting
         return html unless applicable?
 
         html.gsub(self.class.regexp) do |matched_string|
-          variable = $1.to_s
-          variable.gsub!('\\', '')
+          variable = ($1.presence || $2.presence).dup
+          variable.delete!("\\")
 
           if ALLOWED_SETTINGS.include?(variable)
             send variable
@@ -64,13 +65,17 @@ module OpenProject::TextFormatting
       end
 
       def base_url
-        OpenProject::Application.root_url
+        url_helpers.root_url.chomp("/")
+      end
+
+      def url_helpers
+        @url_helpers ||= OpenProject::StaticRouting::StaticRouter.new.url_helpers
       end
 
       ##
       # Faster inclusion check before the regex is being applied
       def applicable?
-        html.include?('{{opSetting:')
+        html.include?("{{opSetting:") || html.include?("%7B%7BopSetting:")
       end
     end
   end

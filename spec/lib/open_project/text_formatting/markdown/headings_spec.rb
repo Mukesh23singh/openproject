@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './expected_markdown'
+require "spec_helper"
+require_relative "expected_markdown"
 
-describe OpenProject::TextFormatting,
-         'headings' do
-  include_context 'expected markdown modules'
+RSpec.describe OpenProject::TextFormatting,
+               "headings" do
+  include_context "expected markdown modules"
 
-  describe '.format_text' do
-    shared_examples_for 'bem heading' do |level|
-      it_behaves_like 'format_text produces' do
+  describe ".format_text" do
+    shared_examples_for "bem heading" do |level|
+      it_behaves_like "format_text produces" do
         let(:raw) do
           <<~RAW
             Some text before
@@ -49,9 +50,12 @@ describe OpenProject::TextFormatting,
         let(:expected) do
           <<~EXPECTED
             <p class="op-uc-p">Some text before</p>
-            <h#{level} class="op-uc-h#{level}" id="the-heading">
+            <h#{level} class="op-uc-h#{level}" id="op-frag-the-heading">
               the heading
-              <a class="op-uc-link_permalink icon-link op-uc-link" aria-hidden="true" href="#the-heading"></a>
+              <a class="op-uc-link_permalink icon-link op-uc-link"
+                 aria-hidden="true"
+                 href="#op-frag-the-heading"
+                 rel="noopener noreferrer nofollow"></a>
             </h#{level}>
             <p class="op-uc-p">more text</p>
           EXPECTED
@@ -59,16 +63,16 @@ describe OpenProject::TextFormatting,
       end
     end
 
-    it_behaves_like 'bem heading', 1
-    it_behaves_like 'bem heading', 2
-    it_behaves_like 'bem heading', 3
-    it_behaves_like 'bem heading', 4
-    it_behaves_like 'bem heading', 5
-    it_behaves_like 'bem heading', 6
+    it_behaves_like "bem heading", 1
+    it_behaves_like "bem heading", 2
+    it_behaves_like "bem heading", 3
+    it_behaves_like "bem heading", 4
+    it_behaves_like "bem heading", 5
+    it_behaves_like "bem heading", 6
 
-    context 'with the heading being in a code bock' do
-      shared_examples_for 'unchanged heading' do |level|
-        it_behaves_like 'format_text produces' do
+    context "with the heading being in a code bock" do
+      shared_examples_for "unchanged heading" do |level|
+        it_behaves_like "format_text produces" do
           let(:raw) do
             <<~RAW
               Some text before
@@ -97,25 +101,28 @@ describe OpenProject::TextFormatting,
         end
       end
 
-      it_behaves_like 'unchanged heading', 1
-      it_behaves_like 'unchanged heading', 2
-      it_behaves_like 'unchanged heading', 3
-      it_behaves_like 'unchanged heading', 4
-      it_behaves_like 'unchanged heading', 5
-      it_behaves_like 'unchanged heading', 6
+      it_behaves_like "unchanged heading", 1
+      it_behaves_like "unchanged heading", 2
+      it_behaves_like "unchanged heading", 3
+      it_behaves_like "unchanged heading", 4
+      it_behaves_like "unchanged heading", 5
+      it_behaves_like "unchanged heading", 6
     end
 
-    context 'with the heading being a date (number and backslash)' do
-      it_behaves_like 'format_text produces' do
+    context "with the heading being a date (number and backslash)" do
+      it_behaves_like "format_text produces" do
         let(:raw) do
           '# 2009\02\09'
         end
 
         let(:expected) do
-          <<~EXPECTED.strip_heredoc
-            <h1 class="op-uc-h1" id="20090209">
+          <<~EXPECTED
+            <h1 class="op-uc-h1" id="op-frag-20090209">
               2009\\02\\09
-              <a class="op-uc-link_permalink icon-link op-uc-link" href="#20090209" aria-hidden="true"></a>
+              <a class="op-uc-link_permalink icon-link op-uc-link"
+                 href="#op-frag-20090209"
+                 aria-hidden="true"
+                 rel="noopener noreferrer nofollow"></a>
             </h1>
           EXPECTED
         end

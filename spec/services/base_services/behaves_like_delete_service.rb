@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples 'BaseServices delete service' do
+RSpec.shared_examples "BaseServices delete service" do
   subject(:service_call) { instance.call(call_attributes) }
 
   let(:service_class) { described_class }
@@ -51,12 +52,12 @@ shared_examples 'BaseServices delete service' do
   end
   let(:factory) { namespace.singularize.underscore }
 
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:user) { build_stubbed(:user) }
   let(:instance) do
-    described_class.new(user: user, model: model_instance, contract_class: contract_class)
+    described_class.new(user:, model: model_instance, contract_class:)
   end
   let(:call_attributes) { {} }
-  let!(:model_instance) { FactoryBot.build_stubbed(factory) }
+  let!(:model_instance) { build_stubbed(factory) }
 
   let(:model_destroy_result) { true }
   let(:contract_validate_result) { true }
@@ -66,48 +67,48 @@ shared_examples 'BaseServices delete service' do
     allow(model_instance).to receive(:destroy).and_return(model_destroy_result)
   end
 
-  describe '#contract' do
-    it 'uses the DestroyContract contract' do
+  describe "#contract" do
+    it "uses the DestroyContract contract" do
       expect(instance.contract_class).to eql contract_class
     end
   end
 
-  describe '#call' do
-    context 'when contract validates and the model is destroyed successfully' do
-      it 'is successful' do
+  describe "#call" do
+    context "when contract validates and the model is destroyed successfully" do
+      it "is successful" do
         expect(subject).to be_success
       end
 
-      it 'returns the destroyed model as a result' do
+      it "returns the destroyed model as a result" do
         result = subject.result
         expect(result).to eql model_instance
       end
     end
 
-    context 'when contract does not validate' do
+    context "when contract does not validate" do
       let(:contract_validate_result) { false }
 
-      it 'is unsuccessful' do
+      it "is unsuccessful" do
         expect(subject).to be_failure
       end
 
-      it 'returns the contract errors' do
+      it "returns the contract errors" do
         expect(subject.errors)
           .to eql contract_errors
       end
     end
 
-    context 'when model cannot be destroyed' do
+    context "when model cannot be destroyed" do
       let(:model_destroy_result) { false }
       let(:model_errors) { ActiveModel::Errors.new(model_instance) }
 
-      it 'is unsuccessful' do
+      it "is unsuccessful" do
         expect(subject)
           .to be_failure
       end
 
       it "returns the user's errors" do
-        model_errors.add :base, 'This is some error.'
+        model_errors.add :base, "This is some error."
 
         allow(model_instance)
           .to(receive(:errors))

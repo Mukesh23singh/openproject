@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,66 +20,81 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { StateService } from '@uirouter/core';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { WorkPackageAction } from 'core-app/features/work-packages/components/wp-table/context-menu-helper/wp-context-menu-helper.service';
+import { HalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
 
 export class WorkPackageAuthorization {
-  public project:any;
+  public project:ProjectResource;
 
   constructor(public workPackage:WorkPackageResource,
-    readonly PathHelper:PathHelperService,
-    readonly $state:StateService) {
-    this.project = workPackage.project;
+    readonly PathHelper:PathHelperService) {
+    this.project = workPackage.project as ProjectResource;
   }
 
-  public get allActions():any {
-    return {
-      workPackage: this.workPackage,
-      project: this.project,
-    };
-  }
-
-  public copyLink() {
-    const stateName = this.$state.current.name as string;
-    if (stateName.indexOf('work-packages.partitioned.list.details') === 0) {
-      return this.PathHelper.workPackageDetailsCopyPath(this.project.identifier, this.workPackage.id!);
+  public linkForAction(action:WorkPackageAction):WorkPackageAction {
+    let link:string;
+    switch (action.key) {
+      case 'copy':
+        link = this.copyLink();
+        break;
+      case 'copy_link_to_clipboard':
+        link = this.shortLink();
+        break;
+      case 'view_markdown':
+        link = this.shortLink({ format: 'md' });
+        break;
+      case 'copy_alphanumeric_id_to_clipboard':
+        link = this.workPackage.displayId;
+        break;
+      case 'copy_to_other_project':
+        link = this.bulkCopyLink();
+        break;
+      case 'log_time':
+        link = this.PathHelper.timeEntryWorkPackageDialog(this.workPackage.id!);
+        break;
+      default:
+        link = (this.workPackage[action.link!] as HalLink).href!;
     }
-    return this.PathHelper.workPackageCopyPath(this.workPackage.id!);
+
+    return { ...action, link };
   }
 
-  public linkForAction(action:any) {
-    if (action.key === 'copy') {
-      action.link = this.copyLink();
-    } else {
-      action.link = this.allActions[action.resource][action.link].href;
+  public isPermitted(action:WorkPackageAction):boolean {
+    return this.workPackage[action.link!] !== undefined;
+  }
+
+  public permittedActionKeys(allowedActions:WorkPackageAction[]):string[] {
+    return allowedActions
+      .filter((action) => this.isPermitted(action))
+      .map((action) => action.key);
+  }
+
+  public permittedActionsWithLinks(allowedActions:WorkPackageAction[]):WorkPackageAction[] {
+    return allowedActions
+      .filter((action) => this.isPermitted(action))
+      .map((action) => this.linkForAction(action));
+  }
+
+  private copyLink() {
+    if (window.location.pathname.includes('/details/')) {
+      return this.PathHelper.workPackageDetailsCopyPath(this.project.identifier, this.workPackage.displayId);
     }
-
-    return action;
+    return this.PathHelper.workPackageCopyPath(this.project.identifier, this.workPackage.displayId);
   }
 
-  public isPermitted(action:any) {
-    return this.allActions[action.resource] !== undefined
-      && this.allActions[action.resource][action.link] !== undefined;
+  private shortLink(options?:{ format?:string }) {
+    return this.PathHelper.workPackageShortPath(this.workPackage.displayId, options);
   }
 
-  public permittedActionKeys(allowedActions:any) {
-    const validActions = _.filter(allowedActions, (action:any) => this.isPermitted(action));
-
-    return _.map(validActions, (action:any) => action.key);
-  }
-
-  public permittedActionsWithLinks(allowedActions:any) {
-    const validActions = _.filter(_.cloneDeep(allowedActions), (action:any) => this.isPermitted(action));
-
-    const allowed = _.map(validActions, (action:any) => this.linkForAction(action));
-
-    return allowed;
+  private bulkCopyLink():string {
+    return `${this.PathHelper.staticBase}/work_packages/move/new?copy=true&ids[]=${this.workPackage.id!}`;
   }
 }

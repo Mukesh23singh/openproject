@@ -1,0 +1,82 @@
+<%#-- copyright
+OpenProject is an open source project management software.
+Copyright (C) the OpenProject GmbH
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License version 3.
+
+OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+Copyright (C) 2006-2013 Jean-Philippe Lang
+Copyright (C) 2010-2013 the ChiliProject Team
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2
+of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+See COPYRIGHT and LICENSE files for more details.
+
+++#%>
+
+<% html_title t(:label_administration), t(:label_github_integration), t(:label_deploy_target_new) %>
+
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { t(:label_deploy_target_new) }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: deploy_targets_path, text: t(:label_github_integration) },
+       t(:label_deploy_target_new)]
+    )
+  end
+%>
+
+<%=
+  settings_primer_form_with(model: @deploy_target, url: deploy_targets_path) do |f|
+    render_inline_settings_form(f) do |form|
+      form.object.text_field(
+        name: :host,
+        label: t("attributes.host"),
+        value: @deploy_target.host,
+        disabled: false,
+        required: true,
+        input_width: :medium
+      )
+
+      form.select_list(
+        name: :type,
+        label: t("attributes.type"),
+        required: true,
+        disabled: true,
+        input_width: :small,
+        caption: t(:text_deploy_target_type_info)
+      ) do |list|
+        list.option(value: "OpenProject", label: "OpenProject", selected: true)
+      end
+
+      # This field is specific to the only type of DeployTarget we support for now, which is OpenProject.
+      form.object.text_field(
+        name: :api_key,
+        label: t("attributes.api_key"),
+        value: @deploy_target.api_key,
+        disabled: false,
+        required: true,
+        input_width: :large,
+        caption: link_translate(
+          :text_deploy_target_api_key_info,
+          links: { docs_url: %i[api authentication_basic_auth] }
+        )
+      )
+
+      form.submit(label: I18n.t(:button_save))
+    end
+  end
+%>

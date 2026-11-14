@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,11 +31,12 @@ class Admin::BackupsController < ApplicationController
   include PasswordConfirmation
   include ActionView::Helpers::TagHelper
   include BackupHelper
+  include OpTurbo::ComponentStream
 
-  layout 'admin'
+  layout "admin"
 
   before_action :check_enabled
-  before_action :require_admin
+  before_action :authorize_global
 
   before_action :check_password_confirmation, only: %i[perform_token_reset]
 
@@ -47,17 +47,31 @@ class Admin::BackupsController < ApplicationController
     last_backup = find_backup user: current_user
 
     if last_backup
-      @job_status_id = last_backup.job_status.job_id
       @last_backup_date = format_time(last_backup.updated_at)
       @last_backup_attachment_id = last_backup.attachments.first&.id
     end
 
-    @may_include_attachments = may_include_attachments? ? "true" : "false"
+    @may_include_attachments = may_include_attachments?
   end
 
-  def reset_token
-    @backup_token = Token::Backup.find_by user: current_user
+  def reset_token_dialog
+    @backup_token = Token::Backup.find_by(user: current_user)
     @user = current_user
+    respond_with_dialog Admin::Backups::ResetTokenDialogComponent.new(user: @user, backup_token: @backup_token)
+  end
+
+  def request_backup
+    call = ::Backups::CreateService.new(
+      user: current_user,
+      backup_token: params[:backup_token],
+      include_attachments: params[:include_attachments] == "1"
+    ).call
+
+    if call.success?
+      show_backup_job_dialog(call.result)
+    else
+      backup_request_failed!(call)
+    end
   end
 
   def perform_token_reset
@@ -67,23 +81,16 @@ class Admin::BackupsController < ApplicationController
   rescue StandardError => e
     token_reset_failed! e
   ensure
-    redirect_to action: 'show'
+    redirect_to action: "show"
   end
 
   def delete_token
+    destroy_user_backups!
     Token::Backup.where(user: current_user).destroy_all
 
     flash[:info] = t("backup.text_token_deleted")
 
-    redirect_to action: 'show'
-  end
-
-  def default_breadcrumb
-    t(:label_backup)
-  end
-
-  def show_local_breadcrumb
-    true
+    redirect_to action: "show"
   end
 
   def check_enabled
@@ -95,8 +102,15 @@ class Admin::BackupsController < ApplicationController
   def find_backup(status: :success, user: current_user)
     Backup
       .joins(:job_status)
-      .where(job_status: { user: user, status: status })
+      .where(job_status: { user:, status: })
       .last
+  end
+
+  def destroy_user_backups!
+    Backup
+      .joins(:job_status)
+      .where(job_status: { user: current_user })
+      .destroy_all
   end
 
   def token_reset_successful!(token)
@@ -107,16 +121,27 @@ class Admin::BackupsController < ApplicationController
 
   def token_reset_flash_message(token)
     [
-      t('my.access_token.notice_reset_token', type: 'Backup').html_safe,
+      t("my.access_token.notice_reset_token", type: "Backup"),
       content_tag(:strong, token.plain_value),
-      t('my.access_token.token_value_warning')
+      t("my.access_token.token_value_warning")
     ]
   end
 
-  def token_reset_failed!(e)
-    Rails.logger.error "Failed to reset user ##{current_user.id}'s Backup key: #{e}"
+  def show_backup_job_dialog(backup)
+    respond_with_dialog ::JobStatus::Dialog::DialogComponent.new(
+      job_uuid: backup.job_status.job_id
+    )
+  end
 
-    flash[:error] = t('my.access_token.failed_to_reset_token', error: e.message)
+  def backup_request_failed!(call)
+    flash[:error] = call.errors.full_messages.join(", ")
+    redirect_to action: "show"
+  end
+
+  def token_reset_failed!(error)
+    Rails.logger.error "Failed to reset user ##{current_user.id}'s Backup token: #{error}"
+
+    flash[:error] = t("my.access_token.failed_to_reset_token", error: error.message)
   end
 
   def may_include_attachments?

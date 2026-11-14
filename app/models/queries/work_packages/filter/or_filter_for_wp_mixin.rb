@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -46,19 +45,19 @@ module Queries::WorkPackages::Filter::OrFilterForWpMixin
   end
 
   def where
-    filters.map(&:where).join(' OR ')
+    filters.map(&:where).join(" OR ")
   end
 
   def filter_configurations
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   def create_instances
     filter_configurations.map do |conf|
       conf.filter_class.create!(name: conf.filter_name,
-                                context: context,
+                                context:,
                                 operator: conf.operator,
-                                values: values)
+                                values:)
     end
   end
 

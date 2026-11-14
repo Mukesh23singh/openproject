@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -52,15 +51,13 @@ class CustomValue::BoolStrategy < CustomValue::FormatStrategy
   end
 
   def parse_value(val)
-    parsed_val = if !present?(val)
-                   nil
-                 elsif ActiveRecord::Type::Boolean::FALSE_VALUES.include?(val)
-                   OpenProject::Database::DB_VALUE_FALSE
-                 else
-                   OpenProject::Database::DB_VALUE_TRUE
-                 end
-
-    super(parsed_val)
+    if !present?(val)
+      nil
+    elsif ActiveRecord::Type::Boolean::FALSE_VALUES.include?(val)
+      OpenProject::Database::DB_VALUE_FALSE
+    else
+      OpenProject::Database::DB_VALUE_TRUE
+    end
   end
 
   def validate_type_of_value; end
@@ -70,6 +67,6 @@ class CustomValue::BoolStrategy < CustomValue::FormatStrategy
   def present?(val)
     # can't use :blank? safely, because false.blank? == true
     # can't use :present? safely, because false.present? == false
-    !val.nil? && val != ''
+    !val.nil? && val != ""
   end
 end

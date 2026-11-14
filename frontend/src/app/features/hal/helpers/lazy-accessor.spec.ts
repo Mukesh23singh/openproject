@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -37,51 +36,59 @@ describe('lazy service', () => {
 
   it('should add a property with the given name to the object', () => {
     const obj:any = {
-      prop: void 0,
+      prop: undefined,
     };
     lazy(obj, 'prop', () => '');
+
     expect(obj.prop).toBeDefined();
   });
 
   it('should add an enumerable property', () => {
     const obj:any = {
-      prop: void 0,
+      prop: undefined,
     };
     lazy(obj, 'prop', () => '');
-    expect(obj.propertyIsEnumerable('prop')).toBeTruthy();
+
+    expect(Object.prototype.propertyIsEnumerable.call(obj, 'prop')).toBeTruthy();
   });
 
   it('should add a configurable property', () => {
     const obj:any = {
-      prop: void 0,
+      prop: undefined,
     };
     lazy(obj, 'prop', () => '');
+
     expect((Object as any).getOwnPropertyDescriptor(obj, 'prop').configurable).toBeTruthy();
   });
 
   it('should set the value of the property provided by the setter', () => {
     const obj:any = {
-      prop: void 0,
+      prop: undefined,
     };
     lazy(obj, 'prop', () => '', (val:any) => val);
     obj.prop = 'hello';
+
     expect(obj.prop).toEqual('hello');
   });
 
   it('should not be settable, if no setter is provided', () => {
     const obj:any = {
-      prop: void 0,
+      prop: undefined,
     };
     lazy(obj, 'prop', () => '');
     try {
       obj.prop = 'hello';
-    } catch (Error) {}
+    } catch {
+      /**/
+    }
+
     expect(obj.prop).not.toEqual('hello');
   });
 
   it('should do nothing if the target is not an object', () => {
     const obj:any = null;
     lazy(obj, 'prop', () => '');
+
     expect(obj).toBeNull();
   });
 });

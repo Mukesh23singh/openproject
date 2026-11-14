@@ -1,57 +1,82 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { HighlightingRenderPass } from 'core-app/features/work-packages/components/wp-fast-table/builders/highlighting/row-highlight-render-pass';
 import { DragDropHandleRenderPass } from 'core-app/features/work-packages/components/wp-fast-table/builders/drag-and-drop/drag-drop-handle-render-pass';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { States } from 'core-app/core/states/states.service';
 import { timeOutput } from 'core-app/shared/helpers/debug_output';
 import { TimelineRenderPass } from './timeline/timeline-render-pass';
 import { SingleRowBuilder } from './rows/single-row-builder';
-import { RelationRenderInfo, RelationsRenderPass } from './relations/relations-render-pass';
+import { RelationsRenderPass } from './relations/relations-render-pass';
 import { WorkPackageTable } from '../wp-fast-table';
+import {
+  ChildRelationsRenderPass,
+} from 'core-app/features/work-packages/components/wp-fast-table/builders/relations/child-relations-render-pass';
+import invariant from 'tiny-invariant';
+import {
+  type DraftOccurrence,
+  type OccurrenceKey,
+  type RenderDraft,
+  type RenderedOccurrence,
+  placeholderOccurrenceKey,
+  wpOccurrenceKey,
+} from 'core-app/features/work-packages/components/wp-fast-table/rendered-occurrence-ledger';
 
-export type RenderedRowType = 'primary'|'relations';
-
-export interface RowRenderInfo {
-  // The rendered row
-  element:HTMLTableRowElement;
-  // Unique class name as an identifier to uniquely identify the row in both table and timeline
-  classIdentifier:string;
-  // Additional classes to be added by any secondary render passes
-  additionalClasses:string[];
-  // If this row is a work package, contains a reference to the rendered WP
-  workPackage:WorkPackageResource|null;
-  // If this is an additional row not present, this contains a reference to the WP
-  // it originated from
-  belongsTo?:WorkPackageResource;
-  // The type of row this was rendered from
-  renderType:RenderedRowType;
-  // Marks if the row is currently hidden to the user
-  hidden:boolean;
-  // Additional data by the render passes
-  data?:any;
+export interface RenderPassOptions {
+  timeline:boolean;
 }
 
 export abstract class PrimaryRenderPass {
-  @InjectField() halEditing:HalResourceEditingService;
+  @LazyInject() halEditing:HalResourceEditingService;
 
-  @InjectField() states:States;
+  @LazyInject() states:States;
 
-  @InjectField() I18n!:I18nService;
+  @LazyInject() I18n!:I18nService;
 
-  /** The rendered order of rows of work package IDs or <null>, if not a work package row */
-  public renderedOrder:RowRenderInfo[];
+  public draft:RenderDraft;
+
+  private withTimeline = false;
 
   /** Resulting table body */
   public tableBody:DocumentFragment;
 
   /** Additional render pass that handles timeline rendering */
-  public timeline:TimelineRenderPass;
+  public timeline:TimelineRenderPass|null = null;
 
   /** Additional render pass that handles table relation rendering */
   public relations:RelationsRenderPass;
+
+  /** Additional render pass that handles table child relation rendering */
+  public childRelations:ChildRelationsRenderPass;
 
   /** Additional render pass that handles drag'n'drop handle rendering */
   public dragDropHandle:DragDropHandleRenderPass;
@@ -59,9 +84,11 @@ export abstract class PrimaryRenderPass {
   /** Additional render pass that handles highlighting of rows */
   public highlighting:HighlightingRenderPass;
 
-  constructor(public readonly injector:Injector,
+  constructor(
+public readonly injector:Injector,
     public workPackageTable:WorkPackageTable,
-    public rowBuilder:SingleRowBuilder) {
+    public rowBuilder:SingleRowBuilder,
+) {
   }
 
   /**
@@ -69,7 +96,8 @@ export abstract class PrimaryRenderPass {
    * for timeline and relations.
    * @return {PrimaryRenderPass}
    */
-  public render():this {
+  public render({ timeline }:RenderPassOptions):this {
+    this.withTimeline = timeline;
     timeOutput('Primary render pass', () => {
       // Prepare and reset the render pass
       this.prepare();
@@ -87,6 +115,7 @@ export abstract class PrimaryRenderPass {
 
     timeOutput('Relations render pass', () => {
       this.relations.render();
+      this.childRelations.render();
     });
 
     timeOutput('Drag handle render pass', () => {
@@ -94,69 +123,69 @@ export abstract class PrimaryRenderPass {
     });
 
     // Synchronize the rows to timeline
-    timeOutput('Timelines render pass', () => {
-      this.timeline.render();
-    });
+    const timelinePass = this.timeline;
+    if (timelinePass) {
+      timeOutput('Timelines render pass', () => timelinePass.render());
+    }
 
     return this;
   }
 
-  /**
-   * Refresh a single row using the render pass it was originally created from.
-   * @param row
-   */
-  public refresh(row:RowRenderInfo, workPackage:WorkPackageResource, body:HTMLElement) {
-    const oldRow = jQuery(body).find(`.${row.classIdentifier}`);
-    let replacement:JQuery|null = null;
-
-    switch (row.renderType) {
-      case 'primary':
-        replacement = this.rowBuilder.refreshRow(workPackage, oldRow);
-        break;
-      case 'relations':
-        replacement = this.relations.refreshRelationRow(row as RelationRenderInfo, workPackage, oldRow);
+  public refresh(occurrence:RenderedOccurrence, workPackage:WorkPackageResource):HTMLTableRowElement|null {
+    const oldRow = occurrence.element;
+    if (!oldRow) {
+      return null;
     }
 
-    if (replacement !== null && oldRow.length) {
+    const replacement = this.refreshedRow(occurrence, workPackage, oldRow);
+    if (replacement !== oldRow) {
       oldRow.replaceWith(replacement);
+      replacement.dataset.occurrenceKey = occurrence.key;
+    }
+    if (occurrence.renderType === 'primary') this.highlighting.refreshRow(replacement, workPackage);
+
+    return replacement;
+  }
+
+  private refreshedRow(
+    occurrence:RenderedOccurrence,
+    workPackage:WorkPackageResource,
+    oldRow:HTMLTableRowElement,
+  ):HTMLTableRowElement {
+    switch (occurrence.renderType) {
+      case 'relations':
+        return this.relations.refreshRelationRow(occurrence, workPackage, oldRow);
+      case 'child_relations':
+        return this.childRelations.refreshRelationRow(occurrence, workPackage, oldRow);
+      default:
+        return this.rowBuilder.refreshRow(workPackage, oldRow, occurrence.level - 1);
     }
   }
 
-  public get result():RenderedWorkPackage[] {
-    return this.renderedOrder.map((row) => ({
-      classIdentifier: row.classIdentifier,
-      workPackageId: row.workPackage ? row.workPackage.id : null,
-      hidden: row.hidden,
-    }));
-  }
-
   /**
-   * Splice a row into a specific location of the current render pass through the given selector.
-   *
-   * 1. Insert into the document fragment after the last match of the selector
-   * 2. Splice into the renderedOrder array.
+   * Splice a row into the current render pass after the last row matching the given selector.
    */
-  public spliceRow(row:HTMLElement, selector:string, renderedInfo:RowRenderInfo) {
-    // Insert into table using the selector
-    // If it matches multiple, select the last element
-    const target = jQuery(this.tableBody)
-      .find(selector)
-      .last();
+  public spliceRow(row:HTMLTableRowElement, selector:string, occurrence:Omit<DraftOccurrence, 'element'>) {
+    const matches = this.tableBody.querySelectorAll<HTMLTableRowElement>(selector);
+    invariant(matches.length, `No matches found for selector: ${selector}`);
 
-    target.after(row);
+    const target = matches[matches.length - 1];
+    const targetKey = target.dataset.occurrenceKey;
+    invariant(targetKey, `Splice target matched by ${selector} carries no occurrence key`);
 
-    // Splice the renderedOrder at this exact location
-    const index = target.index();
-    this.renderedOrder.splice(index + 1, 0, renderedInfo);
+    target.parentNode!.insertBefore(row, target.nextSibling);
+    row.dataset.occurrenceKey = occurrence.key;
+    this.draft.spliceAfter(targetKey, { ...occurrence, element: row });
   }
 
   protected prepare() {
-    this.timeline = new TimelineRenderPass(this.injector, this.workPackageTable, this);
+    this.timeline = this.withTimeline ? new TimelineRenderPass(this.injector, this.workPackageTable, this) : null;
     this.relations = new RelationsRenderPass(this.injector, this.workPackageTable, this);
+    this.childRelations = new ChildRelationsRenderPass(this.injector, this.workPackageTable, this);
     this.dragDropHandle = new DragDropHandleRenderPass(this.injector, this.workPackageTable, this);
     this.highlighting = new HighlightingRenderPass(this.injector, this.workPackageTable, this);
     this.tableBody = document.createDocumentFragment();
-    this.renderedOrder = [];
+    this.draft = this.workPackageTable.ledger.beginRender(this.withTimeline);
   }
 
   /**
@@ -168,8 +197,18 @@ export abstract class PrimaryRenderPass {
    * Post render shared among all sub passes
    */
   protected postRender():void {
-    if (this.renderedOrder.length === 0 && this.workPackageTable.renderPlaceholderRow) {
-      this.tableBody.appendChild(this.rowBuilder.placeholderRow);
+    if (this.draft.occurrences.length === 0 && this.workPackageTable.renderPlaceholderRow) {
+      this.registerAppended(this.rowBuilder.placeholderRow, {
+        key: placeholderOccurrenceKey(),
+        kind: 'placeholder',
+        classIdentifier: 'wp--placeholder-row',
+        additionalClasses: [],
+        workPackage: null,
+        workPackageId: null,
+        renderType: 'primary',
+        hidden: false,
+        level: 1,
+      });
     }
   }
 
@@ -180,42 +219,60 @@ export abstract class PrimaryRenderPass {
    * @param rowClasses Additional classes to apply to the timeline row for mirroring purposes
    * @param hidden whether the row was rendered hidden
    */
-  protected appendRow(workPackage:WorkPackageResource,
+  protected appendRow(
+workPackage:WorkPackageResource,
     row:HTMLTableRowElement,
     additionalClasses:string[] = [],
-    hidden = false) {
-    this.tableBody.appendChild(row);
-
-    this.renderedOrder.push({
+    hidden = false,
+    level = 1,
+) {
+    this.registerAppended(row, {
+      key: wpOccurrenceKey(workPackage.id!),
+      kind: 'workPackage',
       classIdentifier: this.rowBuilder.classIdentifier(workPackage),
       additionalClasses,
       workPackage,
+      workPackageId: workPackage.id!,
       renderType: 'primary',
-      element: row,
       hidden,
+      level,
     });
   }
 
   /**
    * Append a non-work package row to both containers
    * @param row HTMLElement to append
-   * @param classIdentifer a unique identifier for the two rows (one each in table/timeline).
+   * @param classIdentifier a unique identifier for the two rows (one each in table/timeline).
    * @param hidden whether the row was rendered hidden
    */
-  protected appendNonWorkPackageRow(row:HTMLTableRowElement,
-    classIdentifer:string,
+  protected appendNonWorkPackageRow(
+    key:OccurrenceKey,
+    kind:'groupHeader'|'sums',
+    row:HTMLTableRowElement,
+    classIdentifier:string,
     additionalClasses:string[] = [],
-    hidden = false) {
-    row.classList.add(classIdentifer);
-    this.tableBody.appendChild(row);
-
-    this.renderedOrder.push({
-      element: row,
-      classIdentifier: classIdentifer,
+    hidden = false,
+    groupIdentifier?:string,
+    level = 1,
+  ) {
+    row.classList.add(classIdentifier);
+    this.registerAppended(row, {
+      key,
+      kind,
+      classIdentifier,
       additionalClasses,
       workPackage: null,
+      workPackageId: null,
       renderType: 'primary',
       hidden,
+      level,
+      groupIdentifier,
     });
+  }
+
+  protected registerAppended(row:HTMLTableRowElement, occurrence:Omit<DraftOccurrence, 'element'>) {
+    this.tableBody.appendChild(row);
+    row.dataset.occurrenceKey = occurrence.key;
+    this.draft.append({ ...occurrence, element: row });
   }
 }

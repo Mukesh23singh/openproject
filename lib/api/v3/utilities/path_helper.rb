@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -43,44 +42,54 @@ module API
             path ||= plural_name
 
             define_singleton_method(plural_name) do
-              "#{root}/#{path}"
+              RequestStore.store[:"cached_#{plural_name}"] ||= "#{root}/#{path}"
             end
           end
+
           private_class_method :index
 
-          def self.show(name)
-            define_singleton_method(name) { |id| build_path(name, id) }
+          def self.show(name, path = name)
+            define_singleton_method(name) { |id| build_path(path, id) }
           end
+
           private_class_method :show
 
           def self.create_form(name)
-            define_singleton_method(:"create_#{name}_form") { build_path(name, "form") }
+            define_singleton_method(:"create_#{name}_form") do
+              RequestStore.store[:"cached_create_#{name}_form"] ||= build_path(name, "form")
+            end
           end
+
           private_class_method :create_form
 
           def self.update_form(name)
             define_singleton_method(:"#{name}_form") { |id| build_path(name, id, "form") }
           end
+
           private_class_method :update_form
 
           def self.schema(name)
-            define_singleton_method(:"#{name}_schema") { build_path(name, "schema") }
+            define_singleton_method(:"#{name}_schema") do
+              RequestStore.store[:"cached_#{name}_schema"] ||= build_path(name, "schema")
+            end
           end
+
           private_class_method :schema
 
           def self.build_path(name, *kwargs)
             [root, name.to_s.pluralize, *kwargs].compact.join("/")
           end
+
           private_class_method :build_path
 
           def self.resources(name,
                              except: [],
                              only: %i[index show create_form update_form schema])
-
             (Array(only) - Array(except)).each do |method|
               send(method, name)
             end
           end
+
           private_class_method :resources
 
           # Determining the root_path on every url we want to render is
@@ -91,7 +100,11 @@ module API
           end
 
           def self.root
-            "#{root_path}api/v3"
+            RequestStore.store[:cached_root] ||= "#{root_path}api/v3"
+          end
+
+          def self.same_origin?(url)
+            url.to_s.start_with? root_url
           end
 
           index :action
@@ -100,11 +113,50 @@ module API
           index :activity
           show :activity
 
+          def self.ai_text_action(id)
+            "#{root}/ai_text_actions/#{id}"
+          end
+
+          def self.ai_text_actions
+            "#{root}/ai_text_actions"
+          end
+
+          def self.ai_text_actions_by_work_package(id)
+            "#{work_package(id)}/ai_text_actions"
+          end
+
+          def self.ai_text_actions_by_project(id, type_id:)
+            "#{project(id)}/ai_text_actions?typeId=#{type_id}"
+          end
+
+          index :ai_text_transform_run
+          show :ai_text_transform_run
+
+          def self.ai_text_transform_run_cancel(uuid)
+            "#{ai_text_transform_run(uuid)}/cancel"
+          end
+
+          def self.api_spec
+            "#{root}/spec.json"
+          end
+
           index :attachment
           show :attachment
 
           def self.attachment_content(id)
             "#{root}/attachments/#{id}/content"
+          end
+
+          def self.attachments_by_activity_bcf_comment(id)
+            attachments_by_activity(id)
+          end
+
+          def self.attachments_by_activity_comment(id)
+            attachments_by_activity(id)
+          end
+
+          def self.attachments_by_activity(id)
+            "#{root}/activities/#{id}/attachments"
           end
 
           def self.attachments_by_post(id)
@@ -134,12 +186,24 @@ module API
             "#{root}/attachments/#{attachment_id}/uploaded"
           end
 
-          def self.available_assignees(project_id)
+          def self.emoji_reactions_by_activity_comment(id)
+            "#{root}/activities/#{id}/emoji_reactions"
+          end
+
+          def self.emoji_reactions_by_work_package_comments(work_package_id)
+            "#{work_package(work_package_id)}/activities_emoji_reactions"
+          end
+
+          def self.available_assignees_in_project(project_id)
             "#{project(project_id)}/available_assignees"
           end
 
-          def self.available_responsibles(project_id)
-            "#{project(project_id)}/available_responsibles"
+          def self.available_assignees_in_workspace(project_id)
+            "#{workspace(project_id)}/available_assignees"
+          end
+
+          def self.available_assignees_in_work_package(work_package_id)
+            "#{work_package(work_package_id)}/available_assignees"
           end
 
           def self.available_watchers(work_package_id)
@@ -150,12 +214,8 @@ module API
             "#{work_package(work_package_id)}/available_projects"
           end
 
-          def self.available_projects_on_create(type_id)
-            if type_id.to_i.zero?
-              "#{work_packages}/available_projects"
-            else
-              "#{work_packages}/available_projects?for_type=#{type_id}"
-            end
+          def self.available_projects_on_create
+            "#{work_packages}/available_projects"
           end
 
           def self.available_relation_candidates(work_package_id)
@@ -178,12 +238,24 @@ module API
             "#{project(id)}/categories"
           end
 
+          def self.categories_by_workspace(id)
+            "#{workspace(id)}/categories"
+          end
+
           def self.configuration
             "#{root}/configuration"
           end
 
+          def self.project_configuration(project_id)
+            "#{project(project_id)}/configuration"
+          end
+
           def self.create_project_work_package_form(project_id)
             "#{work_packages_by_project(project_id)}/form"
+          end
+
+          def self.create_workspace_work_package_form(project_id)
+            "#{work_packages_by_workspace(project_id)}/form"
           end
 
           def self.custom_action(id)
@@ -194,8 +266,63 @@ module API
             "#{custom_action(id)}/execute"
           end
 
+          def self.custom_field(id)
+            "#{root}/custom_fields/#{id}"
+          end
+
+          def self.custom_field_item(id)
+            "#{root}/custom_field_items/#{id}"
+          end
+
+          # API::V3::Queries::Filters::QueryFilterInstanceRepresenter need a path derived from a class name.
+          def self.hierarchy_item_adapter(id)
+            custom_field_item(id)
+          end
+
+          def self.custom_field_item_branch(id)
+            "#{custom_field_item(id)}/branch"
+          end
+
+          def self.custom_field_items(id, parent = nil, depth = nil, project: nil)
+            query = { parent:, depth:, project: }.compact_blank.to_query
+
+            if query.present?
+              "#{custom_field(id)}/items?#{query}"
+            else
+              "#{custom_field(id)}/items"
+            end
+          end
+
           def self.custom_option(id)
             "#{root}/custom_options/#{id}"
+          end
+
+          def self.day(date)
+            "#{days}/#{date}"
+          end
+
+          def self.days
+            "#{root}/days"
+          end
+
+          def self.days_week
+            "#{days}/week"
+          end
+
+          def self.days_week_day(day)
+            "#{days_week}/#{day}"
+          end
+
+          def self.days_non_working
+            "#{root}/days/non_working"
+          end
+
+          def self.days_non_working_day(date)
+            "#{days_non_working}/#{date}"
+          end
+
+          def self.favor_workspace(workspace_id)
+            "#{workspace(workspace_id)}/favorite"
           end
 
           index :help_text
@@ -213,6 +340,7 @@ module API
           show :message
 
           index :newses, :news
+          show :news
 
           def self.news(id)
             "#{newses}/#{id}"
@@ -237,8 +365,16 @@ module API
             "#{notification(id)}/unread_ian"
           end
 
+          def self.notification_detail(notification_id, detail_id)
+            "#{notification(notification_id)}/details/#{detail_id}"
+          end
+
           index :placeholder_user
           show :placeholder_user
+
+          index :portfolio
+          show :portfolio
+          update_form :portfolio
 
           index :post
           show :post
@@ -253,12 +389,32 @@ module API
             alias :issue_priority :priority
           end
 
+          index :program
+          show :program
+          update_form :program
+
+          show :oauth_application
+
+          show :oauth_client_credentials
+
           resources :project
+
+          show :project_phase
+
+          index :project_phase_definition
+          show :project_phase_definition
+
+          # alias used by autogenerated query filter instance representer code
+          def self.phase_definition(id)
+            "#{project_phase_definitions}/#{id}"
+          end
 
           show :project_status
 
-          def self.projects_available_parents
-            "#{projects}/available_parent_projects"
+          def self.projects_available_parents(of: nil, workspace_type: nil)
+            query = { of:, workspace_type: }.compact_blank.to_query
+
+            "#{projects}/available_parent_projects#{"?#{query}" unless query.empty?}"
           end
 
           def self.projects_schema
@@ -283,6 +439,10 @@ module API
             "#{project(id)}/queries/default"
           end
 
+          def self.query_workspace_default(id)
+            "#{workspace(id)}/queries/default"
+          end
+
           def self.query_star(id)
             "#{query(id)}/star"
           end
@@ -293,6 +453,10 @@ module API
 
           def self.query_order(id)
             "#{query(id)}/order"
+          end
+
+          def self.query_ical_url(id)
+            "#{query(id)}/ical_url"
           end
 
           def self.query_column(name)
@@ -327,12 +491,20 @@ module API
             "#{project(id)}/queries/filter_instance_schemas"
           end
 
+          def self.query_workspace_filter_instance_schemas(id)
+            "#{workspace(id)}/queries/filter_instance_schemas"
+          end
+
           def self.query_operator(name)
             "#{queries}/operators/#{name}"
           end
 
           def self.query_project_schema(id)
             "#{project(id)}/queries/schema"
+          end
+
+          def self.query_workspace_schema(id)
+            "#{workspace(id)}/queries/schema"
           end
 
           def self.query_available_projects
@@ -361,8 +533,40 @@ module API
           index :role
           show :role
 
+          index :project_role, "roles"
+          show :project_role, "role"
+
+          index :global_role, "roles"
+          show :global_role, "role"
+
+          index :work_package_role, "roles"
+          show :work_package_role, "roles"
+
           def self.show_revision(project_id, identifier)
             show_revision_project_repository_path(project_id, identifier)
+          end
+
+          index :shares
+          show :share
+
+          def self.reminders
+            "#{root}/reminders"
+          end
+
+          def self.reminder(id)
+            "#{root}/reminders/#{id}"
+          end
+
+          def self.work_package_reminder(work_package_id, reminder_id)
+            "#{work_package_reminders(work_package_id)}/#{reminder_id}"
+          end
+
+          def self.work_package_reminders(id)
+            "#{work_package(id)}/reminders"
+          end
+
+          def self.work_package_pdf(id)
+            "#{work_package(id)}/pdf"
           end
 
           def self.show_user(user_id)
@@ -402,6 +606,10 @@ module API
             "#{project(project_id)}/types"
           end
 
+          def self.types_by_workspace(project_id)
+            "#{workspace(project_id)}/types"
+          end
+
           resources :user
 
           def self.user_lock(id)
@@ -412,10 +620,52 @@ module API
             "#{user(id)}/preferences"
           end
 
+          def self.user_working_hours(user_id)
+            "#{user(user_id)}/working_hours"
+          end
+
+          def self.user_working_hours_record(user_id, id)
+            "#{user_working_hours(user_id)}/#{id}"
+          end
+
+          def self.user_non_working_times(user_id)
+            "#{user(user_id)}/non_working_times"
+          end
+
+          def self.user_non_working_time(user_id, non_working_time_id)
+            "#{user_non_working_times(user_id)}/#{non_working_time_id}"
+          end
+
+          def self.my_preferences
+            "#{root}/my_preferences"
+          end
+
           index :group
           show :group
 
+          def self.group_avatar(id)
+            "#{group(id)}/avatar"
+          end
+
+          def self.value_schema(property)
+            "#{root}/values/schemas/#{property}"
+          end
+
           resources :version
+
+          index :view
+          show :view
+
+          def self.views_type(type)
+            "#{views}/#{type}"
+          end
+
+          index :label
+          show :label
+
+          def self.labels_by_workspace(workspace_id)
+            "#{workspace(workspace_id)}/labels"
+          end
 
           def self.versions_available_projects
             "#{versions}/available_projects"
@@ -425,8 +675,16 @@ module API
             "#{project(project_id)}/versions"
           end
 
+          def self.versions_by_workspace(workspace_id)
+            "#{workspace(workspace_id)}/versions"
+          end
+
           def self.projects_by_version(version_id)
             "#{version(version_id)}/projects"
+          end
+
+          def self.workspaces_by_version(version_id)
+            "#{version(version_id)}/workspaces"
           end
 
           def self.watcher(id, work_package_id)
@@ -439,8 +697,19 @@ module API
 
           resources :work_package, except: :schema
 
+          def self.work_package(id, timestamps: nil)
+            "#{root}/work_packages/#{id}" +
+              if (param_value = timestamps_to_param_value(timestamps)).present? && Array(timestamps).any?(&:historic?)
+                "?#{{ timestamps: param_value }.to_query}"
+              end.to_s
+          end
+
           def self.work_package_schema(project_id, type_id)
             "#{root}/work_packages/schemas/#{project_id}-#{type_id}"
+          end
+
+          def self.work_package_activities_emoji_reactions(id)
+            "#{work_package_activities(id)}/activities_emoji_reactions"
           end
 
           def self.work_package_activities(id)
@@ -455,8 +724,9 @@ module API
             "#{work_package_relations(work_package_id)}/#{id}"
           end
 
-          def self.work_package_available_relation_candidates(id)
-            "#{work_package(id)}/available_relation_candidates"
+          def self.work_package_available_relation_candidates(id, type: nil)
+            query = "?type=#{type}" if type
+            "#{work_package(id)}/available_relation_candidates#{query}"
           end
 
           def self.work_package_revisions(id)
@@ -472,7 +742,7 @@ module API
                 "#{project_id}-#{type_id}"
               end
 
-              filter = [{ id: { operator: '=', values: values } }]
+              filter = [{ id: { operator: "=", values: } }]
 
               path + "?filters=#{CGI.escape(filter.to_s)}"
             end
@@ -490,13 +760,29 @@ module API
             "#{project(project_id)}/work_packages"
           end
 
-          def self.path_for(path, filters: nil, sort_by: nil, group_by: nil, page_size: nil)
+          def self.work_packages_by_workspace(workspace_id)
+            "#{workspace(workspace_id)}/work_packages"
+          end
+
+          resources :workspace, except: %i[create_form]
+
+          def self.timestamps_to_param_value(timestamps)
+            Array(timestamps).map { |timestamp| Timestamp.parse(timestamp).absolute }.join(",")
+          end
+
+          def self.path_for(path, filters: nil, sort_by: nil, group_by: nil, page_size: nil, offset: nil,
+                            select: nil, timestamps: nil)
+            timestamps = timestamps_to_param_value(timestamps)
+
             query_params = {
               filters: filters&.to_json,
               sortBy: sort_by&.to_json,
               groupBy: group_by,
-              pageSize: page_size
-            }.reject { |_, v| v.blank? }
+              pageSize: page_size,
+              offset:,
+              select:,
+              timestamps:
+            }.compact_blank
 
             if query_params.any?
               "#{send(path)}?#{query_params.to_query}"
@@ -514,7 +800,20 @@ module API
 
             root_url = OpenProject::StaticRouting::StaticUrlHelpers.new.root_url
 
-            root_url.gsub(duplicate_regexp, '') + send(path, arguments)
+            root_url.gsub(duplicate_regexp, "") + send(path, arguments)
+          end
+
+          def self.path_for_object(object)
+            strategy = if self.class.const_defined?("API::V3::Utilities::PathHelper::#{object.class}Strategy")
+                         "API::V3::Utilities::PathHelper::#{object.class}Strategy".constantize
+                       else
+                         API::V3::Utilities::PathHelper::DefaultStrategy
+                       end
+
+            send(strategy.path_name_for_object(object), object.id)
+          rescue StandardError => e
+            Rails.logger.error "Failed to get path for object #{object}: #{e}"
+            nil
           end
         end
 

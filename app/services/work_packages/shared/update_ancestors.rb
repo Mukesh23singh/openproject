@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,38 +30,41 @@
 module WorkPackages
   module Shared
     module UpdateAncestors
-      def update_ancestors(changed_work_packages)
-        changes = changed_work_packages
-                  .map { |wp| wp.previous_changes.keys }
-                  .flatten
-                  .uniq
-                  .map(&:to_sym)
-
-        update_each_ancestor(changed_work_packages, changes)
-      end
-
-      def update_ancestors_all_attributes(work_packages)
-        changes = work_packages
-                  .first
-                  .attributes
-                  .keys
-                  .uniq
-                  .map(&:to_sym)
-
-        update_each_ancestor(work_packages, changes)
-      end
-
-      def update_each_ancestor(work_packages, changes)
-        work_packages.map do |wp|
-          inherit_to_ancestors(wp, changes)
-        end
-      end
-
-      def inherit_to_ancestors(wp, changes)
+      # Update ancestors for the given work package according to the given
+      # changed attributes.
+      #
+      # @param work_package [WorkPackage] the work package to update the
+      #   ancestors of
+      # @param changed_attributes [Array<Symbol>] the attributes that have been
+      #   changed on the work package. If nil, all the attributes of the work
+      #   package will be used.
+      # @return [ServiceResult] the result of the `UpdateAncestorsService` call
+      def update_ancestors(work_package, changed_attributes = nil)
+        changed_attributes ||= work_package.attribute_keys
         WorkPackages::UpdateAncestorsService
-          .new(user: user,
-               work_package: wp)
-          .call(changes)
+          .new(user:, work_package:)
+          .with_state(state)
+          .call(changed_attributes)
+      end
+
+      # Update ancestors for multiple work packages, taking care of not updating
+      # the same work package twice.
+      # Always calls `UpdateAncestorsService` with changed attributes being all
+      # attributes.
+      #
+      # @param work_packages [Array<WorkPackage>] the work packages to update
+      #   the ancestors of
+      # @return [Array<ServiceResult>] the results of the
+      #   `UpdateAncestorsService` calls
+      def multi_update_ancestors(work_packages)
+        updated_work_package_ids = Set.new
+        work_packages.filter_map do |work_package|
+          next if updated_work_package_ids.include?(work_package.id)
+
+          update_ancestors(work_package).tap do |result|
+            updated_work_package_ids.merge(result.all_results.map(&:id))
+          end
+        end
       end
     end
   end

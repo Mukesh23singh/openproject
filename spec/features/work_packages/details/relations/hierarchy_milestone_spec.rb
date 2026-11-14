@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'work package hierarchies for milestones', js: true, selenium: true do
-  let(:user) { FactoryBot.create :admin }
-  let(:type) { FactoryBot.create(:type, is_milestone: true) }
-  let(:project) { FactoryBot.create(:project, types: [type]) }
-  let(:work_package) { FactoryBot.create(:work_package, project: project, type: type) }
-  let(:relations) { ::Components::WorkPackages::Relations.new(work_package) }
-  let(:tabs) { ::Components::WorkPackages::Tabs.new(work_package) }
-  let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
-
-  let(:relations_tab) { find('.op-tab-row--link_selected', text: 'RELATIONS') }
-  let(:visit) { true }
+RSpec.describe "work package hierarchies for milestones", :js do
+  let(:user) { create(:admin) }
+  let(:task_type) { create(:type_task) }
+  let(:milestone_type) { create(:type_milestone) }
+  let(:project) { create(:project, types: [task_type, milestone_type]) }
+  let!(:milestone_work_package) { create(:work_package, subject: "milestone_work_package", project:, type: milestone_type) }
+  let!(:task_work_package) { create(:work_package, subject: "task_work_package", project:, type: task_type) }
+  let(:relations) { Components::WorkPackages::Relations.new }
 
   before do
     login_as user
-    wp_page.visit_tab!('relations')
+  end
+
+  def visit_relations_tab_for(work_package)
+    wp_page = Pages::FullWorkPackage.new(work_package)
+    wp_page.visit_tab!("relations")
     expect_angular_frontend_initialized
     wp_page.expect_subject
     loading_indicator_saveguard
   end
 
-  it 'does not provide links to add children or existing children (Regression #28745)' do
-    within('.wp-relations--children') do
-      expect(page).to have_no_text('Add existing child')
-      expect(page).to have_no_text('Create new child')
-      expect(page).to have_no_selector('wp-inline-create--add-link')
-    end
+  it "does not provide links to create new child or add existing work package as child (Regression #28745 and #60512)" do
+    # A work package has a menu entry to link or create a child
+    visit_relations_tab_for(task_work_package)
+    relations.expect_new_relation_type("Create new child")
+    relations.expect_new_relation_type("Child")
+
+    # A milestone work package does NOT have a menu entry to link or create a child
+    visit_relations_tab_for(milestone_work_package)
+    relations.expect_no_new_relation_type("Create new child")
+    relations.expect_no_new_relation_type("Child")
   end
 end

@@ -1,7 +1,6 @@
 @mixin timeline-label
   display: flex
   align-items: center
-  height: 16px
   min-width: 20px
   width: max-content
   font-size: 14px
@@ -9,13 +8,19 @@
   vertical-align: middle
   pointer-events: none
 
+@mixin scheduling-icon
+  span
+    display: flex
+    align-items: center
+    .display-field--scheduling-icon
+      margin-right: 0.25rem
+
 .timeline-element
   // Label style
   .-label-style.not-empty
-    background-color: white
-    border: 1px solid #d4d4d4
+    background-color: var(--body-background)
+    border: 1px solid var(--borderColor-default)
     border-radius: 5px
-    height: 16px
     font-size: 12px
     padding: 2px 5px
     // Ensure line-height is normal
@@ -38,6 +43,7 @@
     transform: translateX(calc(-100% - 15px))
     // Ensure line-height is normal
     line-height: 1
+    @include scheduling-icon
 
   .containerRight
     @include timeline-label
@@ -46,10 +52,12 @@
     margin: 0
     padding: 0
     left: 100%
+    line-height: 1rem
 
   .labelRight.not-empty
     @include timeline-label
     margin-left: 20px
+    @include scheduling-icon
 
   .labelFarRight
     @include timeline-label
@@ -57,7 +65,7 @@
     margin-left: 15px
 
   // label hover right needs different position
-  // since its not part of containerRight
+  // since it's not part of containerRight
   .labelHoverRight
     pointer-events: none
     display: none
@@ -67,8 +75,9 @@
     position: absolute
     right: 0px
     // Then translate by its own width + some margin
-    transform: translateX(calc(100% + 10px))
+    transform: translateX(calc(100% + 15px))
     font-size: 12px
+    @include scheduling-icon
 
   &.-editable
     cursor: ew-resize

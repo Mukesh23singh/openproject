@@ -1,0 +1,34 @@
+name: "OpenAPI"
+# https://securitylab.github.com/research/github-actions-preventing-pwn-requests
+on:
+  push:
+    branches:
+      - dev
+      - release/*
+    paths:
+      - "docs/api/apiv3/**"
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths:
+      - "docs/api/apiv3/**"
+
+jobs:
+  api-spec:
+    name: APIv3 specification (OpenAPI 3.0)
+    if: github.repository_owner == 'opf'
+    runs-on: [ubuntu-latest]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ruby/setup-ruby@v1.336.0
+        with:
+          bundler-cache: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.22.1"
+          package-manager-cache: false
+      - run: ./script/api/validate_spec

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
@@ -29,15 +28,16 @@ See COPYRIGHT and LICENSE files for more details.
 
 <%= content_for :header_tags do %>
   <% html_title(*local_assigns[:page_title]) if local_assigns[:page_title].present? %>
-  <%= nonced_javascript_tag do %>
-    <%= include_gon(need_tag: false) -%>
-  <% end %>
   <!-- plug-in specific tags -->
   <%= call_hook :view_work_package_overview_attributes %>
+  <!-- disable Turbo cache for Angular pages -->
+  <meta name="turbo-cache-control" content="no-cache">
 <% end -%>
 
 <%= content_for :content_body do %>
-  <openproject-base></openproject-base>
+  <% if local_assigns[:component] %>
+    <%= angular_component_tag local_assigns[:component] %>
+  <% end %>
 
   <%# Allow projection pages to show rails rendered content after initialization %>
   <div id="projected-content" hidden>
@@ -45,4 +45,4 @@ See COPYRIGHT and LICENSE files for more details.
   </div>
 <% end -%>
 
-<%= render template: 'layouts/base', locals: local_assigns.merge({ no_action_menu: true }) %>
+<%= render template: "layouts/base", locals: local_assigns.merge({ no_layout_yield: true }) %>

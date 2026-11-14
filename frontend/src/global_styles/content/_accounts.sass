@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,116 +20,67 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 #login-form
   margin: 50px auto 0
-  padding-top: 20px
-  width: 511px
+  padding: 20px
+  width: 460px
   word-break: break-word
 
-  .login-options-container
+  .login-form--footer
+    display: flex
+    justify-content: space-between
     margin-bottom: 10px
-    .login-links
-      float: right
-      text-align: right
-      margin-top: -3rem
 
-#content .login-auth-providers.wide
-  width: auto
-  text-align: center
+#content .op-account-registration
+  max-width: 480px
+  margin: var(--base-size-32) auto 0
 
-  a.auth-provider
-    float: none
-    display: inline-block
+  &--logo
+    display: block
+    width: 40px
+    height: 40px
+    margin: 0 auto var(--base-size-16)
 
-#nav-login-content
-  padding: 1rem
+  &--subtitle
+    margin-bottom: var(--base-size-16)
+    text-align: center
+    font-weight: var(--base-text-weight-semibold)
 
 #login-pulldown
   margin-right: 0
 
 // use id selectors to be specific enough to override general content and top-menu definitions
+#content .login-auth-providers
+  width: auto
+
 #content .login-auth-providers,
 #nav-login-content .login-auth-providers
-  width: 471px
-  margin-top: 25px
-
-  h3
-    border: none
-    margin-top: 20px
-    font-weight: normal
-    font-size: 1rem
-    text-decoration: none
-    text-align: center
-
-    position: relative
-    z-index: 1
-
-    // line behind title
-    // from http://codepen.io/ericrasch/pen/Irlpm
-    &:before
-      border-top: 2px solid var(--content-form-separator-color)
-      content: ""
-      // this centers the line to the full width specified
-      margin: 0 auto
-      // positioning must be absolute here, and relative positioning
-      //  must be applied to the parent
-      position: absolute
-      top: 50%
-      left: 0
-      right: 0
-      bottom: 0
-      width: 95%
-      z-index: -1
-
-    // also line behind title
-    span
-      // to hide the lines from behind the text, you have to set the
-      // background color the same as the container
-      background: var(--content-form-bg-color)
-      padding: 0 15px
-
   .login-auth-provider-list
-    @include prevent-float-collapse
+    margin-top: 1em
 
-  a.auth-provider
-    float: left
-    margin-left: 10px
-    background-color: light-grey
-    font-weight: normal
-    color: var(--body-font-color)
-
-    &:hover
-      text-decoration: none
-
-    .auth-provider-name
-      line-height: normal
-      white-space: normal
-
-#nav-login-content .login-auth-providers
-  h3
-    &:before
-      width: 100%
-    span
-      background: var(--header-drop-down-bg-color)
-  .login-auth-provider-list
-    margin-top: -15px
-    margin-bottom: 10px
-
-#nav-login-content .login-auth-providers.no-pwd
-  margin-top: 0
+#nav-login-content .login-auth-providers .login-auth-provider-list
+  margin-bottom: 10px
 
 .registration-footer
   display: block
   margin-top: 2em
 
 .op-user-consent-form
-  font-size: 1rem
+  font-size: var(--body-font-size)
 
   &--agreement
     font-size: inherit
+
+.op-consent-instructions
+  .op-uc-link
+    text-decoration: underline
+
+    &::after
+      @include icon-font-common
+      @include icon-mixin-external-link
+      margin-left: 0.25rem

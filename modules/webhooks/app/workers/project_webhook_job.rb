@@ -1,9 +1,6 @@
-require 'rest-client'
-
-#-- encoding: UTF-8
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -23,8 +20,7 @@ require 'rest-client'
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,17 +31,14 @@ class ProjectWebhookJob < RepresentedWebhookJob
   end
 
   def accepted_in_project?
-    if event_name == 'project:created'
+    if event_name == "project:created"
       true
     else
       webhook.enabled_for_project?(resource.id)
     end
   end
 
-  def payload_representer
-    User.system.run_given do |user|
-      ::API::V3::Projects::ProjectRepresenter
-        .create(resource, current_user: user, embed_links: true)
-    end
+  def payload_representer_class
+    ::API::V3::Projects::ProjectRepresenter
   end
 end

@@ -1,149 +1,259 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { NgSelectComponent } from '@ng-select/ng-select';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { DebouncedRequestSwitchmap, errorNotificationHandler } from 'core-app/shared/helpers/rxjs/debounced-input-switchmap';
-import { Observable } from 'rxjs';
-import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
-import { ApiV3FilterBuilder } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
-import { map } from 'rxjs/operators';
-import { APIv3ResourceCollection } from 'core-app/core/apiv3/paths/apiv3-resource';
-import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { CachableAPIV3Resource } from 'core-app/core/apiv3/cache/cachable-apiv3-resource';
-import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
-import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { HalResourceSortingService } from 'core-app/features/hal/services/hal-resource-sorting.service';
-import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import {
-  AfterViewInit, ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component, EventEmitter, Input, NgZone, OnInit, Output, ViewChild,
-} from '@angular/core';
-import { compareByHrefOrString } from 'core-app/shared/helpers/angular/tracking-functions';
+  Observable,
+  of,
+} from 'rxjs';
+import {
+  map,
+  shareReplay,
+  switchMap,
+  withLatestFrom,
+} from 'rxjs/operators';
+import { take } from 'rxjs/internal/operators/take';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output, ViewChild, inject } from '@angular/core';
+
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3FilterBuilder } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { ApiV3ResourceCollection } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import { ApiV3Resource } from 'core-app/core/apiv3/cache/cachable-apiv3-resource';
+import { QueryFilterInstanceResource, QueryFilterValue, isQueryFilterValue } from 'core-app/features/hal/resources/query-filter-instance-resource';
+import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
+import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { CurrentUserService } from 'core-app/core/current-user/current-user.service';
+import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
+import { compareByHref } from 'core-app/shared/helpers/angular/tracking-functions';
+import { MAGIC_FILTER_AUTOCOMPLETE_PAGE_SIZE } from 'core-app/core/apiv3/helpers/get-paginated-results';
+import { isRecord } from 'core-app/shared/helpers/type-guards';
 
 @Component({
-  selector: 'filter-searchable-multiselect-value',
+  selector: 'op-filter-searchable-multiselect-value',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './filter-searchable-multiselect-value.component.html',
+  standalone: false,
 })
-export class FilterSearchableMultiselectValueComponent extends UntilDestroyedMixin implements OnInit, AfterViewInit {
+export class FilterSearchableMultiselectValueComponent extends UntilDestroyedMixin implements OnInit {
+  readonly halResourceService = inject(HalResourceService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly cdRef = inject(ChangeDetectorRef);
+  readonly I18n = inject(I18nService);
+  protected currentProject = inject(CurrentProjectService);
+  protected currentUser = inject(CurrentUserService);
+  readonly halNotification = inject(HalResourceNotificationService);
+
   @Input() public filter:QueryFilterInstanceResource;
 
   @Input() public shouldFocus = false;
 
   @Output() public filterChanged = new EventEmitter<QueryFilterInstanceResource>();
 
-  private _isEmpty:boolean;
+  private meValue = this.halResourceService.createHalResource({
+    _links: {
+      self: {
+        href: this.apiV3Service.users.me.path,
+        title: this.I18n.t('js.label_me'),
+      },
+    },
+  }, true);
 
-  public _availableOptions:HalResource[] = [];
+  autocompleterFn = (searchTerm:string):Observable<HalResource[]> => this.autocomplete(searchTerm);
 
-  public compareByHrefOrString = compareByHrefOrString;
+  initialRequest$:Observable<CollectionResource>;
 
-  public active:Set<string>;
+  itemTracker = (item:unknown):unknown => {
+    if (!isRecord(item)) return undefined;
+    return item.href ?? item.id ?? item.name;
+  };
 
-  public requests = new DebouncedRequestSwitchmap<string, HalResource>(
-    (searchTerm:string) => this.loadAvailable(searchTerm),
-    errorNotificationHandler(this.halNotification),
-    true,
-  );
+  groupByFn = (item:HalResource):string|null => {
+    if (!this.isVersionResource) return null;
+    const project = item.definingProject as HalResource | undefined;
+    return project?.name ?? this.I18n.t('js.project.not_available');
+  };
+
+  compareByHref = compareByHref;
+
+  resourceType:'work_packages'|null = null;
 
   readonly text = {
     placeholder: this.I18n.t('js.placeholders.selection'),
   };
 
-  public get value() {
+  public get value():QueryFilterValue[] {
     return this.filter.values;
-  }
-
-  public get availableOptions() {
-    return this._availableOptions;
-  }
-
-  public set availableOptions(val:HalResource[]) {
-    this._availableOptions = this.halSorting.sort(val);
-  }
-
-  public get isEmpty():boolean {
-    return this._isEmpty = this.value.length === 0;
   }
 
   @ViewChild('ngSelectInstance', { static: true }) ngSelectInstance:NgSelectComponent;
 
-  constructor(readonly halResourceService:HalResourceService,
-    readonly halSorting:HalResourceSortingService,
-    readonly apiV3Service:APIV3Service,
-    readonly cdRef:ChangeDetectorRef,
-    readonly I18n:I18nService,
-    protected currentProject:CurrentProjectService,
-    readonly halNotification:HalResourceNotificationService,
-    readonly ngZone:NgZone) {
-    super();
-  }
-
-  ngOnInit() {
-    this.initialization();
-    // Request an empty value to load warning early on
-    this.requests.input$.next('');
-  }
-
-  ngAfterViewInit():void {
-    if (this.ngSelectInstance && this.shouldFocus) {
-      this.ngSelectInstance.focus();
+  ngOnInit():void {
+    if (this.filter.id === 'id' || this.filter.id === 'parent' || this.filter.id === 'ancestor') {
+      this.resourceType = 'work_packages';
     }
+
+    this.initialRequest$ = this
+      .loadCollection('')
+      .pipe(
+        shareReplay(1),
+      );
   }
 
-  initialization() {
-    this
-      .requests
-      .output$.pipe(
-        this.untilDestroyed(),
-      )
-      .subscribe((values:HalResource[]) => {
-        this.availableOptions = values;
-        this.cdRef.detectChanges();
-      });
+  private autocomplete(matching:string):Observable<HalResource[]> {
+    return this
+      .initialRequest$
+      .pipe(
+        switchMap((initialLoad) => {
+          // If we already loaded all values, just compare in the frontend.
+          // However, for work-package-referencing filters (ID/Parent/Ancestor), always make
+          // XHR requests to use the typeahead filter, which supports searching by type/status
+          // names and semantic identifiers (and ranks exact matches first) — none of which the
+          // client-side substring matching below (over plain id/name) can do.
+          if (this.resourceType !== 'work_packages' && initialLoad.count === initialLoad.total) {
+            return this.matchingItems(this.filterEmptyElements(initialLoad.elements), matching);
+          }
+
+          // Otherwise, request the matching API call
+          return this
+            .loadCollection(matching)
+            .pipe(
+              switchMap(
+                (collection) =>
+                  this.withMeValue(
+                    matching,
+                    this.filterEmptyElements(collection.elements),
+                  ),
+              ),
+            );
+        }),
+      );
   }
 
-  public loadAvailable(matching:string):Observable<HalResource[]> {
+  private filterEmptyElements(elements:HalResource[]):HalResource[] {
+    return elements.filter((element) => element.name.trim().length !== 0);
+  }
+
+  matchingItems(elements:HalResource[], matching:string):Observable<HalResource[]> {
+    let filtered:HalResource[];
+
+    if (matching === '' || !matching) {
+      filtered = elements;
+    } else {
+      const lowered = matching.toLowerCase();
+      filtered = elements.filter((el) => el.id!.includes(lowered) || el.name.toLowerCase().includes(lowered));
+    }
+
+    return this.withMeValue(matching, filtered);
+  }
+
+  private loadCollection(matching:string):Observable<CollectionResource> {
     const filters:ApiV3FilterBuilder = this.createFilters(matching);
-    const { href } = this.filter.currentSchema!.values!.allowedValues as any;
+    const params:Record<string, string> = { pageSize: `${MAGIC_FILTER_AUTOCOMPLETE_PAGE_SIZE}` };
 
-    const filteredData = (this.apiV3Service.collectionFromString(href) as
-      APIv3ResourceCollection<HalResource, CachableAPIV3Resource>)
-      .filtered(filters)
-      .get()
-      .pipe(map((collection) => collection.elements));
+    // exact_match is a work-package-only sortable column (see ExactMatchSelect) —
+    // sending it for any other resource type's allowed-values collection (Version,
+    // User, ...) would fail that resource's sort validation and empty the picker.
+    if (this.resourceType === 'work_packages') {
+      params.sortBy = '[["exactMatch","desc"],["updatedAt","desc"]]';
+    }
 
-    return filteredData;
+    return (this.apiV3Service.collectionFromString(this.allowedValuesLink) as
+      ApiV3ResourceCollection<HalResource, ApiV3Resource>)
+      .filtered(filters, params)
+      .get();
   }
 
-  protected createFilters(matching:string) {
+  private createFilters(matching:string):ApiV3FilterBuilder {
     const filters = new ApiV3FilterBuilder();
 
     if (matching) {
-      filters.add('subjectOrId', '**', [matching]);
+      filters.add('typeahead', '**', [matching]);
     }
 
     return filters;
   }
 
-  public setValues(val:any) {
-    this.filter.values = val.length > 0 ? (Array.isArray(val) ? val : [val]) : [] as HalResource[];
+  public setValues(val:unknown) {
+    if (val === undefined) { return; }
+    let values:unknown[];
+
+    if (typeof val === 'string') {
+      values = val.length > 0 ? [val] : [];
+    } else {
+      values = Array.isArray(val) ? val : [val];
+    }
+
+    if (!values.every(isQueryFilterValue)) {
+      return;
+    }
+
+    this.filter.values = values;
     this.filterChanged.emit(this.filter);
-    this.requests.input$.next('');
     this.cdRef.detectChanges();
   }
 
-  public repositionDropdown() {
-    if (this.ngSelectInstance) {
-      const component = (this.ngSelectInstance) as any;
-      if (component && component.dropdownPanel) {
-        this.ngZone.runOutsideAngular(() => {
-          setTimeout(() => {
-            component.dropdownPanel._updatePosition();
-          }, 25);
-        });
-      }
+  private get allowedValuesLink():string {
+    const { href } = this.filter.currentSchema!.values!.allowedValues as { href:string };
+
+    return href;
+  }
+
+  private withMeValue(matching:string, elements:HalResource[]):Observable<HalResource[]> {
+    if (!this.isUserResource || (!!matching && matching !== 'me')) {
+      return of(elements);
     }
+
+    return this
+      .currentUser
+      .isLoggedIn$
+      .pipe(
+        take(1),
+        withLatestFrom(this.currentUser.user$),
+        map(([logged, user]) => {
+          if (logged && user) {
+            return [this.meValue].concat(elements);
+          }
+
+          return elements;
+        }),
+      );
+  }
+
+  private get isUserResource() {
+    const type = this.filter.currentSchema?.values?.type;
+    return !!type && type.indexOf('User') > 0;
+  }
+
+  private get isVersionResource() {
+    const type = this.filter.currentSchema?.values?.type;
+    return !!type && type.indexOf('Version') > 0;
   }
 }

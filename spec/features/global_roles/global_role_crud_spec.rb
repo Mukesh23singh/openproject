@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,46 +22,61 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './mock_global_permissions'
+require "spec_helper"
+require_relative "mock_global_permissions"
 
-describe 'Global role: Global role CRUD', type: :feature, js: true do
+RSpec.describe "Global role: Global role CRUD", :js do
   # Scenario: Global Role creation
   # Given there is the global permission "glob_test" of the module "global_group"
+  include_context "with mocked global permissions", [["glob_test", { project_module: "global_group" }]]
+
   before do
-    mock_global_permissions [['glob_test', { project_module: 'global_group' }]]
-    login_as(current_user)
+    login_as current_user
   end
 
-  # And I am already admin
-  let(:current_user) { FactoryBot.create :admin }
+  current_user { create(:admin) }
 
-  it 'can create global role with that perm' do
+  it "can create global role with that perm" do
     # When I go to the new page of "Role"
     visit new_role_path
-    # Then I should not see block with "#global_permissions"
-    expect(page).to have_no_selector('#global_permissions', visible: true)
-    # When I check "Global Role"
-    check 'Global Role'
-    # Then I should see block with "#global_permissions"
-    expect(page).to have_selector('#global_permissions', visible: true)
+
+    expect(page).to have_unchecked_field "Global role"
+    # Then I should not see region with global permissions
+    expect(page).not_to have_region "Global"
+    # When I check "Global role"
+    check "Global role"
+    # Then I should see region with global permissions
+    expect(page).to have_region "Global"
     # And I should see "Global group"
-    expect(page).to have_text 'GLOBAL GROUP'
+    expect(page).to have_region "Global group"
     # And I should see "Glob test"
-    expect(page).to have_text 'Glob test'
+    expect(page).to have_text "Glob test"
     # And I should not see "Issues can be assigned to this role"
-    expect(page).to have_no_text 'Issues can be assigned to this role'
+    expect(page).to have_no_text "Issues can be assigned to this role"
     # When I fill in "Name" with "Manager"
-    fill_in 'Name', with: 'Manager'
+    fill_in "Name", with: "Manager"
     # And I click on "Create"
-    click_on 'Create'
+    click_on "Create"
     # Then I should see "Successful creation."
-    expect(page).to have_text 'Successful creation.'
+    expect(page).to have_text "Successful creation."
+  end
+
+  context "with a non-member using dependent project permissions" do
+    let!(:non_member) { create(:non_member, permissions: %i[view_project_attributes]) }
+
+    it "can still create it (Regression #57906)" do
+      # When I go to the new page of "Role"
+      visit new_role_path
+      check "Global role"
+      fill_in "Name", with: "Manager"
+      click_on "Create"
+      # Then I should see "Successful creation."
+      expect(page).to have_text "Successful creation."
+    end
   end
 end

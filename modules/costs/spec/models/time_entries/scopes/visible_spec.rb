@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,67 +20,62 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe TimeEntries::Scopes::Visible, type: :model do
-  let(:project) { FactoryBot.create(:project) }
-  let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: permissions)
-  end
-  let(:permissions) { [:view_time_entries] }
+RSpec.describe TimeEntry, "visible scope" do
+  let(:project) { create(:project) }
 
   let(:work_package) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      author: user2)
+    create(:work_package,
+           project:,
+           author: user2)
   end
   let(:user2) do
-    FactoryBot.create(:user)
+    create(:user)
   end
   let!(:own_project_time_entry) do
-    FactoryBot.create(:time_entry,
-                      project: project,
-                      work_package: work_package,
-                      hours: 2,
-                      user: user)
+    create(:time_entry,
+           project:,
+           entity: work_package,
+           hours: 2,
+           user:)
   end
   let!(:project_time_entry) do
-    FactoryBot.create(:time_entry,
-                      project: project,
-                      work_package: work_package,
-                      hours: 2,
-                      user: user2)
+    create(:time_entry,
+           project:,
+           entity: work_package,
+           hours: 2,
+           user: user2)
   end
   let!(:own_other_project_time_entry) do
-    FactoryBot.create(:time_entry,
-                      project: FactoryBot.create(:project),
-                      user: user)
+    create(:time_entry,
+           project: create(:project),
+           user:)
   end
 
-  describe '.visible' do
+  describe ".visible" do
     subject { TimeEntry.visible(user) }
 
-    context 'for a user having the view_time_entries permission' do
-      it 'retrieves all the time entries of projects the user has the permissions in' do
+    context "for a user having the view_time_entries permission" do
+      let(:user) { create(:user, member_with_permissions: { project => [:view_time_entries] }) }
+
+      it "retrieves all the time entries of projects the user has the permissions in" do
         expect(subject)
-          .to match_array([own_project_time_entry, project_time_entry])
+          .to contain_exactly(own_project_time_entry, project_time_entry)
       end
     end
 
-    context 'for a user having the view_own_time_entries permission' do
-      let(:permissions) { [:view_own_time_entries] }
+    context "for a user having the view_own_time_entries permission on a work package" do
+      let(:user) { create(:user, member_with_permissions: { work_package => [:view_own_time_entries] }) }
 
-      it 'retrieves all the time entries of the user in projects the user has the permissions in' do
+      it "retrieves all the time entries of the user in projects the user has the permissions in" do
         expect(subject)
-          .to match_array([own_project_time_entry])
+          .to contain_exactly(own_project_time_entry)
       end
     end
   end

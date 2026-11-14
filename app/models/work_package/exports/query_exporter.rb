@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,11 +22,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module WorkPackage::Exports
   class QueryExporter < Exports::Exporter
     self.model = WorkPackage
@@ -46,7 +46,7 @@ module WorkPackage::Exports
     def get_columns
       query
         .columns
-        .reject { |c| c.is_a?(Queries::WorkPackages::Columns::RelationColumn) }
+        .reject { |c| c.is_a?(Queries::WorkPackages::Selects::RelationSelect) }
     end
 
     def page
@@ -57,8 +57,18 @@ module WorkPackage::Exports
       query
         .results
         .work_packages
+        .includes(column_associations)
         .page(page)
-        .per_page(Setting.work_packages_export_limit.to_i)
+        .per_page(Setting.work_packages_projects_export_limit.to_i)
+    end
+
+    # Preload only names that are real associations so that a column whose
+    # association metadata does not match one falls back to lazy loading
+    # instead of raising.
+    def column_associations
+      candidates = column_objects.flat_map { [it.association, it.name] }
+
+      candidates.compact.map(&:to_sym).uniq & WorkPackage.reflections.keys.map(&:to_sym)
     end
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,41 +22,40 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'attachments', type: :feature do
-  let(:project) { FactoryBot.create :valid_project }
-  let(:current_user) { FactoryBot.create :admin }
-  let!(:priority) { FactoryBot.create :default_priority }
+RSpec.describe "attachments" do
+  let(:project) { create(:valid_project) }
+  let(:current_user) { create(:admin) }
+  let!(:priority) { create(:default_priority) }
 
   before do
     allow(User).to receive(:current).and_return current_user
   end
 
-  describe 'upload', js: true do
-    let(:file) { FactoryBot.create :file, name: 'textfile.txt' }
+  describe "upload", :js do
+    let(:file) { create(:file, name: "textfile.txt") }
 
     # FIXME rework this spec after implementing fullscreen create view
-    xit 'uploading a short text file and viewing it inline' do
+    xit "uploading a short text file and viewing it inline" do
       visit new_project_work_packages_path(project)
 
-      select project.types.first.name, from: 'work_package_type_id'
-      fill_in 'Subject', with: 'attachment test'
+      select project.enabled_types.first.name, from: "work_package_type_id"
+      fill_in "Subject", with: "attachment test"
 
       # open attachment fieldset and attach file
-      attach_file 'attachments[1][file]', file.path
+      attach_file "attachments[1][file]", file.path
 
-      click_button 'Create'
+      click_button "Create"
 
       file_name = File.basename file.path
 
-      expect(page).to have_text('Successful creation.')
+      expect(page).to have_text("Successful creation.")
       expect(page).to have_text(file_name)
     end
   end

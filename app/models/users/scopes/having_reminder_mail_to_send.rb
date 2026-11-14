@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,19 +32,31 @@ module Users::Scopes
     extend ActiveSupport::Concern
 
     class_methods do
-      # Returns all users for which a reminder mails should be sent now. A user will be included if:
-      # * That user has an unread notification
+      # Returns all users for which a reminder mails should be sent. A user
+      # will be included if:
+      #
+      # * That user has an unread notification that is not older than the latest_time value.
       # * The user hasn't been informed about the unread notification before
-      # * The user has configured reminder mails to be within the time frame between the provided time and now.
-      # This assumes that users only have full hours specified for the times they desire
-      # to receive a reminder mail at.
-      # @param [DateTime] earliest_time The earliest time to consider as a matching slot. All quarter hours from that time
-      #   to now are included.
-      #   Only the time part is used which is moved forward to the next quarter hour (e.g. 2021-05-03 10:34:12+02:00 -> 08:45:00).
-      #   This is done because time zones always have a mod(15) == 0 minutes offset.
-      #   Needs to be before the current time.
-      def having_reminder_mail_to_send(earliest_time)
-        local_times = local_times_from(earliest_time)
+      # * The user has configured reminder mails to be within the time frame
+      #   between the provided earliest_time and latest_time.
+      #
+      # This assumes that users only have full hours specified for the times
+      # they desire to receive a reminder mail at.
+      #
+      # @param [DateTime] earliest_time The earliest time to consider as a
+      #   matching slot. All quarter hours from that time to now are included.
+      #
+      #   Only the time part is used which is moved forward to the next quarter
+      #   hour (e.g. 2021-05-03 10:34:12+02:00 -> 08:45:00). This is done
+      #   because time zones always have a mod(15) == 0 minutes offset. Needs to
+      #   be before the latest_time.
+      # @param [DateTime] latest_time The latest time to consider as a matching
+      #  slot.
+      #
+      #  Only the time part is used which is moved back to the last quarter hour
+      #  less than the latest_time value.
+      def having_reminder_mail_to_send(earliest_time, latest_time)
+        local_times = local_times_from(earliest_time, latest_time)
 
         return none if local_times.empty?
 
@@ -57,30 +68,39 @@ module Users::Scopes
                                  .joins(local_time_join(local_times))
 
         subscriber_ids = Notification
-                           .unsent_reminders_before(recipient: recipient_candidates, time: Time.current)
+                           .unsent_reminders_before(recipient: recipient_candidates, time: latest_time)
                            .group(:recipient_id)
                            .select(:recipient_id)
 
         where(id: subscriber_ids)
       end
 
+      private
+
       def local_time_join(local_times)
         # Joins the times local to the user preferences and then checks whether:
-        # * reminders are enabled
-        # * any of the configured reminder time is the local time
-        # * the local workday is enabled to receive a reminder on
-        # If no time zone is present, utc is assumed.
-        # If no reminder settings are present, sending a reminder at 08:00 local time is assumed.
-        # If no workdays are specified, 1 - 5 is assumed which is represents Monday to Friday.
+        #
+        #   * reminders are enabled
+        #   * any of the configured reminder time is the local time
+        #   * the local workday is enabled to receive a reminder on
+        #
+        # If no time zone is present or if it is blank, the configured default
+        # time zone or UTC is assumed.
+        #
+        # If no reminder settings are present, sending a reminder at 08:00 local
+        # time is assumed.
+        #
+        # If no workdays are specified, 1 - 5 is assumed which represents Monday
+        # to Friday.
         times_sql = arel_table
                       .grouping(Arel::Nodes::ValuesList.new(local_times))
-                      .as('t(today_local, hours, zone, workday)')
+                      .as("t(today_local, hours, zone, workday)")
 
-        default_timezone = Setting.user_default_timezone.present? ? "'#{Setting.user_default_timezone}'" : 'NULL'
+        default_timezone = Arel::Nodes::build_quoted(Setting.user_default_timezone.presence)
 
         <<~SQL.squish
           JOIN (SELECT * FROM #{times_sql.to_sql}) AS local_times
-          ON COALESCE(user_preferences.settings->>'time_zone', #{default_timezone}, 'Etc/UTC') = local_times.zone
+          ON COALESCE(NULLIF(user_preferences.settings->>'time_zone',''), #{default_timezone.to_sql}, 'Etc/UTC') = local_times.zone
           AND (
             user_preferences.settings->'workdays' @> to_jsonb(local_times.workday)
             OR (
@@ -117,8 +137,8 @@ module Users::Scopes
         SQL
       end
 
-      def local_times_from(earliest_time)
-        times = quarters_between_earliest_and_now(earliest_time)
+      def local_times_from(earliest_time, latest_time)
+        times = quarters_between_earliest_and_latest(earliest_time, latest_time)
 
         times_for_zones(times)
       end
@@ -148,26 +168,32 @@ module Users::Scopes
 
           [
             local_date,
-            local_time.strftime('%H:00:00+00:00'),
+            local_time.strftime("%H:00:00+00:00"),
             zone.tzinfo.canonical_zone.name,
             workday
           ]
         end
       end
 
-      def quarters_between_earliest_and_now(earliest_time)
-        latest_time = Time.current
-        raise ArgumentError if latest_time < earliest_time || (latest_time - earliest_time) > 1.day
+      def quarters_between_earliest_and_latest(earliest_time, latest_time) # rubocop:disable Metrics/AbcSize
+        raise ArgumentError, "#{latest_time} < #{earliest_time}" if latest_time < earliest_time
+        raise ArgumentError, "#{latest_time} - #{earliest_time} > 1 day" if (latest_time - earliest_time) > 1.day
 
-        quarters = ((latest_time - earliest_time) / 60 / 15).floor
+        # The first quarter is equal or greater to the earliest time
+        first_quarter = earliest_time.change(min: (earliest_time.min.to_f / 15).ceil * 15)
+        # The last quarter is the one smaller than the latest time. But needs to be at least equal to the first quarter.
+        last_quarter = [first_quarter, latest_time.change(min: latest_time.min / 15 * 15)].max
 
-        (1..quarters).each_with_object([next_quarter_hour(earliest_time)]) do |_, times|
-          times << (times.last + 15.minutes)
+        quarters = if first_quarter == last_quarter
+                     [first_quarter]
+                   else
+                     (first_quarter.to_i..last_quarter.to_i).step(15.minutes)
+                   end
+
+        quarters
+          .map do |time|
+          Time.zone.at(time)
         end
-      end
-
-      def next_quarter_hour(time)
-        (time + (time.min % 15 == 0 ? 0.minutes : (15 - (time.min % 15)).minutes))
       end
     end
   end

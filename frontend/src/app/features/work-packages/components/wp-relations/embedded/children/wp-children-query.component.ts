@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +20,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, Input, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
 import { WorkPackageRelationsHierarchyService } from 'core-app/features/work-packages/components/wp-relations/wp-relations-hierarchy/wp-relations-hierarchy.service';
 import { OpUnlinkTableAction } from 'core-app/features/work-packages/components/wp-table/table-actions/actions/unlink-table-action';
 import { OpTableActionFactory } from 'core-app/features/work-packages/components/wp-table/table-actions/table-action';
@@ -38,23 +36,39 @@ import { WorkPackageInlineCreateService } from 'core-app/features/work-packages/
 import { WorkPackageRelationQueryBase } from 'core-app/features/work-packages/components/wp-relations/embedded/wp-relation-query.base';
 import { WpChildrenInlineCreateService } from 'core-app/features/work-packages/components/wp-relations/embedded/children/wp-children-inline-create.service';
 import { filter } from 'rxjs/operators';
+import { QueryRequestParams } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { HalEventsService } from 'core-app/features/hal/services/hal-events.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { GroupDescriptor } from 'core-app/features/work-packages/components/wp-single-view/wp-single-view.component';
 import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import { WorkPackageRelationsService } from 'core-app/features/work-packages/components/wp-relations/wp-relations.service';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-children-query',
   templateUrl: '../wp-relation-query.html',
   providers: [
     { provide: WorkPackageInlineCreateService, useClass: WpChildrenInlineCreateService },
   ],
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class WorkPackageChildrenQueryComponent extends WorkPackageRelationQueryBase implements OnInit {
+  protected wpRelationsHierarchyService = inject(WorkPackageRelationsHierarchyService);
+  protected PathHelper = inject(PathHelperService);
+  protected wpInlineCreate = inject(WorkPackageInlineCreateService);
+  protected halEvents = inject(HalEventsService);
+  protected apiV3Service = inject(ApiV3Service);
+  readonly I18n = inject(I18nService);
+  readonly wpRelations = inject(WorkPackageRelationsService);
+
   @Input() public workPackage:WorkPackageResource;
 
-  @Input() public query:QueryResource;
+  @Input() public query:QueryResource|Partial<QueryRequestParams>;
 
   /** An optional group descriptor if we're rendering on the single view */
   @Input() public group?:GroupDescriptor;
@@ -75,16 +89,6 @@ export class WorkPackageChildrenQueryComponent extends WorkPackageRelationQueryB
       (child:WorkPackageResource) => !!child.changeParent,
     ),
   ];
-
-  constructor(protected wpRelationsHierarchyService:WorkPackageRelationsHierarchyService,
-    protected PathHelper:PathHelperService,
-    protected wpInlineCreate:WorkPackageInlineCreateService,
-    protected halEvents:HalEventsService,
-    protected apiV3Service:APIV3Service,
-    protected queryUrlParamsHelper:UrlParamsHelperService,
-    readonly I18n:I18nService) {
-    super(queryUrlParamsHelper);
-  }
 
   ngOnInit() {
     // Set reference target and reference class
@@ -116,6 +120,9 @@ export class WorkPackageChildrenQueryComponent extends WorkPackageRelationQueryB
         filter(() => !!this.embeddedTable?.isInitialized),
         this.untilDestroyed(),
       )
-      .subscribe(() => this.refreshTable());
+      .subscribe(() => {
+        this.wpRelations.updateCounter(this.workPackage);
+        this.refreshTable();
+      });
   }
 }

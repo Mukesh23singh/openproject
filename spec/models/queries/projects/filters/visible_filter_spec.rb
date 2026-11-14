@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,55 +22,55 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Projects::Filters::VisibleFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::Projects::Filters::VisibleFilter do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :visible }
     let(:type) { :list }
     let(:model) { Project }
     let(:attribute) { :visible }
-    let(:values) { ['5'] }
+    let(:values) { ["5"] }
 
-    describe '#available_operators' do
-      it 'supports only =' do
+    describe "#available_operators" do
+      it "supports only =" do
         expect(instance.available_operators)
           .to eql [Queries::Operators::Equals]
       end
     end
 
-    describe '#valid?' do
+    describe "#valid?" do
       before do
         allow(User)
           .to receive(:pluck)
                 .and_return([[5, 5], [8, 8]])
       end
-      context 'without values' do
+
+      context "without values" do
         let(:values) { [] }
 
-        it 'is invalid' do
+        it "is invalid" do
           expect(instance)
             .to be_invalid
         end
       end
 
-      context 'with valid value' do
-        it 'is valid' do
+      context "with valid value" do
+        it "is valid" do
           expect(instance)
             .to be_valid
         end
       end
 
-      context 'with multiple valid values' do
+      context "with multiple valid values" do
         let(:values) { %w[5 8] }
 
-        it 'is invalid' do
+        it "is invalid" do
           expect(instance)
             .to be_invalid
         end

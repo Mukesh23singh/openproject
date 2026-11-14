@@ -1,51 +1,52 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { UIRouterModule } from '@uirouter/angular';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
+import { OpSharedModule } from 'core-app/shared/shared.module';
 import {
-  FormsModule,
-  ReactiveFormsModule,
-} from '@angular/forms';
-import { OPSharedModule } from 'core-app/shared/shared.module';
-import { OpenprojectAutocompleterModule } from 'core-app/shared/components/autocompleter/openproject-autocompleter.module';
+  OpenprojectAutocompleterModule,
+} from 'core-app/shared/components/autocompleter/openproject-autocompleter.module';
 import { UserPreferencesService } from 'core-app/features/user-preferences/state/user-preferences.service';
-import { NotificationsSettingsPageComponent } from 'core-app/features/user-preferences/notifications-settings/page/notifications-settings-page.component';
-import { NotificationSettingInlineCreateComponent } from 'core-app/features/user-preferences/notifications-settings/inline-create/notification-setting-inline-create.component';
-import { MY_ACCOUNT_ROUTES } from 'core-app/features/user-preferences/user-preferences.routes';
-import { NotificationsSettingsToolbarComponent } from './notifications-settings/toolbar/notifications-settings-toolbar.component';
-import { NotificationSettingsTableComponent } from './notifications-settings/table/notification-settings-table.component';
-import { ReminderSettingsPageComponent } from './reminder-settings/page/reminder-settings-page.component';
-import { ReminderSettingsDailyTimeComponent } from 'core-app/features/user-preferences/reminder-settings/reminder-time/reminder-settings-daily-time.component';
-import { ImmediateReminderSettingsComponent } from 'core-app/features/user-preferences/reminder-settings/immediate-reminders/immediate-reminder-settings.component';
-import { EmailAlertsSettingsComponent } from 'core-app/features/user-preferences/reminder-settings/email-alerts/email-alerts-settings.component';
-import { WorkdaysSettingsComponent } from './reminder-settings/workdays/workdays-settings.component';
-import { PauseRemindersComponent } from './reminder-settings/pause-reminders/pause-reminders.component';
+import { OpenprojectEnterpriseModule } from 'core-app/features/enterprise/openproject-enterprise.module';
 
 @NgModule({
   providers: [
     UserPreferencesService,
   ],
-  declarations: [
-    NotificationsSettingsPageComponent,
-    NotificationSettingInlineCreateComponent,
-    NotificationsSettingsToolbarComponent,
-    NotificationSettingsTableComponent,
-    ReminderSettingsPageComponent,
-    ReminderSettingsDailyTimeComponent,
-    ImmediateReminderSettingsComponent,
-    EmailAlertsSettingsComponent,
-    WorkdaysSettingsComponent,
-    PauseRemindersComponent,
-  ],
+  declarations: [],
   imports: [
     CommonModule,
-    OPSharedModule,
+    OpSharedModule,
     OpenprojectAutocompleterModule,
+    OpenprojectEnterpriseModule,
     FormsModule,
     ReactiveFormsModule,
-    // Routes for /my/*
-    UIRouterModule.forChild({
-      states: MY_ACCOUNT_ROUTES,
-    }),
   ],
 })
 export class OpenProjectMyAccountModule { }

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, EventEmitter, Output } from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, Output, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { Subject } from 'rxjs';
@@ -34,17 +33,26 @@ import {
   debounceTime, distinctUntilChanged, map, tap,
 } from 'rxjs/operators';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { input } from 'reactivestates';
+import { input } from '@openproject/reactivestates';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
+import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-filter-by-text-input',
   templateUrl: './quick-filter-by-text-input.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-
 export class WorkPackageFilterByTextInputComponent extends UntilDestroyedMixin {
-  @Output() public deactivateFilter = new EventEmitter<QueryFilterResource>();
+  readonly I18n = inject(I18nService);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly wpTableFilters = inject(WorkPackageViewFiltersService);
+
+  @Output() public deactivateFilter = new EventEmitter<QueryFilterInstanceResource>();
 
   public text = {
     createWithDropdown: this.I18n.t('js.work_packages.create.button'),
@@ -59,9 +67,7 @@ export class WorkPackageFilterByTextInputComponent extends UntilDestroyedMixin {
   /** Input for search requests */
   public searchTermChanged:Subject<string> = new Subject<string>();
 
-  constructor(readonly I18n:I18nService,
-    readonly querySpace:IsolatedQuerySpace,
-    readonly wpTableFilters:WorkPackageViewFiltersService) {
+  constructor() {
     super();
 
     this.wpTableFilters
@@ -69,14 +75,12 @@ export class WorkPackageFilterByTextInputComponent extends UntilDestroyedMixin {
       .pipe(
         this.untilDestroyed(),
         map(() => {
-          const currentSearchFilter = this.wpTableFilters.find('search');
+          const currentSearchFilter = this.wpTableFilters.find(this.wpTableFilters.textFilterId);
           return currentSearchFilter ? (currentSearchFilter.values[0] as string) : '';
         }),
       )
       .subscribe((upstreamTerm:string) => {
-        console.log(`upstream ${upstreamTerm} ${(this.searchTerm as any).timestampOfLastValue}`);
         if (!this.searchTerm.value || this.searchTerm.isValueOlderThan(500)) {
-          console.log(`Upstream value setting to ${upstreamTerm}`);
           this.searchTerm.putValue(upstreamTerm);
         }
       });
@@ -90,14 +94,17 @@ export class WorkPackageFilterByTextInputComponent extends UntilDestroyedMixin {
       )
       .subscribe((term) => {
         if (term.length > 0) {
-          this.wpTableFilters.replace('search', (filter) => {
+          this.wpTableFilters.replace(this.wpTableFilters.textFilterId, (filter) => {
             filter.operator = filter.findOperator('**')!;
             filter.values = [term];
           });
         } else {
-          const filter = this.wpTableFilters.find('search');
+          const filter = this.wpTableFilters.find(this.wpTableFilters.textFilterId);
+          if (!filter) {
+            return;
+          }
 
-          this.wpTableFilters.remove(filter!);
+          this.wpTableFilters.remove(filter);
 
           this.deactivateFilter.emit(filter);
         }

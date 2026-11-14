@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'digest/md5'
+require "digest/md5"
 
 module ReportingHelper
   # ======================= SHARED CODE START
@@ -43,37 +42,35 @@ module ReportingHelper
 
   def mapped(value, klass, default)
     id = value.to_i
-    return default if id < 0
+    return default if id <= 0
 
     klass.find(id).name
   end
 
   def label_for(field)
     name = field.to_s
-    if name.starts_with?('label')
+    if name.starts_with?("label")
       return I18n.t(field)
     end
 
     name = name.camelcase
-    if CostQuery::Filter.const_defined? name
+    if CostQuery::Filter.const_defined?(name)
       CostQuery::Filter.const_get(name).label
-    elsif
-      CostQuery::GroupBy.const_defined? name
+    elsif CostQuery::GroupBy.const_defined?(name)
       CostQuery::GroupBy.const_get(name).label
+    elsif field.to_sym.in?(%i[entity entity_id entity_type entity_gid])
+      # TODO: Temporary override for now
+      TimeEntry.human_attribute_name(:entity)
     else
       # note that using WorkPackage.human_attribute_name relies on the attribute
-      # being an work_package attribute or a general attribute for all models whicht might not
+      # being an work_package attribute or a general attribute for all models which might not
       # be the case but so far I have only seen the "comments" attribute in reports
       WorkPackage.human_attribute_name(field)
     end
   end
 
-  def debug_fields(result, prefix = ', ')
-    prefix << result.fields.inspect << ', ' << result.important_fields.inspect << ', ' << result.key.inspect if params[:debug]
-  end
-
   def month_name(index)
-    Date::MONTHNAMES[index].to_s
+    I18n.t("date.month_names")[index].to_s
   end
 
   # ======================= SHARED CODE END
@@ -90,7 +87,7 @@ module ReportingHelper
 
   def budget_link(budget_id)
     budget = Budget.find(budget_id)
-    if User.current.allowed_to?(:view_budgets, budget.project)
+    if User.current.allowed_in_project?(:view_budgets, budget.project)
       link_to budget.subject,
               budget_path(budget),
               class: budget.css_classes,
@@ -100,56 +97,113 @@ module ReportingHelper
     end
   end
 
-  def field_representation_map(key, value)
-    return I18n.t(:'placeholders.default') if value.blank?
+  def field_representation_map(key, value) # rubocop:disable Metrics/AbcSize, Metrics/PerceivedComplexity
+    return I18n.t(:"placeholders.default") if value.blank?
 
     case key.to_sym
-    when :activity_id                           then mapped value, Enumeration, "<i>#{I18n.t(:caption_material_costs)}</i>"
-    when :project_id                            then link_to_project Project.find(value.to_i)
-    when :user_id, :assigned_to_id, :author_id  then link_to_user(User.find_by_id(value.to_i) || DeletedUser.first)
-    when :tyear, :units                         then h(value.to_s)
-    when :tweek                                 then "#{I18n.t(:label_week)} ##{h value}"
-    when :tmonth                                then month_name(value.to_i)
-    when :category_id                           then h(Category.find(value.to_i).name)
-    when :cost_type_id                          then mapped value, CostType, I18n.t(:caption_labor)
-    when :budget_id                             then budget_link value
-    when :work_package_id                       then link_to_work_package(WorkPackage.find(value.to_i))
-    when :spent_on                              then format_date(value.to_date)
-    when :type_id                               then h(Type.find(value.to_i).name)
-    when :week                                  then "#{I18n.t(:label_week)} #%s" % value.to_i.modulo(100)
-    when :priority_id                           then h(IssuePriority.find(value.to_i).name)
-    when :version_id                            then h(Version.find(value.to_i).name)
-    when :singleton_value                       then ''
-    when :status_id                             then h(Status.find(value.to_i).name)
-    when /custom_field\d+/                      then custom_value(key, value)
-    else h(value.to_s)
+    when :activity_id
+      mapped value, Enumeration, content_tag(:i, I18n.t(:caption_material_costs))
+    when :project_id
+      link_to_project Project.find(value.to_i)
+    when :user_id, :assigned_to_id, :author_id, :logged_by_id
+      link_to_user(User.visible.find_by(id: value.to_i) || DeletedUser.first)
+    when :tweek
+      "#{I18n.t(:label_week)} ##{h value}"
+    when :tmonth
+      month_name(value.to_i)
+    when :category_id
+      Category.find(value.to_i).name
+    when :cost_type_id
+      mapped value, CostType, I18n.t(:caption_labor)
+    when :budget_id
+      budget_link value
+    when :work_package_id
+      link_to_work_package(WorkPackage.visible.find(value.to_i))
+    when :entity_gid
+      allowed_types = (TimeEntry::ALLOWED_ENTITY_TYPES | CostEntry::ALLOWED_ENTITY_TYPES).map(&:safe_constantize)
+      entity = begin
+        GlobalID::Locator.locate(value, only: allowed_types)
+      rescue URI::InvalidComponentError
+        nil
+      end
+
+      if entity.is_a?(::WorkPackage)
+        link_to_work_package(entity)
+      elsif entity.is_a?(::Meeting)
+        # TODO: add a link
+        entity.title
+      end
+    when :entity_type
+      # TODO: Skip for now
+      nil
+    when :spent_on
+      format_date(value.to_date)
+    when :type_id
+      Type.find(value.to_i).name
+    when :week
+      "#{I18n.t(:label_week)} #%s" % value.to_i.modulo(100)
+    when :priority_id
+      IssuePriority.find(value.to_i).name
+    when :version_id
+      Version.find(value.to_i).name
+    when :singleton_value
+      ""
+    when :status_id
+      Status.find(value.to_i).name
+    when /custom_field\d+/
+      custom_value(key, value)
+    else
+      value.to_s
+    end
+  end
+
+  def spent_on_time_representation(start_timestamp, hours)
+    return "" if start_timestamp.nil?
+
+    result = format_time(start_timestamp, include_date: false)
+    return result if hours.nil? || hours.zero?
+
+    end_timestamp = start_timestamp + hours.hours
+    days_between_suffix = days_between_representation(start_timestamp, end_timestamp)
+    "#{result} - #{format_time(end_timestamp, include_date: false)}#{days_between_suffix}"
+  end
+
+  def days_between_representation(start_timestamp, end_timestamp)
+    return "" if start_timestamp.nil? || end_timestamp.nil?
+
+    days_between = (end_timestamp.to_date - start_timestamp.to_date).to_i
+    if days_between.positive?
+      " (+#{WorkPackage::Exports::Formatters::PDF::Days.new(nil)
+                                                  .format_value(days_between, nil)
+                                                  .delete(' ')})"
     end
   end
 
   def custom_value(cf_identifier, value)
-    cf_id = cf_identifier.gsub('custom_field', '').to_i
+    cf_id = cf_identifier.gsub("custom_field", "").to_i
 
     # Reuses rails cache to locate the custom field
     # and then properly cast the value
     CustomValue
-      .new(custom_field_id: cf_id, value: value)
-      .typed_value
+      .new(custom_field_id: cf_id, value:)
+      .formatted_value
   end
 
   def field_sort_map(key, value)
-    return '' if value.blank?
+    return "" if value.blank?
 
     case key.to_sym
-    when :work_package_id, :tweek, :tmonth, :week  then value.to_i
-    when :spent_on                                 then value.to_date.mjd
-    else h(field_representation_map(key, value).gsub(/<\/?[^>]*>/, ''))
+    when :entity_id, :tweek, :tmonth, :week then value.to_i
+    when :entity_gid then GlobalID.new(value).model_id.to_i
+    when :spent_on then value.to_date.mjd
+    else strip_tags(field_representation_map(key, value))
     end
   end
 
   def show_result(row, unit_id = self.unit_id)
     case unit_id
     when -1 then l_hours(row.units)
-    when 0  then row.real_costs ? number_to_currency(row.real_costs) : '-'
+    when 0  then row.real_costs ? number_to_currency(row.real_costs) : "-"
     else
       current_cost_type = @cost_type || CostType.find(unit_id)
       pluralize(row.units, current_cost_type.unit, current_cost_type.unit_plural)
@@ -157,7 +211,7 @@ module ReportingHelper
   end
 
   def set_filter_options(struct, key, value)
-    struct[:operators][key] = '='
+    struct[:operators][key] = "="
     struct[:values][key]    = value.to_s
   end
 
@@ -168,7 +222,7 @@ module ReportingHelper
     tabs.map { |cost_type_id| [cost_type_id, cost_type_label(cost_type_id)] }
   end
 
-  def cost_type_label(cost_type_id, cost_type_inst = nil, _plural = true)
+  def cost_type_label(cost_type_id, cost_type_inst = nil)
     case cost_type_id
     when -1 then I18n.t(:caption_labor)
     when 0  then I18n.t(:label_money)
@@ -176,55 +230,35 @@ module ReportingHelper
     end
   end
 
-  def link_to_details(result)
-    return '' # unless result.respond_to? :fields # uncomment to display
-    session_filter = { operators: session[:report][:filters][:operators].dup, values: session[:report][:filters][:values].dup }
-    filters = result.fields.inject session_filter do |struct, (key, value)|
-      key = key.to_sym
-      case key
-      when :week
-        set_filter_options struct, :tweek, value.to_i.modulo(100)
-        set_filter_options struct, :tyear, value.to_i / 100
-      when :month, :year
-        set_filter_options struct, :"t#{key}", value
-      when :count, :units, :costs, :display_costs, :sum, :real_costs
-      else
-        set_filter_options struct, key, value
-      end
-      struct
-    end
-    options = { fields: filters[:operators].keys, set_filter: 1, action: :drill_down }
-    link_to '[+]', filters.merge(options), class: 'drill_down', title: I18n.t(:description_drill_down)
-  end
-
   ##
   # Create the appropriate action for an entry with the type of log to use
+  # The controller has to be absolute: the report is rendered from a namespaced
+  # controller, where a relative one would resolve to reporting/costlog.
   def action_for(result, options = {})
-    options.merge controller: controller_for(result.fields['type']), id: result.fields['id'].to_i
+    options.merge controller: "/#{controller_for(result.fields['type'])}", id: result.fields["id"].to_i
   end
 
   def controller_for(type)
-    type == 'TimeEntry' ? 'timelog' : 'costlog'
+    type == "TimeEntry" ? "timelog" : "costlog"
   end
 
   ##
   # Create the appropriate action for an entry with the type of log to use
   def entry_for(result)
-    type = result.fields['type'] == 'TimeEntry' ? TimeEntry : CostEntry
-    type.find(result.fields['id'].to_i)
+    type = result.fields["type"] == "TimeEntry" ? TimeEntry : CostEntry
+    type.find(result.fields["id"].to_i)
   end
 
   ##
-  # For a given row, determine how to render it's contents according to usability and
+  # For a given row, determine how to render its contents according to usability and
   # localization rules
   def show_row(row)
-    row_text = link_to_details(row) << row.render { |k, v| show_field(k, v) }
-    row_text.html_safe
+    row.render { |k, v| show_field(k, v) }
   end
 
   def delimit(items, options = {})
     options[:step] ||= 1
-    options[:delim] ||= '&bull;'
+    options[:delim] ||= "&bull;"
     delimited = []
     items.each_with_index do |item, ix|
       delimited << if ix != 0 && (ix % options[:step]).zero?
@@ -234,16 +268,5 @@ module ReportingHelper
                    end
     end
     delimited
-  end
-
-  ##
-  # Finds the Filter-Class for as specific filter name while being careful with the filter_name parameter as it is user input.
-  def filter_class(filter_name)
-    klass = CostQuery::Filter.const_get(filter_name.to_s.camelize)
-    return klass if klass.is_a? Class
-
-    nil
-  rescue NameError
-    nil
   end
 end

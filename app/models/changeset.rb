@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,44 +22,46 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Changeset < ApplicationRecord
   belongs_to :repository
+  has_one :project, through: :repository
   belongs_to :user
-  has_many :file_changes, class_name: 'Change', dependent: :delete_all
+  has_many :file_changes, class_name: "Change", dependent: :delete_all
   has_and_belongs_to_many :work_packages
 
   acts_as_journalized timestamp: :committed_on
 
-  acts_as_event title: Proc.new { |o|
-                         "#{I18n.t(:label_revision)} #{o.format_identifier}" + (o.short_comments.blank? ? '' : (': ' + o.short_comments))
-                       },
-                description: :long_comments,
-                datetime: :committed_on,
-                url: Proc.new { |o|
-                  {
-                    controller: '/repositories',
-                    action: 'revision',
-                    project_id: o.repository.project_id,
-                    rev: o.identifier
-                  }
-                },
-                author: Proc.new { |o| o.author }
+  acts_as_event(
+    title: Proc.new do |o|
+      "#{I18n.t(:label_revision)} #{o.format_identifier}" + (o.short_comments.blank? ? "" : ": #{o.short_comments}")
+    end,
+    description: :long_comments,
+    datetime: :committed_on,
+    url: Proc.new do |o|
+      {
+        controller: "/repositories",
+        action: "revision",
+        project_id: o.repository.project_id,
+        rev: o.identifier
+      }
+    end,
+    author: Proc.new { |o| o.author }
+  )
 
-  acts_as_searchable columns: 'comments',
+  acts_as_searchable columns: "comments",
                      include: { repository: :project },
                      references: [:repositories],
                      project_key: "#{Repository.table_name}.project_id",
-                     date_column: 'committed_on'
+                     date_column: "committed_on"
 
-  validates_presence_of :repository_id, :revision, :committed_on, :commit_date
-  validates_uniqueness_of :revision, scope: :repository_id
-  validates_uniqueness_of :scmid, scope: :repository_id, allow_nil: true
+  validates :repository_id, :revision, :committed_on, :commit_date, presence: true
+  validates :revision, uniqueness: { scope: :repository_id }
+  validates :scmid, uniqueness: { scope: :repository_id, allow_nil: true }
 
   scope :visible, ->(*args) {
     includes(repository: :project)
@@ -68,7 +70,7 @@ class Changeset < ApplicationRecord
   }
 
   def revision=(r)
-    write_attribute :revision, (r.nil? ? nil : r.to_s)
+    write_attribute :revision, r&.to_s
   end
 
   # Returns the identifier of this changeset; depending on repository backends
@@ -94,19 +96,13 @@ class Changeset < ApplicationRecord
     end
   end
 
-  def project
-    repository.project
-  end
-
   def author
-    user || committer.to_s.split('<').first
+    user || committer.to_s.split("<").first
   end
 
   # Delegate to a Repository's log encoding
   def repository_encoding
-    if repository.present?
-      repository.repo_log_encoding
-    end
+    repository.presence&.repo_log_encoding
   end
 
   # Committer of the Changeset
@@ -118,7 +114,7 @@ class Changeset < ApplicationRecord
   end
 
   before_create :sanitize_attributes
-  before_create :assign_openproject_user_from_comitter
+  before_create :assign_openproject_user_from_committer
   after_create :scan_comment_for_work_package_ids
 
   TIMELOG_RE = /
@@ -137,12 +133,12 @@ class Changeset < ApplicationRecord
     return if comments.blank?
 
     # keywords used to reference work packages
-    ref_keywords = Setting.commit_ref_keywords.downcase.split(',').map(&:strip)
-    ref_keywords_any = ref_keywords.delete('*')
+    ref_keywords = Setting.commit_ref_keywords.downcase.split(",").map(&:strip)
+    ref_keywords_any = ref_keywords.delete("*")
     # keywords used to fix work packages
-    fix_keywords = Setting.commit_fix_keywords.downcase.split(',').map(&:strip)
+    fix_keywords = Setting.commit_fix_keywords.downcase.split(",").map(&:strip)
 
-    kw_regexp = (ref_keywords + fix_keywords).map { |kw| Regexp.escape(kw) }.join('|')
+    kw_regexp = (ref_keywords + fix_keywords).map { |kw| Regexp.escape(kw) }.join("|")
 
     referenced_work_packages = []
 
@@ -151,7 +147,7 @@ class Changeset < ApplicationRecord
       refs = match[3]
       next unless action.present? || ref_keywords_any
 
-      refs.scan(/#(\d+)(\s+@#{TIMELOG_RE})?/).each do |m|
+      refs.scan(/#(\d+)(\s+@#{TIMELOG_RE})?/o).each do |m|
         work_package = find_referenced_work_package_by_id(m[0].to_i)
         hours = m[2]
         if work_package
@@ -184,15 +180,15 @@ class Changeset < ApplicationRecord
 
   # Returns the previous changeset
   def previous
-    @previous ||= Changeset.where(['id < ? AND repository_id = ?', id, repository_id]).order(Arel.sql('id DESC')).first
+    @previous ||= Changeset.where(["id < ? AND repository_id = ?", id, repository_id]).order(Arel.sql("id DESC")).first
   end
 
   # Returns the next changeset
   def next
-    @next ||= Changeset.where(['id > ? AND repository_id = ?', id, repository_id]).order(Arel.sql('id ASC')).first
+    @next ||= Changeset.where(["id > ? AND repository_id = ?", id, repository_id]).order(Arel.sql("id ASC")).first
   end
 
-  # Creates a new Change from it's common parameters
+  # Creates a new Change from its common parameters
   def create_change(change)
     Change.create(changeset: self,
                   action: change[:action],
@@ -224,26 +220,28 @@ class Changeset < ApplicationRecord
         project.is_descendant_of?(work_package.project))
   end
 
+  # rubocop:disable-next Metrics/AbcSize
   def fix_work_package(work_package)
     status = Status.find_by(id: Setting.commit_fix_status_id.to_i)
     if status.nil?
-      logger.warn("No status matches commit_fix_status_id setting (#{Setting.commit_fix_status_id})") if logger
+      logger&.warn("No status matches commit_fix_status_id setting (#{Setting.commit_fix_status_id})")
       return work_package
     end
 
     # the work_package may have been updated by the closure of another one (eg. duplicate)
     work_package.reload
     # don't change the status if the work package is closed
-    return if work_package.status && work_package.status.is_closed?
+    return if work_package.status&.closed?
 
-    work_package.add_journal(user || User.anonymous, ll(Setting.default_language, :text_status_changed_by_changeset, text_tag))
-    work_package.status = status
-    unless Setting.commit_fix_done_ratio.blank?
-      work_package.done_ratio = Setting.commit_fix_done_ratio.to_i
-    end
-    OpenProject::Hook.call_hook(:model_changeset_scan_commit_for_issue_ids_pre_issue_update,
-                                changeset: self, issue: work_package)
-    if !work_package.save(validate: false) && logger
+    call = WorkPackages::UpdateService
+           .new(model: work_package,
+                user: user || User.anonymous)
+           .call(status:,
+                 journal_notes: I18n.t(:text_status_changed_by_changeset,
+                                       value: text_tag,
+                                       locale: Setting.default_language))
+
+    if call.errors.any? && logger.present?
       logger.warn("Work package ##{work_package.id} could not be saved by changeset #{id}: #{work_package.errors.full_messages}")
     end
 
@@ -251,13 +249,13 @@ class Changeset < ApplicationRecord
   end
 
   def log_time(work_package, hours)
-    unless user.present?
+    if user.blank?
       Rails.logger.warn("TimeEntry could not be created by changeset #{id}: #{committer} does not map to user")
       return
     end
 
     Changesets::LogTimeService
-      .new(user: user, changeset: self)
+      .new(user:, changeset: self)
       .call(work_package, hours)
       .result
   end
@@ -279,41 +277,43 @@ class Changeset < ApplicationRecord
     self.comments  = self.class.normalize_comments(comments, repository.repo_log_encoding)
   end
 
-  def assign_openproject_user_from_comitter
+  def assign_openproject_user_from_committer
     self.user = repository.find_committer_user(committer)
-    add_journal(user || User.anonymous, comments)
+    add_journal(user: user || User.anonymous, notes: comments)
   end
 
   # TODO: refactor to a standard helper method
+  # rubocop:disable-next Metrics/AbcSize
+  # rubocop:disable-next Metrics/PerceivedComplexity
   def self.to_utf8(str, encoding)
     return str if str.nil?
 
-    str.force_encoding('ASCII-8BIT') if str.respond_to?(:force_encoding)
+    str.force_encoding("ASCII-8BIT") if str.respond_to?(:force_encoding)
     if str.empty?
-      str.force_encoding('UTF-8') if str.respond_to?(:force_encoding)
+      str.force_encoding("UTF-8") if str.respond_to?(:force_encoding)
       return str
     end
-    normalized_encoding = encoding.blank? ? 'UTF-8' : encoding
+    normalized_encoding = encoding.presence || "UTF-8"
     if str.respond_to?(:force_encoding)
-      if normalized_encoding.upcase != 'UTF-8'
-        str.force_encoding(normalized_encoding)
-        str = str.encode('UTF-8', invalid: :replace,
-                                  undef: :replace, replace: '?')
-      else
-        str.force_encoding('UTF-8')
+      if normalized_encoding.upcase == "UTF-8"
+        str.force_encoding("UTF-8")
         unless str.valid_encoding?
-          str = str.encode('US-ASCII', invalid: :replace,
-                                       undef: :replace, replace: '?').encode('UTF-8')
+          str = str.encode("US-ASCII", invalid: :replace,
+                                       undef: :replace, replace: "?").encode("UTF-8")
         end
+      else
+        str.force_encoding(normalized_encoding)
+        str = str.encode("UTF-8", invalid: :replace,
+                                  undef: :replace, replace: "?")
       end
     else
 
-      txtar = ''
+      txtar = ""
       begin
-        txtar += str.encode('UTF-8', normalized_encoding)
+        txtar += str.encode("UTF-8", normalized_encoding)
       rescue Encoding::InvalidByteSequenceError, Encoding::UndefinedConversionError
         txtar += $!.success
-        str = '?' + $!.failed[1, $!.failed.length]
+        str = "?#{$!.failed[1, $!.failed.length]}"
         retry
       rescue StandardError
         txtar += $!.success

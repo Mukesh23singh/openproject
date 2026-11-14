@@ -1,61 +1,94 @@
-require_relative '../spec_helper'
+# frozen_string_literal: true
 
-describe 'Password change with OTP', with_2fa_ee: true, type: :feature,
-                                     with_config: { '2fa': { active_strategies: [:developer] } },
-                                     js: true do
-  let(:user_password) { 'boB&' * 4 }
-  let(:new_user_password) { '%obB' * 4 }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../spec_helper"
+
+RSpec.describe "Password change with OTP", :js, with_settings: {
+  plugin_openproject_two_factor_authentication: {
+    "active_strategies" => [:developer]
+  }
+} do
+  let(:user_password) { "boB&" * 4 }
+  let(:new_user_password) { "%obB" * 4 }
   let(:user) do
-    FactoryBot.create(:user,
-                      login: 'bob',
-                      password: user_password,
-                      password_confirmation: user_password)
+    create(:user,
+           login: "bob",
+           password: user_password,
+           password_confirmation: user_password)
   end
-  let(:expected_path_after_login) { my_page_path }
+  let(:expected_path_after_login) { home_path }
 
   def handle_password_change(requires_otp: true)
     visit signin_path
-    within('#login-form') do
-      fill_in('username', with: user.login)
-      fill_in('password', with: user_password)
+    within("#login-form") do
+      fill_in("username", with: user.login)
+      fill_in("password", with: user_password)
       click_link_or_button I18n.t(:button_login)
     end
 
     sms_token = nil
-    allow_any_instance_of(::OpenProject::TwoFactorAuthentication::TokenStrategy::Developer)
-        .to receive(:create_mobile_otp).and_wrap_original do |m|
+    # rubocop:disable RSpec/AnyInstance
+    allow_any_instance_of(OpenProject::TwoFactorAuthentication::TokenStrategy::Developer)
+      .to receive(:create_mobile_otp).and_wrap_original do |m|
       sms_token = m.call
     end
+    # rubocop:enable RSpec/AnyInstance
 
-    expect(page).to have_selector('h2', text: I18n.t(:button_change_password))
-    within('#content') do
+    expect(page).to have_test_selector("change_password_header_title", text: I18n.t(:label_change_password))
+    within("#content") do
       SeleniumHubWaiter.wait
-      fill_in('password', with: user_password)
-      fill_in('new_password', with: new_user_password)
-      fill_in('new_password_confirmation', with: new_user_password)
-      click_link_or_button I18n.t(:button_save)
+      fill_in("password", with: user_password)
+      fill_in("new_password", with: new_user_password)
+      fill_in("new_password_confirmation", with: new_user_password)
+      click_button I18n.t(:button_change_password)
     end
 
     if requires_otp
-      expect(page).to have_selector('input#otp')
+      expect(page).to have_field("otp")
       SeleniumHubWaiter.wait
-      fill_in 'otp', with: sms_token
-      click_button I18n.t(:button_login)
+      fill_in "otp", with: sms_token
+      click_button I18n.t(:button_login), type: "submit"
     end
 
-    expect(current_path).to eql expected_path_after_login
+    expect(page).to have_current_path(expected_path_after_login, ignore_query: true)
   end
 
-  context 'when password is expired',
+  context "when password is expired",
           with_settings: { password_days_valid: 7 } do
     before do
       user
     end
 
-    context 'when device present' do
-      let!(:device) { FactoryBot.create :two_factor_authentication_device_sms, user: user, default: true }
+    context "when device present" do
+      let!(:device) { create(:two_factor_authentication_device_sms, user:, default: true) }
 
-      it 'requires the password change after expired' do
+      it "requires the password change after expired" do
         expect(user.current_password).not_to be_expired
 
         Timecop.travel(2.weeks.from_now) do
@@ -68,10 +101,10 @@ describe 'Password change with OTP', with_2fa_ee: true, type: :feature,
       end
     end
 
-    context 'when no device present' do
+    context "when no device present" do
       let!(:device) { nil }
 
-      it 'requires the password change after expired' do
+      it "requires the password change after expired" do
         expect(user.current_password).not_to be_expired
 
         Timecop.travel(2.weeks.from_now) do
@@ -85,14 +118,14 @@ describe 'Password change with OTP', with_2fa_ee: true, type: :feature,
     end
   end
 
-  context 'when force password change is set' do
+  context "when force password change is set" do
     let(:user) do
-      FactoryBot.create(:user,
-                        force_password_change: true,
-                        first_login: true,
-                        login: 'bob',
-                        password: user_password,
-                        password_confirmation: user_password)
+      create(:user,
+             force_password_change: true,
+             first_login: true,
+             login: "bob",
+             password: user_password,
+             password_confirmation: user_password)
     end
     let(:expected_path_after_login) { home_path }
 
@@ -100,18 +133,18 @@ describe 'Password change with OTP', with_2fa_ee: true, type: :feature,
       user
     end
 
-    context 'when device present' do
-      let!(:device) { FactoryBot.create :two_factor_authentication_device_sms, user: user, default: true }
+    context "when device present" do
+      let!(:device) { create(:two_factor_authentication_device_sms, user:, default: true) }
 
-      it 'requires the password change' do
+      it "requires the password change" do
         handle_password_change
       end
     end
 
-    context 'when no device present' do
+    context "when no device present" do
       let!(:device) { nil }
 
-      it 'requires the password change without otp' do
+      it "requires the password change without otp" do
         handle_password_change(requires_otp: false)
       end
     end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,59 +20,58 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe CostTypesController, type: :routing do
-  describe 'routing' do
+RSpec.describe Admin::CostTypesController do
+  describe "routing" do
     it {
-      expect(get('/cost_types')).to route_to(controller: 'cost_types',
-                                             action: 'index')
+      expect(get("/admin/cost_types")).to route_to(controller: "admin/cost_types",
+                                                   action: "index")
     }
 
     it {
-      expect(post('/cost_types')).to route_to(controller: 'cost_types',
-                                              action: 'create')
+      expect(post("/admin/cost_types")).to route_to(controller: "admin/cost_types",
+                                                    action: "create")
     }
 
     it {
-      expect(get('/cost_types/new')).to route_to(controller: 'cost_types',
-                                                 action: 'new')
+      expect(get("/admin/cost_types/new")).to route_to(controller: "admin/cost_types",
+                                                       action: "new")
     }
 
     it {
-      expect(get('/cost_types/5/edit')).to route_to(controller: 'cost_types',
-                                                    action: 'edit',
-                                                    id: '5')
+      expect(get("/admin/cost_types/5/edit")).to route_to(controller: "admin/cost_types",
+                                                          action: "edit",
+                                                          id: "5")
     }
 
     it {
-      expect(put('/cost_types/5')).to route_to(controller: 'cost_types',
-                                               action: 'update',
-                                               id: '5')
+      expect(put("/admin/cost_types/5")).to route_to(controller: "admin/cost_types",
+                                                     action: "update",
+                                                     id: "5")
     }
 
     it {
-      expect(put('/cost_types/5/set_rate')).to route_to(controller: 'cost_types',
-                                                        action: 'set_rate',
-                                                        id: '5')
+      expect(put("/admin/cost_types/5/set_rate")).to route_to(controller: "admin/cost_types",
+                                                              action: "set_rate",
+                                                              id: "5")
     }
 
     it {
-      expect(delete('/cost_types/5')).to route_to(controller: 'cost_types',
-                                                  action: 'destroy',
-                                                  id: '5')
+      expect(delete("/admin/cost_types/5")).to route_to(controller: "admin/cost_types",
+                                                        action: "destroy",
+                                                        id: "5")
     }
 
     it {
-      expect(patch('/cost_types/5/restore')).to route_to(controller: 'cost_types',
-                                                         action: 'restore',
-                                                         id: '5')
+      expect(patch("/admin/cost_types/5/restore")).to route_to(controller: "admin/cost_types",
+                                                               action: "restore",
+                                                               id: "5")
     }
   end
 end

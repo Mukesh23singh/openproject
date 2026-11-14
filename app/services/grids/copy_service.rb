@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,7 +32,7 @@ module Grids
   # Base class for any grid-based model's copy service.
   class CopyService < ::BaseServices::Copy
     ##
-    # DependentServices can be specialised through a class in the
+    # DependentServices can be specialized through a class in the
     # concrete model's namespace, e.g. Boards::Copy::WidgetsDependentService.
     def self.copy_dependencies
       [
@@ -48,19 +47,13 @@ module Grids
     end
 
     def initialize(user:, source:, contract_class: ::EmptyContract)
-      super user: user, source: source, contract_class: contract_class
+      super
     end
 
     protected
 
-    def initialize_copy(source, params)
-      grid = source.dup
-
-      initialize_new_grid! grid, source, params
-
-      ServiceResult.new success: grid.save, result: grid
+    def set_attributes_params(_params)
+      source.dup.attributes
     end
-
-    def initialize_new_grid!(_new_grid, _original_grid, _params); end
   end
 end

@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,70 +20,87 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
+$button--text-icon-spacing: 0.65em
+
+/// Taken from Foundation for Apps
+%button
+  display: inline-block
+  border: 0
+  text-align: center
+  line-height: 1.25rem
+  cursor: pointer
+  -webkit-appearance: none
+  -webkit-font-smoothing: antialiased
+  transition: background 0.25s ease-out
+  vertical-align: middle
+  padding: 0.375rem 0.5rem
+  margin: 0 1rem 1rem 0
+  font-size: 0.875rem
+  border-radius: var(--borderRadius-medium)
+
 
 .button,
 a.button
   @extend %button
-  @include button-size(medium)
-  @include button-expand(false)
-  @include button-style(var(--button--background-color), var(--button--background-hover-color), var(--button--font-color), var(--button-style))
-  border: 1px solid var(--button--border-color)
+  @include button-style(var(--button--background-color), var(--button--background-hover-color), var(--button--font-color))
+  border: 1px solid var(--button-default-borderColor-rest)
 
+  position: relative
   transition-property: background, border
   transition-duration: 0.25s
   transition-timing-function: ease-out
 
+  &:hover, &:focus
+    text-decoration: none
+
   &:disabled,
-  &.-disabled
+  &.-disabled,
+  &[aria-disabled="true"]
     @include button-disabled
 
-  &:hover
-    text-decoration: none
+  &[aria-disabled="true"]
+    pointer-events: auto
+    --button--background-hover-color: var(--button--background-color)
+    --button--primary-background-hover-color: var(--button--primary-background-color)
 
   &.-with-icon
     &::before
-      padding: 0 var(--button--text-icon-spacing) 0 0
+      padding: 0 $button--text-icon-spacing 0 0
 
   &.-danger
-    background: var(--content-form-danger-zone-bg-color)
-    color: var(--content-form-danger-zone-font-color)
-    border-color: var(--content-form-danger-zone-bg-color)
+    background: var(--button-danger-bgColor-active)
+    color: var(--button-danger-fgColor-active)
+    border-color: var(--borderColor-danger-emphasis)
+
     &.icon:before,
     &.icon-context:before
-      color: var(--content-form-danger-zone-font-color)
+      color: var(--button-danger-fgColor-active)
       padding-left: 0px
 
-  &.-highlight
-    @include button-style(var(--button--highlight-background-color), var(--button--highlight-background-hover-color), var(--button--highlight-font-color), var(--button-style))
-    @include button-style(var(--button--highlight-background-color), var(--button--highlight-background-hover-color), var(--button--highlight-font-color), var(--button-style))
-    border-color: var(--button--highlight-background-color)
+  &.-primary
+    @include button-style(var(--button--primary-background-color), var(--button--primary-background-hover-color), var(--button--primary-font-color))
+    @include button-style(var(--button--primary-background-color), var(--button--primary-background-hover-color), var(--button--primary-font-color))
+    border-color: var(--button--primary-border-color)
 
     &:hover, &:focus
-      border-color: var(--button--highlight-background-hover-color)
+      border-color: var(--button--primary-background-hover-color)
+
+    &:focus-visible
+      box-shadow: inset 0 0 0 3px var(--fgColor-onEmphasis,var(--fgColor-white))
 
   &.-highlight-inverted
-    @include button-style(#fff, #f2f2f2, var(--content-link-color), var(--button-style))
-    @include button-style(#fff, #f2f2f2, var(--content-link-color), var(--button-style))
-    border-color: var(--content-link-color)
-
-
-  &.-alt-highlight
-    @include button-style(var(--button--alt-highlight-background-color), var(--button--alt-highlight-background-hover-color), var(--button--alt-highlight-font-color), var(--button-style))
-    @include button-style(var(--button--alt-highlight-background-color), var(--button--alt-highlight-background-hover-color), var(--button--alt-highlight-font-color), var(--button-style))
-    border-color: var(--button--alt-highlight-background-color)
-
-    &:hover, &:focus
-      border-color: var(--button--alt-highlight-background-hover-color)
+    @include button-style(var(--button-default-bgColor-rest), var(--button-default-bgColor-hover), var(--button-default-fgColor-rest))
+    @include button-style(var(--button-default-bgColor-rest), var(--button-default-bgColor-hover), var(--button-default-fgColor-rest))
+    border-color: var(--button-default-borderColor-rest)
 
   &.-active
-    @include button-style(var(--button--active-background-color), var(--button--active-background-color), var(--button--active-font-color), var(--button-style))
+    @include button-style(var(--button-default-bgColor-active), var(--button-default-bgColor-active), var(--button-default-fgColor-rest))
     border-color: var(--button--active-border-color)
-    box-shadow: 0 0 3px var(--button--active-border-color) inset
+    box-shadow: 0 0 3px 1px var(--bgColor-neutral-muted) inset
 
 
   &.-transparent
@@ -92,11 +109,22 @@ a.button
     &:hover, &:focus, &.-active
       background: var(--button--background-hover-color)
 
+  &.-without-button-styling
+    @include without-link-styling
+    background: transparent
+    border: none
+    margin: 0
+    padding: 0
+
+    &:hover
+      background: transparent
+
   &.-tiny
     @include button-size(tiny)
 
   &.-small
     @include button-size(small)
+
     &.-with-icon:before
       vertical-align: initial
 
@@ -117,14 +145,30 @@ a.button
   &_no-margin
     margin: 0
 
+  &_flex
+    display: inline-flex
+    align-items: center
+
+  // This is very bad :(
+  // but as long as we have that mixture of old buttons with octicons inside we have to enforce the alignment
+  // Unfortunately, each browser/OS combination behaves differently
+  // This fix works for all browsers, except for Firefox on Windows (:cry:)
+  &:has(> .octicon)
+    body:not(.-browser-windows):not(.-browser-firefox) &
+      display: inline-flex
+      align-items: center
+
 .button--icon
   @include icon-common
+
+  &::before
+    color: inherit
 
 .button--icon + .button--text,
 .button--text + .button--icon,
 .op-icon--wrapper + .button--text,
 .button--text + .op-icon--wrapper
-  margin: 0 0 0 var(--button--text-icon-spacing)
+  margin: 0 0 0 $button--text-icon-spacing
 
 // Hack as Lato font on Win Chrome draws about a pixel too high
 html.-browser-windows.-browser-chrome
@@ -144,11 +188,11 @@ html.-browser-windows.-browser-chrome
 .toolbar-item
   .button[class*='icon-']
     &:before
-      margin-right: var(--button--text-icon-spacing)
+      margin-right: $button--text-icon-spacing
 
 // Button class to use as a link-like submit button
 .button--link
-  color: var(--content-link-color)
+  color: var(--accent-color)
   background: none
   border: none
   padding: 0 1px
@@ -157,12 +201,18 @@ html.-browser-windows.-browser-chrome
     @include button-expand
 
   &:visited, &:active
-    color: var(--content-link-color)
+    color: var(--accent-color)
 
   &:hover
     text-decoration: underline
 
-  &:disabled, &:disabled:hover
+  &[disabled], &[disabled]:hover,
+  &[aria-disabled="true"], &[aria-disabled="true"]:hover
     cursor: not-allowed
     background: none
-    color: var(--gray-dark)
+    color: var(--fgColor-muted)
+
+input::file-selector-button
+  background: var(--button--background-color)
+  color: var(--button--font-color)
+  border: 1px solid var(--button-default-borderColor-rest)

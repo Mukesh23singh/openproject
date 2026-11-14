@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -43,11 +42,11 @@ module Projects::Copy
     def copy_dependency(params:)
       source.forums.find_each do |forum|
         new_forum = Forum.new
-        new_forum.attributes = forum.attributes.dup.except('id',
-                                                           'project_id',
-                                                           'topics_count',
-                                                           'messages_count',
-                                                           'last_message_id')
+        new_forum.attributes = forum.attributes.dup.except("id",
+                                                           "project_id",
+                                                           "topics_count",
+                                                           "messages_count",
+                                                           "last_message_id")
         copy_topics(forum, new_forum)
 
         new_forum.project = target
@@ -56,16 +55,16 @@ module Projects::Copy
     end
 
     def copy_topics(board, new_forum)
-      topics = board.topics.where('parent_id is NULL')
+      topics = board.topics.where("parent_id is NULL")
       topics.each do |topic|
         new_topic = Message.new
-        new_topic.attributes = topic.attributes.dup.except('id',
-                                                           'forum_id',
-                                                           'author_id',
-                                                           'replies_count',
-                                                           'last_reply_id',
-                                                           'created_at',
-                                                           'updated_at')
+        new_topic.attributes = topic.attributes.dup.except("id",
+                                                           "forum_id",
+                                                           "author_id",
+                                                           "replies_count",
+                                                           "last_reply_id",
+                                                           "created_at",
+                                                           "updated_at")
         new_topic.forum = new_forum
         new_topic.author_id = topic.author_id
         new_forum.topics << new_topic

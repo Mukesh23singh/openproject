@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -46,21 +45,21 @@ class MemberMailer < ApplicationMailer
   def added_project(current_user, member, message)
     alter_project(current_user,
                   member,
-                  in_member_locale(member) { I18n.t(:'mail_member_added_project.subject', project: member.project.name) },
+                  in_member_locale(member) { I18n.t(:"mail_member_added_project.subject", project: member.project.name) },
                   message)
   end
 
   def updated_project(current_user, member, message)
     alter_project(current_user,
                   member,
-                  in_member_locale(member) { I18n.t(:'mail_member_updated_project.subject', project: member.project.name) },
+                  in_member_locale(member) { I18n.t(:"mail_member_updated_project.subject", project: member.project.name) },
                   message)
   end
 
   def updated_global(current_user, member, message)
     send_mail(current_user,
               member,
-              in_member_locale(member) { I18n.t(:'mail_member_updated_global.subject') },
+              in_member_locale(member) { I18n.t(:"mail_member_updated_global.subject") },
               message)
   end
 
@@ -78,8 +77,8 @@ class MemberMailer < ApplicationMailer
   end
 
   def send_mail(current_user, member, subject, message)
-    in_member_locale(member) do
-      User.execute_as(current_user) do
+    User.execute_as(current_user) do
+      in_member_locale(member) do
         message_id member, current_user
 
         @roles = member.roles
@@ -88,15 +87,15 @@ class MemberMailer < ApplicationMailer
 
         yield if block_given?
 
-        mail to: member.principal.mail,
-             subject: subject
+        mail to: member.principal,
+             subject:
       end
     end
   end
 
-  def in_member_locale(member, &block)
+  def in_member_locale(member, &)
     raise ArgumentError unless member.principal.is_a?(User)
 
-    with_locale_for(member.principal, &block)
+    with_locale_for(member.principal, &)
   end
 end

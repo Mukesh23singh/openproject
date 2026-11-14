@@ -1,28 +1,44 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 /**
  * Our application is still a hybrid one, meaning most routes are still
  * handled by Rails. As such, we disable the default link-hijacking that
  * Angular's HTML5-mode with <base href="/"> results in
  * @param evt
- * @param target
+ * @param linkElement
  */
-export function performAnchorHijacking(evt:JQuery.TriggeredEvent, target:JQuery):void {
-  // Avoid defaulting clicks on elements already removed from DOM
-  if (!document.contains(evt.target as Element)) {
-    evt.preventDefault();
-  }
-
-  // Avoid handling clicks on anything other than a
-  const linkElement = target.closest('a');
-  if (linkElement.length === 0) {
-    return;
-  }
-
-  const link = linkElement.attr('href') || '';
+export function performAnchorHijacking(evt:MouseEvent, linkElement:HTMLAnchorElement):boolean {
+  const link = linkElement.getAttribute('href') || '';
   const hashPos = link.indexOf('#');
 
   // If link is neither empty nor starts with hash, ignore it
   if (link !== '' && hashPos !== 0) {
-    return;
+    return false;
   }
 
   // Set the location to the hash if there is any
@@ -31,5 +47,5 @@ export function performAnchorHijacking(evt:JQuery.TriggeredEvent, target:JQuery)
     window.location.hash = link;
   }
 
-  evt.preventDefault();
+  return true;
 }

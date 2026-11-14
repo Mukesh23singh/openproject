@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,163 +22,171 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ActivitiesController, type: :controller do
-  before :each do
-    allow(@controller).to receive(:set_localization)
+RSpec.describe ActivitiesController do
+  shared_let(:admin) { create(:admin) }
+  shared_let(:project) { create(:project) }
 
-    admin = FactoryBot.create(:admin)
-    allow(User).to receive(:current).and_return admin
+  current_user { admin }
+
+  before do
+    allow(controller).to receive(:set_localization)
 
     @params = {}
   end
 
-  describe 'index' do
-    shared_examples_for 'valid index response' do
+  describe "for GET index" do
+    shared_examples_for "valid index response" do
       it { expect(response).to be_successful }
 
-      it { expect(response).to render_template 'index' }
+      it { expect(response).to render_template "index" }
     end
 
-    describe 'global' do
-      let(:work_package) { FactoryBot.create(:work_package) }
-      let!(:journal) do
-        FactoryBot.create(:work_package_journal,
-                          journable_id: work_package.id,
-                          created_at: 3.days.ago.to_date.to_s(:db),
-                          version: Journal.maximum(:version) + 1,
-                          data: FactoryBot.build(:journal_work_package_journal,
-                                                 subject: work_package.subject,
-                                                 status_id: work_package.status_id,
-                                                 type_id: work_package.type_id,
-                                                 project_id: work_package.project_id))
-      end
+    describe "global" do
+      let!(:work_package) { create(:work_package, :created_in_past, created_at: 3.days.ago) }
 
-      before { get 'index' }
+      before { get "index" }
 
-      it_behaves_like 'valid index response'
+      it_behaves_like "valid index response"
 
-      it { expect(assigns(:events_by_day)).not_to be_empty }
+      it { expect(assigns(:events)).not_to be_empty }
 
-      describe 'view' do
+      describe "view" do
         render_views
 
         it do
-          assert_select 'h3',
-                        content: /#{3.day.ago.to_date.day}/,
-                        sibling: { tag: 'dl',
-                                   child: { tag: 'dt',
+          assert_select "h3",
+                        content: /#{3.days.ago.to_date.day}/,
+                        sibling: { tag: "dl",
+                                   child: { tag: "dt",
                                             attributes: { class: /work_package/ },
-                                            child: { tag: 'a',
+                                            child: { tag: "a",
                                                      content: /#{ERB::Util.html_escape(work_package.subject)}/ } } }
         end
       end
 
-      describe 'empty filter selection' do
+      describe "empty filter selection" do
         before do
-          get 'index', params: { event_types: [''] }
+          get "index", params: { event_types: [""] }
         end
 
-        it_behaves_like 'valid index response'
+        it_behaves_like "valid index response"
 
-        it { expect(assigns(:events_by_day)).to be_empty }
+        it { expect(assigns(:events)).to be_empty }
+      end
+
+      describe "for a user that sees no projects" do
+        current_user { create(:user) }
+
+        it "renders 404" do
+          get "index"
+          expect(response).to have_http_status(:not_found)
+        end
+      end
+
+      describe "inactive user activity" do
+        let!(:inactive_user) { create(:user, status: User.statuses[:locked]) }
+
+        it "renders 404" do
+          get "index", params: { user_id: inactive_user.id }
+          expect(response).to have_http_status(:not_found)
+          expect(response).to render_template "common/error"
+        end
       end
     end
 
-    describe 'with activated activity module' do
+    describe "with activated activity module" do
       let(:project) do
-        FactoryBot.create(:project,
-                          enabled_module_names: %w[activity wiki])
+        create(:project, enabled_module_names: %w[activity])
       end
 
-      it 'renders activity' do
-        get 'index', params: { project_id: project.id }
+      it "renders activity" do
+        get "index", params: { project_id: project.id }
         expect(response).to be_successful
-        expect(response).to render_template 'index'
+        expect(response).to render_template "index"
       end
     end
 
-    describe 'without activated activity module' do
+    describe "without activated activity module" do
       let(:project) do
-        FactoryBot.create(:project,
-                          enabled_module_names: %w[wiki])
+        create(:project, enabled_module_names: [])
       end
 
-      it 'renders 403' do
-        get 'index', params: { project_id: project.id }
-        expect(response.status).to eq(403)
-        expect(response).to render_template 'common/error'
+      it "renders 403" do
+        get "index", params: { project_id: project.id }
+        expect(response).to have_http_status(:forbidden)
+        expect(response).to render_template "common/error"
       end
     end
 
-    shared_context 'index with params' do
+    shared_context "for GET index with params" do
       let(:session_values) { defined?(session_hash) ? session_hash : {} }
 
-      before { get :index, params: params, session: session_values }
+      before { get :index, params:, session: session_values }
     end
 
-    describe '#atom_feed' do
-      let(:user) { FactoryBot.create(:user) }
-      let(:project) { FactoryBot.create(:project) }
+    describe "#atom_feed" do
+      let(:user) { create(:user) }
+      let(:project) { create(:project) }
 
-      context 'work_package' do
-        let!(:wp_1) do
-          FactoryBot.create(:work_package,
-                            project: project,
-                            author: user)
+      context "with work packages" do
+        let!(:wp1) do
+          create(:work_package,
+                 project:,
+                 author: user)
         end
 
-        describe 'global' do
+        describe "global" do
           render_views
 
-          before { get 'index', format: 'atom' }
+          before { get "index", format: "atom" }
 
-          it do
-            assert_select 'entry',
-                          child: { tag: 'link',
-                                   attributes: { href: Regexp.new("/work_packages/#{wp_1.id}#") } }
+          it "contains a link to the work package" do
+            assert_select "entry",
+                          child: { tag: "link",
+                                   attributes: { href: Regexp.new("/work_packages/#{wp1.id}#") } }
           end
         end
 
-        describe 'list' do
-          let!(:wp_2) do
-            FactoryBot.create(:work_package,
-                              project: project,
-                              author: user)
+        describe "list" do
+          let!(:wp2) do
+            create(:work_package,
+                   project:,
+                   author: user)
           end
 
           let(:params) do
             { project_id: project.id,
+              event_types: [:work_packages],
               format: :atom }
           end
 
-          include_context 'index with params'
+          include_context "for GET index with params"
 
-          it { expect(assigns(:items).count).to eq(2) }
+          it { expect(assigns(:items).pluck(:event_type)).to match_array(%w[work_package-edit work_package-edit]) }
 
-          it { expect(response).to render_template('common/feed') }
+          it { expect(response).to render_template("common/feed") }
         end
       end
 
-      context 'forums' do
+      context "with forums" do
         let(:forum) do
-          FactoryBot.create(:forum,
-                            project: project)
+          create(:forum,
+                 project:)
         end
-        let!(:message_1) do
-          FactoryBot.create(:message,
-                            forum: forum)
+        let!(:message1) do
+          create(:message,
+                 forum:)
         end
-        let!(:message_2) do
-          FactoryBot.create(:message,
-                            forum: forum)
+        let!(:message2) do
+          create(:message,
+                 forum:)
         end
         let(:params) do
           { project_id: project.id,
@@ -184,47 +194,53 @@ describe ActivitiesController, type: :controller do
             format: :atom }
         end
 
-        include_context 'index with params'
+        include_context "for GET index with params"
 
-        it { expect(assigns(:items).count).to eq(2) }
+        it { expect(assigns(:items).pluck(:event_type)).to match_array(%w[message message]) }
 
-        it { expect(response).to render_template('common/feed') }
+        it { expect(response).to render_template("common/feed") }
       end
     end
 
-    describe 'user selection' do
-      describe 'first activity request' do
-        let(:default_scope) { ['work_packages', 'changesets'] }
+    describe "user selection" do
+      describe "first activity request" do
+        let(:default_scope) { ["work_packages", "changesets"] }
         let(:params) { {} }
 
-        include_context 'index with params'
+        include_context "for GET index with params"
 
         it { expect(assigns(:activity).scope).to match_array(default_scope) }
 
-        it { expect(session[:activity]).to match_array(default_scope) }
+        it { expect(session[:activity][:scope]).to match_array(default_scope) }
+
+        it { expect(session[:activity][:with_subprojects]).to be(true) }
       end
 
-      describe 'subsequent activity requests' do
+      describe "subsequent activity requests" do
         let(:scope) { [] }
         let(:params) { {} }
-        let(:session_hash) { { activity: [] } }
+        let(:session_hash) { { activity: { scope: [], with_subprojects: true } } }
 
-        include_context 'index with params'
+        include_context "for GET index with params"
 
         it { expect(assigns(:activity).scope).to match_array(scope) }
 
-        it { expect(session[:activity]).to match_array(scope) }
+        it { expect(session[:activity][:scope]).to match_array(scope) }
+
+        it { expect(session[:activity][:with_subprojects]).to be(true) }
       end
 
-      describe 'selection with apply' do
+      describe "selection with apply" do
         let(:scope) { [] }
-        let(:params) { { event_types: [''] } }
+        let(:params) { { event_types: [""], with_subprojects: 0 } }
 
-        include_context 'index with params'
+        include_context "for GET index with params"
 
         it { expect(assigns(:activity).scope).to match_array(scope) }
 
-        it { expect(session[:activity]).to match_array(scope) }
+        it { expect(session[:activity][:scope]).to match_array(scope) }
+
+        it { expect(session[:activity][:with_subprojects]).to be(false) }
       end
     end
   end

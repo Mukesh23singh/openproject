@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'backup', type: :feature, js: true do
-  let(:current_user) { FactoryBot.create :admin, password: user_password, password_confirmation: user_password }
-  let!(:backup_token) { FactoryBot.create :backup_token, user: current_user }
+RSpec.describe "backup", :js do
+  let(:current_user) do
+    create(:user,
+           global_permissions: [:create_backup],
+           password: user_password,
+           password_confirmation: user_password)
+  end
+  let!(:backup_token) { create(:backup_token, user: current_user) }
   let(:user_password) { "adminadmin!" }
 
   before do
@@ -46,12 +52,12 @@ describe 'backup', type: :feature, js: true do
   subject { @download_list.refresh_from(page).latest_download.to_s }
 
   it "can be downloaded" do
-    visit '/admin/backups'
+    visit "/admin/backups"
 
-    fill_in 'backupToken', with: backup_token.plain_value
+    fill_in "backup_token", with: backup_token.plain_value
     click_on "Request backup"
 
-    expect(page).to have_content I18n.t('js.job_status.generic_messages.in_queue'), wait: 10
+    expect(page).to have_text I18n.t("job_status_dialog.generic_messages.in_queue"), wait: 10
 
     begin
       perform_enqueued_jobs
@@ -59,7 +65,7 @@ describe 'backup', type: :feature, js: true do
       # nothing
     end
 
-    expect(page).to have_text "The export has completed successfully"
+    expect(page).to have_text I18n.t("export.succeeded"), wait: 10
     expect(subject).to end_with ".zip"
   end
 
@@ -67,37 +73,35 @@ describe 'backup', type: :feature, js: true do
     it "shows the error" do
       visit "/admin/backups"
 
-      fill_in "backupToken", with: "foobar"
+      fill_in "backup_token", with: "foobar"
       click_on "Request backup"
 
-      expect(page).to have_content I18n.t("backup.error.invalid_token")
+      expect(page).to have_text I18n.t("backup.error.invalid_token")
     end
   end
 
   describe "token reset" do
-    let(:dialog) { ::Components::PasswordConfirmationDialog.new }
+    let(:dialog) { Components::PasswordConfirmationDialog.new }
 
     before do
       visit "/admin/backups"
       click_on I18n.t("backup.label_reset_token")
 
-      expect(page).to have_content /#{I18n.t('backup.reset_token.heading_reset')}/i
-
-      fill_in "login_verification", with: "reset"
+      check "I understand that the existing backup token will be invalidated"
       click_on "Reset"
     end
 
-    it 'works given the correct password' do
+    it "works given the correct password" do
       dialog.confirm_flow_with(user_password)
-      
+
       new_token = Token::Backup.find_by(user: current_user)
 
       expect(new_token.plain_value).not_to eq backup_token.plain_value
-      expect(page).to have_content new_token.plain_value
+      expect(page).to have_text new_token.plain_value
     end
 
-    it 'declines the change when an invalid password is given' do
-      dialog.confirm_flow_with(user_password + 'INVALID', should_fail: true)
+    it "declines the change when an invalid password is given" do
+      dialog.confirm_flow_with(user_password + "INVALID", should_fail: true)
 
       new_token = Token::Backup.find_by_plaintext_value backup_token.plain_value
 
@@ -108,15 +112,17 @@ describe 'backup', type: :feature, js: true do
   it "allows the backup token to be deleted" do
     visit "/admin/backups"
 
-    expect(page).to have_content /#{I18n.t('js.backup.title')}/i
+    expect(page).to have_text /#{I18n.t('js.backup.title')}/i
 
-    click_on I18n.t("backup.label_delete_token")
+    accept_confirm do
+      click_on I18n.t("backup.label_delete_token")
+    end
 
-    expect(page).to have_content I18n.t("backup.text_token_deleted")
+    expect(page).to have_text I18n.t("backup.text_token_deleted")
 
     token = Token::Backup.find_by(user: current_user)
 
     expect(token).to be_nil
-    expect(page).not_to have_content /#{I18n.t('js.backup.title')}/i
+    expect(page).to have_no_text /#{I18n.t('js.backup.title')}/i
   end
 end

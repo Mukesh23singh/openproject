@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,99 +22,268 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Custom Options resource' do
+RSpec.describe "API v3 Custom Options resource", :aggregate_failures do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
+  shared_let(:type) { create(:type) }
+  shared_let(:project) { create(:project, types: [type]) }
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
-  let(:project) { FactoryBot.create(:project) }
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
-  let(:permissions) { [:view_work_packages] }
-  let(:custom_field) do
-    cf = FactoryBot.create(:list_wp_custom_field)
+  let(:role) { create(:project_role, permissions:) }
 
-    project.work_package_custom_fields << cf
-
-    cf
-  end
-  let(:custom_option) do
-    FactoryBot.create(:custom_option,
-                      custom_field: custom_field)
-  end
+  let(:modification) { nil }
 
   subject(:response) { last_response }
 
-  describe 'GET api/v3/custom_options/:id' do
+  describe "GET api/v3/custom_options/:id" do
     let(:path) { api_v3_paths.custom_option custom_option.id }
 
     before do
+      modification&.call
       allow(User)
         .to receive(:current)
-        .and_return(user)
+              .and_return(user)
       get path
     end
 
-    context 'when being allowed' do
-      it 'is successful' do
-        expect(subject.status)
-          .to eql(200)
+    describe "WorkPackageCustomField" do
+      shared_let(:custom_field) { create(:list_wp_custom_field, types: [type]) }
+      shared_let(:custom_option) do
+        create(:custom_option,
+               custom_field:)
       end
 
-      it 'returns the custom option' do
-        expect(response.body)
-          .to be_json_eql('CustomOption'.to_json)
-          .at_path('_type')
+      context "when being allowed" do
+        let(:permissions) { [:view_work_packages] }
 
-        expect(response.body)
-          .to be_json_eql(custom_option.id.to_json)
-          .at_path('id')
+        it "is successful" do
+          expect(subject.status)
+            .to be(200)
 
-        expect(response.body)
-          .to be_json_eql(custom_option.value.to_json)
-          .at_path('value')
+          expect(response.body)
+            .to be_json_eql("CustomOption".to_json)
+                  .at_path("_type")
+
+          expect(response.body)
+            .to be_json_eql(custom_option.id.to_json)
+                  .at_path("id")
+
+          expect(response.body)
+            .to be_json_eql(custom_option.value.to_json)
+                  .at_path("value")
+        end
+      end
+
+      context "when the user cannot see any project the field applies to" do
+        let(:user) { create(:user) }
+
+        it "is 404" do
+          expect(subject.status)
+            .to be(404)
+        end
+      end
+
+      # The option values belong to work package data, so seeing the project is not enough.
+      context "when the user may see the project but not its work packages" do
+        let(:permissions) { [] }
+
+        it "is 404" do
+          expect(subject.status)
+            .to be(404)
+        end
+      end
+
+      context "when the field is on no type" do
+        let(:permissions) { [:view_work_packages] }
+        let(:modification) { -> { custom_field.form_configurations.each { it.custom_field_ids -= [custom_field.id] } } }
+
+        it "is 404" do
+          expect(subject.status)
+            .to be(404)
+        end
       end
     end
 
-    context 'when lacking permission' do
+    describe "ProjectCustomField" do
+      shared_let(:custom_field) { create(:list_project_custom_field, projects: [project]) }
+      shared_let(:custom_option) { create(:custom_option, custom_field:) }
+
+      context "when being allowed" do
+        let(:permissions) { [:view_project] }
+
+        it "is successful" do
+          expect(subject.status)
+            .to be(200)
+
+          expect(response.body)
+            .to be_json_eql("CustomOption".to_json)
+                  .at_path("_type")
+
+          expect(response.body)
+            .to be_json_eql(custom_option.id.to_json)
+                  .at_path("id")
+
+          expect(response.body)
+            .to be_json_eql(custom_option.value.to_json)
+                  .at_path("value")
+        end
+      end
+
+      context "when custom field is not activated in a visible project" do
+        shared_let(:other_project) { create(:project) }
+        shared_let(:other_custom_field) { create(:list_project_custom_field, projects: [other_project]) }
+        shared_let(:other_custom_option) { create(:custom_option, custom_field: other_custom_field) }
+
+        let(:permissions) { [:view_project] }
+        let(:path) { api_v3_paths.custom_option other_custom_option.id }
+
+        it "is 404" do
+          expect(subject.status)
+            .to be(404)
+        end
+      end
+
+      context "when lacking permission" do
+        let(:user) { User.anonymous }
+        let(:permissions) { [] }
+
+        context "when login_required", with_settings: { login_required: true } do
+          it_behaves_like "error response",
+                          401,
+                          "Unauthenticated",
+                          I18n.t("api_v3.errors.code_401")
+        end
+
+        context "when not login_required", with_settings: { login_required: false } do
+          it "is 404" do
+            expect(subject.status)
+              .to be(404)
+          end
+        end
+      end
+    end
+
+    describe "TimeEntryCustomField" do
+      shared_let(:custom_field) { create(:time_entry_custom_field, :list) }
+      shared_let(:custom_option) { create(:custom_option, custom_field:) }
+
+      context "when being allowed with log_time" do
+        let(:permissions) { [:log_time] }
+
+        it "is successful" do
+          expect(subject.status)
+            .to be(200)
+
+          expect(response.body)
+            .to be_json_eql("CustomOption".to_json)
+                  .at_path("_type")
+
+          expect(response.body)
+            .to be_json_eql(custom_option.id.to_json)
+                  .at_path("id")
+
+          expect(response.body)
+            .to be_json_eql(custom_option.value.to_json)
+                  .at_path("value")
+        end
+      end
+
+      context "when being allowed with log_own_time" do
+        let(:permissions) { [:log_own_time] }
+
+        it "is successful" do
+          expect(subject.status)
+            .to be(200)
+        end
+      end
+
+      context "when lacking permission" do
+        let(:user) { User.anonymous }
+        let(:permissions) { [] }
+
+        it_behaves_like "not found response based on login_required"
+      end
+    end
+
+    describe "UserCustomField" do
+      shared_let(:custom_field) { create(:user_custom_field, :list) }
+      shared_let(:custom_option) { create(:custom_option, custom_field:) }
       let(:permissions) { [] }
 
-      it 'is 404' do
-        expect(subject.status)
-          .to eql(404)
+      context "when the field is visible (not admin_only)" do
+        it "is successful" do
+          expect(subject.status).to be(200)
+        end
+      end
+
+      context "when the field is admin_only" do
+        let(:custom_field) { create(:user_custom_field, :list, :admin_only) }
+        let(:custom_option) { create(:custom_option, custom_field:) }
+
+        context "and user is not an admin" do
+          it "is 404" do
+            expect(subject.status).to be(404)
+          end
+        end
+
+        context "and the user is an admin" do
+          let(:user) { create(:admin) }
+
+          it "is successful" do
+            expect(subject.status).to be(200)
+          end
+        end
       end
     end
 
-    context 'when custom option not in project' do
-      let(:custom_field) do
-        # not added to project
-        FactoryBot.create(:list_wp_custom_field)
+    describe "GroupCustomField" do
+      shared_let(:custom_field) { create(:group_custom_field, :list) }
+      shared_let(:custom_option) { create(:custom_option, custom_field:) }
+      let(:permissions) { [] }
+
+      context "when the field is visible (not admin_only)" do
+        it "is successful" do
+          expect(subject.status).to be(200)
+        end
       end
 
-      it 'is 404' do
-        expect(subject.status)
-          .to eql(404)
+      context "when the field is admin_only" do
+        let(:custom_field) { create(:group_custom_field, :list, :admin_only) }
+        let(:custom_option) { create(:custom_option, custom_field:) }
+
+        context "and user is not an admin" do
+          it "is 404" do
+            expect(subject.status).to be(404)
+          end
+        end
+
+        context "and user is an admin" do
+          let(:user) { create(:admin) }
+
+          it "is successful" do
+            expect(subject.status).to be(200)
+          end
+        end
       end
     end
 
-    context 'when not existing' do
+    context "when not existing" do
       let(:path) { api_v3_paths.custom_option 0 }
+      let(:permissions) { [:view_work_packages] }
 
-      it 'is 404' do
+      it "is 404" do
         expect(subject.status)
-          .to eql(404)
+          .to be(404)
       end
     end
   end

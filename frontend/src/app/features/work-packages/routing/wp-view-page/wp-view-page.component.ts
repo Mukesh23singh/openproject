@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -34,20 +33,23 @@ import { QueryParamListenerService } from 'core-app/features/work-packages/compo
 import {
   PartitionedQuerySpacePageComponent,
   ToolbarButtonComponentDefinition,
+  ViewPartitionState,
 } from 'core-app/features/work-packages/routing/partitioned-query-space-page/partitioned-query-space-page.component';
 import { WorkPackageCreateButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-create-button/wp-create-button.component';
 import { WorkPackageFilterButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-filter-button/wp-filter-button.component';
-import { WorkPackageViewToggleButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-view-toggle-button/work-package-view-toggle-button.component';
 import { WorkPackageDetailsViewButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-details-view-button/wp-details-view-button.component';
 import { WorkPackageTimelineButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-timeline-toggle-button/wp-timeline-toggle-button.component';
 import { ZenModeButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/zen-mode-toggle-button/zen-mode-toggle-button.component';
 import { WorkPackageSettingsButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-settings-button/wp-settings-button.component';
-import { of } from 'rxjs';
 import { WorkPackageFoldToggleButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-fold-toggle-button/wp-fold-toggle-button.component';
+import { OpProjectIncludeComponent } from 'core-app/shared/components/project-include/project-include.component';
+import { OpBaselineModalComponent } from 'core-app/features/work-packages/components/wp-baseline/baseline-modal/baseline-modal.component';
+import { BreadcrumbItem } from 'core-app/shared/components/breadcrumbs/op-breadcrumbs.component';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-view-page',
-  templateUrl: '../partitioned-query-space-page/partitioned-query-space-page.component.html',
+  templateUrl: '../partitioned-query-space-page/primerized-partitioned-query-space-page.component.html',
   styleUrls: [
     // Absolute paths do not work for styleURLs :-(
     '../partitioned-query-space-page/partitioned-query-space-page.component.sass',
@@ -58,38 +60,38 @@ import { WorkPackageFoldToggleButtonComponent } from 'core-app/features/work-pac
     { provide: HalResourceNotificationService, useClass: WorkPackageNotificationService },
     QueryParamListenerService,
   ],
+  standalone: false,
 })
 export class WorkPackageViewPageComponent extends PartitionedQuerySpacePageComponent implements OnInit {
   toolbarButtonComponents:ToolbarButtonComponentDefinition[] = [
     {
       component: WorkPackageCreateButtonComponent,
-      inputs: {
-        stateName$: of('work-packages.partitioned.list.new'),
-        allowed: ['work_packages.createWorkPackage'],
-      },
+    },
+    {
+      component: OpProjectIncludeComponent,
+    },
+    {
+      component: OpBaselineModalComponent,
+      containerClasses: 'hidden-for-tablet',
     },
     {
       component: WorkPackageFilterButtonComponent,
     },
     {
-      component: WorkPackageViewToggleButtonComponent,
-      containerClasses: 'hidden-for-mobile',
-    },
-    {
       component: WorkPackageFoldToggleButtonComponent,
-      show: () => !!(this.currentQuery && this.currentQuery.groupBy),
+      show: () => !!(this.currentQuery?.groupBy),
     },
     {
       component: WorkPackageDetailsViewButtonComponent,
-      containerClasses: 'hidden-for-mobile',
+      containerClasses: 'hidden-for-tablet',
     },
     {
       component: WorkPackageTimelineButtonComponent,
-      containerClasses: 'hidden-for-mobile -no-spacing',
+      containerClasses: 'hidden-for-tablet',
     },
     {
       component: ZenModeButtonComponent,
-      containerClasses: 'hidden-for-mobile',
+      containerClasses: 'hidden-for-tablet',
     },
     {
       component: WorkPackageSettingsButtonComponent,
@@ -98,7 +100,42 @@ export class WorkPackageViewPageComponent extends PartitionedQuerySpacePageCompo
 
   ngOnInit() {
     super.ngOnInit();
+    this.wpTableFilters.hidden.push(
+      'project',
+    );
     this.text.button_settings = this.I18n.t('js.button_settings');
+  }
+
+  breadcrumbItems() {
+    const items:BreadcrumbItem[] = [];
+
+    if (this.currentProject?.identifier) {
+      items.push({
+        href: this.pathHelperService.projectPath(this.currentProject.identifier),
+        text: this.currentProject.name!,
+      });
+    }
+
+    items.push(this.breadcrumbModuleEntry());
+
+    if (this.selectedTitle) {
+      items.push(this.selectedTitle);
+    }
+
+    return items;
+  }
+
+  breadcrumbModuleEntry():{ href:string, text:string } {
+    if (this.isGantt) {
+      return {
+        href: this.pathHelperService.ganttChartsPath(this.currentProject.identifier),
+        text: this.I18n.t('js.work_packages.label_gantt_chart_plural'),
+      };
+    }
+    return {
+      href: this.pathHelperService.workPackagesPath(this.currentProject.identifier),
+      text: this.I18n.t('js.label_work_package_plural'),
+    };
   }
 
   protected additionalLoadingTime():Promise<unknown> {
@@ -108,7 +145,17 @@ export class WorkPackageViewPageComponent extends PartitionedQuerySpacePageCompo
     return this.querySpace.tableRendered.valuesPromise() as Promise<unknown>;
   }
 
-  protected shouldUpdateHtmlTitle():boolean {
-    return this.$state.current.name === 'work-packages.partitioned.list';
+  /**
+   * Neither /work_packages nor /gantt register a uiRouter '.details'/'.new' sub-state
+   * anymore (the split view/create form render via a Rails Turbo frame instead), so
+   * the partition is derived from the URL rather than from state data.
+   */
+  protected override setPartition():void {
+    const partition:ViewPartitionState = window.location.pathname.includes('/details/') ? '-split' : '-left-only';
+    this.currentPartition = partition;
+  }
+
+  private get isGantt() {
+    return window.location.pathname.includes('/gantt');
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Login', type: :feature, clear_cache: true do
+RSpec.describe "Login" do
+  let(:user_menu) { Components::UserMenu.new }
+
   before do
     @capybara_ignore_elements = Capybara.ignore_hidden_elements
     Capybara.ignore_hidden_elements = true
@@ -39,112 +42,131 @@ describe 'Login', type: :feature, clear_cache: true do
   end
 
   def expect_being_logged_in(user)
-    expect(page)
-      .to have_selector("a[title='#{user.name}']")
+    user_menu.expect_user_shown user.name
   end
 
   def expect_not_being_logged_in
     expect(page)
-      .to have_field('Username')
+      .to have_field("Username or email")
   end
 
-  context 'sign in user' do
-    let(:user_password) { 'bob' * 4 }
-    let(:new_user_password) { 'obb' * 4 }
+  context "sign in user" do
+    let(:user_password) { "bob" * 4 }
+    let(:new_user_password) { "obb" * 4 }
     let(:force_password_change) { false }
     let(:first_login) { false }
     let(:user) do
-      FactoryBot.create(:user,
-                        force_password_change: force_password_change,
-                        first_login: first_login,
-                        login: 'bob',
-                        mail: 'bob@example.com',
-                        firstname: 'Bo',
-                        lastname: 'B',
-                        password: user_password,
-                        password_confirmation: user_password)
+      create(:user,
+             force_password_change:,
+             first_login:,
+             login: "bob",
+             mail: "bob@example.com",
+             firstname: "Bo",
+             lastname: "B",
+             password: user_password,
+             password_confirmation: user_password)
     end
 
-    context 'with leading and trailing space in login' do
-      it 'can still login' do
+    context "with leading and trailing space in login" do
+      it "can still login" do
         # first login
         login_with(" #{user.login} ", user_password)
 
-        # on the my page
+        # on the home path
         expect(page)
-          .to have_current_path my_page_path
+          .to have_current_path home_path
       end
     end
 
-    context 'with force password change' do
+    context "with force password change and first login" do
       let(:force_password_change) { true }
       let(:first_login) { true }
 
-      it 'redirects to homescreen after forced password change
-         (with validation error) and first login' do
-        # first login
-        login_with(user.login, user_password)
-        expect(current_path).to eql signin_path
+      context "with an invalid password" do
+        it "redirects to homescreen after forced password change" do
+          # first login
+          login_with(user.login, user_password)
+          expect(page).to have_current_path signin_path
 
-        # change password page (giving an invalid password)
-        within('#main') do
-          fill_in('password', with: user_password)
-          fill_in('new_password', with: new_user_password)
-          fill_in('new_password_confirmation', with: new_user_password + 'typo')
-          click_link_or_button I18n.t(:button_save)
+          # change password page (giving an invalid password)
+          within("#main") do
+            fill_in("password", with: user_password)
+            fill_in("new_password", with: new_user_password)
+            fill_in("new_password_confirmation", with: "#{new_user_password}typo")
+            click_button I18n.t(:button_change_password)
+          end
+          expect(page).to have_current_path account_change_password_path
+
+          # change password page
+          within("#main") do
+            fill_in("password", with: user_password)
+            fill_in("new_password", with: new_user_password)
+            fill_in("new_password_confirmation", with: new_user_password)
+            click_button I18n.t(:button_change_password)
+          end
+
+          # on the my page
+          expect(page).to have_current_path home_path(first_time_user: true)
         end
-        expect(current_path).to eql account_change_password_path
+      end
 
-        # change password page
-        within('#main') do
-          fill_in('password', with: user_password)
-          fill_in('new_password', with: new_user_password)
-          fill_in('new_password_confirmation', with: new_user_password)
-          click_link_or_button I18n.t(:button_save)
+      context "with an invalid custom field" do
+        before do
+          # Create the user, then add a required custom field invalidating the user.
+          user
+          create(:user_custom_field, :string, name: "Department", is_required: true)
         end
 
-        # on the my page
-        expect(current_path).to eql '/'
+        it "redirects to homescreen after forced password change ignoring the validation error" do
+          # first login
+          login_with(user.login, user_password)
+          expect(page).to have_current_path signin_path
+
+          # change password page
+          within("#main") do
+            fill_in("password", with: user_password)
+            fill_in("new_password", with: new_user_password)
+            fill_in("new_password_confirmation", with: new_user_password)
+            click_button I18n.t(:button_change_password)
+          end
+
+          # on the my page
+          expect(page).to have_current_path home_path(first_time_user: true)
+        end
       end
     end
 
-    it 'prevents login for a blocked user' do
-      user.lock!
+    it "prevents login for a blocked user" do
+      user.locked!
 
       login_with(user.login, user.password)
 
-      expect(current_path).to eql signin_path
+      expect(page).to have_current_path signin_path
       expect(page)
-        .to have_content "Invalid user or password"
+        .to have_text "Invalid user or password"
     end
 
-    it 'forwards to the deep linked page after login' do
+    it "forwards to the deep linked page after login" do
       visit my_page_path
 
       expect(page)
-        .to have_field('Username')
+        .to have_field("Username or email")
 
       login_with(user.login, user_password)
 
       expect(page)
-        .to have_current_path my_page_path
+        .to have_current_path home_path
     end
 
-    context 'autologin',
+    context "autologin",
             with_settings: {
               autologin: 1
             } do
       def fake_browser_closed
-        page.driver.browser.set_cookie(OpenProject::Configuration['session_cookie_name'])
+        page.driver.browser.set_cookie(OpenProject::Configuration["session_cookie_name"])
       end
 
-      before do
-        allow(Setting)
-          .to receive(:autologin?)
-          .and_return(true)
-      end
-
-      it 'logs in the user automatically if enabled' do
+      it "logs in the user automatically if enabled" do
         login_with(user.login, user_password, autologin: true)
 
         fake_browser_closed
@@ -155,9 +177,7 @@ describe 'Login', type: :feature, clear_cache: true do
 
         fake_browser_closed
         # faking having changed the autologin setting
-        allow(Setting)
-          .to receive(:autologin?)
-          .and_return(false)
+        with_settings(autologin: 0)
         visit my_page_path
 
         # expect not being logged in automatically
@@ -165,13 +185,13 @@ describe 'Login', type: :feature, clear_cache: true do
       end
     end
 
-    context 'with password expiry', js: true do
+    context "with password expiration", :js do
       before do
         user.passwords.update_all(created_at: 31.days.ago,
                                   updated_at: 31.days.ago)
       end
 
-      it 'does not allow login if the password is expired but the user can provide a new one' do
+      it "does not allow login if the password is expired but the user can provide a new one" do
         login_with(user.login, user_password)
 
         expect_being_logged_in(user)
@@ -183,11 +203,11 @@ describe 'Login', type: :feature, clear_cache: true do
 
         login_with(user.login, user_password)
 
-        fill_in 'Current password', with: user_password
-        fill_in 'New password', with: new_user_password
-        fill_in 'Confirmation', with: new_user_password
+        fill_in "Current password", with: user_password
+        fill_in "New password", with: new_user_password
+        fill_in "Password confirmation", with: new_user_password
 
-        click_button 'Save'
+        click_button "Change password"
 
         expect_being_logged_in(user)
 

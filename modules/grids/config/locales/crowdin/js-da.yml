@@ -1,63 +1,74 @@
+---
 da:
   js:
     grid:
-      add_widget: 'Add widget'
-      remove: 'Remove widget'
-      configure: 'Configure widget'
-      upsale:
-        text: "Nogle widgets, som fx arbejdspakke graf-widget, er kun tilgængelige i "
-        link: 'enterprise edition.'
+      add_widget: Tilføj widget
+      configure: Konfigurer widget
+      remove: Fjern widget
+      widget_menu_label: Vis menuen for widgetten %{widgetName}
       widgets:
         custom_text:
-          title: 'Tilpasset tekst'
+          title: Tilpasset tekst
         documents:
-          title: 'Dokumenter'
-          no_results: 'No documents yet.'
+          no_results: Ingen dokumenter endnu.
+          title: Dokumenter
         members:
-          title: 'Medlemmer'
-          no_results: 'No visible members.'
-          view_all_members: 'Vis alle medlemmer'
-          add: 'Medlem'
-          too_many: 'Displaying %{count} of %{total} members.'
+          title: Medlemmer
+        missing_permission: Du har ikke de nødvendige tilladelser til at se widgetten.
         news:
-          title: 'Nyheder'
-          at: 'at'
-          no_results: 'Nothing new to report.'
+          title: Nyheder
+        not_available: Widgetten er ikke tilgængelig i øjeblikket.
         project_description:
-          title: 'Projektbeskrivelse'
-          no_results: "No description has been written yet. One can be provided in the 'Project settings'."
-        project_details:
-          title: 'Projektdetaljer'
-          no_results: 'No custom fields have been defined for projects.'
+          title: Beskrivelse
+        project_favorites:
+          no_results: Du har ingen favoritprojekter. Føj et eller flere projekter til favoritter fra deres oversigt eller fra en projektliste.
+          title: Favoritprojekter
         project_status:
-          title: 'Projektstatus'
-          on_track: 'På sporet'
-          off_track: 'Af sporet'
-          at_risk: 'I fare'
-          not_set: 'Ikke angivet'
+          at_risk: I risiko
+          discontinued: Afsluttet i utide
+          finished: Afsluttet
+          not_set: Ikke angivet
+          not_started: Ikke startet
+          off_track: Afviger fra planen
+          on_track: Følger planen
+          title: Status
+        project_timeline:
+          accessible_date_range: "%{start} til %{end}"
+          accessible_gate: 'Fase-gate %{name}: %{date}'
+          accessible_milestone: 'Milepæl %{name}: %{date}'
+          accessible_phase: 'Fase %{name}: %{date}'
+          accessible_sprint: 'Sprint %{name}: %{date}. Status: %{status}'
+          sprint_status:
+            active: Aktiv
+            completed: Fuldført
+            in_planning: Under planlægning
+          tooltip_type_gate: Fase-gate
+          tooltip_type_milestone: Milepæl
+          tooltip_type_phase: Fase
+          tooltip_type_sprint: Sprint
         subprojects:
-          title: 'Underprojekter'
-          no_results: 'No subprojects.'
+          title: Underelementer
         time_entries_current_user:
-          title: 'My spent time'
-          displayed_days: 'Days displayed in the widget:'
+          displayed_days: 'Dage, der vises i widgetten:'
+          title: Min anvendte tid
         time_entries_list:
-          title: 'Spent time (last 7 days)'
-          no_results: 'No time entries for the last 7 days.'
+          no_results: Ingen tidsregistreringer de seneste 7 dage.
+          title: Anvendt tid (seneste 7 dage)
         work_packages_accountable:
-          title: "Work packages I am accountable for"
+          title: Arbejdspakker, som jeg er ansvarlig for
         work_packages_assigned:
-          title: 'Mine tilknyttede arbejdspakker'
-        work_packages_created:
-          title: 'Work packages created by me'
-        work_packages_watched:
-          title: 'Work packages watched by me'
-        work_packages_table:
-          title: 'Work packages table'
-        work_packages_graph:
-          title: 'Work packages graph'
+          title: Arbejdspakker, der er tildelt mig
         work_packages_calendar:
-          title: 'Kalender'
+          title: Kalender
+        work_packages_created:
+          title: Arbejdspakker, som jeg har oprettet
+        work_packages_graph:
+          summary: "%{chartType} over arbejdspakker, der er %{description}."
+          title: Graf over arbejdspakker
         work_packages_overview:
-          title: 'Work packages overview'
-          placeholder: 'Click to edit ...'
+          placeholder: Klik for at redigere ...
+          title: Oversigt over arbejdspakker
+        work_packages_table:
+          title: Tabel over arbejdspakker
+        work_packages_watched:
+          title: Arbejdspakker, som jeg følger

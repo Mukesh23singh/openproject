@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,19 +20,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'bundler'
-require 'json'
+
+require "bundler"
+require "json"
 
 namespace :openproject do
   namespace :plugins do
-    desc 'Register plugins from the :opf_plugins bundle group to the frontend'
+    desc "Register plugins from the :opf_plugins bundle group to the frontend"
     task register_frontend: [:environment] do
-      ::OpenProject::Plugins::FrontendLinking.regenerate!
+      OpenProject::Plugins::FrontendLinking.regenerate!
     end
   end
 end

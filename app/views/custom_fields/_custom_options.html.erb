@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,25 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
+<% content_controller "admin--custom-fields",
+                      "admin--custom-fields-multi-select-value": @custom_field.multi_value? %>
 
-<% custom_field = f.object %>
 <% custom_field.custom_options.build if custom_field.custom_options.empty? %>
 
 <div class="generic-table--container">
   <div class="generic-table--results-container">
-    <table class="generic-table" id="custom-options-table">
+    <table class="generic-table" id="custom-options-table" data-controller="table-highlighting">
       <colgroup>
-        <col opHighlightCol>
-        <col opHighlightCol>
-        <col opHighlightCol>
         <col>
+        <col>
+        <col>
+        <col>
+        <col data-highlight="false">
       </colgroup>
       <thead>
       <tr>
@@ -45,7 +46,16 @@ See COPYRIGHT and LICENSE files for more details.
           <div class="generic-table--sort-header-outer">
             <div class="generic-table--sort-header">
                 <span>
-                  <%= t('activerecord.attributes.custom_value.value') %>
+                  <%= t("activerecord.attributes.custom_value.value") %>
+                </span>
+            </div>
+          </div>
+        </th>
+        <th>
+          <div class="generic-table--sort-header-outer">
+            <div class="generic-table--sort-header">
+                <span>
+                  <%= t("custom_fields.project_specific_values.label") %>
                 </span>
             </div>
           </div>
@@ -75,45 +85,74 @@ See COPYRIGHT and LICENSE files for more details.
       </tr>
       </thead>
 
-      <tbody id="custom-field-dragula-container">
-      <% custom_field.custom_options.each_with_index do |custom_option, i| %>
+      <tbody
+        data-test-selector="dragula-container"
+        data-admin--custom-fields-target="dragContainer">
+      <% custom_field.custom_options.each do |custom_option| %>
         <%= f.fields_for :custom_options, custom_option do |co_f| %>
-          <tr class="dragula-element custom-option-row">
+          <tr
+            class="dragula-element custom-option-row"
+            data-admin--custom-fields-target="customOptionRow">
             <td>
               <span class="dragula-handle icon icon-table icon-drag-handle"></span>
-              <%= co_f.hidden_field :id, class: 'custom-option-id' %>
-              <%= co_f.text_field :value,
-                                  container_class: 'custom-option-value',
-                                  no_label: true %>
+              <%= co_f.hidden_field :id,
+                                    class: "custom-option-id" %>
+              <span class="custom-option-value">
+                <%= co_f.text_field :value,
+                                    no_label: true %>
+              </span>
             </td>
-            <td>
+            <td class="custom-option-project" data-test-selector="custom-option-project">
+              <%= custom_option.project&.name %>
+            </td>
+            <td class="custom-option-default-value">
               <%= co_f.check_box :default_value,
-                                 container_class: 'custom-option-default-value',
+                                 container_class: "custom-option-default-value",
+                                 disabled: custom_option.project_id.present?,
+                                 data: {
+                                   "admin--custom-fields-target": "customOptionDefaults",
+                                   action: "click->admin--custom-fields#uncheckOtherDefaults"
+                                 },
                                  no_label: true %>
             </td>
             <td>
-                <span class="reorder-icons">
-                  <a title="<%= t(:label_sort_highest) %>" rel="nofollow" href="#" class="sort-up-custom-option">
-                    <%= op_icon('icon-context icon-sort-up icon-small') %>
-                  </a>
-                  <a title="<%= t(:label_sort_higher) %>" rel="nofollow" href="#" class="move-up-custom-option">
-                    <%= op_icon('icon-context icon-arrow-up2 icon-small') %>
-                  </a>
-                  <a title="<%= t(:label_sort_lower) %>" rel="nofollow" href="#" class="move-down-custom-option">
-                    <%= op_icon('icon-context icon-arrow-down2 icon-small') %>
-                  </a>
-                  <a title="<%= t(:label_sort_lowest) %>" rel="nofollow" href="#" class="sort-down-custom-option">
-                    <%= op_icon('icon-context icon-sort-down icon-small') %>
-                  </a>
-                </span>
+              <span class="reorder-icons">
+                <%=
+                  render(Primer::Beta::ButtonGroup.new(scheme: :invisible, size: :small)) do |component|
+                    component.with_button(
+                      icon: :"move-to-top",
+                      "aria-label": t(:label_sort_highest),
+                      data: { action: "admin--custom-fields#moveRowToTheTop" }
+                    )
+                    component.with_button(
+                      icon: :"chevron-up",
+                      "aria-label": t(:label_sort_higher),
+                      data: { action: "admin--custom-fields#moveRowUp" }
+                    )
+                    component.with_button(
+                      icon: :"chevron-down",
+                      "aria-label": t(:label_sort_lower),
+                      data: { action: "admin--custom-fields#moveRowDown" }
+                    )
+                    component.with_button(
+                      icon: :"move-to-bottom",
+                      "aria-label": t(:label_sort_lowest),
+                      data: { action: "admin--custom-fields#moveRowToTheBottom" }
+                    )
+                  end
+                %>
+              </span>
             </td>
             <td>
-              <%= link_to '',
-                          delete_option_of_custom_field_path(id: custom_field.id || 0, option_id: custom_option.id || 0),
-                          method: :delete,
-                          data: { confirm: t(:'custom_fields.confirm_destroy_option') },
-                          class: 'icon icon-delete delete-custom-option',
-                          title: t(:button_delete) %>
+              <%= link_to "",
+                          delete_option_path(custom_field, custom_option),
+                          data: {
+                            turbo_method: :delete,
+                            action: "admin--custom-fields#removeOption",
+                            turbo_confirm: t(:"custom_fields.confirm_destroy_option")
+                          },
+                          class: "icon icon-delete delete-custom-option",
+                          "aria-label": t(:button_delete) %>
             </td>
           </tr>
         <% end %>
@@ -123,3 +162,15 @@ See COPYRIGHT and LICENSE files for more details.
 
   </div>
 </div>
+
+<%=
+  render Primer::Beta::Button.new(
+    scheme: :link,
+    test_selector: "add-custom-option",
+    data: { action: "admin--custom-fields#addOption" },
+    mt: 2
+  ) do |button|
+    button.with_leading_visual_icon(icon: :plus)
+    t(:button_add)
+  end
+%>

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/scm/adapters/subversion'
+require "open_project/scm/adapters/subversion"
 
 class Repository::Subversion < Repository
-  validates_presence_of :url
-  validates_format_of :url, with: /\A(http|https|svn(\+[^\s:\/\\]+)?|file):\/\/.+\z/i
+  validates :url, presence: true
+  validates :url, format: { with: /\A(http|https|svn(\+[^\s:\/\\]+)?|file):\/\/.+\z/i }
+  validate :validity_of_local_url
 
   def self.scm_adapter_class
     OpenProject::SCM::Adapters::Subversion
@@ -42,7 +42,7 @@ class Repository::Subversion < Repository
     if scm_type == self.class.managed_type
       unless manageable?
         raise OpenProject::SCM::Exceptions::RepositoryBuildError.new(
-          I18n.t('repositories.managed.error_not_manageable')
+          I18n.t("repositories.managed.error_not_manageable")
         )
       end
 
@@ -56,7 +56,7 @@ class Repository::Subversion < Repository
   end
 
   def self.permitted_params(params)
-    super(params).merge(params.permit(:login, :password))
+    super.merge(params.permit(:login, :password))
   end
 
   def self.supported_types
@@ -71,7 +71,7 @@ class Repository::Subversion < Repository
   end
 
   def repository_type
-    'Subversion'
+    "Subversion"
   end
 
   def supports_directory_revisions?
@@ -79,17 +79,17 @@ class Repository::Subversion < Repository
   end
 
   def repo_log_encoding
-    'UTF-8'
+    "UTF-8"
   end
 
   def latest_changesets(path, rev, limit = 10)
-    revisions = scm.revisions(path, rev, nil, limit: limit)
-    revisions ? changesets.where(revision: revisions.map(&:identifier)).order(Arel.sql('committed_on DESC')).includes(:user) : []
+    revisions = scm.revisions(path, rev, nil, limit:)
+    revisions ? changesets.where(revision: revisions.map(&:identifier)).order(Arel.sql("committed_on DESC")).includes(:user) : []
   end
 
   # Returns a path relative to the url of the repository
   def relative_path(path)
-    path.gsub(Regexp.new("^\/?#{Regexp.escape(relative_url)}\/"), '')
+    path.gsub(Regexp.new("^/?#{Regexp.escape(relative_url)}/"), "")
   end
 
   def fetch_changesets
@@ -108,7 +108,7 @@ class Repository::Subversion < Repository
         while identifier_from <= scm_revision
           # loads changesets by batches of 200
           identifier_to = [identifier_from + 199, scm_revision].min
-          revisions = scm.revisions('', identifier_to, identifier_from, with_paths: true)
+          revisions = scm.revisions("", identifier_to, identifier_from, with_paths: true)
           unless revisions.nil?
             revisions.reverse_each do |revision|
               transaction do
@@ -136,11 +136,20 @@ class Repository::Subversion < Repository
 
   private
 
+  def validity_of_local_url
+    return if managed?
+
+    if OpenProject::SCM::LocalPathValidator.points_to_openproject_directory?(url) ||
+       OpenProject::SCM::LocalPathValidator.points_to_openproject_directory?(root_url)
+      errors.add :url, :must_not_point_to_openproject_directory
+    end
+  end
+
   # Returns the relative url of the repository
   # Eg: root_url = file:///var/svn/foo
   #     url      = file:///var/svn/foo/bar
   #     => returns /bar
   def relative_url
-    @relative_url ||= url.gsub(Regexp.new("^#{Regexp.escape(root_url || scm.root_url)}", Regexp::IGNORECASE), '')
+    @relative_url ||= url.gsub(Regexp.new("^#{Regexp.escape(root_url || scm.root_url)}", Regexp::IGNORECASE), "")
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,54 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'project settings index', type: :feature do
+RSpec.describe "project settings index" do
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[manage_versions])
+    create(:user,
+           member_with_permissions: { project => %i[manage_versions] })
   end
-  let(:project) { FactoryBot.create(:project) }
-  let!(:version1) { FactoryBot.create(:version, name: "aaaaa 1.", project: project) }
-  let!(:version2) { FactoryBot.create(:version, name: "aaaaa", project: project) }
-  let!(:version3) { FactoryBot.create(:version, name: "1.10. aaa", project: project) }
-  let!(:version4) { FactoryBot.create(:version, name: "1.1. zzz", project: project) }
-  let!(:version5) { FactoryBot.create(:version, name: "1.2. mmm", project: project) }
-  let!(:version6) { FactoryBot.create(:version, name: "1. xxxx", project: project) }
+  let(:project) { create(:project) }
+  let!(:version1) { create(:version, name: "aaaaa 1.", project:) }
+  let!(:version2) { create(:version, name: "aaaaa", project:) }
+  let!(:version3) { create(:version, name: "1.10. aaa", project:) }
+  let!(:version4) { create(:version, name: "1.1. zzz", project:) }
+  let!(:version5) { create(:version, name: "1.2. mmm", project:) }
+  let!(:version6) { create(:version, name: "1. xxxx", project:) }
 
   before do
     login_as(user)
   end
 
-  @javascript
-  scenario 'see versions listed in semver order' do
+  it "see versions listed in semver order" do
     visit project_settings_versions_path(project)
 
-    names_in_order = page.all('.version .name').map { |el| el.text.strip }
+    names_in_order = page.all(".version .name").map { |el| el.text.strip }
 
     expect(names_in_order)
       .to eql [version6.name, version4.name, version5.name, version3.name, version2.name, version1.name]
+  end
+
+  it "keeps the status filter when filtering by name", :js do
+    version2.update!(status: "locked")
+
+    visit project_settings_versions_path(project)
+
+    wait_for_turbo { click_on I18n.t("versions.filter_status_labels.locked") }
+
+    expect(page.all(".version .name").map { |element| element.text.strip }).to eq([version2.name])
+
+    expand_sub_header_search(I18n.t("versions.index.filter_label"))
+
+    wait_for_turbo_frame(frame: Settings::ProjectVersions::IndexComponent::FRAME_ID) do
+      fill_in I18n.t("versions.index.filter_label"), with: "aaaaa"
+    end
+
+    expect(page.all(".version .name").map { |element| element.text.strip }).to eq([version2.name])
   end
 end

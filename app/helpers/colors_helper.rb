@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,24 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module ColorsHelper
+  include Primer::JoinStyleArgumentsHelper
+
   def options_for_colors(colored_thing)
     colors = []
     Color.find_each do |c|
       options = {}
       options[:name] = c.name
       options[:value] = c.id
-      options[:data] = {
-        color: c.hexcode,
-        bright: c.bright?,
-        background: c.contrasting_color(light_color: 'transparent')
-      }
       options[:selected] = true if c.id == colored_thing.color_id
 
       colors.push(options)
@@ -51,76 +47,67 @@ module ColorsHelper
     colored_thing.color_id
   end
 
-  def darken_color(hex_color, amount = 0.4)
-    hex_color = hex_color.delete('#')
-    rgb = hex_color.scan(/../).map(&:hex)
-    rgb[0] = (rgb[0].to_i * amount).round
-    rgb[1] = (rgb[1].to_i * amount).round
-    rgb[2] = (rgb[2].to_i * amount).round
-    "#%02x%02x%02x" % rgb
-  end
-
-  def colored_text(color)
-    background = color.contrasting_color(dark_color: '#333', light_color: 'transparent')
-    style = "background-color: #{background}; color: #{color.hexcode}"
-    content_tag(:span, color.hexcode, class: 'color--text-preview', style: style)
-  end
-
   #
-  # Styles to display colors itself (e.g. for the colors autocompleter)
-  ##
-  def color_css
-    Color.find_each do |color|
-      concat ".__hl_inline_color_#{color.id}_dot::before { background-color: #{color.hexcode} !important;}"
-      concat ".__hl_inline_color_#{color.id}_dot::before { border: 1px solid #555555 !important;}" if color.bright?
-      concat ".__hl_inline_color_#{color.id}_text { color: #{color.hexcode} !important;}"
-      concat ".__hl_inline_color_#{color.id}_text { -webkit-text-stroke: 0.5px grey; text-stroke: 0.5px grey;}" if color.super_bright?
-    end
-  end
-
-  #
-  # Styles to display the color of attributes (type, status etc.) for example in the WP view
+  # Emits one rule per entry declaring the color as CSS custom properties. The rules that
+  # consume them (`__hl_background`, `__hl_foreground`, `__hl_dot`) are static and live in
+  # the `Highlighting colors` section of `frontend/src/global_styles/layout/_colors.sass`.
   ##
   def resource_color_css(name, scope)
-    scope.includes(:color).find_each do |entry|
-      color = entry.color
+    scope.map { |entry| color_variables_css(name, entry) }.join("\n")
+  end
 
-      if color.nil?
-        concat ".__hl_inline_#{name}_#{entry.id}::before { display: none }\n"
-        next
-      end
+  def hl_color_class(name, model)
+    id = model.respond_to?(:id) ? model.id : model
+    "__hl_#{name}_#{id}"
+  end
 
-      styles = color.color_styles
-      background_style = styles.map { |k, v| "#{k}:#{v} !important" }.join(';')
+  def hl_background_class(name, model)
+    "__hl_background #{hl_color_class(name, model)}"
+  end
 
-      if name === 'type'
-        concat ".__hl_inline_#{name}_#{entry.id} { color: #{color.hexcode} !important;}"
-        concat ".__hl_inline_#{name}_#{entry.id} { -webkit-text-stroke: 0.5px grey;}" if color.super_bright?
+  def hl_background_muted_class(name, model)
+    "__hl_background_muted #{hl_color_class(name, model)}"
+  end
 
-        border_color = color.hexcode === '#FFFFFF' ? '#555555' : color.hexcode
-        concat ".__hl_background_#{name}_#{entry.id} { border-color: #{border_color} !important; }"
-      else
-        border_color = color.bright? ? '#555555' : color.hexcode
-        concat ".__hl_inline_#{name}_#{entry.id}::before { #{background_style}; border-color: #{border_color}; }\n"
-      end
+  def hl_foreground_class(name, model)
+    "__hl_foreground #{hl_color_class(name, model)}"
+  end
 
-      concat ".__hl_background_#{name}_#{entry.id} { #{background_style}; }\n"
-
-      # Mark color as bright through CSS variable
-      # so it can be used to add a separate -bright class
-      unless color.bright?
-        concat ":root { --hl-#{name}-#{entry.id}-dark: #{styles[:color]} }\n"
-      end
-    end
+  def hl_dot_class(name, model)
+    "__hl_dot #{hl_color_class(name, model)}"
   end
 
   def icon_for_color(color, options = {})
-    return unless color
+    return unless color&.valid_attribute?(:hexcode)
 
-    options.merge! class: 'color--preview ' + options[:class].to_s,
+    style = join_style_arguments(
+      "background-color: #{color.hexcode}",
+      "border-color: #{color.darken(0.5)}50",
+      options[:style]
+    )
+
+    options.merge!(class: "color--preview #{options[:class]}",
                    title: color.name,
-                   style: "background-color: #{color.hexcode};" + options[:style].to_s
+                   style:)
 
-    content_tag(:span, ' ', options)
+    content_tag(:span, " ", options)
+  end
+
+  def color_by_variable(variable)
+    DesignColor.find_by(variable:)&.hexcode
+  end
+
+  private
+
+  def color_variables_css(name, entry)
+    color = entry.is_a?(::Color) ? entry : entry.color
+    selector = ".#{hl_color_class(name, entry)}"
+
+    # Without a color the dot would still occupy space, while background and foreground
+    # neutralize themselves: their declarations reference the undeclared --hl-color and
+    # become invalid at computed-value time.
+    return "#{selector}.__hl_dot::before { display: none }" if color.nil?
+
+    "#{selector} { --hl-color: #{color.hexcode}; --hl-perceived-lightness: #{color.perceived_lightness} }"
   end
 end

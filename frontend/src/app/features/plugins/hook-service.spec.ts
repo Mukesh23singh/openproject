@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,18 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-
-/* jshint expr: true */
 
 import { HookService } from 'core-app/features/plugins/hook-service';
 
 describe('HookService', () => {
   let service:HookService = new HookService();
 
-  let callback:any; let
-    invalidCallback:any;
+  let callback:any;
+  let invalidCallback:any;
   const validId = 'myValidCallbacks';
 
   beforeEach(() => {
@@ -82,7 +79,7 @@ describe('HookService', () => {
 
     describe('valid function callback registered', () => {
       beforeEach(() => {
-        callback = jasmine.createSpy('hook');
+        callback = vi.fn();
         service.register('myValidCallbacks', callback);
       });
 
@@ -95,7 +92,7 @@ describe('HookService', () => {
   describe('call', () => {
     describe('function that returns undefined', () => {
       beforeEach(() => {
-        callback = jasmine.createSpy('hook');
+        callback = vi.fn();
         service.register('myValidCallbacks', callback);
       });
 
@@ -106,7 +103,7 @@ describe('HookService', () => {
 
     describe('function that returns something that is not undefined', () => {
       beforeEach(() => {
-        callback = jasmine.createSpy('hook').and.returnValue({});
+        callback = vi.fn().mockReturnValue({});
 
         service.register('myValidCallbacks', callback);
       });
@@ -116,22 +113,10 @@ describe('HookService', () => {
       shouldBehaveLikeResultWithElements(validId, 1);
     });
 
-    describe('function that returns something that is not undefined', () => {
+    describe('callbacks registered for another hook', () => {
       beforeEach(() => {
-        callback = jasmine.createSpy('hook').and.returnValue({});
-
-        service.register('myValidCallbacks', callback);
-      });
-
-      shouldBehaveLikeCalledCallback(validId);
-
-      shouldBehaveLikeResultWithElements(validId, 1);
-    });
-
-    describe('function that returns something that is not undefined', () => {
-      beforeEach(() => {
-        callback = jasmine.createSpy('hook');
-        invalidCallback = jasmine.createSpy('invalidHook');
+        callback = vi.fn();
+        invalidCallback = vi.fn();
 
         service.register('myValidCallbacks', callback);
 
@@ -143,19 +128,31 @@ describe('HookService', () => {
       shouldBehaveLikeUncalledCallback(validId);
     });
 
-    describe('function that returns something that is not undefined', () => {
-      let callback1; let
-        callback2;
+    describe('two functions that return something', () => {
+      let callback1;
+      let callback2;
 
       beforeEach(() => {
-        callback1 = jasmine.createSpy('hook1').and.returnValue({});
-        callback2 = jasmine.createSpy('hook1').and.returnValue({});
+        callback1 = vi.fn().mockReturnValue({});
+        callback2 = vi.fn().mockReturnValue({});
 
         service.register('myValidCallbacks', callback1);
         service.register('myValidCallbacks', callback2);
       });
 
       shouldBehaveLikeResultWithElements(validId, 2);
+    });
+  });
+
+  describe('known hooks', () => {
+    it('rejects callbacks and arguments that break the hook signature', () => {
+      // @ts-expect-error gridWidgets callbacks return widget registrations
+      service.register('gridWidgets', () => 123);
+
+      // @ts-expect-error prependedAttributeGroups is called with a work package
+      service.call('prependedAttributeGroups', 'not a work package');
+
+      expect(service.call('gridWidgets')).toEqual([123]);
     });
   });
 });

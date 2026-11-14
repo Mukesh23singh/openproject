@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, Input } from '@angular/core';
+import { Component, Input, inject, ChangeDetectionStrategy } from '@angular/core';
 import { WorkPackageResource } from "core-app/features/hal/resources/work-package-resource";
 import { TabComponent } from "core-app/features/work-packages/components/wp-tabs/components/wp-tab-wrapper/tab";
 import { I18nService } from "core-app/core/i18n/i18n.service";
@@ -34,12 +33,13 @@ import { PathHelperService } from "core-app/core/path-helper/path-helper.service
 
 @Component({
   selector: 'github-tab',
-  templateUrl: './github-tab.template.html'
+  templateUrl: './github-tab.template.html',
+  changeDetection: ChangeDetectionStrategy.Eager,
+  standalone: false,
 })
 export class GitHubTabComponent implements TabComponent {
-  @Input() public workPackage:WorkPackageResource;
+  readonly PathHelper = inject(PathHelperService);
+  readonly I18n = inject(I18nService);
 
-  constructor(readonly PathHelper:PathHelperService,
-              readonly I18n:I18nService) {
-  }
+  @Input() public workPackage:WorkPackageResource;
 }

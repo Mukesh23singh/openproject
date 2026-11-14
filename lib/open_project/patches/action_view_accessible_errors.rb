@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -44,13 +43,17 @@ module ActionView
         def wrap_with_error_span(html_tag, object, method)
           object_identifier = erroneous_object_identifier(object.object_id.to_s, method)
 
-          "<span id='#{object_identifier}' class=\"errorSpan\"><a name=\"#{object_identifier}\"></a>#{html_tag}</span>".html_safe
+          helpers = ActionController::Base.helpers
+
+          helpers.content_tag(:span, id: object_identifier, class: "errorSpan") do
+            helpers.content_tag(:a, "", name: object_identifier) + html_tag
+          end
         end
 
         def erroneous_object_identifier(id, method)
           # select boxes use name_id whereas the validation uses name
           # we have to cut the '_id' of in order for the field to match
-          id + '_' + method.gsub('_id', '') + '_error'
+          id + "_" + method.gsub("_id", "") + "_error"
         end
       end
 
@@ -60,11 +63,11 @@ module ActionView
             error_messages = []
 
             object.errors.each_error do |attr, error|
-              unless attr == 'custom_values'
+              unless attr == "custom_values"
                 # Generating unique identifier in order to jump directly to the field with the error
                 object_identifier = erroneous_object_identifier(object.object_id.to_s, attr)
 
-                error_messages << [object.class.human_attribute_name(attr) + ' ' + error.message, object_identifier]
+                error_messages << [object.class.human_attribute_name(attr) + " " + error.message, object_identifier]
               end
             end
 
@@ -76,7 +79,7 @@ module ActionView
                 value.errors.map do |attr, msg|
                   # Generating unique identifier in order to jump directly to the field with the error
                   object_identifier = erroneous_object_identifier(value.object_id.to_s, attr)
-                  error_messages << [value.custom_field.name + ' ' + msg, object_identifier]
+                  error_messages << [value.custom_field.name + " " + msg, object_identifier]
                 end
               end
             end
@@ -96,8 +99,8 @@ module ActionView
             content_tag :li do
               content_tag :a,
                           ERB::Util.html_escape(msg),
-                          href: '#' + identifier,
-                          class: 'afocus'
+                          href: "#" + identifier,
+                          class: "afocus"
             end
           end
         end
@@ -111,7 +114,7 @@ module ActionView
         to_date = to_date.to_date if to_date.respond_to?(:to_date)
         distance_in_days = (to_date - from_date).abs
 
-        I18n.with_options locale: options[:locale], scope: :'datetime.distance_in_words' do |locale|
+        I18n.with_options locale: options[:locale], scope: :"datetime.distance_in_words" do |locale|
           case distance_in_days
           when 0..60     then locale.t :x_days,             count: distance_in_days.round
           when 61..720   then locale.t :about_x_months,     count: (distance_in_days / 30).round
@@ -124,7 +127,7 @@ module ActionView
 end
 
 ActionView::Base.field_error_proc = Proc.new do |html_tag, instance|
-  if html_tag.include?('<label')
+  if html_tag.include?("<label")
     html_tag.to_s
   else
     ActionView::Base.wrap_with_error_span(html_tag, instance.object, instance.method_name)

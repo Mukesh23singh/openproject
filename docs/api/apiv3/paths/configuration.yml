@@ -1,30 +1,18 @@
 # /api/v3/configuration
 ---
 get:
+  summary: Get instance configuration
+  operationId: get_configuration
+  tags:
+    - Configuration
+  description: Returns an object containing information about the global configuration.
   responses:
     '200':
+      description: OK
       content:
         application/hal+json:
+          schema:
+            $ref: '../components/schemas/configuration_model.yml'
           examples:
             response:
-              value:
-                _links:
-                  self:
-                    href: "/api/v3/configuration"
-                  userPreferences:
-                    href: "/api/v3/my_preferences"
-                _type: Configuration
-                maximumAttachmentFileSize: 5242880
-                perPageOptions:
-                - 1
-                - 10
-                - 100
-          schema:
-            "$ref": "../components/schemas/configuration_model.yml"
-      description: OK
-      headers: {}
-  tags:
-  - Configuration
-  description: ''
-  operationId: View_configuration
-  summary: View configuration
+              $ref: '../components/examples/configuration-response.yml'

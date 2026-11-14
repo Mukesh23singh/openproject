@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,44 +20,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Outgoing webhooks administration', type: :routing do
-  it 'route to index' do
-    expect(get('/admin/webhooks')).to route_to('webhooks/outgoing/admin#index')
+RSpec.describe "Outgoing webhooks administration" do
+  it "route to index" do
+    expect(get("/admin/settings/webhooks")).to route_to("webhooks/outgoing/admin#index")
   end
 
-  it 'route to new' do
-    expect(get('/admin/webhooks/new')).to route_to('webhooks/outgoing/admin#new')
+  it "route to new" do
+    expect(get("/admin/settings/webhooks/new")).to route_to("webhooks/outgoing/admin#new")
   end
 
-  it 'route to show' do
-    expect(get('/admin/webhooks/1')).to route_to(controller: 'webhooks/outgoing/admin',
-                                                 action: 'show',
-                                                 webhook_id: '1')
+  it "route to show" do
+    expect(get("/admin/settings/webhooks/1")).to route_to(controller: "webhooks/outgoing/admin",
+                                                          action: "show",
+                                                          webhook_id: "1")
   end
 
-  it 'route to edit' do
-    expect(get('/admin/webhooks/1/edit')).to route_to(controller: 'webhooks/outgoing/admin',
-                                                      action: 'edit',
-                                                      webhook_id: '1')
+  it "route to edit" do
+    expect(get("/admin/settings/webhooks/1/edit")).to route_to(controller: "webhooks/outgoing/admin",
+                                                               action: "edit",
+                                                               webhook_id: "1")
   end
 
-  it 'route to PUT update' do
-    expect(put('/admin/webhooks/1')).to route_to(controller: 'webhooks/outgoing/admin',
-                                                 action: 'update',
-                                                 webhook_id: '1')
+  it "route to PUT update" do
+    expect(put("/admin/settings/webhooks/1")).to route_to(controller: "webhooks/outgoing/admin",
+                                                          action: "update",
+                                                          webhook_id: "1")
   end
 
-  it 'route to DELETE destroy' do
-    expect(delete('/admin/webhooks/1')).to route_to(controller: 'webhooks/outgoing/admin',
-                                                    action: 'destroy',
-                                                    webhook_id: '1')
+  it "route to DELETE destroy" do
+    expect(delete("/admin/settings/webhooks/1")).to route_to(controller: "webhooks/outgoing/admin",
+                                                             action: "destroy",
+                                                             webhook_id: "1")
   end
 end

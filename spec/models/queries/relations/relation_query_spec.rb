@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,84 +22,85 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Relations::RelationQuery, type: :model do
+RSpec.describe Queries::Relations::RelationQuery do
   let(:instance) { described_class.new }
-  let(:base_scope) { Relation.direct.order(id: :desc) }
+  let(:base_scope) { Relation.order(id: :desc) }
 
-  context 'without a filter' do
-    describe '#results' do
-      it 'is the same as getting all the relations' do
+  context "without a filter" do
+    describe "#results" do
+      it "is the same as getting all the relations" do
         expect(instance.results.to_sql).to eql base_scope.visible.to_sql
       end
     end
 
-    describe '#valid?' do
-      it 'is true' do
+    describe "#valid?" do
+      it "is true" do
         expect(instance).to be_valid
       end
     end
   end
 
-  context 'with a type filter' do
+  context "with a type filter" do
     before do
-      instance.where('type', '=', ['follows', 'blocks'])
+      instance.where("type", "=", ["follows", "blocks"])
     end
 
-    describe '#results' do
-      it 'is the same as handwriting the query' do
+    describe "#results" do
+      it "is the same as handwriting the query" do
         expected = base_scope
                    .merge(Relation
-                          .where("relations.follows IN ('1') OR relations.blocks IN ('1')"))
+                          .where("relations.relation_type IN ('follows','blocks')"))
                    .visible
 
         expect(instance.results.to_sql).to eql expected.to_sql
       end
     end
 
-    describe '#valid?' do
-      it 'is true' do
+    describe "#valid?" do
+      it "is true" do
         expect(instance).to be_valid
       end
 
-      it 'is invalid if the filter is invalid' do
-        instance.where('type', '=', [''])
+      it "is invalid if the filter is invalid" do
+        instance.where("type", "=", [""])
 
         expect(instance).to be_invalid
       end
     end
   end
 
-  context 'with a from filter' do
-    let(:current_user) { FactoryBot.build_stubbed(:user) }
+  context "with a from filter" do
+    let(:current_user) { build_stubbed(:user) }
+
     before do
       login_as(current_user)
-      instance.where('from_id', '=', ['1'])
+      instance.where("from_id", "=", ["1"])
     end
 
-    describe '#results' do
-      it 'is the same as handwriting the query (with visibility checked within the filter query)' do
+    describe "#results" do
+      it "is the same as handwriting the query (with relation visibility enforced)" do
         visible_sql = WorkPackage.visible(current_user).select(:id).to_sql
 
+        sql = "from_id IN (1) AND from_id IN (#{visible_sql}) AND to_id IN (#{visible_sql})"
         expected = base_scope
                    .merge(Relation
-                          .where("from_id IN ('1') AND to_id IN (#{visible_sql})"))
+                          .where(sql))
 
         expect(instance.results.to_sql).to eql expected.to_sql
       end
     end
   end
 
-  context 'with an order by id asc' do
-    describe '#results' do
-      it 'returns all visible relations ordered by id asc' do
+  context "with an order by id asc" do
+    describe "#results" do
+      it "returns all visible relations ordered by id asc" do
         expect(instance.order(id: :asc).results.to_sql)
           .to eql base_scope.visible.except(:order).order(id: :asc).to_sql
       end

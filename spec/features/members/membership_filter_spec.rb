@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,64 +22,102 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'group memberships through groups page', type: :feature, js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
-  let!(:project) { FactoryBot.create :project, name: 'Project 1', identifier: 'project1' }
+RSpec.describe "group memberships through groups page",
+               :js do
+  shared_let(:admin) { create(:admin) }
+  let!(:project) { create(:project, name: "Project 1", identifier: "project1") }
 
   let!(:peter) do
-    FactoryBot.create :user,
-                      firstname: 'Peter',
-                      lastname: 'Pan',
-                      mail: 'foo@example.org',
-                      member_in_project: project,
-                      member_through_role: role,
-                      preferences: { hide_mail: false }
+    create(:user,
+           firstname: "Peter",
+           lastname: "Pan",
+           mail: "foo@example.org",
+           member_with_roles: { project => role })
   end
 
   let!(:hannibal) do
-    FactoryBot.create :user,
-                      firstname: 'Pan',
-                      lastname: 'Hannibal',
-                      mail: 'foo@example.com',
-                      member_in_project: project,
-                      member_through_role: role,
-                      preferences: { hide_mail: true }
+    create(:user,
+           firstname: "Pan",
+           lastname: "Hannibal",
+           mail: "foo@example.com",
+           member_with_roles: { project => role })
   end
-  let(:role) { FactoryBot.create(:role, permissions: %i(add_work_packages)) }
+  let(:role) { create(:project_role, permissions: %i(add_work_packages view_members)) }
   let(:members_page) { Pages::Members.new project.identifier }
+  let(:user_to_login) { admin }
+  let(:standard_global_role) { nil }
 
   before do
-    login_as(admin)
+    standard_global_role
+    login_as user_to_login
     members_page.visit!
     expect_angular_frontend_initialized
   end
 
-  scenario 'filters users based on some name attribute' do
-    members_page.open_filters!
+  shared_examples "it filters users" do
+    it "filters users based on some name attribute" do
+      members_page.open_filters!
 
-    members_page.search_for_name 'pan'
-    members_page.find_user 'Pan Hannibal'
-    expect(page).to have_no_selector('td.mail', text: hannibal.mail)
-    members_page.find_user 'Peter Pan'
-    members_page.find_mail peter.mail
+      members_page.search_for_name "pan"
+      members_page.find_user "Pan Hannibal"
+      expect(page).to have_no_css("td.mail", text: hannibal.mail)
+      members_page.find_user "Peter Pan"
+      members_page.find_mail peter.mail
 
-    members_page.search_for_name '@example'
-    members_page.find_user 'Pan Hannibal'
-    expect(page).to have_no_selector('td.mail', text: hannibal.mail)
-    members_page.find_user 'Peter Pan'
-    members_page.find_mail peter.mail
+      members_page.search_for_name "@example"
+      members_page.find_user "Pan Hannibal"
+      expect(page).to have_no_css("td.mail", text: hannibal.mail)
+      members_page.find_user "Peter Pan"
+      members_page.find_mail peter.mail
 
-    members_page.search_for_name '@example.org'
-    members_page.find_user 'Peter Pan'
-    members_page.find_mail peter.mail
-    expect(page).to have_no_selector('td.mail', text: hannibal.mail)
+      members_page.search_for_name "@example.org"
+      members_page.find_user "Peter Pan"
+      members_page.find_mail peter.mail
+      expect(page).to have_no_css("td.mail", text: hannibal.mail)
+    end
+  end
+
+  it_behaves_like "it filters users"
+
+  context "with a user" do
+    let(:user_to_login) { peter }
+
+    context "without view_user_email permission" do
+      it "filters users based on some name attribute" do
+        members_page.open_filters!
+
+        members_page.search_for_name "pan"
+        members_page.find_user "Pan Hannibal"
+        expect(page).to have_no_css("td.mail", text: hannibal.mail)
+        members_page.find_user "Peter Pan"
+        members_page.find_mail peter.mail
+        members_page.search_for_name "@example"
+        # Does not find other users based on their email address
+        expect(page).to have_no_css("tr", text: "Pan Hannibal")
+        expect(page).to have_no_css("td.mail", text: hannibal.mail)
+        expect(page).to have_no_css("tr", text: "Peter Pan")
+        expect(page).to have_no_css("td.mail", text: peter.mail)
+
+        members_page.search_for_name "@example.org"
+        # Does not find other users based on their email address
+        expect(page).to have_no_css("tr", text: "Pan Hannibal")
+        expect(page).to have_no_css("td.mail", text: hannibal.mail)
+        expect(page).to have_no_css("tr", text: "Peter Pan")
+        expect(page).to have_no_css("td.mail", text: peter.mail)
+      end
+    end
+
+    context "with view_user_email permission" do
+      let(:standard_global_role) { create :standard_global_role }
+
+      it_behaves_like "it filters users"
+    end
   end
 end

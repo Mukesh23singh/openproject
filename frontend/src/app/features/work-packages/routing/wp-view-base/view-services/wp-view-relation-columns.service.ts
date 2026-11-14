@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -29,34 +28,30 @@
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { WorkPackageViewRelationColumns } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-table-relation-columns';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { RelationsStateValue, WorkPackageRelationsService } from 'core-app/features/work-packages/components/wp-relations/wp-relations.service';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   QueryColumn,
   queryColumnTypes,
   RelationQueryColumn,
   TypeRelationQueryColumn,
 } from 'core-app/features/work-packages/components/wp-query/query-column';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { RelationResource } from 'core-app/features/hal/resources/relation-resource';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
 import { WorkPackageViewBaseService } from './wp-view-base.service';
 import { WorkPackageViewColumnsService } from './wp-view-columns.service';
 
-export type RelationColumnType = 'toType'|'ofType';
+export type RelationColumnType = 'toType'|'ofType'|'children';
 
 @Injectable()
 export class WorkPackageViewRelationColumnsService extends WorkPackageViewBaseService<WorkPackageViewRelationColumns> {
-  constructor(public querySpace:IsolatedQuerySpace,
-    public wpTableColumns:WorkPackageViewColumnsService,
-    public halResourceService:HalResourceService,
-    public apiV3Service:APIV3Service,
-    public wpRelations:WorkPackageRelationsService) {
-    super(querySpace);
-  }
+  wpTableColumns = inject(WorkPackageViewColumnsService);
+  halResourceService = inject(HalResourceService);
+  apiV3Service = inject(ApiV3Service);
+  wpRelations = inject(WorkPackageRelationsService);
 
-  public valueFromQuery(query:QueryResource):WorkPackageViewRelationColumns {
+  public valueFromQuery(_query:QueryResource):WorkPackageViewRelationColumns {
     // Take over current expanded values
     // which are not yet saved
     return this.current;
@@ -68,16 +63,18 @@ export class WorkPackageViewRelationColumnsService extends WorkPackageViewBaseSe
    * @param workPackage
    * @param relation
    */
-  public relationsToExtendFor(workPackage:WorkPackageResource,
+  public relationsToExtendFor(
+workPackage:WorkPackageResource,
     relations:RelationsStateValue|undefined,
-    eachCallback:(relation:RelationResource, column:QueryColumn, type:RelationColumnType) => void) {
+    eachCallback:(relation:RelationResource, column:QueryColumn, type:RelationColumnType) => void,
+) {
     // Only if any relation columns or stored expansion state exist
     if (!(this.wpTableColumns.hasRelationColumns() && this.lastUpdatedState.hasValue())) {
       return;
     }
 
     // Only if any relations exist for this work package
-    if (_.isNil(relations)) {
+    if (relations == null) {
       return;
     }
 
@@ -91,8 +88,8 @@ export class WorkPackageViewRelationColumnsService extends WorkPackageViewBaseSe
     const type = this.relationColumnType(column);
 
     if (type !== null) {
-      _.each(this.relationsForColumn(workPackage, relations, column),
-        (relation) => eachCallback(relation, column, type));
+      this.relationsForColumn(workPackage, relations, column)
+        .forEach((relation:RelationResource) => eachCallback(relation, column, type));
     }
   }
 
@@ -105,7 +102,7 @@ export class WorkPackageViewRelationColumnsService extends WorkPackageViewBaseSe
    * @return The filtered relations
    */
   public relationsForColumn(workPackage:WorkPackageResource, relations:RelationsStateValue|undefined, column:QueryColumn) {
-    if (_.isNil(relations)) {
+    if (relations == null) {
       return [];
     }
 
@@ -114,11 +111,11 @@ export class WorkPackageViewRelationColumnsService extends WorkPackageViewBaseSe
     if (type === 'toType') {
       const typeHref = (column as TypeRelationQueryColumn).type.href;
 
-      return _.filter(relations, (relation:RelationResource) => {
+      return Object.values(relations).filter((relation:RelationResource) => {
         const denormalized = relation.denormalized(workPackage);
         const target = this.apiV3Service.work_packages.cache.state(denormalized.targetId).value;
 
-        return _.get(target, 'type.href') === typeHref;
+        return target?.type?.href === typeHref;
       });
     }
 
@@ -126,7 +123,7 @@ export class WorkPackageViewRelationColumnsService extends WorkPackageViewBaseSe
     if (type === 'ofType') {
       const { relationType } = column as RelationQueryColumn;
 
-      return _.filter(relations, (relation:RelationResource) => relation.denormalized(workPackage).relationType === relationType);
+      return Object.values(relations).filter((relation:RelationResource) => relation.denormalized(workPackage).relationType === relationType);
     }
 
     return [];

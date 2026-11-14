@@ -1,11 +1,15 @@
-@import "src/assets/sass/helpers"
+@import "helpers"
 
-$ian-bg-color: #FFFFFF
-$ian-bg-hover-color: var(--gray-light)
-$ian-bg-read-color: #F3F3F3
-$ian-bg-read-hover-color: darken($ian-bg-read-color, 2)
-$ian-bg-selected-color: #D1E5F5
-$ian-bg-selected-hover-color: darken($ian-bg-selected-color, 2)
+$ian-bg-color: var(--box-list-item-bg-color)
+$ian-bg-hover-color: var(--box-list-item-bg-hover-color)
+$ian-border-color: var(--box-list-item-border-color)
+$ian-bg-read-color: var(--bgColor-muted)
+$ian-bg-read-hover-color: hsl(from var(--bgColor-muted) h s calc(l - 3.5))
+$ian-bg-selected-color: var(--box-list-item-selected-bg-color)
+$ian-bg-selected-hover-color: var(--box-list-item-selected-bg-hover-color)
+// Notification center is special as it does not allow multi-select. So the selected element is always the pressed one.
+// We can therefore directly set the pressed border color on the selected element
+$ian-active-border-color: var(--box-list-item-pressed-border-color)
 // This needs to be set in the itemSize of
 // the virtual scroller
 $ian-height: 100px
@@ -17,20 +21,31 @@ $subject-font-size: 14px
   margin: 0
   padding: 15px 10px
   font-size: 0.9rem
-  border-top: 1px solid var(--content-default-border-color)
-  border-radius: 2px
+  border-top: 1px solid $ian-border-color
   height: $ian-height
 
   &:hover
     background: $ian-bg-hover-color
 
+  &:first-child
+    border-top: none
+
   &:last-of-type
-    border-bottom: 1px solid var(--content-default-border-color)
+    border-bottom: 1px solid $ian-border-color
 
   &_selected
     background: $ian-bg-selected-color
+    border-color: $ian-active-border-color
     &:hover
       background: $ian-bg-selected-hover-color
+
+    // Since the ian only have a top border, we need to highlight the next sibling as well to
+    // create the impression that the selected ian has a top and bottom border
+    & + .op-ian-item
+      border-top-color: $ian-active-border-color
+
+    &:last-of-type
+      border-bottom-color: $ian-active-border-color
 
   &_read
     background: $ian-bg-read-color
@@ -51,29 +66,25 @@ $subject-font-size: 14px
   &--top-line
     grid-area: header
     display: grid
-    grid-template-columns: max-content max-content minmax(0, max-content) max-content auto minmax(20px, max-content)
+    grid-template-columns: max-content max-content minmax(0, max-content) minmax(0, max-content) auto minmax(20px, max-content)
     grid-template-areas: "status wpIdLink project reason count buttons"
     grid-column-gap: 5px
-    font-size: 14px
-    align-items: center
+    font-size: var(--body-font-size)
+    align-items: baseline
 
   &--middle-line
     grid-area: body
     display: grid
     grid-template-columns: auto 1fr
     grid-column-gap: 5px
+    line-height: normal
 
   &--bottom-line
     grid-area: footer
-    display: grid
-    grid-template-columns: auto 1fr
-    grid-column-gap: 5px
-    align-items: center
-    color: var(--gray-dark)
 
   &--work-package-subject
     @include text-shortener
-    font-weight: bold
+    font-weight: var(--base-text-weight-bold)
     &.-read
       font-weight: normal
 
@@ -82,30 +93,23 @@ $subject-font-size: 14px
 
   &--project
     grid-area: project
-    color: var(--gray-dark)
+    color: var(--fgColor-muted)
     @include text-shortener
 
   &--project-link,
   &--work-package-id-link
-    color: var(--gray-dark)
-    font-weight: bold
+    color: var(--fgColor-muted)
+    font-weight: var(--base-text-weight-bold)
 
   &--reason-count
     grid-area: count
-    @include indicator-bubble
     justify-self: flex-end
     margin-right: 5px
 
-  &--reason
+  &--reason-wrapper
     grid-area: reason
     @include text-shortener
-    color: var(--gray-dark)
-    max-width: 100%
-
-  &--date
-    @include text-shortener
-    max-width: 100%
-    line-height: 16px
+    color: var(--fgColor-muted)
 
   &--status
     grid-area: status
@@ -117,7 +121,7 @@ $subject-font-size: 14px
 
   &--button
     &:hover
-      color: var(--content-link-hover-active-color)
+      color: var(--accent-color)
 
     &_shown-on-focus
       @include show-on-focus

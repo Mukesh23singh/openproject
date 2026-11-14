@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './ifc_upload_shared_examples'
+require "spec_helper"
+require_relative "ifc_upload_shared_examples"
 
-describe 'direct IFC upload', type: :feature, js: true, with_direct_uploads: :redirect, with_config: { edition: 'bim' } do
-  it_behaves_like 'can upload an IFC file' do
+RSpec.describe "direct IFC upload",
+               :js,
+               :selenium,
+               with_config: { edition: "bim" }, with_direct_uploads: :redirect do
+  it_behaves_like "can upload an IFC file" do
     # with direct upload, we don't get the model name
-    let(:model_name) { 'model.ifc' }
+    let(:model_name) { "model.ifc" }
+
+    context "when the file size exceeds the allowed maximum", with_settings: { attachment_max_size: 1 } do
+      it "invalidates the form via JavaScript preventing submission" do
+        visit new_bcf_project_ifc_model_path(project_id: project.identifier)
+
+        page.attach_file("file", ifc_fixture.path, visible: :all)
+
+        expected_validation_message = I18n.t("bim.error_direct_upload_file_too_large", size: 1024)
+        expect(page).to have_field(type: "file", validation_message: expected_validation_message, visible: :all)
+
+        form_validity = page.evaluate_script <<~JS
+          document
+            .querySelector('#ifc-direct-upload-file-input')
+            .checkValidity();
+        JS
+
+        expect(form_validity).to be(false)
+      end
+    end
   end
 end

@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module OpenProject::Webhooks::EventResources
   class Base
     class << self
@@ -18,7 +47,7 @@ module OpenProject::Webhooks::EventResources
       ##
       # Return a mapping of event key to its localized name
       def available_events_map
-        Hash[available_actions.map { |symbol| [prefixed_event_name(symbol), localize_event_name(symbol)] }]
+        available_actions.map { |symbol| [prefixed_event_name(symbol), localize_event_name(symbol)] }.to_h
       end
 
       ##
@@ -34,25 +63,25 @@ module OpenProject::Webhooks::EventResources
       end
 
       def available_actions
-        raise NotImplementedError
+        raise SubclassResponsibilityError
       end
 
       ##
       # Localize the given event name
       def localize_event_name(key)
-        I18n.t(key, scope: 'webhooks.outgoing.events')
+        I18n.t(key, scope: "webhooks.outgoing.events")
       end
 
       ##
       # Get the name of this resource
       def resource_name
-        raise NotImplementedError
+        raise SubclassResponsibilityError
       end
 
       ##
       # Get the subscriptions for OP::Notifications
       def notification_names
-        raise NotImplementedError
+        raise SubclassResponsibilityError
       end
 
       protected

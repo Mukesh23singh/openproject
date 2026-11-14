@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Notifications::MailService, type: :model do
+RSpec.describe Notifications::MailService, type: :model do
   subject(:call) { instance.call }
 
   let(:recipient) do
-    FactoryBot.build_stubbed(:user)
+    build_stubbed(:user)
   end
   let(:actor) do
-    FactoryBot.build_stubbed(:user)
+    build_stubbed(:user)
   end
   let(:instance) { described_class.new(notification) }
 
-  context 'with a document journal notification' do
+  context "with a document journal notification" do
     let(:journal) do
-      FactoryBot.build_stubbed(:journal,
-                               journable: FactoryBot.build_stubbed(:document)).tap do |j|
+      build_stubbed(:journal,
+                    journable: build_stubbed(:document)).tap do |j|
         allow(j)
           .to receive(:initial?)
                 .and_return(initial_journal)
@@ -52,12 +51,12 @@ describe Notifications::MailService, type: :model do
     end
     let(:read_ian) { false }
     let(:notification) do
-      FactoryBot.build_stubbed(:notification,
-                               journal: journal,
-                               resource: journal.journable,
-                               recipient: recipient,
-                               actor: actor,
-                               read_ian: read_ian)
+      build_stubbed(:notification,
+                    journal:,
+                    resource: journal.journable,
+                    recipient:,
+                    actor:,
+                    read_ian:)
     end
     let(:notification_setting) { %w(document_added) }
     let(:mail) do
@@ -78,7 +77,7 @@ describe Notifications::MailService, type: :model do
       mail
     end
 
-    it 'sends a mail' do
+    it "sends a mail" do
       call
 
       expect(DocumentsMailer)
@@ -90,10 +89,10 @@ describe Notifications::MailService, type: :model do
         .to have_received(:deliver_later)
     end
 
-    context 'with the notification read in app already' do
+    context "with the notification read in app already" do
       let(:read_ian) { true }
 
-      it 'sends no mail' do
+      it "sends no mail" do
         call
 
         expect(DocumentsMailer)
@@ -101,10 +100,10 @@ describe Notifications::MailService, type: :model do
       end
     end
 
-    context 'with the journal not being the initial one' do
+    context "with the journal not being the initial one" do
       let(:initial_journal) { false }
 
-      it 'sends no mail' do
+      it "sends no mail" do
         call
 
         expect(DocumentsMailer)

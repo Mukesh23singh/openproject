@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,89 +22,112 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'user self registration', type: :feature, js: true do
-  let(:admin_password) { 'Test123Test123' }
-  let(:admin) { FactoryBot.create :admin, password: admin_password, password_confirmation: admin_password }
+RSpec.describe "user self registration", :js do
+  let(:admin_password) { "Test123Test123" }
+  let(:admin) { create(:admin, password: admin_password, password_confirmation: admin_password) }
   let(:home_page) { Pages::Home.new }
+  let(:user_menu) { Components::UserMenu.new }
 
   context 'with "manual account activation"',
           with_settings: { self_registration: Setting::SelfRegistration.manual.to_s } do
-    it 'allows self registration on login page (Regression #28076)' do
+    it "allows self registration on login page (Regression #28076)" do
       visit signin_path
 
-      click_link 'Create a new account'
+      click_link "Create a new account"
       # deliberately inserting a wrong password confirmation
-      within '.registration-modal' do
-        fill_in 'Username', with: 'heidi'
-        fill_in 'First name', with: 'Heidi'
-        fill_in 'Last name', with: 'Switzerland'
-        fill_in 'Email', with: 'heidi@heidiland.com'
-        fill_in 'Password', with: 'test123=321test'
-        fill_in 'Confirmation', with: 'test123=321test'
+      within_test_selector("registration-form") do
+        fill_in "Username", with: "heidi"
+        fill_in "First name", with: "Heidi"
+        fill_in "Last name", with: "Switzerland"
+        fill_in "Email", with: "heidi@heidiland.com"
+        # Addressed by id: the "Password" label is a prefix of "Password confirmation"
+        fill_in "user_password", with: "test123=321test"
+        fill_in "Password confirmation", with: "test123=321test"
 
-        click_button 'Create'
+        click_button "Create"
       end
 
       expect(page)
-        .to have_content('Your account was created and is now pending administrator approval.')
+        .to have_text("Your account was created and is now pending administrator approval.")
     end
 
-    it 'allows self registration and activation by an admin' do
+    # Self-registrants create a new account, so restricting email changes must not lock them out
+    # of choosing an address.
+    context "when users may not change their email", with_settings: { user_can_change_email: false } do
+      it "still allows self registering with a freely chosen email" do
+        visit signin_path
+
+        click_link "Create a new account"
+
+        within_test_selector("registration-form") do
+          expect(page).to have_field("Email", readonly: false)
+
+          fill_in "Username", with: "heidi"
+          fill_in "First name", with: "Heidi"
+          fill_in "Last name", with: "Switzerland"
+          fill_in "Email", with: "heidi@heidiland.com"
+          fill_in "user_password", with: "test123=321test"
+          fill_in "Password confirmation", with: "test123=321test"
+
+          click_button "Create"
+        end
+
+        expect(page)
+          .to have_text("Your account was created and is now pending administrator approval.")
+
+        expect(User.find_by(login: "heidi").mail).to eq "heidi@heidiland.com"
+      end
+    end
+
+    it "allows self registration and activation by an admin", :signout_via_visit do
       home_page.visit!
+      user_menu.open
 
       # registration as an anonymous user
-      within '.op-app-header' do
-        click_link 'Sign in'
-
-        SeleniumHubWaiter.wait
-        click_link 'Create a new account'
+      within "#nav-login-content" do
+        click_link "Create a new account"
       end
 
       # deliberately inserting a wrong password confirmation
-      within '.registration-modal' do
-        SeleniumHubWaiter.wait
-        fill_in 'Username', with: 'heidi'
-        fill_in 'First name', with: 'Heidi'
-        fill_in 'Last name', with: 'Switzerland'
-        fill_in 'Email', with: 'heidi@heidiland.com'
-        fill_in 'Password', with: 'test123=321test'
-        fill_in 'Confirmation', with: 'something different'
+      within_test_selector("registration-form") do
+        fill_in "Username", with: "heidi"
+        fill_in "First name", with: "Heidi"
+        fill_in "Last name", with: "Switzerland"
+        fill_in "Email", with: "heidi@heidiland.com"
+        fill_in "user_password", with: "test123=321test"
+        fill_in "Password confirmation", with: "something different"
 
-        click_button 'Create'
+        click_button "Create"
       end
 
       expect(page)
-        .to have_content('Password confirmation does not match password.')
+        .to have_css(".FormControl-inlineValidation", text: "Password confirmation does not match password.")
 
       # correcting password
-      within '.registration-modal' do
-        # Cannot use 'Password' here as the error message on 'Confirmation' is part of the label
-        # and contains the string 'Password' as well
-        SeleniumHubWaiter.wait
-        fill_in 'user_password', with: 'test123=321test'
-        fill_in 'Confirmation', with: 'test123=321test'
+      within_test_selector("registration-form") do
+        fill_in "user_password", with: "test123=321test"
+        fill_in "Password confirmation", with: "test123=321test"
 
-        click_button 'Create'
+        click_button "Create"
       end
 
       expect(page)
-        .to have_content('Your account was created and is now pending administrator approval.')
+        .to have_text("Your account was created and is now pending administrator approval.")
 
       registered_user = User.find_by(status: Principal.statuses[:registered])
 
       # Trying unsuccessfully to login
-      login_with 'heidi', 'test123=321test'
+      login_with "heidi", "test123=321test"
 
       expect(page)
-        .to have_content I18n.t(:'account.error_inactive_manual_activation')
+        .to have_text I18n.t(:"account.error_inactive_manual_activation")
 
       # activation as admin
       login_with admin.login, admin_password
@@ -114,17 +139,14 @@ describe 'user self registration', type: :feature, js: true do
       user_page.activate!
 
       expect(page)
-        .to have_content('Successful update.')
+        .to have_text("Successful update.")
 
       logout
 
       # Test logging in as newly created and activated user
-      login_with 'heidi', 'test123=321test'
+      login_with "heidi", "test123=321test"
 
-      within '.op-app-header' do
-        expect(page)
-          .to have_selector("a[title='#{registered_user.name}']")
-      end
+      user_menu.expect_user_shown registered_user.name
     end
   end
 end

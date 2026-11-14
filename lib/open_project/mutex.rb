@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -56,17 +55,19 @@ module OpenProject
     # attachable journals for the attachment added by themselves. To the user this will look as if one of the actions
     # deleted the other attachment. The next action, Action 3,  will then seem to have readded the attachment,
     # seemingly removed before.
-    def with_advisory_lock_transaction(entry, &block)
+    def with_advisory_lock_transaction(entry, suffix = nil, options = {}, &)
+      lock_name = "mutex_on_#{entry.class.name}_#{entry.id}"
+      lock_name << "_#{suffix}" if suffix
+
+      options.with_defaults!(transaction: true)
       ActiveRecord::Base.transaction do
-        with_advisory_lock(entry, &block)
+        with_advisory_lock(entry.class, lock_name, options, &)
       end
     end
 
-    def with_advisory_lock(entry)
-      lock_name = "mutex_on_#{entry.class.name}_#{entry.id}"
-
-      debug_log("Attempting to fetched advisory lock", lock_name)
-      result = entry.class.with_advisory_lock(lock_name, transaction: true) do
+    def with_advisory_lock(resource_class, lock_name, options = {})
+      debug_log("Attempting to fetch advisory lock", lock_name)
+      result = resource_class.with_advisory_lock(lock_name, options) do
         debug_log("Fetched advisory lock", lock_name)
         yield
       end
@@ -75,12 +76,16 @@ module OpenProject
       result
     end
 
+    def advisory_lock_name(name)
+      "op_#{name}"
+    end
+
     def debug_log(action, lock_name)
       message = <<~MESSAGE
         #{action}:
           * lockname: #{lock_name}
           * thread:  #{Thread.current.object_id}
-          * held locks: #{WithAdvisoryLock::Base.lock_stack.map(&:name).join(', ')}
+          * held locks: #{ActiveRecord::Base.current_advisory_locks.join(', ')}
       MESSAGE
 
       Rails.logger.debug { message }

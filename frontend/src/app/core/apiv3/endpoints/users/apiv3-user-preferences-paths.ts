@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,28 +20,27 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { APIv3ResourcePath } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { ApiV3ResourcePath } from 'core-app/core/apiv3/paths/apiv3-resource';
 import { Observable } from 'rxjs';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { HttpClient } from '@angular/common/http';
-import { UserPreferencesModel } from 'core-app/features/user-preferences/state/user-preferences.model';
+import { IUserPreference } from 'core-app/features/user-preferences/state/user-preferences.model';
 
-export class Apiv3UserPreferencesPaths extends APIv3ResourcePath<UserPreferencesModel> {
-  @InjectField() http:HttpClient;
+export class ApiV3UserPreferencesPaths extends ApiV3ResourcePath<IUserPreference> {
+  @LazyInject() http:HttpClient;
 
   /**
    * Perform a request to the backend to load preferences
    */
-  public get():Observable<UserPreferencesModel> {
+  public get():Observable<IUserPreference> {
     return this
       .http
-      .get<UserPreferencesModel>(
+      .get<IUserPreference>(
       this.path,
     );
   }
@@ -49,10 +48,10 @@ export class Apiv3UserPreferencesPaths extends APIv3ResourcePath<UserPreferences
   /**
    * Perform a request to update preferences
    */
-  public patch(payload:Partial<UserPreferencesModel>):Observable<UserPreferencesModel> {
+  public patch(payload:Partial<IUserPreference>):Observable<IUserPreference> {
     return this
       .http
-      .patch<UserPreferencesModel>(
+      .patch<IUserPreference>(
       this.path,
       payload,
       { withCredentials: true, responseType: 'json' },

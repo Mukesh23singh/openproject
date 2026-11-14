@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module OpenProject::TwoFactorAuthentication
   module TokenStrategyManager
     class << self
@@ -25,7 +54,7 @@ module OpenProject::TwoFactorAuthentication
           t = strategy.device_type
           if types.key? t
             raise ArgumentError, "Type #{t} already registered with strategy #{types[t].identifier}. " \
-                                "You cannot register two strategies with the same types."
+                                 "You cannot register two strategies with the same types."
           end
 
           types[t] = strategy
@@ -39,29 +68,29 @@ module OpenProject::TwoFactorAuthentication
       ##
       # Whether any active strategy exists
       def enabled?
-        !active_strategies.empty? && EnterpriseToken.allows_to?(:two_factor_authentication)
+        !active_strategies.empty?
       end
 
       ##
       # Determines whether admins can register devices on user's behalf
       def admin_register_sms_strategy
-        enabled? && active_strategies.detect { |strategy_class| strategy_class.mobile_token? }
+        enabled? && active_strategies.detect(&:mobile_token?)
       end
 
       ##
       # Whether the system requires 2FA for all users
       def enforced?
-        !!configuration[:enforced]
+        !!configuration["enforced"]
       end
 
       ##
       # Determine whether the plugin settings can be changed from the UI
       def configurable_by_ui?
-        !configuration[:hide_settings_menu_item]
+        !configuration["hide_settings_menu_item"]
       end
 
       def allow_remember_for_days
-        configuration[:allow_remember_for_days].to_i
+        configuration["allow_remember_for_days"].to_i
       end
 
       ##
@@ -73,10 +102,10 @@ module OpenProject::TwoFactorAuthentication
       ##
       # Fetch all active strategies
       def active_strategies
-        configuration.fetch(:active_strategies, [])
-          .map(&:to_s)
-          .uniq
-          .map { |strategy| lookup_active_strategy strategy }
+        configuration.fetch("active_strategies", [])
+                     .map(&:to_s)
+                     .uniq
+                     .map { |strategy| lookup_active_strategy strategy }
       end
 
       ##
@@ -93,48 +122,40 @@ module OpenProject::TwoFactorAuthentication
           types << s.device_type
         end
 
-        classes = types.map { |type| [type, ::TwoFactorAuthentication::Device.const_get(type.to_s.camelize)] }
-        Hash[classes]
+        types.index_with { |type| ::TwoFactorAuthentication::Device.const_get(type.to_s.camelize) }
       end
 
       ##
       # 2FA Plugin configuration
       def configuration
-        config = OpenProject::Configuration['2fa'] || {}
-        settings = Setting.plugin_openproject_two_factor_authentication || {}
+        config = Setting.plugin_openproject_two_factor_authentication || {}
 
-        merge_with_settings! config, settings
+        merge_with_settings! config
 
         config
       end
 
       def enforced_by_configuration?
-        enforced = (OpenProject::Configuration['2fa'] || {})[:enforced]
+        enforced = (OpenProject::Configuration["2fa"] || {})["enforced"]
         ActiveModel::Type::Boolean.new.cast enforced
       end
 
-      def merge_with_settings!(config, settings)
-        predefined_strategies = config.fetch(:active_strategies, [])
-        additional_strategies = settings.fetch(:active_strategies, [])
-
-        config[:active_strategies] = predefined_strategies | additional_strategies
-        # Always enable totp if nothing is enabled
-        config[:active_strategies] << :totp if add_default_strategy?(config)
-        # Allow enforcing from settings if not true in configuration
-        config[:enforced] ||= settings[:enforced]
-        config[:allow_remember_for_days] = config.fetch(:allow_remember_for_days, settings[:allow_remember_for_days])
+      def merge_with_settings!(config)
+        config["active_strategies"] ||= []
+        # Always enable webauthn and totp if nothing is enabled
+        config["active_strategies"] += %i[totp webauthn] if add_default_strategy?(config)
       end
 
       def add_default_strategy?(config)
-        config[:active_strategies].empty? && !config[:disabled].present?
+        config["active_strategies"].empty? && config["disabled"].blank?
       end
 
       def available_strategies
         {
-          totp: I18n.t("activerecord.models.two_factor_authentication/device/totp"),
-          sns: I18n.t("activerecord.models.two_factor_authentication/device/sms"),
-          restdt: I18n.t("activerecord.models.two_factor_authentication/device/restdt"),
-          message_bird: I18n.t("activerecord.models.two_factor_authentication/device/sms")
+          totp: ::TwoFactorAuthentication::Device::Totp.model_name.human,
+          webauthn: ::TwoFactorAuthentication::Device::Webauthn.model_name.human,
+          sns: ::TwoFactorAuthentication::Device::Sms.model_name.human,
+          message_bird: ::TwoFactorAuthentication::Device::Sms.model_name.human
         }
       end
 

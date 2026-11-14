@@ -1,70 +1,97 @@
+---
 nl:
   activerecord:
     attributes:
-      ldap_groups/synchronized_group:
-        dn: 'DN'
-        auth_source: 'LDAP verbinding'
-        sync_users: 'Sync users'
       ldap_groups/synchronized_filter:
-        filter_string: 'LDAP filter'
-        auth_source: 'LDAP verbinding'
-        group_name_attribute: "Group name attribute"
-        sync_users: 'Sync users'
-        base_dn: "Search base DN"
-    models:
-      ldap_groups/synchronized_group: 'Gesynchroniseerde LDAP groep'
-      ldap_groups/synchronized_filter: 'LDAP Group synchronization filter'
+        auth_source: Auth bron
+        base_dn: Zoek basis DN
+        filter_string: LDAP filter
+        group_name_attribute: Attribuut groepsnaam
+        ldap_auth_source: LDAP verbinding
+        member_lookup_attribute: Group member attribute
+        sync_users: Gebruikers synchroniseren
+      ldap_groups/synchronized_group:
+        auth_source: Auth bron
+        dn: AFW
+        ldap_auth_source: LDAP verbinding
+        sync_users: Gebruikers synchroniseren
     errors:
       models:
         ldap_groups/synchronized_filter:
-          must_contain_base_dn: "Filter base DN must be contained within the LDAP connection's base DN"
+          must_contain_base_dn: Filter base DN moet binnen de LDAP verbinding zijn basis DN
+    models:
+      ldap_groups/synchronized_filter:
+        one: LDAP Group synchronization filter
+        other: LDAP Group synchronization filters
+      ldap_groups/synchronized_group:
+        one: Synchronized LDAP group
+        other: Synchronized LDAP groups
+  ee:
+    upsell:
+      ldap_groups:
+        description: Synchronize LDAP groups with OpenProject groups to manage users, change their permissions and facilitate user management across groups.
+        title: LDAP groep synchronisatie
   ldap_groups:
-    label_menu_item: 'LDAP groep synchronisatie'
-    label_group_key: 'LDAP groep filtersleutel'
-    label_synchronize: 'Synchronize'
+    label_group_key: LDAP groep filtersleutel
+    label_menu_item: LDAP groep synchronisatie
+    label_synchronize: Discover LDAP groups
     settings:
-      name_attribute: 'LDAP groups name attribute'
-      name_attribute_text: 'The LDAP attribute used for naming the OpenProject group when created by a filter'
+      name_attribute: LDAP groepen naam attribuut
+      name_attribute_text: Het LDAP attribuut gebruikt om de OpenProject groep te noemen wanneer deze is aangemaakt door een filter
     synchronized_filters:
-      add_new: 'Add synchronized LDAP filter'
-      singular: 'LDAP Group synchronization filter'
-      plural: 'LDAP Group synchronization filters'
-      label_n_groups_found:
-        one: "1 group found by the filter"
-        other: "%{count} groups found by the filter"
-        zero: "No groups were found by the filter"
+      add_new: Gesynchroniseerde LDAP-filter toevoegen
       destroy:
-        title: 'Remove synchronized filter %{name}'
-        confirmation: "If you continue, the synchronized filter %{name} and all groups %{groups_count} created through it will be removed."
-        removed_groups: "Warning: This will remove the following groups from OpenProject and remove it from all projects!"
-        verification: "Enter the filter name %{name} to verify the deletion."
+        confirmation: Als u doorgaat, zal het gesynchroniseerde filter %{name} en alle groepen %{groups_count} die erdoor zijn aangemaakt worden verwijderd.
+        heading: Remove synchronized filter %{name}?
+        removed_groups: 'Waarschuwing: Dit verwijdert de volgende groepen uit OpenProject en verwijdert deze uit alle projecten!'
+        title: Gesynchroniseerd filter %{name} verwijderen
+        verification_html: Enter the filter name %{name} to verify the deletion.
       form:
-        group_name_attribute_text: 'Enter the attribute of the LDAP group used for setting the OpenProject group name.'
-        filter_string_text: 'Enter the RFC4515 LDAP filter that returns groups in your LDAP to synchronize with OpenProject.'
-        base_dn_text: >
-          Enter the search base DN to use for this filter. It needs to be below the base DN of the selected LDAP connection.
-          Leave this option empty to reuse the base DN of the connection
-    synchronized_groups:
-      add_new: 'Gesynchroniseerde LDAP groep toevoegen'
-      destroy:
-        title: 'Verwijder gesynchroniseerde groep %{name}'
-        confirmation: "Als u doorgaat zal de gesynchroniseerde groep %{name} en alle %{users_count} gebruikers erdoor gesynchroniseerd verwijderd worden."
-        info: "Nota: De OpenProject groep zelf en leden toegevoegd buiten deze LDAP synchronisatie zullen niet verwijderd worden."
-        verification: "Voer de projectnaam %{name} in om de verwijdering te verifiëren."
-      help_text_html: |
-        Deze module laat u toe synchronisatie tussen LDAP en OpenProject groepen in te stellen.
-        Het hangt af van LDAP groepen nood om het <em>groupOfNames / memberOf</em> attribuut te gebruiken ingesteld om te werken met OpenProject.
-        <br/>
-        Groepen worden elk uur gesynchroniseerd door een cron job.
-        <a href="https://www.openproject.org/help/administration/manage-ldap-authentication/">Bekijk a.u.b. onze documentatie over dit onderwerp</a>.
-      no_results: 'Geen gesynchroniseerde groepen gevonden'
-      no_members: 'Deze groep heeft nog geen gesynchroniseerde leden.'
-      plural: 'Gesynchroniseerde LDAP groepen'
-      singular: 'Gesynchroniseerde LDAP groep'
-      form:
-        auth_source_text: 'Select which LDAP connection should be used.'
-        sync_users_text: >
-          If you enable this option, found users will also be automatically created in OpenProject. Without it, only existing accounts in OpenProject will be added to groups.
-        dn_text: 'Enter the full DN of the group in LDAP'
-        group_text: 'Selecteer een bestaande OpenProject groep waar leden van de LDAP mee gesynchroniseerd zullen worden.'
+        base_dn_text: 'Voer de basis DN in om te gebruiken voor dit filter. Het moet onder de basis DN van de geselecteerde LDAP-verbinding liggen. Laat deze optie leeg om de basis DN van de verbinding te hergebruiken
 
+          '
+        filter_string_text: Voer het RFC4515 LDAP filter in dat terugstuurt groepen in je LDAP om te synchroniseren met OpenProject.
+        group_name_attribute_text: Voer het attribuut in van de LDAP-groep die wordt gebruikt voor het instellen van de naam van de OpenProject groep.
+        member_lookup_attribute_text: 'Leave empty to use the default reverse lookup: OpenProject searches for users whose memberOf attribute matches the group DN. This requires the memberOf attribute to be present on user entries (Active Directory, OpenLDAP with memberof overlay). Set this to the attribute name on group entries that lists member DNs to use forward lookup instead. Examples: "uniqueMember" (groupOfUniqueNames), "member" (groupOfNames). Use this for LDAP servers that do not maintain the memberOf attribute on user entries.
+
+          '
+      label_n_groups_found:
+        one: "%{count} group found by the filter"
+        other: "%{count} groepen gevonden door het filter"
+        zero: Er zijn geen groepen gevonden door het filter
+      plural: LDAP-groep synchronisatie filters
+      singular: LDAP-groep synchronisatie filter
+    synchronized_groups:
+      add_new: Gesynchroniseerde LDAP groep toevoegen
+      destroy:
+        confirmation: Als u doorgaat zal de gesynchroniseerde groep %{name} en alle %{users_count} gebruikers erdoor gesynchroniseerd verwijderd worden.
+        heading: Remove synchronized group %{name}?
+        info: The OpenProject group itself and members added outside this LDAP synchronization will not be removed.
+        title: Verwijder gesynchroniseerde groep %{name}
+      form:
+        auth_source_text: Selecteer welke LDAP-verbinding gebruikt moet worden.
+        dn_text: Voer de volledige DN van de groep in LDAP
+        group_text: Selecteer een bestaande OpenProject groep waar leden van de LDAP mee gesynchroniseerd zullen worden.
+        sync_users_text: 'Als u deze optie inschakelt, worden de gevonden gebruikers ook automatisch aangemaakt in OpenProject. Zonder deze optie worden alleen bestaande accounts in OpenProject aan groepen toegevoegd.
+
+          '
+      help_text_html: |
+        This module allows you to set up a synchronization between LDAP and OpenProject groups.
+        <br/>
+        By default, OpenProject uses <strong>reverse lookup</strong>: it searches for users whose <em>memberOf</em> attribute matches the group DN.
+        This requires the <em>memberOf</em> attribute to be present on user entries (Active Directory, OpenLDAP with memberof overlay).
+        <br/>
+        If your LDAP server does not maintain <em>memberOf</em> on user entries (e.g. it uses <em>groupOfUniqueNames</em> with <em>uniqueMember</em>),
+        you can configure <strong>forward lookup</strong> by setting the <em>Group member attribute</em> on the synchronization filter.
+        <br/>
+        Groups are synchronized hourly through a cron job.
+        [Please see our documentation on this topic](docs_url).
+      no_members: Deze groep heeft nog geen gesynchroniseerde leden.
+      no_results: Geen gesynchroniseerde groepen gevonden
+      plural: Gesynchroniseerde LDAP groepen
+      singular: Gesynchroniseerde LDAP groep
+      upsell:
+        description: Take advantage of synchronized LDAP groups to manage users, change their permissions and facilitate user management across groups.
+  plugin_openproject_ldap_groups:
+    description: Synchronization of LDAP group memberships.
+    name: OpenProject LDAP groups

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,26 +20,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/cost_types/cost_type_representer'
+require "api/v3/cost_types/cost_type_representer"
 
 module API
   module V3
     module CostEntries
       class CostEntriesAPI < ::API::OpenProjectAPI
         resources :cost_entries do
-          route_param :id, type: Integer, desc: 'Cost entry ID' do
+          route_param :id, type: Integer, desc: "Cost entry ID" do
             after_validation do
-              @cost_entry = CostEntry.find(params[:id])
+              @cost_entry = CostEntry.visible.find(params[:id])
 
-              authorize(:view_cost_entries, context: @cost_entry.project) do
+              authorize_in_project(:view_cost_entries, project: @cost_entry.project) do
                 if current_user == @cost_entry.user
-                  authorize(:view_own_cost_entries, context: @cost_entry.project)
+                  authorize_in_project(:view_own_cost_entries, project: @cost_entry.project)
                 else
                   raise API::Errors::Unauthorized
                 end
@@ -49,7 +46,7 @@ module API
             end
 
             get do
-              CostEntryRepresenter.new(@cost_entry, current_user: current_user)
+              CostEntryRepresenter.new(@cost_entry, current_user:, embed_links: true)
             end
           end
         end

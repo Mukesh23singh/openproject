@@ -2,30 +2,29 @@
 ---
 get:
   parameters:
-  - description: ID of the work package whose attachments will be listed
-    example: '1'
-    in: path
-    name: id
-    required: true
-    schema:
-      type: integer
+    - description: ID of the work package whose attachments will be listed
+      example: 1
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
   responses:
     '200':
       content:
         application/hal+json:
           schema:
-            "$ref": "../components/schemas/attachments_by_work_package_model.yml"
+            $ref: "../components/schemas/attachments_model.yml"
       description: OK
-      headers: {}
     '404':
       content:
         application/hal+json:
-          examples:
-            response:
-              value:
-                _type: Error
-                errorIdentifier: urn:openproject-org:api:v3:errors:NotFound
-                message: The specified work package does not exist.
+          schema:
+            $ref: "../components/schemas/error_response.yml"
+          example:
+            _type: Error
+            errorIdentifier: urn:openproject-org:api:v3:errors:NotFound
+            message: The specified work package does not exist.
       description: |-
         Returned if the work package does not exist or the client does not have sufficient permissions
         to see it.
@@ -34,97 +33,66 @@ get:
 
         *Note: A client without sufficient permissions shall not be able to test for the existence of a work package.
         That's why a 404 is returned here, even if a 403 might be more appropriate.*
-      headers: {}
   tags:
-  - Attachments
+    - Attachments
   description: ''
-  operationId: List_attachments_by_work_package
+  operationId: list_work_package_attachments
   summary: List attachments by work package
 post:
   parameters:
-  - description: ID of the work package to receive the attachment
-    example: '1'
-    in: path
-    name: id
-    required: true
-    schema:
-      type: integer
+    - description: ID of the work package to receive the attachment
+      example: 1
+      in: path
+      name: id
+      required: true
+      schema:
+        type: integer
   responses:
     '200':
       content:
         application/hal+json:
-          examples:
-            response:
-              value:
-                _links:
-                  author:
-                    href: "/api/v3/users/1"
-                  container:
-                    href: "/api/v3/work_packages/1"
-                  downloadLocation:
-                    href: "/some/remote/aws/url/image.png"
-                  self:
-                    href: "/api/v3/attachments/1"
-                  staticDownloadLocation:
-                    href: "/api/v3/attachments/1/download"
-                _type: Attachment
-                contentType: image/png
-                createdAt: '2014-05-21T08:51:20Z'
-                description:
-                  format: plain
-                  html: "<p>A picture of a cute cat</p>"
-                  raw: A picture of a cute cat
-                digest:
-                  algorithm: md5
-                  hash: 64c26a8403cd796ea4cf913cda2ee4a9
-                fileName: cat.png
-                filesize: 24
-                id: 1
           schema:
-            "$ref": "../components/schemas/attachment_model.yml"
+            $ref: "../components/schemas/attachment_model.yml"
       description: OK
-      headers: {}
     '400':
       content:
         application/hal+json:
-          examples:
-            response:
-              value:
-                _type: Error
-                errorIdentifier: urn:openproject-org:api:v3:errors:InvalidRequestBody
-                message: The request could not be parsed as JSON.
+          schema:
+            $ref: "../components/schemas/error_response.yml"
+          example:
+            _type: Error
+            errorIdentifier: urn:openproject-org:api:v3:errors:InvalidRequestBody
+            message: The request could not be parsed as JSON.
       description: |-
         Returned if the client sends a not understandable request. Reasons include:
 
         * Omitting one of the required parts (metadata and file)
 
         * sending unparsable JSON in the metadata part
-      headers: {}
     '403':
       content:
         application/hal+json:
-          examples:
-            response:
-              value:
-                _type: Error
-                errorIdentifier: urn:openproject-org:api:v3:errors:MissingPermission
-                message: You are not allowed to delete this attachment.
+          schema:
+            $ref: "../components/schemas/error_response.yml"
+          example:
+            _type: Error
+            errorIdentifier: urn:openproject-org:api:v3:errors:MissingPermission
+            message: You are not allowed to delete this attachment.
       description: |-
         Returned if the client does not have sufficient permissions.
 
         **Required permission:** edit work package or add work package
 
         *Note that you will only receive this error, if you are at least allowed to see the work package.*
-      headers: {}
     '404':
       content:
         application/hal+json:
-          examples:
-            response:
-              value:
-                _type: Error
-                errorIdentifier: urn:openproject-org:api:v3:errors:NotFound
-                message: The specified work package does not exist.
+          schema:
+            $ref: "../components/schemas/error_response.yml"
+          example:
+            _type: Error
+            errorIdentifier: urn:openproject-org:api:v3:errors:NotFound
+            message: The specified work package does not exist.
       description: |-
         Returned if the work package does not exist or the client does not have sufficient permissions
         to see it.
@@ -133,16 +101,19 @@ post:
 
         *Note: A client without sufficient permissions shall not be able to test for the existence of a work package.
         That's why a 404 is returned here, even if a 403 might be more appropriate.*
-      headers: {}
+    '406':
+      $ref: "../components/responses/missing_content_type.yml"
+    '415':
+      $ref: "../components/responses/unsupported_media_type.yml"
     '422':
       content:
         application/hal+json:
-          examples:
-            response:
-              value:
-                _type: Error
-                errorIdentifier: urn:openproject-org:api:v3:errors:PropertyConstraintViolation
-                message: File is too large (maximum size is 5242880 Bytes).
+          schema:
+            $ref: "../components/schemas/error_response.yml"
+          example:
+            _type: Error
+            errorIdentifier: urn:openproject-org:api:v3:errors:PropertyConstraintViolation
+            message: File is too large (maximum size is 5242880 Bytes).
       description: |-
         Returned if the client tries to send an invalid attachment.
         Reasons are:
@@ -150,9 +121,8 @@ post:
         * Omitting the file name (`fileName` property of metadata part)
 
         * Sending a file that is too large
-      headers: {}
   tags:
-  - Attachments
+    - Attachments
   description: |-
     To add an attachment to a work package, a client needs to issue a request of type `multipart/form-data`
     with exactly two parts.
@@ -164,5 +134,5 @@ post:
     The body *must* be the raw content of the file.
     Note that a `filename` must be indicated in the `Content-Disposition` of this part, however it will be ignored.
     Instead the `fileName` inside the JSON of the metadata part will be used.
-  operationId: Add_attachment_to_work_package
-  summary: Add attachment to work package
+  operationId: create_work_package_attachment
+  summary: Create work package attachment

@@ -1,4 +1,10 @@
+---
 zh-TW:
+  activerecord:
+    models:
+      grids/overview:
+        other: 總覽
   overviews:
-    label: '概要'
-  permission_manage_overview: 'Manage overview page'
+    label_dashboard: 儀表板
+    label_home: "%{workspace_type} 家"
+    label_overview: 總覽

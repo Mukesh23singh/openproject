@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,26 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Notifications::Filters::ReadIanFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::Notifications::Filters::ReadIanFilter do
+  it_behaves_like "basic query filter" do
     let(:type) { :list }
     let(:class_key) { :read_ian }
 
-    describe '#available_operators' do
-      it 'supports = and !' do
+    describe "#available_operators" do
+      it "supports = and !" do
         expect(instance.available_operators)
           .to eql [Queries::Operators::BooleanEqualsStrict,
                    Queries::Operators::BooleanNotEquals]
       end
     end
 
-    it_behaves_like 'non ar filter'
+    it_behaves_like "non ar filter"
   end
 end

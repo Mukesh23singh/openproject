@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,28 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-describe OpenProject::Hook do
+require "spec_helper"
+
+RSpec.describe OpenProject::Hook do
   let(:test_hook_class) do
     Class.new(OpenProject::Hook::ViewListener)
   end
   let(:test_hook1_class) do
     Class.new(test_hook_class) do
       def view_layouts_base_html_head(_context)
-        'Test hook 1 listener.'
+        "Test hook 1 listener."
       end
     end
   end
   let(:test_hook2_class) do
     Class.new(test_hook_class) do
       def view_layouts_base_html_head(_context)
-        'Test hook 2 listener.'
+        "Test hook 2 listener."
       end
     end
   end
@@ -65,101 +65,101 @@ describe OpenProject::Hook do
     described_class.instance_variable_set(:@listener_classes, previous_listener_classes)
   end
 
-  describe '#add_listeners' do
-    context 'when inheriting from the class' do
-      it 'is automatically added' do
+  describe "#add_listeners" do
+    context "when inheriting from the class" do
+      it "is automatically added" do
         expect(described_class.hook_listeners(:view_layouts_base_html_head))
           .to be_empty
 
         test_hook1_class
 
         expect(described_class.hook_listeners(:view_layouts_base_html_head))
-          .to match_array([test_hook1_class])
+          .to contain_exactly(test_hook1_class)
       end
     end
 
-    context 'when explicitly adding' do
+    context "when explicitly adding" do
       let(:test_class) do
         Class.new do
           include Singleton
 
           def view_layouts_base_html_head(_context)
-            'Test hook listener.'
+            "Test hook listener."
           end
         end
       end
 
-      it 'adds listeners' do
+      it "adds listeners" do
         described_class.add_listener(test_class)
         expect(described_class.hook_listeners(:view_layouts_base_html_head))
-          .to match_array([test_class])
+          .to contain_exactly(test_class)
       end
     end
 
-    context 'when not having the Singleton module included' do
+    context "when not having the Singleton module included" do
       let(:test_class) do
         Class.new do
           def view_layouts_base_html_head(_context)
-            'Test hook listener.'
+            "Test hook listener."
           end
         end
       end
 
-      it 'adds listeners' do
+      it "adds listeners" do
         expect { described_class.add_listener(test_class) }
           .to raise_error ArgumentError
       end
     end
   end
 
-  describe '#clear_listeners' do
+  describe "#clear_listeners" do
     before do
       # implicitly adding by class creation
       test_hook1_class
     end
 
-    it 'clears the registered listeners' do
+    it "clears the registered listeners" do
       described_class.clear_listeners
       expect(described_class.hook_listeners(:view_layouts_base_html_head))
         .to be_empty
     end
   end
 
-  describe '#call_hook' do
-    context 'with a class registered for the hook' do
+  describe "#call_hook" do
+    context "with a class registered for the hook" do
       before do
         # implicitly adding by class creation
         test_hook1_class
       end
 
-      it 'calls the registered method' do
+      it "calls the registered method" do
         expect(described_class.call_hook(:view_layouts_base_html_head))
           .to match_array test_hook1_class.instance.view_layouts_base_html_head(nil)
       end
     end
 
-    context 'without a class registered for the hook' do
-      it 'calls the registered method' do
+    context "without a class registered for the hook" do
+      it "calls the registered method" do
         expect(described_class.call_hook(:view_layouts_base_html_head))
           .to be_empty
       end
     end
 
-    context 'with multiple listeners' do
+    context "with multiple listeners" do
       before do
         # implicitly adding by class creation
         test_hook1_class
         test_hook2_class
       end
 
-      it 'calls all registered methods' do
+      it "calls all registered methods" do
         expect(described_class.call_hook(:view_layouts_base_html_head))
-          .to match_array [test_hook1_class.instance.view_layouts_base_html_head(nil),
-                           test_hook2_class.instance.view_layouts_base_html_head(nil)]
+          .to contain_exactly(test_hook1_class.instance.view_layouts_base_html_head(nil),
+                              test_hook2_class.instance.view_layouts_base_html_head(nil))
       end
     end
 
-    context 'with a context' do
+    context "with a context" do
       let!(:test_hook_context_class) do
         # implicitly adding by class creation
         Class.new(test_hook_class) do
@@ -169,31 +169,31 @@ describe OpenProject::Hook do
         end
       end
 
-      let(:context) { { foo: 1, bar: 'a'} }
+      let(:context) { { foo: 1, bar: "a" } }
 
-      it 'passes the context through' do
+      it "passes the context through" do
         expect(described_class.call_hook(:view_layouts_base_html_head, **context))
-          .to match_array [context]
+          .to contain_exactly(context)
       end
     end
 
-    context 'with a link rendered in the hooked to method' do
+    context "with a link rendered in the hooked to method" do
       let!(:test_hook_link_class) do
         # implicitly adding by class creation
         Class.new(test_hook_class) do
           def view_layouts_base_html_head(_context)
-            link_to('Work packages', controller: '/work_packages')
+            link_to("Work packages", controller: "/work_packages")
           end
         end
       end
 
-      it 'renders the link' do
+      it "renders the link" do
         expect(described_class.call_hook(:view_layouts_base_html_head))
-          .to match_array ['<a href="/work_packages">Work packages</a>']
+          .to contain_exactly('<a href="/work_packages">Work packages</a>')
       end
     end
 
-    context 'when called within a controller' do
+    context "when called within a controller" do
       let(:test_hook_controller_class) do
         # Also tests that the application controller has the model included
         Class.new(ApplicationController)
@@ -215,25 +215,25 @@ describe OpenProject::Hook do
         end
       end
       let(:project) do
-        instance_double('Project')
+        instance_double(Project)
       end
       let(:request) do
-        instance_double('ActiveSupport::Request')
+        instance_double(ActionDispatch::Request)
       end
 
-      it 'adds to the context' do
+      it "adds to the context" do
         expect(instance.call_hook(:view_layouts_base_html_head, {}))
-          .to match_array [{ project: project, controller: instance, request: request, hook_caller: instance }]
+          .to contain_exactly({ project:, controller: instance, request:, hook_caller: instance })
       end
     end
   end
 
-  context 'called within email rendering' do
+  context "when called within email rendering" do
     let!(:test_hook_link_class) do
       # implicitly adding by class creation
       Class.new(test_hook_class) do
         def view_layouts_base_html_head(_context)
-          link_to('Work packages', controller: '/work_packages')
+          link_to("Work packages", controller: "/work_packages")
         end
       end
     end
@@ -242,13 +242,12 @@ describe OpenProject::Hook do
       Class.new(ApplicationController)
     end
 
-    let(:user) { FactoryBot.build_stubbed(:user) }
-    let(:author) { FactoryBot.build_stubbed(:user) }
+    let(:user) { build_stubbed(:user) }
+    let(:author) { build_stubbed(:user) }
     let(:work_package) do
-      FactoryBot.build_stubbed(:work_package,
-                               type: FactoryBot.build_stubbed(:type),
-                               status: FactoryBot.build_stubbed(:status)).tap do |wp|
-
+      build_stubbed(:work_package,
+                    type: build_stubbed(:type),
+                    status: build_stubbed(:status)).tap do |wp|
         allow(wp)
           .to receive(:reload)
                 .and_return(wp)
@@ -259,14 +258,14 @@ describe OpenProject::Hook do
       ActionMailer::Base.deliveries.last
     end
 
-    it 'does not_change_the_default_url_for_email_notifications' do
+    it "does not_change_the_default_url_for_email_notifications" do
       test_hook_controller_class.new.call_hook(:view_layouts_base_html_head)
 
       ActionMailer::Base.deliveries.clear
       WorkPackageMailer.watcher_changed(work_package, user, author, :added).deliver_now
       mail2 = ActionMailer::Base.deliveries.last
 
-      assert_equal comparison_mail.text_part.body.encoded, mail2.text_part.body.encoded
+      expect(comparison_mail.text_part.body.encoded).to eq(mail2.text_part.body.encoded)
     end
   end
 end

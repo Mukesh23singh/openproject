@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,13 +35,14 @@ module API
 
         self_link path: :help_text,
                   id_attribute: :id,
-                  title_getter: ->(*) { nil }
+                  title_getter: ->(*) {}
 
-        link :editText do
-          if current_user.admin? && represented.persisted?
+        link :editText,
+             cache_if: -> { current_user.allowed_globally?(:edit_attribute_help_texts) } do
+          if represented.persisted? && current_user.allowed_globally?(:edit_attribute_help_texts)
             {
               href: edit_attribute_help_text_path(represented.id),
-              type: 'text/html'
+              type: "text/html"
             }
           end
         end
@@ -55,7 +53,10 @@ module API
                  getter: ->(*) {
                    ::API::Utilities::PropertyNameConverter.from_ar_name(attribute_name)
                  }
-        property :attribute_caption
+        property :attribute_field_name
+
+        property :caption
+
         property :attribute_scope,
                  as: :scope
         property :help_text,
@@ -65,7 +66,7 @@ module API
                  }
 
         def _type
-          'HelpText'
+          "HelpText"
         end
       end
     end

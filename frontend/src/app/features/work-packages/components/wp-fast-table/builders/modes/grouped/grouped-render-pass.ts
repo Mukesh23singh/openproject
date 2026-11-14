@@ -1,3 +1,30 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
@@ -8,8 +35,15 @@ import { WorkPackageTable } from '../../../wp-fast-table';
 import { WorkPackageTableRow } from '../../../wp-table.interfaces';
 import { SingleRowBuilder } from '../../rows/single-row-builder';
 import { PlainRenderPass } from '../plain/plain-render-pass';
-import { groupClassNameFor, GroupHeaderBuilder } from './group-header-builder';
-import { groupByProperty, groupedRowClassName } from './grouped-rows-helpers';
+import { groupOccurrenceKey } from 'core-app/features/work-packages/components/wp-fast-table/rendered-occurrence-ledger';
+import {
+  groupClassNameFor,
+  GroupHeaderBuilder,
+} from './group-header-builder';
+import {
+  groupByProperty,
+  groupedRowClassName,
+} from './grouped-rows-helpers';
 
 export const groupRowClass = '-group-row';
 
@@ -20,7 +54,8 @@ export class GroupedRenderPass extends PlainRenderPass {
     public workPackageTable:WorkPackageTable,
     public groups:GroupObject[],
     public headerBuilder:GroupHeaderBuilder,
-    public colspan:number) {
+    public colspan:number,
+  ) {
     super(injector, workPackageTable, new SingleRowBuilder(injector, workPackageTable));
   }
 
@@ -28,9 +63,8 @@ export class GroupedRenderPass extends PlainRenderPass {
    * Rebuild the entire grouped tbody from the given table
    */
   protected doRender() {
-    let currentGroup:GroupObject | null = null;
-    const { length } = this.workPackageTable.originalRows;
-    this.workPackageTable.originalRows.forEach((wpId:string, index:number) => {
+    let currentGroup:GroupObject|null = null;
+    this.workPackageTable.originalRows.forEach((wpId:string) => {
       const row = this.workPackageTable.originalRowIndex[wpId];
       const nextGroup = this.matchingGroup(row.object);
       const groupsChanged = currentGroup !== nextGroup;
@@ -44,12 +78,11 @@ export class GroupedRenderPass extends PlainRenderPass {
       if (nextGroup && groupsChanged) {
         const groupClass = groupClassNameFor(nextGroup);
         const rowElement = this.headerBuilder.buildGroupRow(nextGroup, this.colspan);
-        this.appendNonWorkPackageRow(rowElement, groupClass, [groupRowClass]);
+        this.appendNonWorkPackageRow(groupOccurrenceKey(nextGroup.index, 'header'), 'groupHeader', rowElement, groupClass, [groupRowClass], false, nextGroup.identifier);
         currentGroup = nextGroup;
       }
 
-      row.group = currentGroup;
-      this.buildSingleRow(row);
+      this.buildSingleRow(row, currentGroup);
     });
 
     // Render the last sums row
@@ -62,8 +95,8 @@ export class GroupedRenderPass extends PlainRenderPass {
    * Find a matching group for the given work package.
    * The API sadly doesn't provide us with the information which group a WP belongs to.
    */
-  private matchingGroup(workPackage:WorkPackageResource) {
-    return _.find(this.groups, (group:GroupObject) => {
+  private matchingGroup(workPackage:WorkPackageResource):GroupObject|null {
+    return this.groups.find((group:GroupObject) => {
       let property = workPackage[groupByProperty(group)];
       // explicitly check for undefined as `false` (bool) is a valid value.
       if (property === undefined) {
@@ -72,18 +105,19 @@ export class GroupedRenderPass extends PlainRenderPass {
 
       // If the property is a multi-value
       // Compare the href's of all resources with the ones in valueLink
-      if (_.isArray(property)) {
+      if (Array.isArray(property)) {
         return this.matchesMultiValue(property as HalResource[], group);
       }
 
-      /// / If its a linked resource, compare the href,
+      /// / If it's a linked resource, compare the href,
       /// / which is an array of links the resource offers
-      if (property && property.href) {
-        return !!_.find(group._links.valueLink, (l:any):any => property.href === l.href);
+      if (this.hasHref(property)) {
+        return group._links.valueLink.some((l) => property.href === l.href);
       }
 
       // Otherwise, fall back to simple value comparison.
-      let value = group.value === '' ? null : group.value;
+      const groupValue = group.value as unknown;
+      let value = groupValue === '' ? null : groupValue;
 
       if (value && typeof value === 'string') {
         // For matching we have to remove the % sign which is shown when grouping after progress
@@ -92,52 +126,49 @@ export class GroupedRenderPass extends PlainRenderPass {
 
       // Values provided by the API are always string
       // so avoid triple equal here
-      // tslint:disable-next-line
       return value == property;
-    }) as GroupObject;
+    }) ?? null;
   }
 
-  private matchesMultiValue(property:HalResource[], group:GroupObject) {
-    if (property.length !== group.href.length) {
+  private hasHref(value:unknown):value is { href:string } {
+    if (typeof value !== 'object' || value === null) {
       return false;
     }
 
-    const joinedOrderedHrefs = (objects:any[]) => _.map(objects, (object) => object.href).sort().join(', ');
+    const href = (value as { href?:unknown }).href;
+    return typeof href === 'string' && href.length > 0;
+  }
 
-    return _.isEqualWith(
-      property,
-      group.href,
-      (a, b) => joinedOrderedHrefs(a) === joinedOrderedHrefs(b),
-    );
+  private matchesMultiValue(property:HalResource[], group:GroupObject) {
+    // The API returns `group.href` as an object keyed by index rather than a
+    // plain array, so normalize it via `Object.values` before comparing.
+    const groupHrefs = Object.values(group.href);
+
+    if (property.length !== groupHrefs.length) {
+      return false;
+    }
+
+    // `property` may be a read-only observable array whose `map` returns a
+    // read-only array (via `Symbol.species`), so build a plain array via
+    // `Array.from` before sorting to avoid a "read-only" RangeError.
+    const joinedOrderedHrefs = (objects:{ href:string|null }[]) => Array.from(objects, (object) => object.href).sort().join(', ');
+
+    return joinedOrderedHrefs(property) === joinedOrderedHrefs(groupHrefs);
   }
 
   /**
    * Enhance a row from the rowBuilder with group information.
    */
-  private buildSingleRow(row:WorkPackageTableRow):void {
-    const { group } = row;
-
+  private buildSingleRow(row:WorkPackageTableRow, group:GroupObject|null):void {
     if (!group) {
       console.warn("All rows should have a group, but this one doesn't %O", row);
     }
 
-    let hidden = false;
-    const additionalClasses:string[] = [];
-
+    const { additionalClasses, hidden } = group ? this.groupRowState(group) : { additionalClasses: [], hidden: false };
     const [tr, _] = this.rowBuilder.buildEmpty(row.object);
 
-    if (group) {
-      additionalClasses.push(groupedRowClassName(group.index));
-      hidden = !!group.collapsed;
-
-      if (hidden) {
-        additionalClasses.push(collapsedRowClass);
-      }
-    }
-
-    row.element = tr;
     tr.classList.add(...additionalClasses);
-    this.appendRow(row.object, tr, additionalClasses, hidden);
+    this.appendRow(row.object, tr, additionalClasses, hidden, 2);
   }
 
   /**
@@ -150,6 +181,20 @@ export class GroupedRenderPass extends PlainRenderPass {
 
     const groupClass = groupClassNameFor(group);
     const rowElement = this.sumsBuilder.buildSumsRow(group);
-    this.appendNonWorkPackageRow(rowElement, groupClass);
+    const { additionalClasses, hidden } = this.groupRowState(group);
+
+    rowElement.classList.add(...additionalClasses);
+    this.appendNonWorkPackageRow(groupOccurrenceKey(group.index, 'sums'), 'sums', rowElement, groupClass, additionalClasses, hidden, group.identifier, 2);
+  }
+
+  private groupRowState(group:GroupObject):{ additionalClasses:string[], hidden:boolean } {
+    const hidden = !!group.collapsed;
+    const additionalClasses = [groupedRowClassName(group.index)];
+
+    if (hidden) {
+      additionalClasses.push(collapsedRowClass);
+    }
+
+    return { additionalClasses, hidden };
   }
 }

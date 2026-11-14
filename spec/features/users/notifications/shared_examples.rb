@@ -1,59 +1,206 @@
-shared_examples 'notification settings workflow' do
-  describe 'with another project the user can see' do
-    let!(:project) { FactoryBot.create :project }
-    let!(:project_alt) { FactoryBot.create :project }
-    let!(:role) { FactoryBot.create :role, permissions: %i[view_project] }
-    let!(:member) { FactoryBot.create :member, user: user, project: project, roles: [role] }
-    let!(:member_two) { FactoryBot.create :member, user: user, project: project_alt, roles: [role] }
+# frozen_string_literal: true
 
-    it 'allows to control notification settings' do
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+RSpec.shared_examples "notification settings workflow" do
+  describe "with another project the user can see" do
+    shared_let(:project) { create(:project) }
+    shared_let(:project_alt) { create(:project) }
+    shared_let(:role) { create(:project_role, permissions: %i[view_project]) }
+    shared_let(:member) { create(:member, user:, project:, roles: [role]) }
+    shared_let(:member_two) { create(:member, user:, project: project_alt, roles: [role]) }
+
+    it "allows to control notification settings" do
       # Expect default settings
       settings_page.expect_represented
 
-      # Add projects columns
-      settings_page.add_project project
-      settings_page.add_project project_alt
+      # Set settings for global email
+      settings_page.configure_global assignee: true,
+                                     responsible: true,
+                                     shared: true
+      settings_page.save_participating
 
-      # Set settings for project email
-      settings_page.configure_global involved: true,
-                                     work_package_commented: true,
+      settings_page.configure_global work_package_commented: true,
                                      work_package_created: true,
                                      work_package_processed: true,
                                      work_package_prioritized: true,
                                      work_package_scheduled: true
+      settings_page.save_non_participating
+
+      # Set settings for global date alerts
+      settings_page.set_reminder("start_date", "3 days before")
+      settings_page.enable_date_alert("overdue", true)
+      settings_page.set_reminder("overdue", "7 days after")
+
+      settings_page.save_date_alerts
 
       # Set settings for project email
-      settings_page.configure_project project: project,
-                                      involved: true,
+      settings_page.configure_project project:,
+                                      assignee: true,
+                                      responsible: true,
+                                      shared: true,
                                       work_package_commented: false,
                                       work_package_created: false,
                                       work_package_processed: false,
                                       work_package_prioritized: false,
                                       work_package_scheduled: false
 
-      settings_page.save
+      # Set settings for project date alerts
+      settings_page.set_project_reminder("start_date", "3 days before")
+      settings_page.set_project_reminder("due_date", "3 days before")
+      settings_page.set_project_reminder("overdue", "7 days after")
 
-      user.reload
-      notification_settings = user.notification_settings
-      expect(notification_settings.count).to eq 3
-      expect(notification_settings.where(project: project).count).to eq 1
+      settings_page.save_project
 
-      project_settings = notification_settings.find_by(project: project)
-      expect(project_settings.involved).to be_truthy
+      notification_settings = user.reload.notification_settings
+      expect(notification_settings.count).to eq 2
+      expect(notification_settings.where(project: nil).count).to eq(1)
+      expect(notification_settings.where(project:).count).to eq 1
+
+      global_settings = notification_settings.find_by(project: nil)
+      expect(global_settings.assignee).to be_truthy
+      expect(global_settings.responsible).to be_truthy
+      expect(global_settings.mentioned).to be_truthy
+      expect(global_settings.watched).to be_truthy
+      expect(global_settings.shared).to be_truthy
+      expect(global_settings.work_package_commented).to be_truthy
+      expect(global_settings.work_package_created).to be_truthy
+      expect(global_settings.work_package_processed).to be_truthy
+      expect(global_settings.work_package_prioritized).to be_truthy
+      expect(global_settings.work_package_scheduled).to be_truthy
+      expect(global_settings.start_date).to eq(3)
+      expect(global_settings.due_date).to eq(1)
+      expect(global_settings.overdue).to eq(7)
+
+      project_settings = notification_settings.find_by(project:)
+      expect(project_settings.assignee).to be_truthy
+      expect(project_settings.responsible).to be_truthy
       expect(project_settings.mentioned).to be_truthy
       expect(project_settings.watched).to be_truthy
+      expect(project_settings.shared).to be_truthy
       expect(project_settings.work_package_commented).to be_falsey
       expect(project_settings.work_package_created).to be_falsey
       expect(project_settings.work_package_processed).to be_falsey
       expect(project_settings.work_package_prioritized).to be_falsey
       expect(project_settings.work_package_scheduled).to be_falsey
+      expect(project_settings.start_date).to eq(3)
+      expect(project_settings.due_date).to eq(3)
+      expect(project_settings.overdue).to eq(7)
+
+      # Unset global date alert settings
+      settings_page.enable_date_alert("start_date", false)
+      settings_page.enable_date_alert("overdue", false)
+      settings_page.enable_date_alert("due_date", false)
+
+      settings_page.save_date_alerts
+
+      # Unset project date alert settings
+      settings_page.edit_project project
+      settings_page.disable_project_date_alert("start_date")
+      settings_page.disable_project_date_alert("due_date")
+      settings_page.disable_project_date_alert("overdue")
+
+      settings_page.save_project
+
+      notification_settings = user.reload.notification_settings
+      expect(notification_settings.count).to eq 2
+      expect(notification_settings.where(project: nil).count).to eq(1)
+      expect(notification_settings.where(project:).count).to eq 1
+
+      global_settings = notification_settings.find_by(project: nil)
+      expect(global_settings.start_date).to be_nil
+      expect(global_settings.due_date).to be_nil
+      expect(global_settings.overdue).to be_nil
+
+      project_settings = notification_settings.find_by(project:)
+      expect(project_settings.start_date).to be_nil
+      expect(project_settings.due_date).to be_nil
+      expect(project_settings.overdue).to be_nil
 
       # Trying to add the same project again will not be possible (Regression #38072)
-      click_button 'Add setting for project'
-      container = page.find('[data-qa-selector="notification-setting-inline-create"] ng-select')
-      settings_page.search_autocomplete container, query: project.name, results_selector: 'body'
-      expect(page).to have_text 'This project is already selected'
-      expect(page).to have_selector('.ng-option-disabled', text: project.name)
+      click_link "Add project-specific notifications"
+      container = page.find('[data-test-selector="my-notifications-project-autocompleter"] ng-select')
+      settings_page.search_autocomplete container, query: project.name, results_selector: "body"
+      expect(page).to have_no_css(".ng-option", text: project.name)
+    end
+
+    it_behaves_like "a project picker searchable by identifier" do
+      # Membership is required for the autocompleter to offer these projects at
+      # all when the logged-in user is not an admin (as in "as a regular user").
+      let(:target_project) do
+        create(:project, name: "Alpha Initiative", identifier: "zulu-target", members: { user => role })
+      end
+      # A project without notification settings of its own, so that it is
+      # offered by the autocompleter unless the search filters it out.
+      let(:control_project) do
+        create(:project, name: "Beta Initiative", identifier: "yankee-other", members: { user => role })
+      end
+
+      before do
+        click_link "Add project-specific notifications"
+      end
+
+      def search_project(query)
+        container = page.find('[data-test-selector="my-notifications-project-autocompleter"] ng-select')
+        settings_page.search_autocomplete container, query:, results_selector: "body"
+      end
+    end
+
+    it "deletes project-specific notification settings without a routing error" do
+      create(:notification_setting, user:, project:)
+      settings_page.visit!
+
+      settings_page.delete_project project
+      settings_page.expect_and_dismiss_flash
+
+      expect(page).to have_current_path(settings_page.path)
+      expect(user.reload.notification_settings.where(project:)).to be_empty
+      expect(page).to have_no_test_selector("project-specific-settings-list", text: project.name)
+    end
+
+    context "when overdue alerts are disabled for one project, enabled for another" do
+      let!(:setting) { build(:notification_setting, user:, project:) }
+      let!(:setting_alt) { build(:notification_setting, user:, project: project_alt) }
+      let(:mail_settings_page) { Pages::My::Reminders.new(user) }
+
+      it "allows to save with a partially disabled overdue alert" do
+        setting.start_date = nil
+        setting.due_date = nil
+        setting.save!
+
+        setting_alt.start_date = 1
+        setting_alt.due_date = 1
+        setting_alt.save!
+
+        mail_settings_page.visit!
+        mail_settings_page.save_daily_reminders_form
+        mail_settings_page.expect_and_dismiss_flash
+      end
     end
   end
 end

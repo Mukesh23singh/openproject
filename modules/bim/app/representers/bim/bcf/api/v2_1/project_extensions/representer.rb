@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -72,12 +69,12 @@ module Bim::Bcf::API::V2_1
     property :project_actions,
              getter: ->(decorator:, **) {
                [].tap do |actions|
-                 actions << 'update' if decorator.allowed?(:edit_project)
+                 actions << "update" if decorator.allowed?(:edit_project)
 
                  if decorator.allowed?(:manage_bcf)
-                   actions << 'viewTopic' << 'createTopic'
+                   actions << "viewTopic" << "createTopic"
                  elsif decorator.allowed?(:view_linked_issues)
-                   actions << 'viewTopic'
+                   actions << "viewTopic"
                  end
                end
              }
@@ -103,7 +100,7 @@ module Bim::Bcf::API::V2_1
     end
 
     def allowed?(permission)
-      represented.user.allowed_to?(permission, represented.model.project)
+      represented.user.allowed_in_project?(permission, represented.model.project)
     end
   end
 end

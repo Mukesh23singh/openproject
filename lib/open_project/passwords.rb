@@ -1,8 +1,8 @@
-# encoding: utf-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,10 +38,10 @@ module OpenProject
     # length and other complexity rules.
     #
     module Evaluator
-      RULES = { 'uppercase' => /.*[A-Z].*/u,
-                'lowercase' => /.*[a-z].*/u,
-                'special' => /.*[^\da-zA-Z].*/u,
-                'numeric' => /.*\d.*/u }
+      RULES = { "uppercase" => /.*[A-Z].*/u,
+                "lowercase" => /.*[a-z].*/u,
+                "special" => /.*[^\da-zA-Z].*/u,
+                "numeric" => /.*\d.*/u }
       # Check whether password conforms to password complexity settings.
       # Checks complexity rules and password length.
       def self.conforming?(password)
@@ -57,8 +56,7 @@ module OpenProject
           errors << rules_description
         end
         unless password_long_enough(password)
-          errors << I18n.t(:too_short,
-                           scope: %i[activerecord errors messages],
+          errors << I18n.t("activerecord.errors.messages.too_short",
                            count: OpenProject::Passwords::Evaluator.min_length)
         end
         errors
@@ -74,6 +72,10 @@ module OpenProject
         Setting.password_active_rules
       end
 
+      def self.active_rule?(rule)
+        Setting.password_active_rules.include?(rule.to_s)
+      end
+
       # Checks whether password adheres to complexity rules.
       # Does not check length.
       def self.password_conforms_to_rules(password)
@@ -85,13 +87,10 @@ module OpenProject
         password.length >= min_length
       end
 
-      # Returns the minimum number of rules passwords must adhere to
-      # to be accepted, as specified in settings and checked to be within
-      # reasonable bounds (>= 0, <= number of active rules).
+      # Minimum number of rules password adheres to matches the minimum
+      # number of active rules specified in settings.
       def self.min_adhered_rules
-        min = Setting.password_min_adhered_rules.to_i
-        # ensure value is in interval [0, active_rules.size]
-        [[0, min].max, active_rules.size].min
+        active_rules.size
       end
 
       # Returns the minimum password length as specified in settings.
@@ -99,12 +98,11 @@ module OpenProject
         Setting.password_min_length.to_i
       end
 
-      # Returns a text describing the active password complexity rules,
-      # the minimum number of rules to adhere to and the total number of rules.
+      # Returns a text describing the active password complexity rules.
       def self.rules_description
-        return '' if min_adhered_rules == 0
+        return "" if active_rules.empty?
 
-        rules = active_rules_list.join(', ')
+        rules = active_rules_list.join(", ")
         rules_description_locale(rules)
       end
 
@@ -117,7 +115,7 @@ module OpenProject
       # Returns the number of active rules password adheres to.
       def self.size_active_rules_adhered_by(password)
         active_rules.count do |name|
-          password =~ RULES[name] ? true : false
+          password&.match?(RULES[name]) ? true : false
         end
       end
 
@@ -130,11 +128,7 @@ module OpenProject
       end
 
       def self.rules_description_locale(rules)
-        I18n.t(:weak,
-               scope: %i[activerecord errors models user attributes password],
-               rules: rules,
-               min_count: min_adhered_rules,
-               all_count: active_rules.size)
+        I18n.t("activerecord.errors.models.user.attributes.password.requirements_not_met", rules:)
       end
     end
 
@@ -148,15 +142,15 @@ module OpenProject
       # password length, whichever is higher.
       # The generated password conforms to the active password rules.
       def self.random_password
-        chars = ('a'..'z').to_a +
-                ('A'..'Z').to_a +
-                ('0'..'9').to_a +
-                ['!', "\"", '#', '$', '%', '&', "'", '(', ')', '*', '+',
-                 ',', '-', '.', '/', ':', ';', '<', '=', '>', '?', '@', '[', '\\',
-                 ']', '^', '_', '`', '{', '|', '}', '~']
+        chars = ("a".."z").to_a +
+                ("A".."Z").to_a +
+                ("0".."9").to_a +
+                ["!", "\"", "#", "$", "%", "&", "'", "(", ")", "*", "+",
+                 ",", "-", ".", "/", ":", ";", "<", "=", ">", "?", "@", "[", "\\",
+                 "]", "^", "_", "`", "{", "|", "}", "~"]
 
         begin
-          password = ''
+          password = +""
           length = [RANDOM_PASSWORD_MIN_LENGTH, Evaluator.min_length].max
           length.times { |_i| password << chars[SecureRandom.random_number(chars.size - 1)] }
         end while not Evaluator.conforming? password

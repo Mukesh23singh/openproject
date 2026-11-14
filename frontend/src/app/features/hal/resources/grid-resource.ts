@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +20,52 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { HalResource, HalResourceLinks } from 'core-app/features/hal/resources/hal-resource';
 import { GridWidgetResource } from 'core-app/features/hal/resources/grid-widget-resource';
+import { AttachmentCollectionResource } from 'core-app/features/hal/resources/attachment-collection-resource';
 import { Attachable } from 'core-app/features/hal/resources/mixins/attachable-mixin';
+import idFromLink from '../helpers/id-from-link';
 
 export interface GridResourceLinks {
-  update(payload:unknown):Promise<unknown>;
-  updateImmediately(payload:unknown):Promise<unknown>;
-  delete():Promise<unknown>;
+  update:CallableHalLink;
+  updateImmediately:CallableHalLink;
+  delete:CallableHalLink;
+  project:CallableHalLink;
 }
 
 export class GridBaseResource extends HalResource {
   public widgets:GridWidgetResource[];
 
-  public options:{ [key:string]:unknown };
+  public options:Record<string, unknown>;
 
   public rowCount:number;
 
   public columnCount:number;
 
-  public $initialize(source:any) {
+  public attachments:AttachmentCollectionResource;
+
+  public $links:GridResourceLinks & HalResourceLinks;
+
+  public get projectId():string|undefined {
+    if (this.$links.project) {
+      return idFromLink(this.$links.project.href);
+    }
+
+    return undefined;
+  }
+
+  public $initialize(source:unknown) {
     super.$initialize(source);
 
     this.widgets = this
       .widgets
-      .map((widget:Object) => {
+      .map((widget:object) => {
         const widgetResource = new GridWidgetResource(this.injector,
           widget,
           true,

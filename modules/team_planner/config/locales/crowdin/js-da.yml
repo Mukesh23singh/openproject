@@ -1,0 +1,29 @@
+---
+da:
+  js:
+    team_planner:
+      add_assignee: Tildelt
+      add_existing: Tilføj eksisterende
+      add_existing_title: Tilføj eksisterende arbejdspakker
+      cannot_drag_here: Arbejdspakken kan ikke flyttes på grund af tilladelser eller begrænsninger for redigering.
+      cannot_drag_to_non_working_day: Arbejdspakken kan ikke starte eller slutte på en arbejdsfri dag.
+      create_label: Teamplanlægger
+      create_title: Opret ny teamplanlægger
+      drag_here_to_remove: Træk hertil for at fjerne tildelt samt start- og slutdato.
+      eight_weeks: 8 uger
+      four_weeks: 4 uger
+      label_team_planner_plural: Teamplanlæggere
+      modify:
+        errors:
+          fallback: Arbejdspakken kan ikke redigeres.
+          permission_denied: Du har ikke de nødvendige tilladelser til at ændre dette.
+      no_data: Tilføj personer, der skal have opgaver, for at sætte teamplanlæggeren op.
+      one_week: 1 uge
+      quick_add:
+        empty_state: Brug søgefeltet til at finde arbejdspakker, og træk dem til planlæggeren for at tildele dem til nogen og angive start- og slutdato.
+        search_placeholder: Søg ...
+      remove_assignee: Fjern tildelt
+      today: I dag
+      two_weeks: 2 uger
+      unsaved_title: Unavngivet teamplanlægger
+      work_week: Arbejdsuge

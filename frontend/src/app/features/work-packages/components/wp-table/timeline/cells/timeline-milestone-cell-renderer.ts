@@ -1,4 +1,31 @@
-import * as moment from 'moment';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import moment, { Moment } from 'moment';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
 import {
@@ -6,7 +33,7 @@ import {
   RenderInfo,
   timelineElementCssClass,
 } from '../wp-timeline';
-import { CellDateMovement, LabelPosition, TimelineCellRenderer } from './timeline-cell-renderer';
+
 import {
   classNameFarRightLabel,
   classNameHideOnHover,
@@ -17,9 +44,13 @@ import {
   classNameRightHoverLabel,
   classNameRightLabel,
   classNameShowOnHover,
-  WorkPackageCellLabels,
-} from './wp-timeline-cell';
-import Moment = moment.Moment;
+  CellDateMovement,
+  LabelPosition,
+  TimelineCellRenderer,
+  MouseDirection,
+} from './timeline-cell-renderer';
+import { WorkPackageCellLabels } from './wp-timeline-cell-labels';
+import { IOPFieldSchema } from 'core-app/features/hal/interfaces';
 
 export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
   public get type():string {
@@ -27,13 +58,13 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
   }
 
   public isEmpty(wp:WorkPackageResource) {
-    const date = moment(wp.date as any);
-    return _.isNaN(date.valueOf());
+    const date = moment(wp.date);
+    return Number.isNaN(date.valueOf());
   }
 
   public canMoveDates(wp:WorkPackageResource) {
-    const schema = this.schemaCache.of(wp);
-    return schema.date.writable && schema.isAttributeEditable('date');
+    const schema = this.schemaCache().of(wp);
+    return (schema.date as IOPFieldSchema).writable && schema.isAttributeEditable('date');
   }
 
   public displayPlaceholderUnderCursor(ev:MouseEvent, renderInfo:RenderInfo):HTMLElement {
@@ -65,8 +96,8 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
    */
   public assignDateValues(change:WorkPackageChangeset,
     labels:WorkPackageCellLabels,
-    dates:any):void {
-    this.assignDate(change, 'date', dates.date);
+    dates:CellDateMovement):void {
+    this.assignDate(change, 'date', dates.date!);
     this.updateLabels(true, labels, change);
   }
 
@@ -76,7 +107,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
   public onDaysMoved(change:WorkPackageChangeset,
     dayUnderCursor:Moment,
     delta:number,
-    direction:'left' | 'right' | 'both' | 'create' | 'dragright') {
+    _direction:MouseDirection):CellDateMovement {
     const initialDate = change.pristineResource.date;
     const dates:CellDateMovement = {};
 
@@ -90,8 +121,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
   public onMouseDown(ev:MouseEvent,
     dateForCreate:string | null,
     renderInfo:RenderInfo,
-    labels:WorkPackageCellLabels,
-    elem:HTMLElement):'left' | 'right' | 'both' | 'create' | 'dragright' {
+    labels:WorkPackageCellLabels):MouseDirection {
     // check for active selection mode
     if (renderInfo.viewParams.activeSelectionMode) {
       renderInfo.viewParams.activeSelectionMode(renderInfo.workPackage);
@@ -118,11 +148,11 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
     const date = moment(renderInfo.change.projectedResource.date);
 
     // abort if no date
-    if (_.isNaN(date.valueOf())) {
+    if (Number.isNaN(date.valueOf())) {
       return false;
     }
 
-    const diamond = jQuery('.diamond', element)[0];
+    const diamond = element.querySelector<HTMLElement>('.diamond')!;
 
     diamond.style.width = `${15}px`;
     diamond.style.height = `${15}px`;
@@ -160,7 +190,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
     return (renderInfo.viewParams.pixelPerDay / 2) - 1;
   }
 
-  getPaddingRightForOutgoingRelationLines(renderInfo:RenderInfo):number {
+  getPaddingRightForOutgoingRelationLines(_renderInfo:RenderInfo):number {
     return (15 / 2);
   }
 
@@ -168,7 +198,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
    * Render a milestone element, a single day event with no resize, but
    * move functionality.
    */
-  public render(renderInfo:RenderInfo):HTMLDivElement {
+  public render(_renderInfo:RenderInfo):HTMLDivElement {
     const element = document.createElement('div');
     element.className = `${timelineElementCssClass} ${this.type}`;
 
@@ -228,7 +258,7 @@ export class TimelineMilestoneCellRenderer extends TimelineCellRenderer {
   protected updateLabels(activeDragNDrop:boolean,
     labels:WorkPackageCellLabels,
     change:WorkPackageChangeset) {
-    const labelConfiguration = this.wpTableTimeline.getNormalizedLabels(change.projectedResource);
+    const labelConfiguration = this.wpTableTimeline().getNormalizedLabels(change.projectedResource);
 
     if (!activeDragNDrop) {
       // normal display

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,31 +22,55 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Members
-  query = Queries::Members::MemberQuery
-  filter_ns = Queries::Members::Filters
+  ::Queries::Register.register(MemberQuery) do
+    filter Filters::NameFilter
+    filter Filters::AnyNameAttributeFilter
+    filter Filters::ProjectFilter
+    filter Filters::StatusFilter
+    filter Filters::BlockedFilter
+    filter Filters::GroupFilter
+    filter Filters::GroupHierarchyFilter
+    filter Filters::RoleFilter
+    filter Filters::PrincipalFilter
+    filter Filters::PrincipalTypeFilter
+    filter Filters::CreatedAtFilter
+    filter Filters::UpdatedAtFilter
+    filter Filters::EntityIdFilter
+    filter Filters::EntityTypeFilter
+    filter Filters::AlsoProjectMemberFilter
+    filter Filters::OnlyProjectMemberFilter
 
-  Queries::Register.filter query, filter_ns::NameFilter
-  Queries::Register.filter query, filter_ns::AnyNameAttributeFilter
-  Queries::Register.filter query, filter_ns::ProjectFilter
-  Queries::Register.filter query, filter_ns::StatusFilter
-  Queries::Register.filter query, filter_ns::BlockedFilter
-  Queries::Register.filter query, filter_ns::GroupFilter
-  Queries::Register.filter query, filter_ns::RoleFilter
-  Queries::Register.filter query, filter_ns::PrincipalFilter
-  Queries::Register.filter query, filter_ns::CreatedAtFilter
-  Queries::Register.filter query, filter_ns::UpdatedAtFilter
+    order Orders::DefaultOrder
+    order Orders::NameOrder
+    order Orders::EmailOrder
+    order Orders::StatusOrder
+  end
 
-  order_ns = Queries::Members::Orders
+  ::Queries::Register.register(NonInheritedMemberQuery) do
+    filter Filters::NameFilter
+    filter Filters::AnyNameAttributeFilter
+    filter Filters::ProjectFilter
+    filter Filters::StatusFilter
+    filter Filters::BlockedFilter
+    filter Filters::GroupFilter
+    filter Filters::RoleFilter
+    filter Filters::PrincipalFilter
+    filter Filters::PrincipalTypeFilter
+    filter Filters::CreatedAtFilter
+    filter Filters::UpdatedAtFilter
+    filter Filters::EntityIdFilter
+    filter Filters::EntityTypeFilter
+    filter Filters::AlsoProjectMemberFilter
 
-  Queries::Register.order query, order_ns::DefaultOrder
-  Queries::Register.order query, order_ns::NameOrder
-  Queries::Register.order query, order_ns::EmailOrder
-  Queries::Register.order query, order_ns::StatusOrder
+    order Orders::DefaultOrder
+    order Orders::NameOrder
+    order Orders::EmailOrder
+    order Orders::StatusOrder
+  end
 end

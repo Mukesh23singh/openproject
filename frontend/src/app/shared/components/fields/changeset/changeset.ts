@@ -1,8 +1,35 @@
-export type ChangeItem = {
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+export interface ChangeItem {
   from:unknown;
   to:unknown;
-};
-export type ChangeMap = { [attribute:string]:ChangeItem };
+}
+export type ChangeMap = Record<string, ChangeItem>;
 
 export class Changeset {
   private changes:ChangeMap = {};
@@ -13,7 +40,7 @@ export class Changeset {
    * @return {boolean}
    */
   public contains(key:string) {
-    return this.changes.hasOwnProperty(key);
+    return Object.hasOwn(this.changes, key);
   }
 
   /**
@@ -21,7 +48,7 @@ export class Changeset {
    * @returns {string[]}
    */
   public get changed():string[] {
-    return _.keys(this.changes);
+    return Object.keys(this.changes);
   }
 
   /**
@@ -67,7 +94,7 @@ export class Changeset {
    * Get a single value from the changeset
    * @param key
    */
-  public getValue(key:string):unknown|undefined {
+  public getValue(key:string):unknown {
     return this.getItem(key)?.to;
   }
 
@@ -75,7 +102,7 @@ export class Changeset {
    * Get a single pristine value from the changeset
    * @param key
    */
-  public getPristine(key:string):unknown|undefined {
+  public getPristine(key:string):unknown {
     return this.changes[key]?.from;
   }
 }

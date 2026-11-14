@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +20,25 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
-<%= error_messages_for 'news' %>
+<%= error_messages_for "news" %>
 <div class="form--field -required">
-  <%= f.text_field :title, required: true, size: 60, container_class: '-xxwide' %>
+  <%= f.text_field :title, required: true, size: 60, container_class: "-xxwide" %>
 </div>
 <div class="form--field">
   <%= f.text_area :summary,
                   cols: 60,
                   rows: 4,
-                  class: 'wiki-edit wiki-toolbar -small',
-                  container_class: '-xxwide' %>
+                  class: "wiki-edit wiki-toolbar -small",
+                  container_class: "-xxwide" %>
 </div>
 <div class="form--field -visible-overflow">
   <%= f.text_area :description,
-                  class: 'wiki-edit wiki-toolbar',
-                  container_class: '-xxwide',
+                  class: "wiki-edit wiki-toolbar",
+                  container_class: "-xxwide",
                   with_text_formatting: true %>
 </div>

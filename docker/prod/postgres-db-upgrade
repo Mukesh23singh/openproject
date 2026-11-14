@@ -3,7 +3,7 @@ set -e
 set -o pipefail
 
 CURRENT_PGVERSION="$(cat $PGDATA/PG_VERSION)"
-NEW_PGVERSION="13"
+NEW_PGVERSION="17"
 
 if [ "$CURRENT_PGVERSION" == "$NEW_PGVERSION" ]; then
 	echo "Current and new postgres version are identical. Aborting."
@@ -31,3 +31,4 @@ fi
 
 cd /var/lib/postgresql
 su -m postgres -c "$PGBINNEW/pg_upgrade"
+su -m postgres -c "./analyze_new_cluster.sh"

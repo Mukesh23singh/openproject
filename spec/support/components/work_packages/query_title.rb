@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,32 +31,33 @@ module Components
   module WorkPackages
     class QueryTitle
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
 
       def expect_changed
-        expect(page).to have_selector '.editable-toolbar-title--save'
-        expect(page).to have_selector '.editable-toolbar-title--input.-changed'
+        expect(page).to have_css ".editable-toolbar-title--save", wait: 20
+        expect(page).to have_css ".editable-toolbar-title--input.-changed", wait: 20
       end
 
       def expect_not_changed
-        expect(page).to have_no_selector '.editable-toolbar-title--save'
-        expect(page).to have_no_selector '.editable-toolbar-title--input.-changed'
+        expect(page).to have_no_css ".editable-toolbar-title--save", wait: 20
+        expect(page).to have_no_css ".editable-toolbar-title--input.-changed", wait: 20
       end
 
       def input_field
-        find('.editable-toolbar-title--input')
+        find(".editable-toolbar-title--input")
       end
 
       def expect_title(name)
-        expect(page).to have_field('editable-toolbar-title', with: name)
+        expect(page).to have_field("editable-toolbar-title", with: name, wait: 20)
       end
 
       def press_save_button
-        find('.editable-toolbar-title--save').click
+        find(".editable-toolbar-title--save").click
       end
 
       def rename(name, save: true)
-        fill_in 'editable-toolbar-title', with: name
+        fill_in "editable-toolbar-title", with: name
 
         if save
           input_field.send_keys :return

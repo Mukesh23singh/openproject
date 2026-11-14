@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,17 +36,19 @@ class AttributeHelpText::Project < AttributeHelpText
       .reject { |key, _| skip.include?(key.to_s) }
       .transform_values { |definition| definition[:name_source].call }
 
-    ProjectCustomField.all.each do |field|
-      attributes["custom_field_#{field.id}"] = field.name
+    ProjectCustomField.find_each do |field|
+      attributes[field.attribute_name] = field.name
     end
+
+    attributes["members"] = I18n.t(:label_member_plural)
 
     attributes
   end
 
-  validates_inclusion_of :attribute_name, in: ->(*) { available_attributes.keys }
+  validates :attribute_name, inclusion: { in: ->(*) { available_attributes.keys } }
 
   def type_caption
-    Project.model_name.human
+    ::Project.model_name.human
   end
 
   def self.visible_condition(_user)

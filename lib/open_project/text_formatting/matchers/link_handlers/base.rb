@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,6 +31,7 @@ module OpenProject::TextFormatting::Matchers
   module LinkHandlers
     class Base
       include ::OpenProject::TextFormatting::Truncation
+      include ::OpenProject::TextFormatting::Helpers::AccessibleLinkLabel
       # used for the work package quick links
       include WorkPackagesHelper
       # Used for escaping helper 'h()'
@@ -57,14 +57,12 @@ module OpenProject::TextFormatting::Matchers
         []
       end
 
-      def allowed_prefixes
-        self.class.allowed_prefixes
-      end
+      delegate :allowed_prefixes, to: :class
 
       ##
       # Test whether we should try to resolve the given link
       def applicable?
-        raise NotImplementedError
+        raise SubclassResponsibilityError
       end
 
       ##
@@ -72,22 +70,16 @@ module OpenProject::TextFormatting::Matchers
       # and matchers.
       # If nil is returned, the link remains as-is.
       def call
-        raise NotImplementedError
+        raise SubclassResponsibilityError
       end
 
       def oid
-        unless identifier.nil?
-          identifier.to_i
-        end
+        identifier&.to_i
       end
 
-      def identifier
-        matcher.identifier
-      end
+      delegate :identifier, to: :matcher
 
-      def project
-        matcher.project
-      end
+      delegate :project, to: :matcher
 
       ##
       # Call a named route with _path when only_path is true
@@ -105,6 +97,22 @@ module OpenProject::TextFormatting::Matchers
       end
 
       def controller; end
+
+      private
+
+      def link_to(name = nil, options = nil, html_options = nil, &)
+        html_options ||= {}
+        title = html_options.delete(:title) || html_options.delete("title")
+        description = [resource_link_aria_label, title].compact.join(" ")
+        aria = (html_options[:aria] || {}).merge(label: accessible_link_label(name, description))
+
+        super(name, options, html_options.merge(aria:), &)
+      end
+
+      def resource_link_aria_label
+        resource = matcher.prefix.presence || (matcher.sep == "r" ? "revision" : "work_package")
+        I18n.t(resource, scope: "accessibility.macro.resource_links")
+      end
     end
   end
 end

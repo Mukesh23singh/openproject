@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,77 +20,38 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
 <% html_title t(:label_administration), t("label_group_plural") %>
-<%= toolbar title: t(:label_group_plural) do %>
-  <li class="toolbar-item">
-    <%= link_to new_group_path,
-          { class: 'button -alt-highlight',
-            aria: {label: t(:label_group_new)},
-            title: t(:label_group_new)} do %>
-      <%= op_icon('button--icon icon-add') %>
-      <span class="button--text"><%= t('activerecord.models.group') %></span>
-    <% end %>
-  </li>
-<% end %>
-<% if @groups.any? %>
-  <div class="generic-table--container">
-    <div class="generic-table--results-container">
-      <table class="generic-table">
-        <colgroup>
-          <col opHighlightCol>
-          <col opHighlightCol>
-          <col>
-        </colgroup>
-        <thead>
-          <tr>
-            <th>
-              <div class="generic-table--sort-header-outer">
-                <div class="generic-table--sort-header">
-                  <span>
-                    <%= Group.model_name.human %>
-                  </span>
-                </div>
-              </div>
-            </th>
-            <th>
-              <div class="generic-table--sort-header-outer">
-                <div class="generic-table--sort-header">
-                  <span>
-                    <%=t(:label_user_plural)%>
-                  </span>
-                </div>
-              </div>
-            </th>
-            <th><div class="generic-table--empty-header"></div></th>
-          </tr>
-        </thead>
-        <tbody>
-          <% @groups.each do |group| %>
-            <tr>
-              <td><%= link_to h(group), action: 'edit', id: group %></td>
-              <td><%= group.users.size %></td>
-              <td class="buttons">
-                <%= link_to '', group,
-                                data: { confirm: t(:text_are_you_sure) },
-                                method: :delete,
-                                class: 'icon icon-delete',
-                                title: t(:button_delete) %>
-              </td>
-            </tr>
-          <% end %>
-        </tbody>
-      </table>
 
-    </div>
-  </div>
-<% else %>
-  <%= no_results_box(action_url:     new_group_path,
-                     display_action: true) %>
-<% end %>
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { t(:label_group_plural) }
+    header.with_description { t(".description") }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: admin_settings_users_path, text: t(:label_user_and_permission) },
+       t(:label_group_plural)]
+    )
+  end
+%>
+
+<%=
+  render(Primer::OpenProject::SubHeader.new) do |subheader|
+    subheader.with_action_button(
+      scheme: :primary,
+      leading_icon: :plus,
+      label: t(:label_group_new),
+      tag: :a,
+      href: new_group_path
+    ) do
+      Group.model_name.human
+    end
+  end
+%>
+
+<%= render(Groups::TableComponent.new(rows: @groups)) %>

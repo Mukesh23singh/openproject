@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -32,40 +31,48 @@ import { ApiV3FilterBuilder, FilterOperator } from 'core-app/shared/helpers/api-
 
 export type ApiV3ListFilter = [string, FilterOperator, boolean|string[]];
 
-export interface Apiv3ListParameters {
+export interface ApiV3PaginationParameters {
+  pageSize:number;
+  offset:number;
+}
+
+export interface ApiV3ListParameters extends Partial<ApiV3PaginationParameters> {
   filters?:ApiV3ListFilter[];
   sortBy?:[string, string][];
   groupBy?:string;
-  pageSize?:number;
-  offset?:number;
+  select?:string[];
 }
 
-export interface Apiv3ListResourceInterface<T> {
-  list(params:Apiv3ListParameters):Observable<CollectionResource<T>>;
+export interface ApiV3ListResourceInterface<T> {
+  list(params:ApiV3ListParameters):Observable<CollectionResource<T>>;
 }
 
-export function listParamsString(params?:Apiv3ListParameters):string {
+export function listParamsString(params?:ApiV3ListParameters):string {
   const queryProps = [];
 
-  if (params && params.sortBy) {
+  if (params?.sortBy) {
     queryProps.push(`sortBy=${JSON.stringify(params.sortBy)}`);
   }
 
-  if (params && params.groupBy) {
+  if (params?.groupBy) {
     queryProps.push(`groupBy=${params.groupBy}`);
   }
 
   // 0 should not be treated as false
-  if (params && params.pageSize !== undefined) {
+  if (params?.pageSize !== undefined) {
     queryProps.push(`pageSize=${params.pageSize}`);
   }
 
   // 0 should not be treated as false
-  if (params && params.offset !== undefined) {
+  if (params?.offset !== undefined) {
     queryProps.push(`offset=${params.offset}`);
   }
 
-  if (params && params.filters) {
+  if (params?.select !== undefined) {
+    queryProps.push(`select=${params.select.join(',')}`);
+  }
+
+  if (params?.filters) {
     const filters = new ApiV3FilterBuilder();
 
     params.filters.forEach((filterParam) => {

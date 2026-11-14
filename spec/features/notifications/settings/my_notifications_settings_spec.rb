@@ -1,17 +1,46 @@
-require 'rails_helper'
-require_relative '../../users/notifications/shared_examples'
-require 'support/pages/my/notifications'
+# frozen_string_literal: true
 
-describe "My notifications settings", type: :feature, js: true do
-  current_user { FactoryBot.create :user }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-  let(:settings_page) { Pages::My::Notifications.new(current_user) }
+require "rails_helper"
+require_relative "../../users/notifications/shared_examples"
+require "support/pages/my/notifications"
+
+RSpec.describe "My notifications settings",
+               :js do
+  shared_let(:user) { create(:user) }
+
+  let(:settings_page) { Pages::My::Notifications.new(user) }
 
   before do
+    login_as user
     settings_page.visit!
   end
 
-  it_behaves_like 'notification settings workflow' do
-    let(:user) { current_user }
-  end
+  it_behaves_like "notification settings workflow"
 end

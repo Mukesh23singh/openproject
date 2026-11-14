@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,93 +22,86 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
+
 module DevelopmentData
   class CustomFieldsSeeder < Seeder
     def seed_data!
       CustomField.transaction do
-        print_status '    ↳ Creating custom fields...'
+        print_status "    ↳ Creating custom fields..."
         cfs = create_cfs!
 
-        print_status "\n    ↳ Creating types for linking CFs"
+        print_status "    ↳ Creating types for linking CFs"
         create_types!(cfs)
       end
-
-      puts
     end
 
     def all_cfs
-      %w(string text date list multilist int intrange float user version)
+      %w(string text date datetime list multilist int intrange float floatrange bool user version)
     end
 
     def create_types!(cfs)
-      # Create ALL CFs types
-      non_req_cfs = cfs.reject(&:is_required).map { |cf| "custom_field_#{cf.id}" }
-      type = FactoryBot.build :type, name: 'All CFS'
-      extend_group(type, ['Custom fields', non_req_cfs])
-      type.save!
-      print_status '.'
-
-      # Create type
-      req_cfs = cfs.select(&:is_required).map { |cf| "custom_field_#{cf.id}" }
-      type_req = FactoryBot.build :type, name: 'Required CF'
-      extend_group(type_req, ['Custom fields', req_cfs])
-      type_req.save!
-      print_status '.'
+      extend_group(FactoryBot.create(:type, name: "All CFS"), cfs.reject(&:is_required))
+      extend_group(FactoryBot.create(:type, name: "Required CF"), cfs.select(&:is_required))
     end
 
     def create_cfs!
       cfs = []
 
       # create some custom fields and add them to the project
-      (all_cfs - %w(list multilist intrange)).each do |type|
+      (all_cfs - %w(list multilist intrange floatrange)).each do |type|
         cfs << CustomField.create!(name: "CF DEV #{type}",
-                                   type: 'WorkPackageCustomField',
+                                   type: "WorkPackageCustomField",
                                    is_required: false,
                                    field_format: type)
-        print_status '.'
       end
 
       cfs << CustomField.create!(name: "CF DEV list",
                                  is_required: false,
-                                 type: 'WorkPackageCustomField',
-                                 possible_values: ['A', 'B', 'C'],
-                                 field_format: 'list')
-      print_status '.'
+                                 type: "WorkPackageCustomField",
+                                 possible_values: ["A", "B", "C"],
+                                 field_format: "list")
 
       cfs << CustomField.create!(name: "CF DEV multilist",
-                                 type: 'WorkPackageCustomField',
+                                 type: "WorkPackageCustomField",
                                  is_required: false,
                                  multi_value: true,
-                                 possible_values: ['Foo', 'Bar', 'Bla'],
-                                 field_format: 'list')
-      print_status '.'
+                                 possible_values: ["Foo", "Bar", "Bla"],
+                                 field_format: "list")
 
       cfs << CustomField.create!(name: "CF DEV required text",
-                                 type: 'WorkPackageCustomField',
+                                 type: "WorkPackageCustomField",
                                  is_required: true,
-                                 field_format: 'text')
-      print_status '.'
+                                 field_format: "text")
 
       cfs << CustomField.create!(name: "CF DEV intrange",
-                                 type: 'WorkPackageCustomField',
-                                 min_length: 2,
-                                 max_length: 5,
-                                 field_format: 'int')
-      print_status '.'
+                                 type: "WorkPackageCustomField",
+                                 min_value: 10,
+                                 max_value: 99999,
+                                 field_format: "int")
+
+      cfs << CustomField.create!(name: "CF DEV floatrange",
+                                 type: "WorkPackageCustomField",
+                                 min_value: -1.5,
+                                 max_value: 10.25,
+                                 field_format: "float")
 
       cfs
-    rescue StandardError => e
-      binding.pry
     end
 
-    def extend_group(type, group)
-      groups = type.send(:custom_attribute_groups) || type.default_attribute_groups
-      groups << group
-      type.attribute_groups = groups
+    # A group only names attributes; the fields also have to be on the form configuration, which
+    # is what decides whether a work package offers them.
+    def extend_group(type, custom_fields)
+      variant = type.default_variant
+      variant.custom_fields += custom_fields
+
+      groups = variant.send(:custom_attribute_groups) || variant.default_attribute_groups
+      groups << ["Custom fields", custom_fields.map(&:attribute_name)]
+      variant.attribute_groups = groups
+      variant.save!
     end
 
     def applicable?

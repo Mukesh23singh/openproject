@@ -1,5 +1,8 @@
 ---
 description: |-
+  The help texts endpoints return collections or single entities of type `HelpText`. The following tables list the different properties
+  of `HelpText` entities.
+
   ## Linked Properties
 
   |  Link         | Description               | Type          | Constraints | Supported operations |

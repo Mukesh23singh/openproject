@@ -1,0 +1,483 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe Queries::WorkPackages::Filter::TypeaheadFilter do
+  let(:instance) do
+    described_class.create!(name: :typeahead, context:)
+  end
+
+  let(:context)  { nil }
+  let(:values)   { ["test"] }
+  let(:operator) { "**" }
+
+  before do
+    instance.values = values
+    instance.operator = operator
+  end
+
+  describe "#where clause" do
+    subject { WorkPackage.joins(instance.joins + [:project]).where(instance.where) }
+
+    shared_let(:to_do_status) { create(:status, name: "NeW", category: "to_do") }
+    shared_let(:in_progress_status) { create(:status, name: "tHinking", category: "in_progress") }
+    shared_let(:closed_status) { create(:status, name: "DoNe", category: "closed") }
+    shared_let(:project)   { create(:project, name: "Phoenix") }
+    shared_let(:epic_type) { create(:type, name: "Epic") }
+    shared_let(:bug_type)  { create(:type, name: "Bug") }
+    shared_let(:task_type) { create(:type, name: "Task") }
+    shared_let(:epic_work_package) do
+      create(:work_package,
+             project:,
+             type: epic_type,
+             status: to_do_status,
+             subject: "Gorilla work package ething")
+    end
+    shared_let(:bug_work_package) do
+      create(:work_package,
+             project:,
+             type: bug_type,
+             status: to_do_status,
+             subject: "Gorilla work package bthing")
+    end
+    shared_let(:task_work_package) do
+      create(:work_package,
+             project:,
+             type: task_type,
+             status: to_do_status,
+             subject: "Work package tthing")
+    end
+
+    context "when searching by work package type name" do
+      let(:values) { ["epic"] }
+
+      it "returns work packages with matching type name" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching by partial type name" do
+      let(:values) { ["ep"] }
+
+      it "returns work packages with type name containing the search term" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching by work package subject" do
+      let(:values) { ["ething"] }
+
+      it "returns work packages with matching subject" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching by project name" do
+      let(:values) { ["phoenix"] }
+
+      it "returns work packages from projects with matching name" do
+        expect(subject).to include(epic_work_package, bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching by work package ID" do
+      let(:values) { [epic_work_package.id.to_s] }
+
+      it "returns work packages with matching ID" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    describe "when the setting for work package identifiers is set to classic",
+             with_settings: { work_packages_identifier: Setting::WorkPackageIdentifier::CLASSIC } do
+      let!(:classic_work_package) do
+        create(:work_package,
+               project:,
+               subject: "Classic work package")
+      end
+
+      context "when searching by database id without a prefix" do
+        let(:values) { [classic_work_package.id.to_s] }
+
+        it "returns the work package with the matching id" do
+          expect(subject).to include(classic_work_package)
+          expect(subject).not_to include(epic_work_package, bug_work_package, task_work_package)
+        end
+      end
+
+      context "when searching by database id prefixed with a hash" do
+        let(:values) { ["##{classic_work_package.id}"] }
+
+        it "returns the work package with the matching id" do
+          expect(subject).to include(classic_work_package)
+          expect(subject).not_to include(epic_work_package, bug_work_package, task_work_package)
+        end
+      end
+
+      context "and a work package still carries a sequence number from a previous semantic phase" do
+        let(:sequence_number) { 987_654_321 }
+
+        before do
+          classic_work_package.update_columns(sequence_number:,
+                                              identifier: "#{project.identifier}-#{sequence_number}")
+        end
+
+        context "when searching for that sequence number" do
+          let(:values) { [sequence_number.to_s] }
+
+          it "does not return the work package, as sequence numbers are not displayed in classic mode" do
+            expect(subject).not_to include(classic_work_package)
+          end
+        end
+      end
+    end
+
+    context "when searching for 'epic gorilla'" do
+      let(:values) { ["epic gorilla"] }
+
+      it "returns work packages matching both type name and subject" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(task_work_package, bug_work_package)
+      end
+    end
+
+    context "when searching for 'gorilla epic' the order of the terms does not matter" do
+      let(:values) { ["gorilla epic"] }
+
+      it "returns work packages matching both subject and type name" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching for 'gorilla' only" do
+      let(:values) { ["gorilla"] }
+
+      it "returns all work packages with 'gorilla' in subject" do
+        expect(subject).to include(epic_work_package, bug_work_package)
+        expect(subject).not_to include(task_work_package)
+      end
+    end
+
+    context "when searching for uppercase type name" do
+      let(:values) { ["EPIC"] }
+
+      it "returns work packages with matching type name regardless of case" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching for mixed case type name" do
+      let(:values) { ["EpIc"] }
+
+      it "returns work packages with matching type name regardless of case" do
+        expect(subject).to include(epic_work_package)
+        expect(subject).not_to include(bug_work_package, task_work_package)
+      end
+    end
+
+    context "when searching for non-existent terms" do
+      let(:values) { ["nonexistent"] }
+
+      it "returns no work packages" do
+        expect(subject).to be_empty
+      end
+    end
+
+    describe "when the setting for work package identifiers is set to semantic",
+             with_settings: { work_packages_identifier: Setting::WorkPackageIdentifier::SEMANTIC } do
+      before do
+        previous_identifier = project.identifier
+        project.update!(identifier: "PHX")
+        project.handle_semantic_rename(previous_identifier)
+      end
+
+      let!(:identifier_work_package1) do
+        create(:work_package,
+               project:,
+               subject: "First semantic work package")
+      end
+
+      let!(:identifier_work_package2) do
+        create(:work_package,
+               project:,
+               subject: "Second semantic work package")
+      end
+
+      context "when searching by work package identifier" do
+        let(:values) { [identifier_work_package1.identifier] }
+
+        it "returns work packages with matching identifier" do
+          expect(subject).to include(identifier_work_package1)
+          expect(subject).not_to include(identifier_work_package2)
+        end
+      end
+
+      context "when searching by lower case work package identifier" do
+        let(:values) { [identifier_work_package1.identifier.downcase] }
+
+        it "returns work packages with matching identifier" do
+          expect(subject).to include(identifier_work_package1)
+          expect(subject).not_to include(identifier_work_package2)
+        end
+      end
+
+      context "when searching by work package identifier prefixed with a hash" do
+        let(:values) { ["##{identifier_work_package1.identifier}"] }
+
+        it "returns work packages with matching identifier" do
+          expect(subject).to include(identifier_work_package1)
+          expect(subject).not_to include(identifier_work_package2)
+        end
+      end
+
+      context "when searching for partial identifier" do
+        let(:values) { [project.identifier] }
+
+        it "returns work packages with matching identifier" do
+          expect(subject).to include(identifier_work_package1, identifier_work_package2)
+        end
+      end
+
+      context "and one work package's sequence number is another work package's database id" do
+        let!(:id_twin) do
+          create(:work_package,
+                 project:,
+                 type: task_type,
+                 status: to_do_status,
+                 subject: "Id twin work package")
+        end
+
+        # The database id cannot be chosen, so the sequence number has to follow it. Direct
+        # assignment is blocked by a validation, hence update_columns.
+        let!(:sequence_number_twin) do
+          create(:work_package,
+                 project:,
+                 type: task_type,
+                 status: to_do_status,
+                 subject: "Sequence number twin work package").tap do |work_package|
+            work_package.update_columns(sequence_number: id_twin.id,
+                                        identifier: "#{project.identifier}-#{id_twin.id}")
+          end
+        end
+
+        context "when searching for that number without a prefix" do
+          let(:values) { [id_twin.id.to_s] }
+
+          it "returns the work package with the matching sequence number, not the one with the matching id" do
+            expect(subject).to include(sequence_number_twin)
+            expect(subject).not_to include(id_twin)
+          end
+        end
+
+        context "when searching for that number prefixed with a hash" do
+          let(:values) { ["##{id_twin.id}"] }
+
+          it "returns the work package with the matching id, not the one with the matching sequence number" do
+            expect(subject).to include(id_twin)
+            expect(subject).not_to include(sequence_number_twin)
+          end
+        end
+      end
+
+      context "and the project identifier changed" do
+        before do
+          project.update!(identifier: "PHO")
+          project.reload.handle_semantic_rename("PHX")
+        end
+
+        context "when searching for the previous identifier of the work package" do
+          let(:values) { ["PHX-#{identifier_work_package1.sequence_number}"] }
+
+          it "still finds the work package" do
+            expect(identifier_work_package1.reload.identifier).to start_with("PHO")
+            expect(subject).to include(identifier_work_package1)
+            expect(subject).not_to include(identifier_work_package2)
+          end
+        end
+      end
+    end
+
+    describe "when the setting for work package identifiers is set to classic but was semantic before",
+             with_settings: { work_packages_identifier: Setting::WorkPackageIdentifier::CLASSIC } do
+      let!(:identifier_work_package1) do
+        create(:work_package,
+               project:,
+               subject: "First semantic work package")
+      end
+
+      let!(:identifier_work_package1_semantic_alias) do
+        create(:work_package_semantic_alias,
+               work_package: identifier_work_package1,
+               identifier: "PHO-1")
+      end
+
+      let!(:identifier_work_package2) do
+        create(:work_package,
+               project:,
+               subject: "Second semantic work package")
+      end
+
+      let!(:identifier_work_package2_semantic_alias) do
+        create(:work_package_semantic_alias,
+               work_package: identifier_work_package2,
+               identifier: "PHO-2")
+      end
+
+      context "when searching by a semantic identifier prefixed with '#'" do
+        let(:values) { ["##{identifier_work_package1_semantic_alias.identifier}"] }
+
+        it "still finds by existing identifiers" do
+          expect(subject).to include(identifier_work_package1)
+          expect(subject).not_to include(identifier_work_package2)
+        end
+      end
+
+      context "when searching by a semantic identifier not prefixed with '#'" do
+        let(:values) { [identifier_work_package1_semantic_alias.identifier] }
+
+        it "does not find by existing identifiers" do
+          expect(subject).not_to include(identifier_work_package1)
+          expect(subject).not_to include(identifier_work_package2)
+        end
+      end
+    end
+
+    context "when searching by status" do
+      shared_let(:to_do_work_package) { create(:work_package, project:, status: to_do_status, subject: "small work package") }
+      shared_let(:in_progress_work_package) do
+        create(:work_package, project:, status: in_progress_status, subject: "medium work package")
+      end
+      shared_let(:closed_work_package) { create(:work_package, project:, status: closed_status, subject: "yuge work package") }
+
+      context "when searching for status name 'tHinking'" do
+        let(:values) { ["tHinking"] }
+
+        it "returns work packages with 'tHinking' status" do
+          expect(subject).not_to include(to_do_work_package, closed_work_package)
+          expect(subject).to include(in_progress_work_package)
+        end
+      end
+
+      context "when searching for status name 'tHinking' and part of subject 'medium'" do
+        let(:values) { ["tHinking medium"] }
+
+        it "returns work packages with 'tHinking' status containing the search term 'medium'" do
+          expect(subject).not_to include(to_do_work_package, closed_work_package)
+          expect(subject).to include(in_progress_work_package)
+        end
+      end
+
+      context "when searching for meta status category 'to_do'" do
+        let(:values) { [Status.human_attribute_name("category.to_do")] }
+
+        it "returns only work packages with to_do category status" do
+          expect(subject).to include(to_do_work_package)
+          expect(subject).not_to include(in_progress_work_package, closed_work_package)
+        end
+      end
+
+      context "when searching for meta status category 'in progress'" do
+        let(:values) { [Status.human_attribute_name("category.in_progress")] }
+
+        it "returns only work packages with in_progress category status" do
+          expect(subject).to include(in_progress_work_package)
+          expect(subject).not_to include(to_do_work_package, closed_work_package)
+        end
+      end
+
+      context "when searching for meta status category 'closed'" do
+        let(:values) { [Status.human_attribute_name("category.closed")] }
+
+        it "returns only work packages with closed category status" do
+          expect(subject).to include(closed_work_package)
+          expect(subject).not_to include(to_do_work_package, in_progress_work_package)
+        end
+      end
+
+      context "when searching for meta status 'TO-DO' (case insensitive)" do
+        let(:values) { [Status.human_attribute_name("category.to_do").upcase] }
+
+        it "returns work packages with to_do category status regardless of case" do
+          expect(subject).to include(to_do_work_package)
+          expect(subject).not_to include(in_progress_work_package, closed_work_package)
+        end
+      end
+
+      context "when searching for meta status 'IN PROGRESS' (case insensitive)" do
+        let(:values) { [Status.human_attribute_name("category.in_progress").upcase] }
+
+        it "returns work packages with in_progress category status regardless of case" do
+          expect(subject).to include(in_progress_work_package)
+          expect(subject).not_to include(to_do_work_package, closed_work_package)
+        end
+      end
+
+      context "when searching for meta status 'CLOSED' (case insensitive)" do
+        let(:values) { [Status.human_attribute_name("category.closed").upcase] }
+
+        it "returns work packages with closed category status regardless of case" do
+          expect(subject).to include(closed_work_package)
+          expect(subject).not_to include(to_do_work_package, in_progress_work_package)
+        end
+      end
+
+      context "with different locale", :settings_reset do
+        around do |example|
+          I18n.with_locale(:de) do
+            example.run
+          end
+        end
+
+        context "when searching for German category translation" do
+          let(:values) { [Status.human_attribute_name("category.to_do")] }
+
+          it "returns work packages with to_do category status using German translation" do
+            expect(subject).to include(to_do_work_package)
+            expect(subject).not_to include(in_progress_work_package, closed_work_package)
+          end
+        end
+      end
+    end
+
+    context "with empty search term" do
+      let(:values) { [""] }
+
+      it "returns some work packages" do
+        expect(subject).to include(epic_work_package, bug_work_package, task_work_package)
+      end
+    end
+  end
+end

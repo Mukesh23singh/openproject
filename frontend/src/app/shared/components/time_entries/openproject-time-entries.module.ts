@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +20,38 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { NgModule } from '@angular/core';
-import { OPSharedModule } from 'core-app/shared/shared.module';
+import { OpSharedModule } from 'core-app/shared/shared.module';
 import { OpenprojectModalModule } from 'core-app/shared/components/modal/modal.module';
-import { OpenprojectFieldsModule } from 'core-app/shared/components/fields/openproject-fields.module';
-import { TimeEntryCreateModalComponent } from 'core-app/shared/components/time_entries/create/create.modal';
-import { TimeEntryEditModalComponent } from 'core-app/shared/components/time_entries/edit/edit.modal';
-import { TimeEntryFormComponent } from 'core-app/shared/components/time_entries/form/form.component';
-import { TimeEntryEditService } from 'core-app/shared/components/time_entries/edit/edit.service';
-import { TriggerActionsEntryComponent } from 'core-app/shared/components/time_entries/edit/trigger-actions-entry.component';
+import {
+  TriggerActionsEntryComponent,
+} from 'core-app/shared/components/time_entries/edit/trigger-actions-entry.component';
+import { TimeEntryTimerService } from 'core-app/shared/components/time_entries/services/time-entry-timer.service';
+import { OpTooltipDirective } from 'core-app/shared/components/primer/tooltip.directive';
+import { CommonModule } from '@angular/common';
+import {
+  StopExistingTimerModalComponent,
+} from 'core-app/shared/components/time_entries/timer/stop-existing-timer-modal.component';
 
 @NgModule({
   imports: [
     // Commons
-    OPSharedModule,
+    CommonModule,
+    OpSharedModule,
     OpenprojectModalModule,
-
-    // Editable fields e.g. for modals
-    OpenprojectFieldsModule,
-  ],
-  providers: [
-    TimeEntryEditService,
+    OpTooltipDirective,
   ],
   declarations: [
-    TimeEntryEditModalComponent,
-    TimeEntryCreateModalComponent,
-    TimeEntryFormComponent,
     TriggerActionsEntryComponent,
+    StopExistingTimerModalComponent,
+  ],
+  providers: [
+    TimeEntryTimerService,
   ],
 })
 export class OpenprojectTimeEntriesModule {

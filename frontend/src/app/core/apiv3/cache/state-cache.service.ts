@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,27 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { MultiInputState, State } from 'reactivestates';
-import { Observable } from 'rxjs';
 import {
-  auditTime, map, share, startWith, take,
+  InputState,
+  MultiInputState,
+  State,
+} from '@openproject/reactivestates';
+import {
+  combineLatest,
+  firstValueFrom,
+  Observable,
+} from 'rxjs';
+import {
+  auditTime,
+  map,
+  share,
+  startWith,
+  take,
 } from 'rxjs/operators';
 
 export interface HasId {
@@ -77,7 +88,7 @@ export class StateCacheService<T> {
 
     this
       .multiState.get(id)
-      .clearAndPutFromPromise(observable.toPromise());
+      .clearAndPutFromPromise(firstValueFrom(observable));
 
     return observable;
   }
@@ -100,8 +111,8 @@ export class StateCacheService<T> {
    *
    * @param resource<T> The value.
    */
-  public updateFor(resource:HasId):Promise<T> {
-    return this.updateValue(resource.id!, resource as any);
+  public updateFor(resource:T & HasId):Promise<T> {
+    return this.updateValue(resource.id!, resource);
   }
 
   /**
@@ -129,7 +140,7 @@ export class StateCacheService<T> {
         auditTime(250),
         map(() => {
           const mapped:T[] = [];
-          _.each(this.multiState.getValueOr({}), (state:State<T>) => {
+          Object.values(this.multiState.getValueOr({})).forEach((state:State<T>) => {
             if (state.value) {
               mapped.push(state.value);
             }
@@ -138,6 +149,20 @@ export class StateCacheService<T> {
           return mapped;
         }),
       );
+  }
+
+  observeChanges():Observable<[string, T|undefined, InputState<T>]> {
+    return this.multiState.observeChange();
+  }
+
+  observeSome(ids:string[]):Observable<T[]> {
+    return combineLatest(
+      ids.map(
+        (id) => this.observe(id).pipe(startWith(null)),
+      ),
+    ).pipe(
+      map((values) => values.filter((value) => !!value)),
+    ) as Observable<T[]>;
   }
 
   /**

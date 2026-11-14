@@ -2,13 +2,13 @@
 description: |-
   A grid is a layout for a page or a part of the page of the OpenProject application. It defines the structure (number of rows and number of columns) as well as the contents of the page.
 
-  The contents is defined by `GridWidget`s. While a `GridWidget` is it's own type, it is not a resource in it's own right as it is an intrinsic part of a `Grid`.
+  The contents is defined by `GridWidget`s. While a `GridWidget` is its own type, it is not a resource in its own right as it is an intrinsic part of a `Grid`.
 
   Depending on what page a grid is defined for, different widgets may be eligible to be placed on the grid. The page might also define the permissions needed for accessing, creating or modifying the grid.
 
   Currently, the following pages employ grids:
 
-  + /my/page: The my page every user has. Only a user can access or modify their "my page".
+  + /my/page: The My page every user has. Only a user can access or modify their "My page".
 
   *The delete action is not yet supported*
 

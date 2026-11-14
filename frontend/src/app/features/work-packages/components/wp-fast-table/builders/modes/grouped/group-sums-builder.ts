@@ -1,4 +1,32 @@
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { isNavigableColumn, navigableCellClassName } from 'core-app/features/work-packages/components/wp-fast-table/handlers/state/keyboard/roving-tabindex';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { SingleRowBuilder } from 'core-app/features/work-packages/components/wp-fast-table/builders/rows/single-row-builder';
 import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
@@ -7,13 +35,14 @@ import { DisplayFieldService } from 'core-app/shared/components/fields/display/d
 import { groupedRowClassName } from 'core-app/features/work-packages/components/wp-fast-table/builders/modes/grouped/grouped-rows-helpers';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
 import { GroupObject } from 'core-app/features/hal/resources/wp-collection-resource';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
 export class GroupSumsBuilder extends SingleRowBuilder {
-  @InjectField() readonly querySpace:IsolatedQuerySpace;
+  @LazyInject() readonly querySpace:IsolatedQuerySpace;
 
-  @InjectField() readonly schemaCache:SchemaCacheService;
+  @LazyInject() readonly schemaCache:SchemaCacheService;
 
-  @InjectField() readonly displayFieldService:DisplayFieldService;
+  @LazyInject() readonly displayFieldService:DisplayFieldService;
 
   public text = {
     sum: this.I18n.t('js.label_sum'),
@@ -23,18 +52,30 @@ export class GroupSumsBuilder extends SingleRowBuilder {
     const tr:HTMLTableRowElement = document.createElement('tr');
     tr.classList.add('wp-table--sums-row', 'wp-table--row', groupedRowClassName(group.index));
 
-    this.renderColumns(group.sums, tr);
+    this.renderColumns(group.sums, tr, group.index);
 
     return tr;
   }
 
-  public renderColumns(sums:{ [key:string]:any }, tr:HTMLTableRowElement) {
+  public renderColumns(sums:GroupObject['sums'], tr:HTMLTableRowElement, labelSuffix:number|'total') {
+    const { configuration } = this.workPackageTable;
+    const labelId = `${this.workPackageTable.domId}-sum-${labelSuffix}`;
+
     this.augmentedColumns.forEach((column, i:number) => {
       const td = document.createElement('td');
-      const div = this.renderContent(sums, column.id, this.sumsSchema[column.id]);
+      const navigable = isNavigableColumn(column, configuration);
+      if (navigable) {
+        td.classList.add(navigableCellClassName);
+      }
+      const fieldSchema = this.sumsSchema[column.id] as IFieldSchema|undefined;
+      const div = this.renderContent(sums, column.id, fieldSchema);
+
+      if (navigable && div.hasChildNodes()) {
+        td.setAttribute('aria-describedby', labelId);
+      }
 
       if (i === 0) {
-        this.appendFirstLabel(div);
+        this.appendFirstLabel(div, labelId);
       }
 
       td.appendChild(div);
@@ -42,10 +83,11 @@ export class GroupSumsBuilder extends SingleRowBuilder {
     });
   }
 
-  private appendFirstLabel(div:HTMLElement) {
+  private appendFirstLabel(div:HTMLElement, id:string) {
     const span = document.createElement('span');
     span.textContent = `${this.text.sum}`;
     span.title = `${this.text.sum}`;
+    span.id = id;
     div.prepend(span);
   }
 
@@ -57,7 +99,7 @@ export class GroupSumsBuilder extends SingleRowBuilder {
     return this.schemaCache.state(href).value!;
   }
 
-  private renderContent(sums:any, name:string, fieldSchema:IFieldSchema) {
+  private renderContent(sums:GroupObject['sums'], name:string, fieldSchema:IFieldSchema|undefined) {
     const div = document.createElement('div');
     div.classList.add('wp-table--sum-container', name);
 
@@ -68,7 +110,7 @@ export class GroupSumsBuilder extends SingleRowBuilder {
     }
 
     const field = this.displayFieldService.getField(
-      sums,
+      sums as unknown as HalResource,
       name,
       fieldSchema,
       { injector: this.injector, container: 'table', options: {} },

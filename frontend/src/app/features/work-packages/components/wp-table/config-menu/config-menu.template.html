@@ -1,8 +1,10 @@
 <button
     type="button"
-    class="op-link wp-table--columns-selection"
-    [title]="text.configureTable"
+    class="spot-link wp-table--columns-selection"
+    tabindex="-1"
+    opTooltip
+    [label]="text.configureTable"
     (click)="openTableConfigurationModal()"
 >
-  <op-icon icon-classes="icon-button icon-small icon-no-color icon-settings"></op-icon>
+  <op-icon icon-classes="icon-button icon-small icon-no-color icon-settings" />
 </button>

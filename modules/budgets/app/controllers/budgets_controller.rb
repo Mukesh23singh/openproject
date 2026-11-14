@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,51 +28,58 @@
 class BudgetsController < ApplicationController
   include AttachableServiceCall
 
-  before_action :find_budget, only: %i[show edit update copy destroy_info]
-  before_action :find_budgets, only: :destroy
-  before_action :check_and_update_belonging_work_packages, only: :destroy
-  before_action :find_project, only: %i[new create update_material_budget_item update_labor_budget_item]
+  before_action :find_budget, only: %i[show edit update copy destroy_info destroy]
+  before_action :find_project_by_project_id, only: %i[new create update_material_budget_item update_labor_budget_item]
   before_action :find_optional_project, only: :index
+  before_action :check_if_workpackages_need_reassignment, only: :destroy
 
   before_action :authorize_global, only: :index
   before_action :authorize, except: [
-    # unrestricted actions
     :index,
+    # unrestricted actions
     :update_material_budget_item,
     :update_labor_budget_item
   ]
 
+  no_authorization_required! :update_material_budget_item,
+                             :update_labor_budget_item
+
   helper :sort
   include SortHelper
+
   helper :projects
   include ProjectsHelper
+
   helper :attachments
   include AttachmentsHelper
+
   helper :costlog
   include CostlogHelper
+
   helper :budgets
   include BudgetsHelper
   include PaginationHelper
   include ::Costs::NumberHelper
 
   def index
-    sort_init 'id', 'desc'
+    sort_init "id", "desc"
     sort_update default_budget_sort
 
     @budgets = visible_sorted_budgets
 
     respond_to do |format|
       format.html do
-        render action: 'index', layout: !request.xhr?
+        render action: "index", layout: !request.xhr?
       end
-      format.csv { send_data(budgets_to_csv(@budgets), type: 'text/csv; header=present', filename: 'export.csv') }
+      format.csv { send_data(budgets_to_csv(@budgets), type: "text/csv; header=present", filename: "export.csv") }
     end
   end
 
   def show
-    @edit_allowed = User.current.allowed_to?(:edit_budgets, @project)
+    @edit_allowed = User.current.allowed_in_project?(:edit_budgets, @project)
+
     respond_to do |format|
-      format.html { render action: 'show', layout: !request.xhr? }
+      format.html { render action: "show", layout: !request.xhr? }
     end
   end
 
@@ -100,6 +106,10 @@ class BudgetsController < ApplicationController
     render action: :new, layout: !request.xhr?
   end
 
+  def edit
+    @budget.attributes = permitted_params.budget if params[:budget]
+  end
+
   def create
     call = attachable_create_call ::Budgets::CreateService,
                                   args: permitted_params.budget.merge(project: @project)
@@ -107,15 +117,10 @@ class BudgetsController < ApplicationController
 
     if call.success?
       flash[:notice] = t(:notice_successful_create)
-      redirect_to(params[:continue] ? { action: 'new' } : { action: 'show', id: @budget })
+      redirect_to(params[:continue] ? { action: "new" } : { action: "show", id: @budget })
     else
-      @errors = call.errors
-      render action: 'new', layout: !request.xhr?
+      render action: "new", status: :unprocessable_entity, layout: !request.xhr?
     end
-  end
-
-  def edit
-    @budget.attributes = permitted_params.budget if params[:budget]
   end
 
   def update
@@ -125,11 +130,10 @@ class BudgetsController < ApplicationController
 
     if call.success?
       flash[:notice] = t(:notice_successful_update)
-      redirect_to(params[:back_to] || { action: 'show', id: @budget })
+      redirect_to(@budget)
     else
       @budget = call.result
-      @errors = call.errors
-      render action: 'edit'
+      render action: :edit, status: :unprocessable_entity
     end
   rescue ActiveRecord::StaleObjectError
     # Optimistic locking exception
@@ -137,16 +141,19 @@ class BudgetsController < ApplicationController
   end
 
   def destroy
-    @budgets.each(&:destroy)
+    reassign_or_nullify_work_package_budgets
+
+    @budget.destroy!
+
     flash[:notice] = t(:notice_successful_delete)
-    redirect_to action: 'index', project_id: @project
+    redirect_to action: "index", project_id: @project, status: :see_other
   end
 
   def destroy_info
     @possible_other_budgets = @project.budgets.where.not(id: @budget.id)
   end
 
-  def update_material_budget_item
+  def update_material_budget_item # rubocop:disable Metrics/AbcSize
     @element_id = params[:element_id]
 
     cost_type = CostType.where(id: params[:cost_type_id]).first
@@ -161,7 +168,7 @@ class BudgetsController < ApplicationController
       @unit = volume == 1.0 ? cost_type.unit : cost_type.unit_plural
     else
       @costs = 0.0
-      @unit = cost_type.try(:unit_plural) || ''
+      @unit = cost_type.try(:unit_plural) || ""
     end
 
     respond_to do |format|
@@ -173,74 +180,69 @@ class BudgetsController < ApplicationController
 
   def update_labor_budget_item
     @element_id = params[:element_id]
-    user = User.where(id: params[:user_id]).first
-
-    if user && params[:hours]
-      hours = Rate.parse_number_string_to_number(params[:hours])
-      @costs = begin
-        hours * user.rate_at(params[:fixed_date], @project).rate
-      rescue StandardError
-        0.0
-      end
-    else
-      @costs = 0.0
-    end
+    principal = budgeted_principal
+    rate = applicable_rate(principal)
+    @costs = labor_costs(rate)
 
     respond_to do |format|
-      format.json do
-        render json: render_item_as_json(@element_id, @costs, @unit, @project, :view_hourly_rates)
-      end
+      format.json { render json: labor_budget_item_as_json(principal, rate) }
     end
   end
 
   private
 
   def find_budget
-    # This function comes directly from issues_controller.rb (Redmine 0.8.4)
-    @budget = Budget.includes(:project, :author).find_by(id: params[:id])
+    @budget = Budget.visible.includes(:project, :author).find(params[:id])
     @project = @budget.project if @budget
-  rescue ActiveRecord::RecordNotFound
-    render_404
   end
 
-  def find_budgets
-    # This function comes directly from issues_controller.rb (Redmine 0.8.4)
+  def applicable_rate(principal)
+    return if principal.nil? || params[:hours].blank?
 
-    @budgets = Budget.where(id: params[:id] || params[:ids])
-    raise ActiveRecord::RecordNotFound if @budgets.empty?
-
-    projects = @budgets.map(&:project).compact.uniq
-    if projects.size == 1
-      @project = projects.first
-    else
-      # TODO: let users bulk edit/move/destroy budgets from different projects
-      render_error 'Can not bulk edit/move/destroy cost objects from different projects' and return false
-    end
-  rescue ActiveRecord::RecordNotFound
-    render_404
+    principal.rate_at(params[:fixed_date], @project)
+  rescue StandardError
+    nil
   end
 
-  def find_project
-    @project = Project.find(params[:project_id])
-  rescue ActiveRecord::RecordNotFound
-    render_404
+  # A group is budgetable but carries no rate, so it falls through to 0.0.
+  def budgeted_principal
+    Principal.with_rates.in_project(@project).find_by(id: params[:user_id])
   end
 
-  def find_optional_project
-    @project = Project.find(params[:project_id]) unless params[:project_id].blank?
-  rescue ActiveRecord::RecordNotFound
-    render_404
+  def labor_costs(rate)
+    return 0.0 if rate.nil?
+
+    Rate.parse_hours_string_to_number(params[:hours]) * rate.rate
+  end
+
+  # The hint is always part of the response, so that one left over from a
+  # previous selection is cleared once a rate applies again.
+  def labor_budget_item_as_json(principal, rate)
+    render_item_as_json(@element_id, @costs, @unit, @project, :view_hourly_rates)
+      .merge("#{@element_id}_cost_hint" => missing_rate_hint(principal, rate).to_s)
+  end
+
+  def missing_rate_hint(principal, rate)
+    return if rate || !principal.is_a?(Costs::HasRates)
+    return unless current_user.allowed_in_project?(:view_hourly_rates, @project)
+
+    fixed_date = params[:fixed_date].presence&.to_date
+    return if fixed_date.nil?
+
+    t("budgets.labor_budget_items.no_rate_at_fixed_date", date: format_date(fixed_date))
+  rescue Date::Error
+    nil
   end
 
   def render_item_as_json(element_id, costs, unit, project, permission)
     response = {
       "#{element_id}_unit_name" => ActionController::Base.helpers.sanitize(unit),
-      "#{element_id}_currency" => Setting.plugin_costs['costs_currency']
+      "#{element_id}_currency" => Setting.costs_currency
     }
 
-    if current_user.allowed_to?(permission, project)
-      response["#{element_id}_costs_text"] = number_to_currency(costs)
-      response["#{element_id}_cost_value"] = unitless_currency_number(costs)
+    if current_user.allowed_in_project?(permission, project)
+      response["#{element_id}_costs"] = number_to_currency(costs)
+      response["#{element_id}_cost_value"] = response["#{element_id}_amount"] = unitless_currency_number(costs)
     end
 
     response
@@ -248,9 +250,9 @@ class BudgetsController < ApplicationController
 
   def default_budget_sort
     {
-      'id' => "#{Budget.table_name}.id",
-      'subject' => "#{Budget.table_name}.subject",
-      'fixed_date' => "#{Budget.table_name}.fixed_date"
+      "id" => "#{Budget.table_name}.id",
+      "subject" => "#{Budget.table_name}.subject",
+      "fixed_date" => "#{Budget.table_name}.fixed_date"
     }
   end
 
@@ -264,26 +266,26 @@ class BudgetsController < ApplicationController
       .per_page(per_page_param)
   end
 
-  def check_and_update_belonging_work_packages
-    if params[:todo]
-      update_belonging_work_packages
-    end
-
-    budget = Budget.find(params[:id])
-    if budget.work_packages.any?
-      redirect_to destroy_info_budget_path(budget)
+  def check_if_workpackages_need_reassignment
+    if @budget.work_packages.any? && params[:todo].blank?
+      redirect_to destroy_info_budget_path(@budget), status: :see_other
     end
   end
 
-  def update_belonging_work_packages
-    reassign_to_id = params[:reassign_to_id]
-    budget_id = params[:id]
+  def reassign_or_nullify_work_package_budgets # rubocop:disable Metrics/AbcSize
+    return unless params[:todo].in?(%w[reassign delete])
 
-    budget_exists = Budget.visible(current_user).exists?(reassign_to_id) if params[:todo] == 'reassign'
-    reassign_to = budget_exists ? reassign_to_id : nil
+    reassign_to_id = if params[:todo] == "reassign"
+                       # Only allow reassignment to budgets that are visible to the user and belong to the same project
+                       # If budget is not visible this will raise and we will return a 404
+                       @project.budgets.visible.find(params[:reassign_to_id]).id
+                     elsif params[:todo] == "delete"
+                       nil
+                     end
 
-    WorkPackage
-      .where(budget_id: budget_id)
-      .update_all(budget_id: reassign_to, updated_at: DateTime.now)
+    @budget.work_packages.find_each(batch_size: 100) do |work_package|
+      work_package.journal_cause = Journal::CausedByBudgetDeletion.new(budget: @budget)
+      work_package.update!(budget_id: reassign_to_id)
+    end
   end
 end

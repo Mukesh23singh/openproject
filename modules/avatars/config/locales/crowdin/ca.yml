@@ -1,40 +1,49 @@
-#English strings go here
+---
 ca:
-  label_avatar: "Avatar"
-  label_avatar_plural: "Avatars"
-  label_current_avatar: "Avatar actual"
-  label_choose_avatar: "Tria un Avatar des d'un fitxer"
-  message_avatar_uploaded: "L'avatar s'ha canviat correctament."
-  error_image_upload: "Error guardant la imatge."
-  error_image_size: "La imatge és massa gran."
-  button_change_avatar: "Canvia l'avatar"
-  are_you_sure_delete_avatar: "Segur que voleu suprimir el vostre avatar?"
-  avatar_deleted: "L'avatar s'ha eliminat correctament."
-  unable_to_delete_avatar: "No s'ha pogut suprimir l'avatar."
-  wrong_file_format: "Els formats permesos són jpg, png, gif "
-  empty_file_error: "Si us plau, pugeu una imatge vàlida (jpg, png, gif)"
+  are_you_sure_delete_avatar: Segur que vols eliminar el teu avatar?
+  avatar_deleted: L'avatar s'ha eliminat correctament.
   avatars:
-    label_avatar: "Avatar"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Avatar actual'
-    label_local_avatar: 'Avatar personalitzat'
-    text_current_avatar: |
-      La següent imatge mostra l'avatar actual
-    text_upload_instructions: |
-      Pugeu el vostre avatar personalitzat de 128 per 128 píxels. Les imatges més grans es redimensionaran i retallaran per encaixar.
-      Una visualització prèvia de l'avatar es mostrarà abans de carregar-la, un cop seleccioneu la imatge.
-    text_change_gravatar_html: 'Per a canviar o afegir el Gravatar de la vostra adreça de correu electrònic, accediu a %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject us permet de pujar el vostre avatar personalitzat.
-    text_local_avatar_over_gravatar: |
-      Si n'establiu un, aquest avatar personalitzat s'utilitzarà preferentment abans que el gravatar de sobre.
-    text_your_current_gravatar: |
-      OpenProject fa servir el vostre gravatar si n'heu registrat un, o una imatge o icona per defecte si n'existeix una.
-      L'actual gravatar és el següent:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Avatar personalitzat
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Activa els Gravatars d''usuari'
-      gravatar_default: "Imatge Gravatar predeterminada"
-      enable_local_avatars: 'Activa els avatars d''usuari personalitzats'
-
-
-
+      enable_gravatars: Activa els Gravatars d'usuari
+      enable_local_avatars: Activa els avatars d'usuari personalitzats
+      gravatar_default: Imatge Gravatar predeterminada
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Si us plau, pugeu una imatge vàlida (jpg, png, gif)
+  error_image_size: La imatge és massa gran.
+  error_image_upload: Error guardant la imatge.
+  label_avatar: Avatar
+  label_avatar_plural: Avatars
+  label_choose_avatar: Tria un Avatar des d'un fitxer
+  label_current_avatar: Avatar actual
+  message_avatar_uploaded: L'avatar s'ha canviat correctament.
+  plugin_openproject_avatars:
+    description: This plugin allows OpenProject users to upload a picture to be used as an avatar or use registered images from Gravatar.
+    name: Avatars
+  unable_to_delete_avatar: No s'ha pogut suprimir l'avatar.
+  wrong_file_format: 'Els formats permesos són jpg, png, gif '

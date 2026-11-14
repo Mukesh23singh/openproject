@@ -1,9 +1,38 @@
-import { HalSourceLink } from 'core-app/features/hal/resources/hal-resource';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
 
-export interface NotificationSetting {
+import { HalSourceLink } from 'core-app/features/hal/interfaces';
+
+export interface INotificationSetting {
   _links:{ project:HalSourceLink };
   watched:boolean;
-  involved:boolean;
+  assignee:boolean;
+  responsible:boolean;
+  shared:boolean;
   mentioned:boolean;
   workPackageCommented:boolean;
   workPackageCreated:boolean;
@@ -18,9 +47,12 @@ export interface NotificationSetting {
   wikiPageUpdated:boolean;
   membershipAdded:boolean;
   membershipUpdated:boolean;
+  startDate?:string|null;
+  dueDate?:string|null;
+  overdue?:string|null;
 }
 
-export function buildNotificationSetting(project:null|HalSourceLink, params:Partial<NotificationSetting>):NotificationSetting {
+export function buildNotificationSetting(project:null|HalSourceLink, params:Partial<INotificationSetting>):INotificationSetting {
   return {
     _links: {
       project: {
@@ -28,7 +60,9 @@ export function buildNotificationSetting(project:null|HalSourceLink, params:Part
         title: project?.title,
       },
     },
-    involved: true,
+    assignee: true,
+    responsible: true,
+    shared: true,
     mentioned: true,
     watched: true,
     workPackageCommented: true,
@@ -44,6 +78,9 @@ export function buildNotificationSetting(project:null|HalSourceLink, params:Part
     wikiPageUpdated: true,
     membershipAdded: true,
     membershipUpdated: true,
+    startDate: 'P1D',
+    dueDate: 'P1D',
+    overdue: null,
     ...params,
   };
 }

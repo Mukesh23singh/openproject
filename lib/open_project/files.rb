@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,43 +29,29 @@ module OpenProject
   module Files
     module_function
 
-    ##
-    # Creates a temp file with the given file name.
-    # It will reside in some temporary directory.
-    def create_temp_file(name: 'test.txt', content: 'test content', binary: false)
-      tmp = Tempfile.new name
-      path = Pathname(tmp)
-
-      tmp.delete # delete temp file
-      path.mkdir # create temp directory
-
-      file_path = path.join name
-      File.open(file_path, 'w' + (binary ? 'b' : '')) do |f|
-        f.write content
-      end
-
-      File.new file_path
-    end
-
     def build_uploaded_file(tempfile, type, binary: true, file_name: nil)
-      uploaded_file = Rack::Multipart::UploadedFile.new tempfile.path,
-                                                        type,
-                                                        binary
-      if file_name
-        # I wish I could set the file name in a better way *sigh*
-        uploaded_file.instance_variable_set(:@original_filename, file_name)
-      end
-
-      uploaded_file
+      Rack::Multipart::UploadedFile.new tempfile.path,
+                                        type,
+                                        binary,
+                                        filename: file_name
     end
 
-    def create_uploaded_file(name: 'test.txt',
-                             content_type: 'text/plain',
-                             content: 'test content',
-                             binary: false)
+    def create_uploaded_file(name:, content_type:, content:, binary: false)
+      create_temp_file(name:, content:, binary:) do |f|
+        build_uploaded_file f, content_type, binary:, file_name: File.basename(name)
+      end
+    end
 
-      tmp = create_temp_file name: name, content: content, binary: binary
-      build_uploaded_file tmp, content_type, binary: binary
+    def create_temp_file(name:, content:, binary: false, &)
+      basename = name
+      Tempfile.create(basename) do |f|
+        f.binmode if binary
+
+        f.write content
+        f.rewind
+
+        yield f
+      end
     end
   end
 end

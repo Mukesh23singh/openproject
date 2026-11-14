@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,8 +32,8 @@ module WorkPackagesFilterHelper
   def project_work_packages_closed_version_path(version, options = {})
     query = {
       f: [
-        filter_object('status_id', 'c'),
-        filter_object('version_id', '=', version.id)
+        filter_object("status_id", "c"),
+        filter_object("version_id", "=", version.id)
       ]
     }
     project_work_packages_with_query_path(version.project, query, options)
@@ -43,11 +42,76 @@ module WorkPackagesFilterHelper
   def project_work_packages_open_version_path(version, options = {})
     query = {
       f: [
-        filter_object('status_id', 'o'),
-        filter_object('version_id', '=', version.id)
+        filter_object("status_id", "o"),
+        filter_object("version_id", "=", version.id)
       ]
     }
     project_work_packages_with_query_path(version.project, query, options)
+  end
+
+  def project_work_packages_to_do_version_path(version, options = {})
+    query = {
+      f: [
+        filter_object("status_id", "to_do"),
+        filter_object("version_id", "=", version.id)
+      ]
+    }
+    project_work_packages_with_query_path(version.project, query, options)
+  end
+
+  def project_work_packages_in_progress_version_path(version, options = {})
+    query = {
+      f: [
+        filter_object("status_id", "in_progress"),
+        filter_object("version_id", "=", version.id)
+      ]
+    }
+    project_work_packages_with_query_path(version.project, query, options)
+  end
+
+  def project_work_packages_version_path(version, options = {})
+    filters = [
+      filter_object("version_id", "=", version.id)
+    ]
+
+    unless version.sharing == "none"
+      # include all projects that share this version
+      project_ids = version.projects.visible.ids
+      filters << filter_object("project_id", "=", project_ids) unless project_ids.empty?
+    end
+
+    query = { f: filters }
+    project_work_packages_with_query_path(version.project, query, options)
+  end
+
+  def project_work_packages_shared_with_path(principal, project, options = {})
+    query = {
+      f: [
+        filter_object("status_id", "*"),
+        filter_object("shared_with_user", "=", principal.id)
+      ]
+    }
+    project_work_packages_with_query_path(project, query, options)
+  end
+
+  def project_work_packages_shared_with_me_path(project, options = {})
+    query = {
+      f: [
+        filter_object("status_id", "*"),
+        filter_object("shared_with_me", "=", "t")
+      ]
+    }
+    project_work_packages_with_query_path(project, query, options)
+  end
+
+  def project_work_packages_with_ids_path(ids, project, options = {})
+    query = {
+      f: [
+        filter_object("status_id", "*"),
+        filter_object("id", "=", ids)
+      ]
+    }
+    project_work_packages_with_query_path(project, query, options)
   end
 
   # Links for reports
@@ -55,9 +119,9 @@ module WorkPackagesFilterHelper
   def project_report_property_path(project, property_name, property_id, options = {})
     query = {
       f: [
-        filter_object('status_id', '*'),
-        filter_object('subproject_id', '!*'),
-        filter_object(property_name, '=', property_id)
+        filter_object("status_id", "*"),
+        filter_object("subproject_id", "!*"),
+        filter_object(property_name, "=", property_id)
       ],
       t: default_sort
     }
@@ -67,9 +131,9 @@ module WorkPackagesFilterHelper
   def project_report_property_status_path(project, status_id, property, property_id, options = {})
     query = {
       f: [
-        filter_object('status_id', '=', status_id),
-        filter_object('subproject_id', '!*'),
-        filter_object(property, '=', property_id)
+        filter_object("status_id", "=", status_id),
+        filter_object("subproject_id", "!*"),
+        filter_object(property, "=", property_id)
       ],
       t: default_sort
     }
@@ -79,9 +143,9 @@ module WorkPackagesFilterHelper
   def project_report_property_open_path(project, property, property_id, options = {})
     query = {
       f: [
-        filter_object('status_id', 'o'),
-        filter_object('subproject_id', '!*'),
-        filter_object(property, '=', property_id)
+        filter_object("status_id", "o"),
+        filter_object("subproject_id", "!*"),
+        filter_object(property, "=", property_id)
       ],
       t: default_sort
     }
@@ -91,9 +155,9 @@ module WorkPackagesFilterHelper
   def project_report_property_closed_path(project, property, property_id, options = {})
     query = {
       f: [
-        filter_object('status_id', 'c'),
-        filter_object('subproject_id', '!*'),
-        filter_object(property, '=', property_id)
+        filter_object("status_id", "c"),
+        filter_object("subproject_id", "!*"),
+        filter_object(property, "=", property_id)
       ],
       t: default_sort
     }
@@ -103,9 +167,9 @@ module WorkPackagesFilterHelper
   def project_version_property_path(version, property_name, property_id, options = {})
     query = {
       f: [
-        filter_object('status_id', '*'),
-        filter_object('version_id', '=', version.id),
-        filter_object(property_name, '=', property_id)
+        filter_object("status_id", "*"),
+        filter_object("version_id", "=", version.id),
+        filter_object(property_name, "=", property_id)
       ],
       t: default_sort
     }
@@ -115,7 +179,7 @@ module WorkPackagesFilterHelper
   private
 
   def default_sort
-    'updated_at:desc'
+    "updated_at:desc"
   end
 
   def project_work_packages_with_query_path(project, query, options = {})

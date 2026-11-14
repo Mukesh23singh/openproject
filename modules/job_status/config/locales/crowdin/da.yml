@@ -1,0 +1,26 @@
+---
+da:
+  activerecord:
+    models:
+      job_status/status:
+        one: Status for baggrundsjob
+        other: Statusser for baggrundsjob
+  job_status_dialog:
+    click_to_download: Eller [klik her](download_url) for at hente.
+    download_starts: Hentningen bør starte automatisk.
+    errors: Der gik noget galt
+    generic_messages:
+      cancelled: Jobbet er annulleret på grund af en fejl.
+      error: Jobbet blev ikke gennemført.
+      in_process: Jobbet behandles nu.
+      in_queue: Jobbet er sat i kø og behandles snart.
+      not_found: Jobbet blev ikke fundet.
+      success: Jobbet er gennemført.
+    redirect: Du sendes videre.
+    redirect_errors: På grund af fejlene sendes du ikke videre automatisk.
+    redirect_link: Klik her for at fortsætte.
+    title: Status for baggrundsjob
+  label_job_status_plural: Jobstatusser
+  plugin_openproject_job_status:
+    description: Oversigt over og status for baggrundsjob.
+    name: OpenProject Job status

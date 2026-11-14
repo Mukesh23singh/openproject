@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,16 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
-require 'representable/json'
 
-describe Representable do
-  let(:object) { Struct.new(:title).new('test') }
+require "spec_helper"
+require "representable/json"
+
+RSpec.describe Representable do
+  let(:object) { Struct.new(:title).new("test") }
 
   class ReverseNamingStrategy
     def call(name)
@@ -39,7 +39,7 @@ describe Representable do
     end
   end
 
-  describe 'as_strategy with lambda' do
+  describe "as_strategy with lambda" do
     class UpcaseRepresenter < Representable::Decorator
       include Representable::JSON
 
@@ -48,10 +48,10 @@ describe Representable do
       property :title
     end
 
-    it { expect(UpcaseRepresenter.new(object).to_json).to eql("{\"TITLE\":\"test\"}") }
+    it { expect(UpcaseRepresenter.new(object).to_json).to eql('{"TITLE":"test"}') }
   end
 
-  describe 'as_strategy with class responding to #call?' do
+  describe "as_strategy with class responding to #call?" do
     class ReverseRepresenter < Representable::Decorator
       include Representable::JSON
 
@@ -60,11 +60,11 @@ describe Representable do
       property :title
     end
 
-    it { expect(ReverseRepresenter.new(object).to_json).to eql("{\"eltit\":\"test\"}") }
+    it { expect(ReverseRepresenter.new(object).to_json).to eql('{"eltit":"test"}') }
   end
 
-  describe 'as_strategy with class not responding to #call?' do
-    it 'raises error' do
+  describe "as_strategy with class not responding to #call?" do
+    it "raises error" do
       expect do
         class FailRepresenter < Representable::Decorator
           include Representable::JSON

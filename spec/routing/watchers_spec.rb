@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WatchersController, type: :routing do
-  shared_examples_for 'watched model routes' do
+RSpec.describe WatchersController do
+  shared_examples_for "watched model routes" do
     before do
-      expect(OpenProject::Acts::Watchable::Routes).to receive(:matches?).and_return(true)
+      allow(OpenProject::Acts::Watchable::RouteConstraint).to receive(:matches?).and_return(true)
     end
 
-    it 'should connect POST /:object_type/:object_id/watch to watchers#watch' do
-      expect(post("/#{type}/1/watch")).to route_to(controller: 'watchers',
-                                                   action: 'watch',
+    it "connects POST /:object_type/:object_id/watch to watchers#watch" do
+      expect(post("/#{type}/1/watch")).to route_to(controller: "watchers",
+                                                   action: "watch",
                                                    object_type: type,
-                                                   object_id: '1')
+                                                   object_id: "1")
     end
 
-    it 'should connect DELETE /:object_type/:id/unwatch to watchers#unwatch' do
-      expect(delete("/#{type}/1/unwatch")).to route_to(controller: 'watchers',
-                                                       action: 'unwatch',
+    it "connects DELETE /:object_type/:id/unwatch to watchers#unwatch" do
+      expect(delete("/#{type}/1/unwatch")).to route_to(controller: "watchers",
+                                                       action: "unwatch",
                                                        object_type: type,
-                                                       object_id: '1')
+                                                       object_id: "1")
     end
   end
 
-  ['issues', 'news', 'boards', 'messages', 'wikis', 'wiki_pages'].each do |type|
+  ["issues", "news", "boards", "messages", "wikis", "wiki_pages"].each do |type|
     describe "routing #{type} watches" do
       let(:type) { type }
 
-      it_should_behave_like 'watched model routes'
+      it_behaves_like "watched model routes"
     end
   end
 end

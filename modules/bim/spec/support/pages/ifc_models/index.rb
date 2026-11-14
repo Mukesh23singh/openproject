@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
-require 'support/pages/work_packages/concerns/work_package_by_button_creator'
+require "support/pages/page"
+require "support/pages/work_packages/concerns/work_package_by_button_creator"
 
 module Pages
   module IfcModels
@@ -43,102 +44,100 @@ module Pages
       end
 
       def model_listed(listed, model_name)
-        within '.generic-table' do
+        within ".generic-table" do
           expect(page).to (listed ? have_text(model_name) : have_no_text(model_name))
         end
       end
 
       def add_model_allowed(allowed)
         if allowed
-          click_toolbar_button 'IFC model'
+          click_toolbar_button "ifc-create-button"
 
-          expect_correct_page_loaded '.button[type="submit"]'
+          expect_correct_page_loaded '.Button.Button--primary[type="submit"]'
           expect(page).to have_current_path new_bcf_project_ifc_model_path(project)
 
           visit!
         else
-          expect(page).to have_no_selector('.button.-alt-highlight', text: 'IFC model')
+          expect(page).to have_no_css(".button.-primary", text: "IFC model")
         end
       end
 
       def bcf_buttons(allowed)
-        expect(page).to have_conditional_selector(allowed, '.toolbar-item', text: 'Import')
-        expect(page).to have_conditional_selector(allowed, '.toolbar-item', text: 'Export')
+        expect(page).to have_conditional_selector(allowed, ".toolbar-item", text: "Import")
+        expect(page).to have_conditional_selector(allowed, ".toolbar-item", text: "Export")
       end
 
       def edit_model_allowed(model_name, allowed)
         row = find_model_table_row model_name
         within row do
-          expect(page).to (allowed ? have_selector('.icon-edit') : have_no_selector('.icon-edit'))
+          expect(page).to (allowed ? have_css(".icon-edit") : have_no_css(".icon-edit"))
         end
       end
 
       def delete_model_allowed(model_name, allowed)
         row = find_model_table_row model_name
         within row do
-          expect(page).to (allowed ? have_selector('.icon-edit') : have_no_selector('.icon-edit'))
+          expect(page).to (allowed ? have_css(".icon-edit") : have_no_css(".icon-edit"))
         end
       end
 
       def edit_model(model_name, new_name)
-        click_table_icon model_name, '.icon-edit'
+        click_table_icon model_name, ".icon-edit"
 
         change_model_name model_name, new_name
-        click_on 'Save'
+        click_on "Save"
 
         model_listed true, new_name
-        expect(current_path).to eq bcf_project_ifc_models_path(project)
+        expect(page).to have_current_path bcf_project_ifc_models_path(project), ignore_query: true
       end
 
       def delete_model(model_name)
-        click_table_icon model_name, '.icon-delete'
-
-        page.driver.browser.switch_to.alert.accept
+        accept_alert do
+          click_table_icon model_name, ".icon-delete"
+        end
 
         model_listed false, model_name
-        expect(current_path).to eq bcf_project_ifc_models_path(project)
+        expect(page).to have_current_path bcf_project_ifc_models_path(project), ignore_query: true
       end
 
       def show_model(model)
         click_model_link model.title
 
-        expect_correct_page_loaded '[data-qa-selector="op-ifc-viewer--container"]'
+        expect_correct_page_loaded '[data-test-selector="op-ifc-viewer--container"]'
 
         expect_model_active(model)
       end
 
-      def expect_model_active(model, active = true)
-        expect(page).to have_field(model.id.to_s, checked: active, wait: 30)
+      def expect_model_active(model, active: true)
+        expect(page).to have_field("input-#{model.id}", checked: active, wait: 30)
       end
 
       def show_defaults(models = [])
-        click_toolbar_button 'Show defaults'
+        click_toolbar_button "ifc-show-default-button"
 
-        expect_correct_page_loaded '[data-qa-selector="op-ifc-viewer--container"]'
+        expect_correct_page_loaded '[data-test-selector="op-ifc-viewer--container"]'
 
         models.each do |model|
-          expect_model_active(model, model.is_default)
+          expect_model_active(model, active: model.is_default)
         end
       end
 
       private
 
       def find_model_table_row(model_name)
-        within '.generic-table' do
-          page.find('td', text: model_name).find(:xpath, '..')
+        within ".generic-table" do
+          page.find("td", text: model_name).find(:xpath, "..")
         end
       end
 
       def click_model_link(model_name)
-        within '.generic-table' do
-          page.find('td a', text: model_name).click
+        within ".generic-table" do
+          page.find("td a", text: model_name).click
         end
       end
 
-      def click_toolbar_button(name)
-        within '.toolbar' do
-          page.find('.button', text: name).click
-        end
+      def click_toolbar_button(test_selector)
+        page.find_test_selector(test_selector).click
       end
 
       def click_table_icon(model_name, icon_class)
@@ -153,9 +152,8 @@ module Pages
       end
 
       def change_model_name(model_name, new_name)
-        expect(page).to have_selector('input[type="file"]')
-        expect(page).to have_field('bim_ifc_models_ifc_model[title]', with: model_name)
-        fill_in 'bim_ifc_models_ifc_model[title]', with: new_name
+        expect(page).to have_field("bim_ifc_models_ifc_model[title]", with: model_name)
+        fill_in "bim_ifc_models_ifc_model[title]", with: new_name
       end
     end
   end

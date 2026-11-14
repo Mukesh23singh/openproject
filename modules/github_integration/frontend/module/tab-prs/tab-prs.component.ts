@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,49 +20,51 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { ChangeDetectorRef, Component, Input, OnInit } from '@angular/core';
-import { WorkPackageResource } from "core-app/features/hal/resources/work-package-resource";
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { HalResourceService } from "core-app/features/hal/services/hal-resource.service";
-import { CollectionResource } from "core-app/features/hal/resources/collection-resource";
-import { IGithubPullRequestResource } from "../../../../../../../../modules/github_integration/frontend/module/typings";
-import { I18nService } from "core-app/core/i18n/i18n.service";
+import { sortBy } from 'lodash-es';
+import { ChangeDetectionStrategy, Component, HostBinding, Input, OnInit, inject } from '@angular/core';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { GithubPullRequestResourceService } from 'core-app/features/plugins/linked/openproject-github_integration/state/github-pull-request.service';
+import { IGithubPullRequest } from 'core-app/features/plugins/linked/openproject-github_integration/state/github-pull-request.model';
+import {
+  map,
+  shareReplay,
+} from 'rxjs/operators';
+import { Observable } from 'rxjs';
 
 @Component({
-  selector: 'tab-prs',
-  templateUrl: './tab-prs.template.html',
-  host: { class: 'op-prs' }
+  selector: 'op-tab-prs',
+  templateUrl: './tab-prs.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class TabPrsComponent implements OnInit {
-  @Input() public workPackage:WorkPackageResource;
+  readonly I18n = inject(I18nService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly githubPullRequests = inject(GithubPullRequestResourceService);
 
-  public pullRequests:IGithubPullRequestResource[] = [];
+  @HostBinding('class.op-github-prs') className = true;
 
-  constructor(
-    readonly I18n:I18nService,
-    readonly apiV3Service:APIV3Service,
-    readonly halResourceService:HalResourceService,
-    readonly changeDetector:ChangeDetectorRef,
-  ) {}
+  @Input() workPackage:WorkPackageResource;
 
-  ngOnInit(): void {
-    const pullRequestsPath = this.apiV3Service.work_packages.id({id: this.workPackage.id })?.github_pull_requests.path;
+  pullRequests$:Observable<IGithubPullRequest[]>;
 
-    this.halResourceService
-      .get<CollectionResource<IGithubPullRequestResource>>(pullRequestsPath)
-      .subscribe((value) => {
-        this.pullRequests = value.elements;
-        this.changeDetector.detectChanges();
-      });
-  }
+  emptyText:string;
 
-  public getEmptyText() {
-    return this.I18n.t('js.github_integration.tab_prs.empty',{ wp_id: this.workPackage.id });
+  ngOnInit():void {
+    this.emptyText = this.I18n.t('js.github_integration.tab_prs.empty', { wp_id: this.workPackage.displayId });
+    this.pullRequests$ = this
+      .githubPullRequests
+      .ofWorkPackage(this.workPackage)
+      .pipe(
+        map((elements) => sortBy(elements, 'updatedAt')),
+        shareReplay(1),
+      );
   }
 }

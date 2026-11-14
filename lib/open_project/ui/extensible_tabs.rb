@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,7 +34,8 @@ module OpenProject
         def tabs
           @tabs ||= {
             user: core_user_tabs,
-            placeholder_user: core_placeholder_user_tabs
+            placeholder_user: core_placeholder_user_tabs,
+            group: core_group_tabs
           }
         end
 
@@ -56,45 +56,100 @@ module OpenProject
 
         private
 
+        # rubocop:disable Metrics/AbcSize
         def core_user_tabs
           [
             {
-              name: 'general',
-              partial: 'users/general',
+              name: "general",
+              partial: "users/general",
               path: ->(params) { edit_user_path(params[:user], tab: :general) },
-              label: :label_general
+              label: :label_general,
+              only_if: ->(context) {
+                         ::Users::UpdateContract.new(context[:user], context[:current_user]).allowed_to_update?
+                       }
             },
             {
-              name: 'memberships',
-              partial: 'individual_principals/memberships',
+              name: "working_hours",
+              partial: "users/working_hours/list",
+              path: ->(params) { edit_user_path(params[:user], tab: :working_hours) },
+              label: :label_working_hours,
+              only_if: ->(*) { User.current.allowed_globally?(:manage_working_times) }
+            },
+            {
+              name: "non_working_times",
+              partial: "users/non_working_times/list",
+              path: ->(params) { edit_user_path(params[:user], tab: :non_working_times) },
+              label: :label_non_working_days,
+              only_if: ->(*) { User.current.allowed_globally?(:manage_working_times) }
+            },
+
+            {
+              name: "memberships",
+              partial: "individual_principals/memberships",
               path: ->(params) { edit_user_path(params[:user], tab: :memberships) },
               label: :label_project_plural
             },
             {
-              name: 'groups',
-              partial: 'users/groups',
+              name: "groups",
+              partial: "users/groups",
               path: ->(params) { edit_user_path(params[:user], tab: :groups) },
               label: :label_group_plural,
               only_if: ->(*) { User.current.admin? && Group.any? }
             },
             {
-              name: 'global_roles',
-              partial: 'users/global_roles',
+              name: "global_roles",
+              partial: "principals/global_roles",
               path: ->(params) { edit_user_path(params[:user], tab: :global_roles) },
               label: :label_global_roles,
               only_if: ->(*) { User.current.admin? }
             },
             {
-              name: 'notifications',
-              partial: 'users/notifications',
+              name: "notifications",
+              partial: "users/notifications",
               path: ->(params) { edit_user_path(params[:user], tab: :notifications) },
-              label: :'notifications.settings.title'
+              label: :"my_account.notifications_and_email.tabs.notifications"
             },
             {
-              name: 'reminders',
-              partial: 'users/reminders',
+              name: "reminders",
+              partial: "users/reminders",
               path: ->(params) { edit_user_path(params[:user], tab: :reminders) },
-              label: :'reminders.settings.title'
+              label: :"my_account.notifications_and_email.tabs.email_reminders"
+            }
+          ]
+        end
+        # rubocop:enable Metrics/AbcSize
+
+        def core_group_tabs
+          [
+            {
+              name: "general",
+              partial: "groups/general",
+              path: ->(params) { edit_group_path(params[:group]) },
+              label: :label_general
+            },
+            {
+              name: "users",
+              partial: "groups/users",
+              path: ->(params) { edit_group_path(params[:group], tab: :users) },
+              label: :label_user_plural
+            },
+            {
+              name: "memberships",
+              partial: "groups/memberships",
+              path: ->(params) { edit_group_path(params[:group], tab: :memberships) },
+              label: :label_project_plural
+            },
+            {
+              name: "global_roles",
+              partial: "principals/global_roles",
+              path: ->(params) { edit_group_path(params[:group], tab: :global_roles) },
+              label: :label_global_roles
+            },
+            {
+              name: "synchronized_groups",
+              partial: "groups/synchronized_groups",
+              path: ->(params) { edit_group_path(params[:group], tab: :synchronized_groups) },
+              label: :"groups.edit.synchronized_groups"
             }
           ]
         end
@@ -102,14 +157,20 @@ module OpenProject
         def core_placeholder_user_tabs
           [
             {
-              name: 'general',
-              partial: 'placeholder_users/general',
+              name: "general",
+              partial: "placeholder_users/general",
               path: ->(params) { edit_placeholder_user_path(params[:placeholder_user], tab: :general) },
               label: :label_general
             },
             {
-              name: 'memberships',
-              partial: 'individual_principals/memberships',
+              name: "criteria",
+              partial: "placeholder_users/criteria",
+              path: ->(params) { edit_placeholder_user_path(params[:placeholder_user], tab: :criteria) },
+              label: :label_criteria
+            },
+            {
+              name: "memberships",
+              partial: "individual_principals/memberships",
               path: ->(params) { edit_placeholder_user_path(params[:placeholder_user], tab: :memberships) },
               label: :label_project_plural
             }

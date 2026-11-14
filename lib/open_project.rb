@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,30 +22,62 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'redmine/menu_manager'
-require 'redmine/search'
-require 'open_project/custom_field_format'
-require 'open_project/logging'
-require 'open_project/patches'
-require 'open_project/mime_type'
-require 'open_project/custom_styles/design'
-require 'open_project/hook'
-require 'open_project/hooks'
-require 'redmine/plugin'
+require "redmine/menu_manager"
+require "redmine/search"
+require "open_project/custom_field_format"
+require "open_project/logging"
+require "open_project/patches"
+require "open_project/mime_type"
+require "open_project/oauth2"
+require "open_project/custom_styles/design"
+require "open_project/httpx_appsignal"
+require "open_project/httpx_ssrf_custom_error_message"
+require "redmine/plugin"
 
-require 'csv'
+require "csv"
 
 module OpenProject
   ##
   # Shortcut to the OpenProject log delegator, which extends
-  # default Rails error handling with other error handlers such as sentry.
+  # default Rails error handling with other error handlers such as appsignal.
   def self.logger
     ::OpenProject::Logging::LogDelegator
+  end
+
+  def self.httpx
+    # In tests it is not advisible to cache httpx session object,
+    # because, for example, stubs made for this object in one test case can
+    # easy interfere with other test cases using the same session object.
+    if Rails.env.test?
+      httpx_session
+    else
+      Thread.current[:httpx_session] ||= httpx_session
+    end
+  end
+
+  private_class_method def self.httpx_session
+    session = HTTPX
+                .with(headers: { "User-Agent" => "OpenProject #{OpenProject::VERSION.to_semver} HTTPX Client" })
+                .plugin(:auth)
+                .plugin(:webdav)
+                .plugin(:ssrf_filter, safe_private_ranges: OpenProject::Configuration.ssrf_protection_ip_allowlist)
+                .plugin(HttpxSsrfCustomErrorMessage)
+                .with(
+                  timeout: {
+                    connect_timeout: OpenProject::Configuration.httpx_connect_timeout,
+                    operation_timeout: OpenProject::Configuration.httpx_operation_timeout,
+                    request_timeout: OpenProject::Configuration.httpx_request_timeout,
+                    write_timeout: OpenProject::Configuration.httpx_write_timeout,
+                    read_timeout: OpenProject::Configuration.httpx_read_timeout,
+                    keep_alive_timeout: OpenProject::Configuration.httpx_keep_alive_timeout
+                  }
+                )
+
+    OpenProject::Appsignal.enabled? ? session.plugin(HttpxAppsignal) : session
   end
 end

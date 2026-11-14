@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,43 +29,47 @@ module API
   module V3
     module WorkPackages
       class WorkPackageCollectionRepresenter < ::API::Decorators::OffsetPaginatedCollection
+        self.to_eager_load = []
+        self.to_preload = []
+
+        attr_accessor :timestamps, :query
+
         def initialize(models,
                        self_link:,
-                       groups:, total_sums:, current_user:, query: {},
+                       groups:,
+                       total_sums:,
+                       current_user:,
+                       query_params: {},
                        project: nil,
                        page: nil,
                        per_page: nil,
-                       embed_schemas: false)
+                       embed_schemas: false,
+                       timestamps: [],
+                       query: nil)
           @project = project
           @total_sums = total_sums
           @embed_schemas = embed_schemas
+          @timestamps = timestamps
+          @query = query
+          # Assigning current_user when super does so as well as paged_models needs access to the
+          # value before the assignment in super takes place.
+          @current_user = current_user
+
+          if timestamps_active?
+            query_params[:timestamps] = API::V3::Utilities::PathHelper::ApiV3Path.timestamps_to_param_value(timestamps)
+          end
 
           super(models,
-                self_link: self_link,
-                query: query,
-                page: page,
-                per_page: per_page,
-                groups: groups,
-                current_user: current_user)
-
-          # In order to optimize performance we
-          #   * override paged_models so that only the id is fetched from the
-          #     scope (typically a query with a couple of includes for e.g.
-          #     filtering), circumventing AR instantiation altogether
-          #   * use the ids to fetch the actual work packages with all the fields
-          #     necessary for rendering the work packages in _elements
-          #
-          # This results in the weird flow where the scope is passed to super (models variable),
-          # which calls the overridden paged_models method fetching the ids. In order to have
-          # real AR objects again, we finally get the work packages we actually want to have
-          # and set those to be the represented collection.
-          # A potential ordering is reapplied to the work package collection in ruby.
-
-          @represented = ::API::V3::WorkPackages::WorkPackageEagerLoadingWrapper.wrap(represented, current_user)
+                self_link:,
+                query_params:,
+                page:,
+                per_page:,
+                groups:,
+                current_user:)
         end
 
         link :sumsSchema do
-          next unless total_sums || groups && groups.any?(&:has_sums?)
+          next unless total_sums || (groups && groups.any?(&:has_sums?))
 
           {
             href: api_v3_paths.work_package_sums_schema
@@ -79,7 +80,7 @@ module API
           next unless current_user_allowed_to_edit_work_packages?
 
           {
-            href: api_v3_paths.work_package_form('{work_package_id}'),
+            href: api_v3_paths.work_package_form("{work_package_id}"),
             method: :post,
             templated: true
           }
@@ -111,19 +112,10 @@ module API
           }
         end
 
-        link :customFields do
-          if project.present? &&
-             current_user_allowed_to(:select_custom_fields, context: project)
-            {
-              href: project_settings_custom_fields_path(project.identifier),
-              type: 'text/html',
-              title: I18n.t('label_custom_field_plural')
-            }
-          end
-        end
-
         links :representations do
-          representation_formats if current_user.allowed_to?(:export_work_packages, project, global: project.nil?)
+          if current_user.allowed_in_any_work_package?(:export_work_packages, in_project: project)
+            representation_formats
+          end
         end
 
         collection :elements,
@@ -133,7 +125,15 @@ module API
                      rep_class = element_decorator.custom_field_class(all_fields)
 
                      represented.map do |model|
-                       rep_class.new(model, current_user: current_user)
+                       # In case the work package is no longer visible (moved to a project the user
+                       # lacks permission in) we treat it as if the work package were deleted.
+                       representer = if model.visible?(current_user)
+                                       rep_class
+                                     else
+                                       WorkPackageDeletedRepresenter
+                                     end
+
+                       representer.send(:new, model, current_user:, timestamps:, query:)
                      end
                    },
                    exec_context: :decorator,
@@ -155,25 +155,25 @@ module API
                  render_nil: false
 
         def current_user_allowed_to_add_work_packages?
-          current_user.allowed_to?(:add_work_packages, project, global: project.nil?)
+          if project
+            current_user.allowed_in_project?(:add_work_packages, project)
+          else
+            current_user.allowed_in_any_project?(:add_work_packages)
+          end
         end
 
         def current_user_allowed_to_edit_work_packages?
-          current_user.allowed_to?(:edit_work_packages, project, global: project.nil?)
+          current_user.allowed_in_any_work_package?(:edit_work_packages, in_project: project)
         end
 
         def schemas
           schemas = schema_pairs.map do |project, type, available_custom_fields|
-            # This hack preloads the custom fields for a project so that they do not have to be
-            # loaded again later on
-            project.instance_variable_set(:'@all_work_package_custom_fields', all_cfs_of_project[project.id])
-
-            Schema::TypedWorkPackageSchema.new(project: project, type: type, custom_fields: available_custom_fields)
+            Schema::TypedWorkPackageSchema.new(project:, type:, custom_fields: available_custom_fields)
           end
 
           Schema::WorkPackageSchemaCollectionRepresenter.new(schemas,
                                                              self_link: schemas_path,
-                                                             current_user: current_user)
+                                                             current_user:)
         end
 
         def schemas_path
@@ -185,37 +185,36 @@ module API
         end
 
         def schema_pairs
-          represented
-            .map { |work_package| [work_package.project, work_package.type, work_package.available_custom_fields] }
-            .uniq
-        end
+          @schema_pairs ||= begin
+            work_packages = if timestamps_active?
+                              represented
+                                .flat_map(&:at_timestamps)
+                            else
+                              represented
+                            end
 
-        def all_cfs_of_project
-          @all_cfs_of_project ||= represented
-                                  .group_by(&:project_id)
-                                  .map { |id, wps| [id, wps.map(&:available_custom_fields).flatten.uniq] }
-                                  .to_h
-        end
-
-        def paged_models(models)
-          models.page(@page).per_page(@per_page).pluck(:id)
+            work_packages
+              .select(&:persisted?)
+              .uniq { |work_package| [work_package.project_id, work_package.type_id] }
+              .map { |work_package| [work_package.project, work_package.type, work_package.available_custom_fields] }
+          end
         end
 
         def _type
-          'WorkPackageCollection'
+          "WorkPackageCollection"
         end
 
         def representation_formats
           formats = [
             representation_format_pdf,
-            representation_format_pdf_attachments,
-            representation_format_pdf_description,
-            representation_format_pdf_description_attachments,
+            representation_format_pdf_report_with_images,
+            representation_format_pdf_report,
+            representation_format_pdf_gantt,
             representation_format_xls,
             representation_format_xls_descriptions,
             representation_format_xls_relations,
             representation_format_csv
-          ]
+          ].compact
 
           if Setting.feeds_enabled?
             formats << representation_format_atom
@@ -227,82 +226,103 @@ module API
         def representation_format(identifier, mime_type:, format: identifier, i18n_key: format, url_query_extras: nil)
           path_params = { controller: :work_packages, action: :index, project_id: project }
 
-          href = "#{url_for(path_params.merge(format: format))}?#{href_query(@page, @per_page)}"
+          href = "#{url_for(path_params.merge(format:))}?#{href_query(@page, @per_page)}"
 
           if url_query_extras
             href += "&#{url_query_extras}"
           end
 
           {
-            href: href,
-            identifier: identifier,
+            href:,
+            identifier:,
             type: mime_type,
             title: I18n.t("export.format.#{i18n_key}")
           }
         end
 
         def representation_format_pdf
-          representation_format 'pdf',
-                                mime_type: 'application/pdf'
+          representation_format "pdf",
+                                i18n_key: "pdf_overview_table",
+                                mime_type: "application/pdf",
+                                url_query_extras: "pdf_export_type=table"
         end
 
-        def representation_format_pdf_attachments
-          representation_format 'pdf',
-                                i18n_key: 'pdf_with_attachments',
-                                mime_type: 'application/pdf',
-                                url_query_extras: 'show_attachments=true'
+        def representation_format_pdf_report_with_images
+          representation_format "pdf-with-descriptions",
+                                format: "pdf",
+                                i18n_key: "pdf_report_with_images",
+                                mime_type: "application/pdf",
+                                url_query_extras: "pdf_export_type=report&show_images=true"
         end
 
-        def representation_format_pdf_description
-          representation_format 'pdf-with-descriptions',
-                                format: 'pdf',
-                                i18n_key: 'pdf_with_descriptions',
-                                mime_type: 'application/pdf',
-                                url_query_extras: 'show_descriptions=true'
+        def representation_format_pdf_report
+          representation_format "pdf-descr",
+                                format: "pdf",
+                                i18n_key: "pdf_report",
+                                mime_type: "application/pdf",
+                                url_query_extras: "pdf_export_type=report"
         end
 
-        def representation_format_pdf_description_attachments
-          representation_format 'pdf-with-descriptions',
-                                format: 'pdf',
-                                i18n_key: 'pdf_with_descriptions_and_attachments',
-                                mime_type: 'application/pdf',
-                                url_query_extras: 'show_descriptions=true&show_attachments=true'
+        def representation_format_pdf_gantt
+          return unless EnterpriseToken.allows_to?(:gantt_pdf_export)
+
+          representation_format "pdf",
+                                format: "pdf",
+                                i18n_key: "pdf_gantt",
+                                mime_type: "application/pdf",
+                                url_query_extras: "pdf_export_type=gantt"
         end
 
         def representation_format_xls
-          representation_format 'xls',
-                                mime_type: 'application/vnd.ms-excel'
+          representation_format "xls",
+                                mime_type: "application/vnd.ms-excel"
         end
 
         def representation_format_xls_descriptions
-          representation_format 'xls-with-descriptions',
-                                i18n_key: 'xls_with_descriptions',
-                                mime_type: 'application/vnd.ms-excel',
-                                format: 'xls',
-                                url_query_extras: 'show_descriptions=true'
+          representation_format "xls-with-descriptions",
+                                i18n_key: "xls_with_descriptions",
+                                mime_type: "application/vnd.ms-excel",
+                                format: "xls",
+                                url_query_extras: "show_descriptions=true"
         end
 
         def representation_format_xls_relations
-          representation_format 'xls-with-relations',
-                                i18n_key: 'xls_with_relations',
-                                mime_type: 'application/vnd.ms-excel',
-                                format: 'xls',
-                                url_query_extras: 'show_relations=true'
+          representation_format "xls-with-relations",
+                                i18n_key: "xls_with_relations",
+                                mime_type: "application/vnd.ms-excel",
+                                format: "xls",
+                                url_query_extras: "show_relations=true"
         end
 
         def representation_format_csv
-          representation_format 'csv',
-                                mime_type: 'text/csv'
+          representation_format "csv",
+                                mime_type: "text/csv"
         end
 
         def representation_format_atom
-          representation_format 'atom',
-                                mime_type: 'application/atom+xml'
+          representation_format "atom",
+                                mime_type: "application/atom+xml"
+        end
+
+        def timestamps_active?
+          timestamps.present? && timestamps.any?(&:historic?)
         end
 
         attr_reader :project,
                     :total_sums,
                     :embed_schemas
+
+        private
+
+        def eager_loaded_paged_models(models)
+          # In order to optimize performance, we only fetch the ids from the
+          # scope/models, circumventing AR instantiation altogether
+          #
+          # The EagerLoadingWrapper uses the id to load the work packages with all the includes necessary.
+          # It also reapplies the order.
+          ::API::V3::WorkPackages::WorkPackageEagerLoadingWrapper
+            .wrap(models.pluck(:id), current_user, timestamps:, query:)
+        end
       end
     end
   end

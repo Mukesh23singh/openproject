@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'work_packages/create_contract'
-require 'concerns/user_invitation'
+require "work_packages/create_contract"
+require "concerns/user_invitation"
 
 module Users
   class CreateService < ::BaseServices::Create
@@ -38,7 +37,7 @@ module Users
     def persist(call)
       new_user = call.result
 
-      return super(call) unless new_user.invited?
+      return super unless new_user.invited?
 
       # As we're basing on the user's mail, this parameter is required
       # before we're able to validate the contract or user
@@ -48,7 +47,7 @@ module Users
     end
 
     def fail_with_missing_email(new_user)
-      ServiceResult.new(success: false, result: new_user).tap do |result|
+      ServiceResult.failure(result: new_user).tap do |result|
         result.errors.add :mail, :blank
       end
     end

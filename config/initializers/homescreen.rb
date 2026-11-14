@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,86 +22,78 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/static/homescreen'
-require 'open_project/static/links'
+require "open_project/static/homescreen"
+require "open_project/static/links"
 
 OpenProject::Static::Homescreen.manage :blocks do |blocks|
   blocks.push(
     {
-      partial: 'welcome',
+      name: "welcome",
       if: Proc.new { Setting.welcome_on_homescreen? && Setting.welcome_text.present? }
     },
     {
-      partial: 'projects'
+      name: "favorite_projects"
     },
     {
-      partial: 'new_features',
+      name: "new_features",
       if: Proc.new { OpenProject::Configuration.show_community_links? }
     },
     {
-      partial: 'users',
-      if: Proc.new { User.current.admin? }
+      name: "meetings"
     },
     {
-      partial: 'my_account',
+      name: "my_account",
       if: Proc.new { User.current.logged? }
     },
     {
-      partial: 'news',
-      if: Proc.new { !@news.empty? }
+      name: "news"
     },
     {
-      partial: 'community',
-      if: Proc.new { EnterpriseToken.show_banners? || OpenProject::Configuration.show_community_links? }
+      name: "community",
+      if: Proc.new { OpenProject::Configuration.show_community_links? }
     },
     {
-      partial: 'administration',
+      name: "administration",
       if: Proc.new { User.current.admin? }
     },
     {
-      partial: 'upsale',
-      if: Proc.new { EnterpriseToken.show_banners? }
+      name: "upsell",
+      if: Proc.new { !(EnterpriseToken.active? || EnterpriseToken.hide_banners?) || EnterpriseToken.trial_only? }
     }
   )
 end
 
 OpenProject::Static::Homescreen.manage :links do |links|
-  link_hash = OpenProject::Static::Links.links
-
   links.push(
     {
       label: :user_guides,
-      icon: 'icon-context icon-rename',
-      url: link_hash[:user_guides][:href]
+      icon: "milestone",
+      url_key: :user_guides
     },
     {
       label: :glossary,
-      icon: 'icon-context icon-glossar',
-      url: link_hash[:glossary][:href]
+      icon: "op-glossar",
+      url_key: :glossary
     },
     {
       label: :shortcuts,
-      icon: 'icon-context icon-shortcuts',
-      url: link_hash[:shortcuts][:href]
+      icon: "op-shortcuts",
+      url_key: :shortcuts
     },
     {
       label: :forums,
-      icon: 'icon-context icon-forums',
-      url: link_hash[:forums][:href]
+      icon: "comment-discussion",
+      url_key: :forums
+    },
+    {
+      label: :impressum,
+      icon: "info",
+      url_key: :impressum
     }
   )
-
-  if impressum_link = link_hash[:impressum]
-    links.push({
-                 label: impressum_link[:label],
-                 url: impressum_link[:href],
-                 icon: 'icon-context icon-info1'
-               })
-  end
 end

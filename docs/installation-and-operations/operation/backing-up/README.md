@@ -24,19 +24,19 @@ of the current OpenProject installation. This tool will create a backup of
 all parts mentioned above. The backup tool is invoked by executing the following
 command:
 
-```bash
+```shell
 sudo openproject run backup
 ```
 
 The command will create backup files in the following location on your system:
 
-```bash
+```shell
 /var/db/openproject/backup
 ```
 
 The content of that directory should look very similar to the following.
 
-```bash
+```shell
 root@ip-10-0-0-228:/home/admin# ls -al /var/db/openproject/backup/
 total 1680
 drwxr-xr-x 2 openproject openproject    4096 Nov 19 21:00 .
@@ -56,13 +56,13 @@ If you are using docker-compose, then the data volumes are managed by Docker and
 
 If you are using the all-in-one container, then you can simply backup any local volumes that you chose to bind-mount with the `-v` option when launching the container. For instance if you launched the container with:
 
-```bash
+```shell
 sudo mkdir -p /var/lib/openproject/{pgdata,assets}
 
-docker run -d -p 8080:80 --name openproject -e SECRET_KEY_BASE=secret \
+docker run -d -p 8080:80 --name openproject -e SECRET_KEY_BASE=<your-secret-key-base> \
   -v /var/lib/openproject/pgdata:/var/openproject/pgdata \
   -v /var/lib/openproject/assets:/var/openproject/assets \
-  openproject/community:10
+  openproject/openproject:18
 ```
 
 Then you would need to backup the `/var/lib/openproject` folder (for instance to S3 or FTP server).
@@ -71,18 +71,18 @@ Then you would need to backup the `/var/lib/openproject` folder (for instance to
 
 When using docker-compose you can simply dump the database from the database container.
 
-```
+```shell
 docker exec -it db_1 pg_dump -U postgres -d openproject -x -O > openproject.sql
 ```
 
-This assumes that the database container is called `db_1`. Find out the actual name on your host using `docker ps | postgres`.
+This assumes that the database container is called `db_1`. Find out the actual name on your host using `docker ps | grep postgres`.
 
 #### All-in-one container
 
 If you need a regular dump of the database you can get one using `pg_dump` like this:
 
-```
-docker exec -e PGPASSWORD=openproject -it $OP_CONTAINER_NAME pg_dump -U openproject -h localhost -d openproject -x -O > openproject.sql
+```shell
+docker exec -it $OP_CONTAINER_NAME su - postgres -c 'pg_dump -d openproject -x -O' > openproject.sql
 ```
 
 Where `$OP_CONTAINER_NAME` is the name of your OpenProject container. If you don't know it you can find it using `docker ps | grep openproject`.

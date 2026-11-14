@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'base'
+require_relative "base"
 
 class Tables::Projects < Tables::Base
-  # rubocop:disable Metrics/AbcSize
-  def self.table(migration)
+  def self.table(migration) # rubocop:disable Metrics/AbcSize
     create_table migration do |t|
-      t.string :name, default: '', null: false
+      t.string :name, default: "", null: false
       t.text :description
-      t.boolean :is_public, default: true, null: false
-      t.integer :parent_id
-      t.datetime :created_on
-      t.datetime :updated_on
-      t.string :identifier
-      t.integer :status, default: 1, null: false
+      t.boolean :public, default: true, null: false
+      t.bigint :parent_id
+      t.timestamps precision: nil, null: true
+      t.string :identifier, null: false
       t.integer :lft
       t.integer :rgt
-      t.belongs_to :project_type, type: :int
-      t.belongs_to :responsible, type: :int
-      t.belongs_to :work_packages_responsible, type: :int
+      t.boolean :active, default: true, null: false, index: true
+      t.boolean :templated, default: false, null: false
+      t.integer :status_code
+      t.text :status_explanation
+      t.jsonb :settings, null: false, default: {}
 
-      t.index :lft, name: 'index_projects_on_lft'
-      t.index :rgt, name: 'index_projects_on_rgt'
-      t.index :identifier
+      t.index :lft, name: "index_projects_on_lft"
+      t.index :rgt, name: "index_projects_on_rgt"
+      t.index "LOWER(identifier)", unique: true, name: "index_projects_on_lower_identifier"
+      t.index %i[lft rgt]
     end
   end
-  # rubocop:enable Metrics/AbcSize
 end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,18 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { OpenProjectPluginContext } from 'core-app/features/plugins/plugin-context';
-import { input, InputState } from 'reactivestates';
-import { take } from 'rxjs/operators';
-import { GlobalHelpers } from 'core-app/core/setup/globals/global-helpers';
+import { input, InputState } from '@openproject/reactivestates';
+import { getMetaContent, getMetaValue } from 'core-app/core/setup/globals/global-helpers';
+import { firstValueFrom } from 'rxjs';
+import { ThemeUtils } from './theme-utils';
+
+export type OpenProjectPageState = 'pristine'|'edited'|'submitted';
 
 /**
  * OpenProject instance methods
@@ -37,39 +39,42 @@ import { GlobalHelpers } from 'core-app/core/setup/globals/global-helpers';
 export class OpenProject {
   public pluginContext:InputState<OpenProjectPluginContext> = input<OpenProjectPluginContext>();
 
-  public helpers = new GlobalHelpers();
+  /**
+   * Theme utilities for system theme detection and application
+   */
+  public theme = new ThemeUtils();
 
-  /** Globally setable variable whether the page was edited */
-  public pageWasEdited = false;
+  /** Globally settable variable whether the page was edited or submitted */
+  pageState:OpenProjectPageState = 'pristine';
 
-  /** Globally setable variable whether the page form is submitted.
-   * Necessary to avoid a data loss warning on beforeunload */
-  public pageIsSubmitted = false;
+  public get pageWasEdited():boolean {
+    return this.pageState === 'edited';
+  }
 
-  /** Globally setable variable whether any of the EditFormComponent
-   * contain changes.
-   * Necessary to show a data loss warning on beforeunload when clicking
-   * on a link out of the Angular app (ie: main side menu)
-   * */
-  public editFormsContainModelChanges:boolean;
+  public get pageWasSubmitted():boolean {
+    return this.pageState === 'submitted';
+  }
+
+  public get pageHasUnsavedChanges():boolean {
+    return this.pageWasEdited || this.editFormsContainUnsavedChanges();
+  }
+
+  public editFormsContainUnsavedChanges:() => boolean = () => false;
 
   public getPluginContext():Promise<OpenProjectPluginContext> {
-    return this.pluginContext
-      .values$()
-      .pipe(take(1))
-      .toPromise();
+    return firstValueFrom(this.pluginContext.values$());
   }
 
   public get urlRoot():string {
-    return jQuery('meta[name=app_base_path]').attr('content') || '';
+    return getMetaContent('app_base_path');
   }
 
   public get environment():string {
-    return jQuery('meta[name=openproject_initializer]').data('environment');
+    return getMetaValue('openproject_initializer', 'environment');
   }
 
   public get edition():string {
-    return jQuery('meta[name=openproject_initializer]').data('edition');
+    return getMetaValue('openproject_initializer', 'edition');
   }
 
   public get isStandardEdition():boolean {
@@ -96,9 +101,9 @@ export class OpenProject {
         window.localStorage.setItem(key, newValue);
       } else {
         const value = window.localStorage.getItem(key);
-        return value === null ? undefined : value;
+        return value ?? undefined;
       }
-    } catch (e) {
+    } catch {
       console.error('Failed to access your browsers local storage. Is your local database corrupted?');
     }
   }

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -31,6 +30,31 @@ import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 
 export abstract class EditFieldHandler extends UntilDestroyedMixin {
+  private readonly registeredOverlays = new Set<HTMLElement>();
+
+  public overlayMarker:((overlay:HTMLElement) => void)|null = null;
+
+  public allowsAutofocus():boolean {
+    return true;
+  }
+
+  public readonly element?:HTMLElement;
+
+  public get overlays():ReadonlySet<HTMLElement> {
+    return this.registeredOverlays;
+  }
+
+  public registerOverlay(element:HTMLElement):() => void {
+    this.registeredOverlays.add(element);
+    this.overlayMarker?.(element);
+    return () => this.registeredOverlays.delete(element);
+  }
+
+  public owns(node:Node|null):boolean {
+    return !!node && (this.element?.contains(node) === true
+      || Array.from(this.registeredOverlays).some((overlay) => overlay.contains(node)));
+  }
+
   /**
    * Whether the handler belongs to a larger edit mode form
    * e.g., WP-create
@@ -73,15 +97,15 @@ export abstract class EditFieldHandler extends UntilDestroyedMixin {
   public onDestroy = new Subject<void>();
 
   // OnSubmit callbacks that may register from fields
-  protected _onSubmitHandlers:Array<() => Promise<void>> = [];
+  protected _onSubmitHandlers:(() => Promise<void>)[] = [];
 
   // OnPreSubmit callbacks that may register from fields
-  protected _onBeforeSubmitHandlers:Array<() => void> = [];
+  protected _onBeforeSubmitHandlers:(() => void)[] = [];
 
   /**
    * Call field submission callback handlers
    */
-  public onSubmit():Promise<any> {
+  public onSubmit():Promise<void[]> {
     return Promise.all(this._onSubmitHandlers.map((cb) => cb()));
   }
 
@@ -92,7 +116,7 @@ export abstract class EditFieldHandler extends UntilDestroyedMixin {
   /**
    * Call field before-submission callback handlers
    */
-  public onBeforeSubmit():any {
+  public onBeforeSubmit():void[] {
     return this._onBeforeSubmitHandlers.map((cb) => cb());
   }
 
@@ -103,7 +127,7 @@ export abstract class EditFieldHandler extends UntilDestroyedMixin {
   /**
    * Stop event propagation
    */
-  public abstract stopPropagation(evt:JQuery.TriggeredEvent):boolean;
+  public abstract stopPropagation(evt:Event):boolean;
 
   /**
    * Focus on the active field.
@@ -114,15 +138,15 @@ export abstract class EditFieldHandler extends UntilDestroyedMixin {
   /**
    * Handle a user submitting the field (e.g, ng-change)
    */
-  public abstract handleUserSubmit():Promise<any>;
+  public abstract handleUserSubmit():Promise<unknown>;
 
   /**
    * Handle users pressing enter inside an edit mode.
    * Outside an edit mode, the regular save event is captured by handleUserSubmit (submit event).
-   * In an edit mode, we can't derive from a submit event wheteher the user pressed enter
+   * In an edit mode, we can't derive from a submit event whether the user pressed enter
    * (and on what field he did that).
    */
-  public abstract handleUserKeydown(event:JQuery.TriggeredEvent, onlyCancel?:boolean):void;
+  public abstract handleUserKeydown(event:KeyboardEvent, onlyCancel?:boolean):void|Promise<boolean|void>;
 
   /**
    * Cancel edit
@@ -137,21 +161,16 @@ export abstract class EditFieldHandler extends UntilDestroyedMixin {
   /**
    * Close the field, resetting it with its display value.
    */
-  public abstract deactivate(focus:boolean):void;
+  public abstract deactivate(focus:boolean, userEnded?:boolean):void;
 
   /**
    * Returns whether the field has been changed
    */
   public abstract isChanged():boolean;
 
-  /**
-   * Handle focus loss
-   */
-  public abstract onFocusOut():void;
-
   public abstract setErrors(newErrors:string[]):void;
 
-  public previewContext(resource:HalResource):string|undefined {
+  public previewContext(_resource:HalResource):string|undefined {
     return undefined;
   }
 }

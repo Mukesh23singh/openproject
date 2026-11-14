@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +22,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class WikiPages::UpdateService < ::BaseServices::Update
+class WikiPages::UpdateService < BaseServices::Update
   include Attachments::ReplaceAttachments
-
-  protected
-
-  def persist(service_result)
-    service_result = super(service_result)
-
-    page = service_result.result
-    content = page.content
-
-    unless page.save && content.save
-      service_result.errors = page.errors
-      service_result.errors.merge! content.errors
-      service_result.success = false
-    end
-
-    service_result
-  end
 end

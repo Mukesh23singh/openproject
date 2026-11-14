@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -29,51 +28,80 @@
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { States } from 'core-app/core/states/states.service';
 import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
-import { StateService } from '@uirouter/core';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { Injectable } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
+import isPersistedResource from 'core-app/features/hal/helpers/is-persisted-resource';
+import * as Turbo from '@hotwired/turbo';
 import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { from, Observable, of } from 'rxjs';
-import { input } from 'reactivestates';
-import {
-  catchError, mergeMap, share, switchMap, take,
-} from 'rxjs/operators';
+import { firstValueFrom, from, Observable, of } from 'rxjs';
+import { input } from '@openproject/reactivestates';
+import { catchError, mapTo, mergeMap, share, switchMap, take } from 'rxjs/operators';
 import {
   WorkPackageViewPaginationService,
 } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-pagination.service';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { APIv3QueriesPaths } from 'core-app/core/apiv3/endpoints/queries/apiv3-queries-paths';
-import { APIv3QueryPaths } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-paths';
+import { CurrentUserService } from 'core-app/core/current-user/current-user.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3QueriesPaths } from 'core-app/core/apiv3/endpoints/queries/apiv3-queries-paths';
+import { ApiV3QueryPaths } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-paths';
 import { PaginationService } from 'core-app/shared/components/table-pagination/pagination-service';
 import { ErrorResource } from 'core-app/features/hal/resources/error-resource';
 import { QueryFormResource } from 'core-app/features/hal/resources/query-form-resource';
 import { WorkPackageStatesInitializationService } from './wp-states-initialization.service';
 import { WorkPackagesListInvalidQueryService } from './wp-list-invalid-query.service';
+import { WorkPackagesQueryViewService } from 'core-app/features/work-packages/components/wp-list/wp-query-view.service';
+import { SubmenuService } from 'core-app/core/main-menu/submenu.service';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 
 export interface QueryDefinition {
-  queryParams:{ query_id?:string, query_props?:string };
+  queryParams:{ query_id?:string|null, query_props?:string|null };
   projectIdentifier?:string;
+}
+
+export interface PreparedQuerySave {
+  persist():Promise<QueryResource>;
 }
 
 @Injectable()
 export class WorkPackagesListService {
+  readonly injector = inject(Injector);
+  protected toastService = inject(ToastService);
+  readonly I18n = inject(I18nService);
+  protected UrlParamsHelper = inject(UrlParamsHelperService);
+  protected authorisationService = inject(AuthorisationService);
+  protected urlParams = inject(UrlParamsService);
+  protected apiV3Service = inject(ApiV3Service);
+  protected states = inject(States);
+  protected querySpace = inject(IsolatedQuerySpace);
+  protected pagination = inject(PaginationService);
+  protected configuration = inject(ConfigurationService);
+  protected wpTablePagination = inject(WorkPackageViewPaginationService);
+  protected wpStatesInitialization = inject(WorkPackageStatesInitializationService);
+  protected wpListInvalidQueryService = inject(WorkPackagesListInvalidQueryService);
+  protected wpQueryView = inject(WorkPackagesQueryViewService);
+  protected submenuService = inject(SubmenuService);
+
+  protected readonly currentUser = inject(CurrentUserService);
+
   // We remember the query requests coming in so we can ensure only the latest request is being tended to
   private queryRequests = input<QueryDefinition>();
+
+  // The form request in flight, so concurrent callers join it instead of issuing their own
+  private formLoading:{ href:string|null|undefined, promise:Promise<QueryFormResource> }|undefined;
 
   // This mapped observable requests the latest query automatically.
   private queryLoading = this.queryRequests
     .values$()
     .pipe(
-      switchMap((q:QueryDefinition) => from(this.ensurePerPageKnown().then(() => q))),
       // Stream the query request, switchMap will call previous requests to be cancelled
       switchMap((q:QueryDefinition) => this.streamQueryRequest(q.queryParams, q.projectIdentifier)),
       // Map the observable from the stream to a new one that completes when states are loaded
       mergeMap((query:QueryResource) => {
         // load the form if needed
-        this.conditionallyLoadForm(query);
+        void this.conditionallyLoadForm(query);
 
         // Project the loaded query into the table states and confirm the query is fully loaded
         this.wpStatesInitialization.initialize(query, query.results);
@@ -84,22 +112,6 @@ export class WorkPackagesListService {
       share(),
     );
 
-  constructor(
-    protected toastService:ToastService,
-    readonly I18n:I18nService,
-    protected UrlParamsHelper:UrlParamsHelperService,
-    protected authorisationService:AuthorisationService,
-    protected $state:StateService,
-    protected apiV3Service:APIV3Service,
-    protected states:States,
-    protected querySpace:IsolatedQuerySpace,
-    protected pagination:PaginationService,
-    protected configuration:ConfigurationService,
-    protected wpTablePagination:WorkPackageViewPaginationService,
-    protected wpStatesInitialization:WorkPackageStatesInitializationService,
-    protected wpListInvalidQueryService:WorkPackagesListInvalidQueryService,
-  ) { }
-
   /**
    * Stream a query request as a HTTP observable. Each request to this method will
    * result in a new HTTP request.
@@ -107,7 +119,7 @@ export class WorkPackagesListService {
    * @param queryParams
    * @param projectIdentifier
    */
-  private streamQueryRequest(queryParams:{ query_id?:string, query_props?:string }, projectIdentifier?:string):Observable<QueryResource> {
+  private streamQueryRequest(queryParams:{ query_id?:string|null, query_props?:string|null }, projectIdentifier?:string):Observable<QueryResource> {
     const decodedProps = this.getCurrentQueryProps(queryParams);
     const queryData = this.UrlParamsHelper.buildV3GetQueryFromJsonParams(decodedProps);
     const stream = this
@@ -116,7 +128,7 @@ export class WorkPackagesListService {
       .find(queryData, queryParams.query_id, projectIdentifier);
 
     return stream.pipe(
-      catchError((error) => {
+      catchError((error:ErrorResource) => {
         // Load a default query
         const queryProps = this.UrlParamsHelper.buildV3GetQueryFromJsonParams(decodedProps);
         return from(this.handleQueryLoadingError(error, queryProps, queryParams.query_id, projectIdentifier));
@@ -128,7 +140,7 @@ export class WorkPackagesListService {
    * Load a query.
    * The query is either a persisted query, identified by the query_id parameter, or the default query. Both will be modified by the parameters in the query_props parameter.
    */
-  public fromQueryParams(queryParams:{ query_id?:string, query_props?:string }, projectIdentifier?:string):Observable<QueryResource> {
+  public fromQueryParams(queryParams:{ query_id?:string|null, query_props?:string }, projectIdentifier?:string):Observable<QueryResource> {
     this.queryRequests.clear();
     this.queryRequests.putValue({ queryParams, projectIdentifier });
 
@@ -142,7 +154,7 @@ export class WorkPackagesListService {
   /**
    * Get the current decoded query props, if any
    */
-  public getCurrentQueryProps(params:{ query_props?:string }):string|null {
+  public getCurrentQueryProps(params:{ query_props?:string|null }):string|null {
     if (params.query_props) {
       return decodeURIComponent(params.query_props);
     }
@@ -154,15 +166,14 @@ export class WorkPackagesListService {
    * Load the default query.
    */
   public loadDefaultQuery(projectIdentifier?:string):Promise<QueryResource> {
-    return this.fromQueryParams({}, projectIdentifier).toPromise();
+    return firstValueFrom(this.fromQueryParams({}, projectIdentifier));
   }
 
   /**
    * Reloads the current query and set the pagination to the first page.
    */
   public reloadQuery(query:QueryResource, projectIdentifier?:string):Observable<QueryResource> {
-    const pagination = { ...this.wpTablePagination.current, page: 1 };
-    const queryParams = this.UrlParamsHelper.encodeQueryJsonParams(query, pagination);
+    const queryParams = this.extractParamsFromQuery(query, { pa: 1 });
 
     this.queryRequests.clear();
     this.queryRequests.putValue({
@@ -178,6 +189,25 @@ export class WorkPackagesListService {
   }
 
   /**
+   * Extract a set of query params from the current query resource
+   * @param query The query to derive props from
+   * @param additional Additional props to append
+   */
+  public extractParamsFromQuery(
+    query:QueryResource,
+    additional:Record<string, unknown> = {},
+  ):string {
+    return this.UrlParamsHelper.encodeQueryJsonParams(
+      query,
+      {
+        pa: this.wpTablePagination.current.page,
+        pp: this.wpTablePagination.current.perPage,
+        ...additional,
+      },
+    );
+  }
+
+  /**
    * Update the query from an existing (probably unsaved) query.
    *
    * Will choose the correct path:
@@ -185,10 +215,10 @@ export class WorkPackagesListService {
    * - If the query is saved, use `/api/v3/queries/:id`
    *
    */
-  public loadQueryFromExisting(query:QueryResource, additionalParams:Object, projectIdentifier?:string):Observable<QueryResource> {
+  public loadQueryFromExisting(query:QueryResource, additionalParams:object, projectIdentifier?:string):Observable<QueryResource> {
     const params = this.UrlParamsHelper.buildV3GetQueryFromQueryResource(query, additionalParams);
 
-    let path:APIv3QueriesPaths|APIv3QueryPaths;
+    let path:ApiV3QueriesPaths|ApiV3QueryPaths;
 
     if (query.id) {
       path = this.apiV3Service.queries.id(query.id);
@@ -202,19 +232,22 @@ export class WorkPackagesListService {
   /**
    * Load the query from the given state params
    */
-  public loadCurrentQueryFromParams(projectIdentifier?:string) {
-    return this
-      .fromQueryParams(this.$state.params as any, projectIdentifier)
-      .toPromise();
+  public loadCurrentQueryFromParams(projectIdentifier?:string):Promise<QueryResource> {
+    const queryParams = {
+      query_id: this.urlParams.get('query_id'),
+      query_props: this.urlParams.get('query_props') ?? undefined,
+    };
+    return firstValueFrom(this.fromQueryParams(queryParams, projectIdentifier));
   }
 
   public loadForm(query:QueryResource):Promise<QueryFormResource> {
-    return this
-      .apiV3Service
-      .queries
-      .form
-      .load(query)
-      .toPromise()
+    return firstValueFrom(
+      this
+        .apiV3Service
+        .queries
+        .form
+        .load(query),
+    )
       .then(([form, _]) => {
         this.wpStatesInitialization.updateStatesFromForm(query, form);
 
@@ -231,22 +264,18 @@ export class WorkPackagesListService {
 
     query.name = name;
 
-    const promise = this
-      .apiV3Service
-      .queries
-      .post(query, form)
-      .toPromise();
-
-    void promise
-      .then((query) => {
+    const promise = firstValueFrom(this.createQueryAndView(query, form))
+      .then((createdQuery) => {
         this.toastService.addSuccess(this.I18n.t('js.notice_successful_create'));
 
         // Reload the query, and then reload the menu
-        this.reloadQuery(query).subscribe(() => {
-          this.states.changes.queries.next(query.id!);
+        this.reloadQuery(createdQuery).subscribe(() => {
+          this.navigateToQueryOnNonRouterPage(createdQuery.id);
+          this.states.changes.queries.next(createdQuery.id);
+          this.reloadSidemenu(createdQuery.id);
         });
 
-        return query;
+        return createdQuery;
       });
 
     return promise;
@@ -269,23 +298,16 @@ export class WorkPackagesListService {
       .then(() => {
         this.toastService.addSuccess(this.I18n.t('js.notice_successful_delete'));
 
-        let id;
-        if (query.project) {
-          id = query.project.href!.split('/').pop();
-        }
-
-        this.loadDefaultQuery(id);
-
-        this.states.changes.queries.next(query.id!);
+        void this.navigateToDefaultQuery(query);
       });
 
     return promise;
   }
 
-  public save(query?:QueryResource) {
-    query = query || this.currentQuery;
+  public async save(givenQuery?:QueryResource):Promise<unknown> {
+    const query = givenQuery || this.currentQuery;
 
-    const form = this.querySpace.queryForm.value!;
+    const form = await this.querySpace.queryForm.valuesPromise();
 
     const promise = this
       .apiV3Service
@@ -297,9 +319,14 @@ export class WorkPackagesListService {
     void promise
       .then(() => {
         this.toastService.addSuccess(this.I18n.t('js.notice_successful_update'));
-
-        this.$state.go('.', { query_id: query!.id, query_props: null }, { reload: true });
-        this.states.changes.queries.next(query!.id!);
+        const queryAccessibleByUser = query.public || query.user.id === this.currentUser.userId;
+        if (queryAccessibleByUser) {
+          this.navigateToQueryOnNonRouterPage(query.id);
+          this.states.changes.queries.next(query.id);
+          this.reloadSidemenu(query.id);
+        } else {
+          this.navigateToDefaultQuery(query);
+        }
       })
       .catch((error:ErrorResource) => {
         this.toastService.addError(error.message);
@@ -308,7 +335,97 @@ export class WorkPackagesListService {
     return promise;
   }
 
-  public toggleStarred(query:QueryResource):Promise<any> {
+  public async prepareSave(
+    query:QueryResource,
+    isCurrent:(expectedQuery?:QueryResource) => boolean,
+  ):Promise<PreparedQuerySave> {
+    const api = this.apiV3Service;
+    const wasPersisted = isPersistedResource(query);
+    const endpoint = wasPersisted ? api.queries.id(query) : undefined;
+    const viewType = wasPersisted ? undefined : this.wpQueryView.viewType;
+    const toast = this.toastService;
+    const states = this.states;
+    const initialization = this.wpStatesInitialization;
+    const creationName = this.I18n.t('js.work_packages.default_queries.manually_sorted');
+    const createdMessage = this.I18n.t('js.notice_successful_create');
+    const updatedMessage = this.I18n.t('js.notice_successful_update');
+    const accessible = wasPersisted && (query.public || query.user.id === this.currentUser.userId);
+    const capturedUrl = window.location.href;
+    const pagination = { offset: 1, pageSize: this.wpTablePagination.current.perPage };
+    const projectIdentifier = query.project?.href?.split('/').pop();
+    const currentForm = this.querySpace.queryForm.value;
+    const form = this.querySpace.query.value === query && currentForm && (query.$links.update as CallableHalLink|undefined)?.href === currentForm.href
+      ? currentForm
+      : (await firstValueFrom(api.queries.form.load(query)))[0];
+    const reportFollowUpError = (error:unknown) => toast.addError(error instanceof Error ? error.message : String(error));
+
+    const followCreated = async (saved:QueryResource):Promise<void> => {
+      if (!isCurrent()) return;
+      const loaded = await firstValueFrom(this.loadQueryFromExisting(saved, pagination, projectIdentifier));
+      if (!isCurrent()) return;
+      const [loadedForm] = await firstValueFrom(api.queries.form.load(loaded));
+      if (!isCurrent()) return;
+      this.navigateToQueryOnNonRouterPage(loaded.id);
+      this.reloadSidemenu(loaded.id);
+      initialization.initialize(loaded, loaded.results);
+      if (isCurrent(loaded)) initialization.updateStatesFromForm(loaded, loadedForm);
+    };
+    const followDefault = async ():Promise<void> => {
+      if (!isCurrent()) return;
+      const href = this.defaultViewUrl(capturedUrl);
+      if (href) {
+        window.location.href = href;
+        return;
+      }
+      const fallback = await firstValueFrom(api.queries.find({ pageSize: pagination.pageSize }, undefined, projectIdentifier));
+      if (!isCurrent()) return;
+      const [fallbackForm] = await firstValueFrom(api.queries.form.load(fallback));
+      if (!isCurrent()) return;
+      this.reloadSidemenu(null);
+      initialization.initialize(fallback, fallback.results);
+      if (isCurrent(fallback)) initialization.updateStatesFromForm(fallback, fallbackForm);
+    };
+    const followSaved = (saved:QueryResource):void => {
+      if (!isCurrent()) return;
+      if (accessible) {
+        this.navigateToQueryOnNonRouterPage(saved.id);
+        this.reloadSidemenu(saved.id);
+      } else {
+        void followDefault().catch(reportFollowUpError);
+      }
+    };
+
+    return {
+      persist: async () => {
+        if (endpoint) {
+          const saved = await firstValueFrom(endpoint.patch(query, form));
+          toast.addSuccess(updatedMessage);
+          states.changes.queries.next(saved.id!);
+          try {
+            followSaved(saved);
+          } catch (error:unknown) {
+            reportFollowUpError(error);
+          }
+          return saved;
+        }
+        query.name = creationName;
+        const created = await firstValueFrom(this.createQueryAndView(query, form, viewType));
+        toast.addSuccess(createdMessage);
+        states.changes.queries.next(created.id!);
+        void followCreated(created).catch(reportFollowUpError);
+        return created;
+      },
+    };
+  }
+
+  public async createOrSave(query:QueryResource):Promise<unknown> {
+    if (!isPersistedResource(query)) {
+      return this.create(query, this.I18n.t('js.work_packages.default_queries.manually_sorted'));
+    }
+    return this.save(query);
+  }
+
+  public toggleStarred(query:QueryResource):Promise<unknown> {
     const promise = this
       .apiV3Service
       .queries
@@ -320,6 +437,7 @@ export class WorkPackagesListService {
       this.toastService.addSuccess(this.I18n.t('js.notice_successful_update'));
 
       this.states.changes.queries.next(query.id!);
+      this.reloadSidemenu(query.id);
     });
 
     return promise;
@@ -329,28 +447,49 @@ export class WorkPackagesListService {
     return this.wpTablePagination.paginationObject;
   }
 
-  private conditionallyLoadForm(query:QueryResource):void {
+  public conditionallyLoadForm(query = this.currentQuery):Promise<QueryFormResource> {
     const currentForm = this.querySpace.queryForm.value;
 
-    if (!currentForm || query.$links.update.href !== currentForm.href) {
-      setTimeout(() => this.loadForm(query), 0);
+    if (!query) {
+      return firstValueFrom(this.queryLoading)
+        .then((loaded) => this.conditionallyLoadForm(loaded));
     }
+
+    const updateHref = (query.$links.update as CallableHalLink|undefined)?.href;
+
+    if (!currentForm || updateHref !== currentForm.href) {
+      if (!this.formLoading || this.formLoading.href !== updateHref) {
+        const promise = this.loadForm(query).finally(() => { this.formLoading = undefined; });
+        this.formLoading = { href: updateHref, promise };
+        return promise;
+      }
+
+      return this.formLoading.promise;
+    }
+
+    return Promise.resolve(currentForm);
   }
 
   public get currentQuery() {
     return this.querySpace.query.value!;
   }
 
-  private handleQueryLoadingError(error:ErrorResource, queryProps:any, queryId?:string, projectIdentifier?:string|null):Promise<QueryResource> {
+  private handleQueryLoadingError(
+    error:ErrorResource,
+    queryProps:Record<string, unknown>,
+    queryId?:string|null,
+    projectIdentifier?:string|null,
+  ):Promise<QueryResource> {
     this.toastService.addError(this.I18n.t('js.work_packages.faulty_query.description'), error.message);
 
     return new Promise((resolve, reject) => {
-      this
-        .apiV3Service
-        .queries
-        .form
-        .loadWithParams(queryProps, queryId, projectIdentifier)
-        .toPromise()
+      firstValueFrom(
+        this
+          .apiV3Service
+          .queries
+          .form
+          .loadWithParams(queryProps, queryId, projectIdentifier),
+      )
         .then(([form, _]) => {
           this
             .apiV3Service
@@ -360,7 +499,7 @@ export class WorkPackagesListService {
             .then((query:QueryResource) => {
               this.wpListInvalidQueryService.restoreQuery(query, form);
 
-              query.results.pageSize = queryProps.pageSize;
+              query.results.pageSize = queryProps.pageSize as number;
               query.results.total = 0;
 
               if (queryId) {
@@ -378,10 +517,81 @@ export class WorkPackagesListService {
     });
   }
 
-  private async ensurePerPageKnown() {
-    if (this.pagination.isPerPageKnown) {
-      return true;
+  private createQueryAndView(query:QueryResource, form:QueryFormResource|undefined, viewType = this.wpQueryView.viewType) {
+    return this
+      .apiV3Service
+      .queries
+      .post(query, form)
+      .pipe(
+        switchMap((createdQuery) => this
+          .wpQueryView
+          .create(createdQuery, viewType)
+          .pipe(
+            mapTo(createdQuery),
+          )),
+      );
+  }
+
+  private navigateToDefaultQuery(query:QueryResource):void {
+    const href = this.defaultViewUrl(window.location.href);
+    if (href) {
+      window.location.href = href;
+      return;
     }
-    return this.configuration.initialized;
+
+    let projectId;
+    if (query.project.href) {
+      projectId = query.project.href.split('/').pop();
+    }
+
+    void this.loadDefaultQuery(projectId);
+
+    this.states.changes.queries.next(query.id);
+    this.reloadSidemenu(null);
+  }
+
+  private defaultViewUrl(href:string):string|undefined {
+    const url = new URL(href);
+    if (!url.pathname.includes('/calendars/') && !url.pathname.includes('/team_planners/')) return undefined;
+    url.pathname = url.pathname.replace(/\/[^/]+$/, '/new');
+    url.search = '';
+    return url.href;
+  }
+
+  private navigateToQueryOnNonRouterPage(queryId:string|null):void {
+    const url = new URL(window.location.href);
+    const { pathname } = url;
+
+    if (pathname.includes('/work_packages') || pathname.includes('/gantt') || pathname.includes('/bcf')) {
+      // List-based pages: the query id lives in the query_id search param, the path itself
+      // doesn't address a specific view (unlike calendars/:id, team_planners/:id below).
+      if (queryId) {
+        url.searchParams.set('query_id', queryId);
+      } else {
+        url.searchParams.delete('query_id');
+      }
+      url.searchParams.delete('query_props');
+    } else {
+      // update the URL path to reflect the saved query ID so subsequent refetches use the correct query_id.
+      url.pathname = pathname.replace(/\/[^/]+$/, `/${queryId}`);
+      url.searchParams.delete('query_id');
+      url.searchParams.delete('query_props');
+    }
+
+    Turbo.session.history.push(url);
+  }
+
+  private reloadSidemenu(selectedQueryId:string|null):void {
+    this.submenuService.reloadSubmenu(selectedQueryId, this.getNonRouterSidemenuId());
+  }
+
+  private getNonRouterSidemenuId():string|undefined {
+    const { pathname } = window.location;
+    if (pathname.includes('/calendars')) return 'calendar_sidemenu';
+    if (pathname.includes('/team_planners')) return 'team_planner_sidemenu';
+    if (pathname.includes('/ifc_models') || pathname.includes('/bcf')) return 'bim_sidemenu';
+    if (pathname.includes('/gantt')) return 'gantt_menu';
+    if (pathname.includes('/work_packages')) return 'work_packages_sidemenu';
+    return undefined;
   }
 }

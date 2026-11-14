@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +20,41 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, Input, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { WorkPackageRelationsHierarchyService } from 'core-app/features/work-packages/components/wp-relations/wp-relations-hierarchy/wp-relations-hierarchy.service';
-import { take } from 'rxjs/operators';
+import { withLatestFrom } from 'rxjs/operators';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import {
+  WorkPackageIsolatedQuerySpaceDirective,
+} from 'core-app/features/work-packages/directives/query-space/wp-isolated-query-space.directive';
+import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-relations-hierarchy',
   templateUrl: './wp-relations-hierarchy.template.html',
+  hostDirectives: [WorkPackageIsolatedQuerySpaceDirective],
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class WorkPackageRelationsHierarchyComponent extends UntilDestroyedMixin implements OnInit {
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly PathHelper = inject(PathHelperService);
+  readonly I18n = inject(I18nService);
+  readonly schemaCache = inject(SchemaCacheService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   @Input() public workPackage:WorkPackageResource;
 
   @Input() public relationType:string;
@@ -48,20 +63,13 @@ export class WorkPackageRelationsHierarchyComponent extends UntilDestroyedMixin 
 
   public workPackagePath:string;
 
-  public canHaveChildren:boolean;
+  public canHaveChildren = false;
 
   public canModifyHierarchy:boolean;
 
   public canAddRelation:boolean;
 
-  public childrenQueryProps:any;
-
-  constructor(protected wpRelationsHierarchyService:WorkPackageRelationsHierarchyService,
-    protected apiV3Service:APIV3Service,
-    protected PathHelper:PathHelperService,
-    readonly I18n:I18nService) {
-    super();
-  }
+  public childrenQueryProps:{ filters:string, 'columns[]':string[], showHierarchies:boolean };
 
   public text = {
     parentHeadline: this.I18n.t('js.relations_hierarchy.parent_headline'),
@@ -69,7 +77,7 @@ export class WorkPackageRelationsHierarchyComponent extends UntilDestroyedMixin 
   };
 
   ngOnInit() {
-    this.workPackagePath = this.PathHelper.workPackagePath(this.workPackage.id!);
+    this.workPackagePath = this.PathHelper.workPackagePath(this.workPackage.displayId);
     this.canModifyHierarchy = !!this.workPackage.changeParent;
     this.canAddRelation = !!this.workPackage.addRelation;
 
@@ -85,26 +93,15 @@ export class WorkPackageRelationsHierarchyComponent extends UntilDestroyedMixin 
       .id(this.workPackage)
       .requireAndStream()
       .pipe(
+        withLatestFrom(this.schemaCache.requireAndStream(this.schemaCache.getSchemaHref(this.workPackage)!)),
         this.untilDestroyed(),
       )
-      .subscribe((wp:WorkPackageResource) => {
+      .subscribe(([wp, _]) => {
+        const milestone = this.schemaCache.of(wp).isMilestone as boolean;
         this.workPackage = wp;
+        this.canHaveChildren = !milestone;
 
-        const parentId = this.workPackage.parent?.id?.toString();
-
-        if (parentId) {
-          this
-            .apiV3Service
-            .work_packages
-            .id(parentId)
-            .get()
-            .pipe(
-              take(1),
-            )
-            .subscribe((parent:WorkPackageResource) => {
-              this.workPackage.parent = parent;
-            });
-        }
+        this.cdRef.detectChanges();
       });
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Notifications::CreateService, 'integration', type: :model do
-  let(:work_package) { FactoryBot.create(:work_package) }
-  let(:project) { work_package.project }
+RSpec.describe Notifications::CreateService, "integration", type: :model do
+  let(:work_package) { create(:work_package) }
   let(:journal) { work_package.journals.first }
   let(:instance) { described_class.new(user: actor) }
   let(:attributes) { {} }
   let(:actor) { current_user }
-  let(:recipient) { FactoryBot.create(:user) }
+  let(:recipient) { create(:user) }
   let(:service_result) do
     instance
       .call(**attributes)
   end
 
-  current_user { FactoryBot.create(:user) }
+  current_user { create(:user) }
 
-  describe '#call' do
+  describe "#call" do
     let(:attributes) do
       {
-        recipient: recipient,
-        project: project,
+        recipient:,
         resource: work_package,
-        journal: journal,
-        actor: actor,
+        journal:,
+        actor:,
         read_ian: false,
         reason: :mentioned,
         mail_reminder_sent: nil,
@@ -58,7 +57,7 @@ describe Notifications::CreateService, 'integration', type: :model do
       }
     end
 
-    it 'creates a notification' do
+    it "creates a notification" do
       # successful
       expect { service_result }
         .to change(Notification, :count)
@@ -68,12 +67,12 @@ describe Notifications::CreateService, 'integration', type: :model do
         .to be_success
     end
 
-    context 'with the journal being deleted in the meantime (e.g. via a different process)' do
+    context "with the journal being deleted in the meantime (e.g. via a different process)" do
       before do
         Journal.where(id: journal.id).delete_all
       end
 
-      it 'creates no notification' do
+      it "creates no notification" do
         # successful
         expect { service_result }
           .not_to change(Notification, :count)
@@ -82,7 +81,7 @@ describe Notifications::CreateService, 'integration', type: :model do
           .to be_failure
 
         expect(service_result.errors.details[:journal_id])
-          .to match_array [{ error: :does_not_exist }]
+          .to contain_exactly({ error: :does_not_exist })
       end
     end
   end

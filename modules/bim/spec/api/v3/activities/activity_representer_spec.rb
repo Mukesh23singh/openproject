@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative '../../../support/bcf_topic_with_stubbed_comment'
+require "spec_helper"
+require_relative "../../../support/bcf_topic_with_stubbed_comment"
 
-describe ::API::V3::Activities::ActivityRepresenter do
+RSpec.describe API::V3::Activities::ActivityRepresenter do
   include API::Bim::Utilities::PathHelper
 
-  include_context 'user with stubbed permissions'
-  include_context 'bcf_topic with stubbed comment'
-  let(:other_user) { FactoryBot.build_stubbed(:user) }
+  include_context "bcf_topic with stubbed comment"
+  let(:other_user) { build_stubbed(:user) }
   let(:project) do
     work_package.project
   end
@@ -46,7 +44,7 @@ describe ::API::V3::Activities::ActivityRepresenter do
     end
   end
   let(:journal) do
-    FactoryBot.build_stubbed(:work_package_journal).tap do |journal|
+    build_stubbed(:work_package_journal).tap do |journal|
       allow(journal)
         .to receive(:get_changes)
         .and_return(changes)
@@ -56,31 +54,38 @@ describe ::API::V3::Activities::ActivityRepresenter do
     end
   end
   let(:changes) { { subject: ["first subject", "second subject"] } }
-  let(:permissions) { %i(edit_work_package_notes view_linked_issues) }
+  let(:permissions) { %i(edit_work_package_comments view_linked_issues) }
   let(:representer) { described_class.new(journal, current_user: user) }
 
+  let(:user) { build_stubbed(:user) }
+
   before do
-    login_as(user)
+    mock_permissions_for(user) do |mock|
+      mock.allow_in_project *permissions, project:
+    end
+
+    login_as user
   end
 
   subject(:generated) { representer.to_json }
 
-  describe 'type' do
-    context 'if a bcf_comment is present' do
-      let(:notes) { '' }
-      it 'is Activity::BcfComment' do
-        is_expected
-          .to be_json_eql('Activity::BcfComment'.to_json)
-          .at_path('_type')
+  describe "type" do
+    context "if a bcf_comment is present" do
+      let(:notes) { "" }
+
+      it "is Activity::BcfComment" do
+        expect(subject)
+          .to be_json_eql("Activity::BcfComment".to_json)
+          .at_path("_type")
       end
     end
   end
 
-  describe '_links' do
-    describe 'bcfViewpoints' do
-      context 'if a viewpoint is present' do
-        it_behaves_like 'has a link collection' do
-          let(:link) { 'bcfViewpoints' }
+  describe "_links" do
+    describe "bcfViewpoints" do
+      context "if a viewpoint is present" do
+        it_behaves_like "has a link collection" do
+          let(:link) { "bcfViewpoints" }
           let(:hrefs) do
             [
               {
@@ -90,34 +95,34 @@ describe ::API::V3::Activities::ActivityRepresenter do
           end
         end
 
-        context 'if no comment is present' do
+        context "if no comment is present" do
           let(:bcf_comment) { nil }
 
-          it_behaves_like 'has no link' do
-            let(:link) { 'bcfViewpoints' }
+          it_behaves_like "has no link" do
+            let(:link) { "bcfViewpoints" }
           end
         end
 
-        context 'if no viewpoint is linked' do
+        context "if no viewpoint is linked" do
           before do
             allow(bcf_comment)
               .to receive(:viewpoint)
               .and_return nil
           end
 
-          it_behaves_like 'has a link collection' do
-            let(:link) { 'bcfViewpoints' }
+          it_behaves_like "has a link collection" do
+            let(:link) { "bcfViewpoints" }
             let(:hrefs) do
               []
             end
           end
         end
 
-        context 'if permission is lacking' do
+        context "if permission is lacking" do
           let(:permissions) { %i[] }
 
-          it_behaves_like 'has no link' do
-            let(:link) { 'bcfViewpoints' }
+          it_behaves_like "has no link" do
+            let(:link) { "bcfViewpoints" }
           end
         end
       end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,16 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { Injector } from '@angular/core';
+import { runCleanup } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
 import { States } from 'core-app/core/states/states.service';
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { lazyInject } from 'core-app/shared/helpers/angular/lazy-inject';
 import { WorkPackageTimelineTableController } from '../container/wp-timeline-container.directive';
 import { RenderInfo } from '../wp-timeline';
 import { TimelineCellRenderer } from './timeline-cell-renderer';
@@ -38,11 +38,11 @@ import { WorkPackageTimelineCell } from './wp-timeline-cell';
 
 export class WorkPackageTimelineCellsRenderer {
   // Injections
-  @InjectField() public states:States;
+  public readonly states = lazyInject(States, { injector: () => this.injector });
 
-  @InjectField() public halEditing:HalResourceEditingService;
+  public readonly halEditing = lazyInject(HalResourceEditingService, { injector: () => this.injector });
 
-  public cells:{ [classIdentifier:string]:WorkPackageTimelineCell } = {};
+  public cells:Record<string, WorkPackageTimelineCell> = {};
 
   private cellRenderers:{ milestone:TimelineMilestoneCellRenderer, generic:TimelineCellRenderer };
 
@@ -54,12 +54,18 @@ export class WorkPackageTimelineCellsRenderer {
     };
   }
 
+  public destroy():void {
+    const cells = Object.values(this.cells);
+    this.cells = {};
+    cells.forEach((cell) => runCleanup(() => cell.clear()));
+  }
+
   public hasCell(wpId:string) {
     return this.getCellsFor(wpId).length > 0;
   }
 
   public getCellsFor(wpId:string):WorkPackageTimelineCell[] {
-    return _.filter(this.cells, (cell) => cell.workPackageId === wpId) || [];
+    return Object.values(this.cells).filter((cell) => cell.workPackageId === wpId);
   }
 
   /**
@@ -70,11 +76,11 @@ export class WorkPackageTimelineCellsRenderer {
     this.synchronizeCells();
 
     // Update all cells
-    _.each(this.cells, (cell) => this.refreshSingleCell(cell));
+    Object.values(this.cells).forEach((cell) => this.refreshSingleCell(cell));
   }
 
   public refreshCellsFor(wpId:string) {
-    _.each(this.getCellsFor(wpId), (cell) => this.refreshSingleCell(cell));
+    this.getCellsFor(wpId).forEach((cell) => this.refreshSingleCell(cell));
   }
 
   public refreshSingleCell(cell:WorkPackageTimelineCell, isDuplicatedCell?:boolean, withAlternativeLabels?:boolean) {
@@ -95,7 +101,7 @@ export class WorkPackageTimelineCellsRenderer {
     const currentlyActive:string[] = Object.keys(this.cells);
     const newCells:string[] = [];
 
-    _.each(this.wpTimeline.workPackageIdOrder, (renderedRow:RenderedWorkPackage) => {
+    this.wpTimeline.workPackageIdOrder.forEach((renderedRow:RenderedWorkPackage) => {
       const wpId = renderedRow.workPackageId;
 
       // Ignore extra rows not tied to a work package
@@ -103,7 +109,7 @@ export class WorkPackageTimelineCellsRenderer {
         return;
       }
 
-      const state = this.states.workPackages.get(wpId);
+      const state = this.states().workPackages.get(wpId);
       if (state.isPristine()) {
         return;
       }
@@ -120,7 +126,7 @@ export class WorkPackageTimelineCellsRenderer {
       newCells.push(identifier);
     });
 
-    _.difference(currentlyActive, newCells).forEach((identifier:string) => {
+    currentlyActive.filter((identifier) => !newCells.includes(identifier)).forEach((identifier:string) => {
       this.cells[identifier].clear();
       delete this.cells[identifier];
     });
@@ -138,11 +144,11 @@ export class WorkPackageTimelineCellsRenderer {
   }
 
   private renderInfoFor(wpId:string, isDuplicatedCell?:boolean, withAlternativeLabels?:boolean):RenderInfo {
-    const wp = this.states.workPackages.get(wpId).value!;
+    const wp = this.states().workPackages.get(wpId).value!;
     return {
       viewParams: this.wpTimeline.viewParameters,
       workPackage: wp,
-      change: this.halEditing.changeFor(wp),
+      change: this.halEditing().changeFor(wp),
       isDuplicatedCell,
       withAlternativeLabels,
     };

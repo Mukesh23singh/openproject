@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,28 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Authorization::UserGlobalRolesQuery < Authorization::UserRolesQuery
-  transformations.register roles_member_roles_join,
-                           :builtin_role do |statement, user|
-    builtin_role = if user.logged?
-                     Role::BUILTIN_NON_MEMBER
-                   else
-                     Role::BUILTIN_ANONYMOUS
-                   end
-
-    builtin_role_condition = roles_table[:builtin].eq(builtin_role)
-
-    statement.or(builtin_role_condition)
+  transformations.register roles_member_roles_join, :standard_global_role do |statement, _|
+    statement.or(roles_table[:builtin].eq(Role::BUILTIN_STANDARD_GLOBAL))
   end
 
   transformations.register :all, :global_group_where_projection do |statement, user|
     statement.group(roles_table[:id])
              .where(users_table[:id].eq(user.id))
+  end
+
+  transformations.register users_members_join, :global_membership_restriction do |statement, _|
+    statement
+      .and(members_table[:project_id].eq(nil))
+      .and(members_table[:entity_type].eq(nil))
+      .and(members_table[:entity_id].eq(nil))
   end
 end

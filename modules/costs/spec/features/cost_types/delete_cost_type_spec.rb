@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'deleting a cost type', type: :feature, js: true do
-  let!(:user) { FactoryBot.create :admin }
+RSpec.describe "deleting a cost type", :js do
+  let!(:user) { create(:admin) }
   let!(:cost_type) do
-    type = FactoryBot.create :cost_type, name: 'Translations'
-    FactoryBot.create :cost_rate, cost_type: type, rate: 1.00
+    type = create(:cost_type, name: "Translations")
+    create(:cost_rate, cost_type: type, rate: 1.00)
     type
   end
 
@@ -40,26 +39,24 @@ describe 'deleting a cost type', type: :feature, js: true do
     login_as user
   end
 
-  it 'can delete the cost type' do
-    visit cost_types_path
+  it "can delete the cost type" do
+    visit admin_cost_types_path
 
-    within("#delete_cost_type_#{cost_type.id}") do
-      scroll_to_and_click(find('button.submit_cost_type'))
+    accept_confirm do
+      scroll_to_and_click(find("[data-test-selector='op-admin-cost-type-#{cost_type.id}-lock']"))
     end
 
-    # Expect no results if not locked
+    # Active list becomes empty
     expect_angular_frontend_initialized
-    expect(page).to have_selector '.generic-table--no-results-container', wait: 10
+    expect(page).to have_css ".generic-table--empty-row", wait: 10
 
-    SeleniumHubWaiter.wait
-    # Show locked
-    find('#include_deleted').set true
-    click_on 'Apply'
+    # Switch to the locked tab via the segmented control
+    click_on I18n.t("members.menu.locked")
 
-    # Expect no results if not locked
-    expect(page).to have_text I18n.t(:label_locked_cost_types)
+    wait_for_network_idle
 
-    expect(page).to have_selector('.restore_cost_type')
-    expect(page).to have_selector('.cost-types--list-deleted td', text: 'Translations')
+    # The locked cost type appears with a restore action
+    expect(page).to have_css("[data-test-selector='op-admin-cost-type-#{cost_type.id}-restore']")
+    expect(page).to have_css("td", text: "Translations")
   end
 end

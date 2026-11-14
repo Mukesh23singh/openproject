@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,80 +37,70 @@ module Queries::Filters::Shared::CustomFieldFilter
 
   module ClassMethods
     def key
-      /cf_(\d+)/
-    end
-
-    ##
-    # TODO this differs from CustomField#accessor_name for reasons I don't see,
-    # however this name will be persisted in queries so we can't just map one to the other.
-    def custom_field_accessor(custom_field)
-      "cf_#{custom_field.id}"
+      CustomField::COLUMN_NAME_PATTERN
     end
 
     def all_for(context = nil)
-      custom_field_context.custom_fields(context).map do |cf|
-        cf_accessor = custom_field_accessor(cf)
-        begin
-          create!(name: cf_accessor, custom_field: cf, context: context)
-        rescue ::Queries::Filters::InvalidError
-          Rails.logger.error "Failed to map custom field filter for #{cf_accessor} (CF##{cf.id}."
-          nil
-        end
-      end.compact
+      custom_field_context.custom_fields(context).filter_map do |cf|
+        create!(name: cf.column_name, custom_field: cf, context:)
+      rescue ::Queries::Filters::InvalidError
+        Rails.logger.error "Failed to map custom field filter for #{cf.column_name} (CF##{cf.id})."
+        nil
+      end
     end
 
     ##
     # Find the given custom field by its accessor, should it exist.
     def find_by_accessor(name)
-      match = name.match /cf_(\d+)/
+      custom_field_id = CustomField.id_from_column_name(name)
 
-      if match.present? && match[1].to_i > 0
-        all_custom_fields.detect { |cf| cf.id == match[1].to_i }
+      if custom_field_id
+        all_custom_fields.detect { |cf| cf.id == custom_field_id }
       end
     end
 
     ##
     # Create a filter instance for the given custom field accessor
-    def create!(name:, **options)
+    def create!(name:, **)
       custom_field = find_by_accessor(name)
       raise ::Queries::Filters::InvalidError if custom_field.nil?
 
-      from_custom_field!(custom_field: custom_field, **options)
+      from_custom_field!(custom_field:, **)
     end
 
     ##
     # Create a filter instance for the given custom field
-    def from_custom_field!(custom_field:, **options)
-      constant_name = subfilter_module(custom_field)
-      clazz = "::Queries::Filters::Shared::CustomFields::#{constant_name}".constantize
-      clazz.create!(custom_field: custom_field, custom_field_context: custom_field_context, **options)
+    def from_custom_field!(custom_field:, **)
+      subfilter_class(custom_field).create!(custom_field:, custom_field_context:, **)
     rescue NameError => e
       Rails.logger.error "Failed to constantize custom field filter for #{name}. #{e}"
       raise ::Queries::Filters::InvalidError
     end
 
-    ##
-    # Get the subfilter class name for the given custom field
-    def subfilter_module(custom_field)
-      case custom_field.field_format
-      when 'user'
-        :User
-      when 'list', 'version'
-        :ListOptional
-      when 'bool'
-        :Bool
-      else
-        :Base
+    def all_custom_fields
+      key = ["Queries::Filters::Shared::CustomFieldFilter",
+             custom_field_context.custom_field_class,
+             "all_custom_fields"]
+
+      RequestStore.fetch(key.join("/")) do
+        custom_field_context.custom_field_class.all.to_a
       end
     end
 
-    def all_custom_fields
-      key = ['Queries::Filters::Shared::CustomFieldFilter',
-             custom_field_context.custom_field_class,
-             'all_custom_fields']
+    private
 
-      RequestStore.fetch(key.join('/')) do
-        custom_field_context.custom_field_class.all.to_a
+    def subfilter_class(custom_field)
+      case custom_field.field_format
+      when "user"
+        ::Queries::Filters::Shared::CustomFields::User
+      when "list", "version"
+        ::Queries::Filters::Shared::CustomFields::ListOptional
+      when "hierarchy", "weighted_item_list"
+        ::Queries::Filters::Shared::CustomFields::Hierarchy
+      when "bool"
+        ::Queries::Filters::Shared::CustomFields::Bool
+      else
+        ::Queries::Filters::Shared::CustomFields::Base
       end
     end
   end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +20,49 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe CostlogController, type: :routing do
-  describe 'routing' do
+RSpec.describe CostlogController do
+  describe "routing" do
     it {
-      expect(get('/projects/blubs/cost_entries/new')).to route_to(controller: 'costlog',
-                                                                  action: 'new',
-                                                                  project_id: 'blubs')
+      expect(get("/projects/blubs/cost_entries/new")).to route_to(controller: "costlog",
+                                                                  action: "new",
+                                                                  project_id: "blubs")
     }
 
     it {
-      expect(post('/projects/blubs/cost_entries')).to route_to(controller: 'costlog',
-                                                               action: 'create',
-                                                               project_id: 'blubs')
+      expect(post("/projects/blubs/cost_entries")).to route_to(controller: "costlog",
+                                                               action: "create",
+                                                               project_id: "blubs")
     }
 
     it {
-      expect(get('/work_packages/5/cost_entries/new')).to route_to(controller: 'costlog',
-                                                                   action: 'new',
-                                                                   work_package_id: '5')
+      expect(get("/work_packages/5/cost_entries/new")).to route_to(controller: "costlog",
+                                                                   action: "new",
+                                                                   work_package_id: "5")
     }
 
     it {
-      expect(get('/cost_entries/5/edit')).to route_to(controller: 'costlog',
-                                                      action: 'edit',
-                                                      id: '5')
+      expect(get("/cost_entries/5/edit")).to route_to(controller: "costlog",
+                                                      action: "edit",
+                                                      id: "5")
     }
 
     it {
-      expect(put('/cost_entries/5')).to route_to(controller: 'costlog',
-                                                 action: 'update',
-                                                 id: '5')
+      expect(put("/cost_entries/5")).to route_to(controller: "costlog",
+                                                 action: "update",
+                                                 id: "5")
     }
 
     it {
-      expect(delete('/cost_entries/5')).to route_to(controller: 'costlog',
-                                                    action: 'destroy',
-                                                    id: '5')
+      expect(delete("/cost_entries/5")).to route_to(controller: "costlog",
+                                                    action: "destroy",
+                                                    id: "5")
     }
   end
 end

@@ -4,13 +4,9 @@ The OpenProject core integrates OmniAuth. This means that OmniAuth providers can
 
 This page describes how to create an OpenProject plugin to authenticate users via an Omniauth strategy.
 
-## Warning
+## Reference implementations
 
-This howto is in a preliminary state and explains a low-level way to create an OmniAuth authentication plugin for OpenProject. We will provide a more high-level API and update this howto soon.
-
-## OpenID Connect
-
-There is a bare minimum [plugin](https://github.com/machisuji/openproject-mock_auth) implementing a mock strategy for OpenProject using the provided OmniAuth infrastructure. You can refer to this plugin and compare to see how things can be done.
+The OpenID Connect (`modules/openid_connect`) and SAML (`modules/auth_saml`) modules shipped with OpenProject use the OmniAuth infrastructure described here. You can refer to them and compare to see how things can be done.
 
 ## Terminology
 
@@ -37,10 +33,10 @@ In the following section we will go through the basic steps required to create a
 
 ### Generate a plugin
 
-First off you can use the [plugin generator](https://github.com/opf/openproject-plugins) to create a basic plugin to base yours on.
+First off you can use the plugin generator to create a basic plugin to base yours on.
 How to do that is described [here](../create-openproject-plugin/). In short it’s the following command:
 
-```bash
+```shell
 # in OpenProject directory
 rails generate open_project:plugin my_auth_plugin path/to/where/you/want/to/have/it
 ```
@@ -57,23 +53,23 @@ E.g. for twitter ‘omniauth twitter’ will lead you to [this](https://github.c
 
 If you want to use settings for your plugin in order to configure your authentication provider you will have to register them in `lib/open_project/my_auth_plugin/engine.rb` by adding them to the already generated plugin registration call like this:
 
-```
+```ruby
 register 'openproject-my_auth_plugin',
   :author_url => 'Hans Wurst',
   :requires_openproject => '>= 3.1.0',
-  :settings => { 'default' => { 'auth_server_address' => {'192.168.178.42'} } }
+  :settings => { 'default' => { 'auth_server_address' => '192.168.178.42' } }
 ```
 
 You can access your plugin’s settings like this:
 
-```
+```ruby
 server_addr = Setting.plugin_openproject_my_auth_plugin["auth_server_address"]
 ```
 
 ### Register the provider(s)
 
-For this you can use the [openproject-auth_plugins](https://github.com/opf/openproject-auth_plugins) plugin, which provides you with an easy way to integrate a new authentication plugin into OpenProject.
-As described in the plugin’s readme file you just add the following bit to the class body of Engine:
+For this you can use the `openproject-auth_plugins` module (`modules/auth_plugins`), which ships with OpenProject and provides you with an easy way to integrate a new authentication plugin into OpenProject.
+You just add the following bit to the class body of Engine:
 
 ```ruby
 register_auth_providers do
@@ -83,6 +79,7 @@ register_auth_providers do
         name: 'my_provider',
         display_name: 'Optional Label', # (optional) provider's name as shown in OpenProject
         icon: 'my_auth_plugin/optional_provider_icon.png', # (optional) provider icon
+        form_action_urls: ['https://idp.example.com/authorize'], # (required) URLs the browser is redirected to during the login
         # example options depending on your strategy:
         host: Setting.plugin_openproject_my_auth_plugin["auth_server_address"]
       }
@@ -90,6 +87,13 @@ register_auth_providers do
   end
 end
 ```
+
+OpenProject starts the login with a form that sends a POST request to `/auth/my_provider`.
+Your strategy then redirects the browser to the identity provider.
+Browsers apply the Content Security Policy `form-action` directive to this redirect.
+Set `form_action_urls` to the URL that your strategy redirects to, so that OpenProject can allow its origin.
+If the identity provider redirects the browser to other servers, add those URLs to the list too.
+If `form_action_urls` contains no absolute HTTP(S) URL, the login fails with an error.
 
 OmniAuth will try to look up a strategy based on the passed symbol `:my_auth_plugin_strategy`, meaning that in this case it would expect a strategy class to be defined as follows:
 
@@ -103,20 +107,30 @@ module OmniAuth
 You can register any number of providers using different strategies (or the same) with different options.
 For instance you could configure two OpenID Connect providers using the same strategy (OpenIDConnect) but with different options according to the service to be used (e.g. Google vs Microsoft).
 
+OpenProject expects a database entry in the `auth_providers` table to be stored for each provider registered for SSO login (via subclasses of the
+`AuthProvider` model), so that they can be referenced, for example by users logging in through those providers.
+By default the call to `register_auth_providers` will make sure that a record exists for each registered provider.
+However, if your plugin manages configuration of each provider in such a subclass itself, you can pass `persist: false`, to indicate that:
+
+```ruby
+register_auth_providers(persist: false) do
+  strategy :my_advanced_auth_plugin_strategy do
+    # ...
+  end
+end
+```
+
 ### Add your plugin to Gemfile.plugins
 
 All that’s that left to do is declaring your plugin in the file `Gemfile.plugins` in your OpenProject application’s root directory.
 If you haven’t published it as a gem yet you can also use a local copy:
 
-```
-  gem "openproject-auth_plugins", :git => 'https://github.com/opf/openproject-auth_plugins.git', :branch => 'dev'
+```ruby
   gem 'openproject-my_auth_plugin', :path => 'plugins/openproject-my_auth_plugin'
 ```
 
-Also don’t forget to include the `openproject-auth_plugins` as a dependency in your plugin’s gem specification (`openproject-my_auth_plugin.gemspec`).
-The first line in the snippet shown above is only necessary because the `openproject-auth_plugins` plugin itself has not been published as a gem yet.
+Also don’t forget to include `openproject-auth_plugins` as a dependency in your plugin’s gem specification (`openproject-my_auth_plugin.gemspec`).
 
 ### Profit
 
 That’s it. Now users can authenticate using your own provider.
-

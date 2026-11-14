@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,50 +20,50 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Projects::CopyService, 'integration', type: :model do
+RSpec.describe Projects::CopyService, "integration", type: :model do
   let(:current_user) do
-    FactoryBot.create(:user,
-                      member_in_project: source,
-                      member_through_role: role)
+    create(:user,
+           member_with_roles: { source => role })
   end
-  let!(:source) { FactoryBot.create :project, enabled_module_names: %w[boards work_package_tracking] }
-  let(:query) { board_view.contained_queries.first }
-  let(:role) { FactoryBot.create :role, permissions: %i[copy_projects] }
-  let(:instance) do
-    described_class.new(source: source, user: current_user)
-  end
-  let(:only_args) { %w[work_packages boards] }
-  let(:target_project_params) do
-    { name: 'Some name', identifier: 'some-identifier' }
-  end
-  let(:params) do
-    { target_project_params: target_project_params, only: only_args }
-  end
-  subject { instance.call(params) }
   let(:project_copy) { subject.result }
   let(:board_copies) { Boards::Grid.where(project: project_copy) }
   let(:board_copy) { board_copies.first }
+  let!(:source) { create(:project, enabled_module_names: %w[boards work_package_tracking]) }
+  let(:query) { board_view.contained_queries.first }
+  let(:role) { create(:project_role, permissions: %i[copy_projects]) }
+  let(:instance) do
+    described_class.new(source:, user: current_user)
+  end
+  let(:only_args) { %w[work_packages boards] }
+  let(:target_project_params) do
+    { name: "Some name", identifier: "some-identifier" }
+  end
+  let(:params) do
+    { target_project_params:, only: only_args }
+  end
 
-  describe 'for a subproject board' do
+  subject { instance.call(params) }
+
+  describe "for a subproject board" do
     let(:current_user) do
-      FactoryBot.create(:user,
-                        member_in_projects: [source, child_project],
-                        member_through_role: role)
+      create(:user, member_with_roles: { source => role, child_project => role })
     end
-    let!(:child_project) { FactoryBot.create :project, parent: source }
+    let(:expected_error) do
+      "Widget contained in Grid Board 'Subproject board': Only subproject filter has invalid values."
+    end
+    let!(:child_project) { create(:project, parent: source) }
     let!(:board_view) do
-      FactoryBot.create :board_grid_with_query,
-                        project: source,
-                        name: 'Subproject board',
-                        options: { "type" => "action", "attribute" => "subproject" }
+      create(:board_grid_with_query,
+             project: source,
+             name: "Subproject board",
+             options: { "type" => "action", "attribute" => "subproject" })
     end
 
     before do
@@ -73,49 +71,107 @@ describe Projects::CopyService, 'integration', type: :model do
 
       # Modify the actual saved query to contain the subproject filter
       query = board_view.contained_queries.first
-      query.add_filter('only_subproject_id', '=', child_project.id)
+      query.add_filter("only_subproject_id", "=", child_project.id)
       query.save!
     end
 
-    let(:expected_error) do
-      "Widget contained in Grid Board 'Subproject board': Only subproject filter has invalid values."
-    end
-
-    it 'will succeed to copy, but add an error for the missing subproject column (Regression #34550)' do
+    it "succeeds to copy, but add an error for the missing subproject column (Regression #34550)" do
       # Expect to have created to board, but with error
       expect(subject).to be_success
       expect(subject.errors.full_messages).to eq([expected_error])
       expect(board_copies.count).to eq 1
 
       # Expect board name to match
-      expect(board_copy.name).to eq 'Subproject board'
+      expect(board_copy.name).to eq "Subproject board"
 
       # Expect the widget to be lost during save
       expect(board_copy.widgets).to be_empty
     end
   end
 
-  describe 'for ordered work packages' do
-    let!(:board_view) { FactoryBot.create :board_grid_with_query, project: source, name: 'My Board' }
-    let!(:wp_1) { FactoryBot.create(:work_package, project: source, subject: 'Second') }
-    let!(:wp_2) { FactoryBot.create(:work_package, project: source, subject: 'First') }
+  describe "for a version board" do
+    let(:current_user) do
+      create(:user, member_with_roles: { source => role })
+    end
+    let!(:version) { create(:version, project: source) }
+    let!(:board_view) do
+      create(:version_board, project: source, version_columns: [version])
+    end
+    let(:only_args) { %w[work_packages boards versions] }
 
     before do
-      ::OrderedWorkPackage.create(query: query, work_package: wp_1, position: 1234)
-      ::OrderedWorkPackage.create(query: query, work_package: wp_2, position: -1000)
+      login_as current_user
     end
 
-    describe 'call' do
-      it 'will copy the boards with the order correct' do
+    it "succeeds to copy the version column" do
+      expect(subject).to be_success
+      expect(board_copies.count).to eq 1
+
+      expect(board_view.widgets.count).to eq(1)
+      expect(board_copy.widgets.count).to eq(1)
+
+      widget_source = board_view.widgets.first.options
+      widget_copy = board_copy.widgets.first.options
+
+      filter_source = widget_source["filters"].first["version_id"]
+      filter_copy = widget_copy["filters"].first["version_id"]
+
+      expect(widget_source["queryId"]).not_to eq(widget_copy["queryId"])
+      expect(filter_source["values"]).to eq [version.id.to_s]
+
+      copied_version = project_copy.versions.first
+      expect(filter_copy["values"]).to eq [copied_version.id.to_s]
+    end
+  end
+
+  describe "for a board filtered by version" do
+    let(:current_user) do
+      create(:user, member_with_roles: { source => role })
+    end
+    let!(:version) { create(:version, project: source) }
+    let!(:board_view) do
+      create(:board_grid, project: source)
+    end
+    let(:only_args) { %w[work_packages boards versions] }
+
+    before do
+      board_view.update! options: {
+        filters: [{ version: { operator: "=", values: [version.id.to_s] } }]
+      }
+      login_as current_user
+    end
+
+    it "maps the filters in the board options" do
+      expect(subject).to be_success
+      expect(board_copies.count).to eq 1
+
+      version_filter = board_copy.options[:filters].first[:version]
+      copied_version = project_copy.versions.first
+      expect(version_filter[:values]).to eq [copied_version.id.to_s]
+    end
+  end
+
+  describe "for ordered work packages" do
+    let!(:board_view) { create(:board_grid_with_query, project: source, name: "My Board") }
+    let!(:wp_1) { create(:work_package, project: source, subject: "Second") }
+    let!(:wp_2) { create(:work_package, project: source, subject: "First") }
+
+    before do
+      OrderedWorkPackage.create(query:, work_package: wp_1, position: 1234)
+      OrderedWorkPackage.create(query:, work_package: wp_2, position: -1000)
+    end
+
+    describe "call" do
+      it "copies the boards with the order correct" do
         expect(subject).to be_success
 
         expect(board_copies.count).to eq 1
 
         # Expect board name to match
-        expect(board_copy.name).to eq 'My Board'
+        expect(board_copy.name).to eq "My Board"
 
         # Expect query to differ
-        query_id = board_copy.widgets.first.options['queryId']
+        query_id = board_copy.widgets.first.options["queryId"]
         expect(query_id.to_i).not_to eq(query.id)
 
         # Expect query to be in correct project
@@ -137,11 +193,11 @@ describe Projects::CopyService, 'integration', type: :model do
         wps = query.ordered_work_packages
         expect(wps.count).to eq 2
 
-        expect(wps[0].work_package.subject).to eq 'First'
+        expect(wps[0].work_package.subject).to eq "First"
         expect(wps[0].position).to eq -1000
         expect(wps[0].work_package.id).not_to eq wp_2.id
 
-        expect(wps[1].work_package.subject).to eq 'Second'
+        expect(wps[1].work_package.subject).to eq "Second"
         expect(wps[1].position).to eq 1234
         expect(wps[1].work_package.id).not_to eq wp_1.id
       end

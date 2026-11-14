@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,19 +31,19 @@ module Shared
   module ServiceContext
     private
 
-    def in_context(model, send_notifications = true, &block)
+    def in_context(model, send_notifications: nil, &)
       if model
-        in_mutex_context(model, send_notifications, &block)
+        in_mutex_context(model, send_notifications:, &)
       else
-        in_user_context(send_notifications, &block)
+        in_user_context(send_notifications:, &)
       end
     end
 
-    def in_mutex_context(model, send_notifications = true, &block)
+    def in_mutex_context(model, send_notifications: nil, &)
       result = nil
 
       OpenProject::Mutex.with_advisory_lock_transaction(model) do
-        result = without_context_transaction(send_notifications, &block)
+        result = without_context_transaction(send_notifications:, &)
 
         raise ActiveRecord::Rollback if result.failure?
       end
@@ -52,11 +51,11 @@ module Shared
       result
     end
 
-    def in_user_context(send_notifications = true, &block)
+    def in_user_context(send_notifications: nil, &)
       result = nil
 
       ActiveRecord::Base.transaction do
-        result = without_context_transaction(send_notifications, &block)
+        result = without_context_transaction(send_notifications:, &)
 
         raise ActiveRecord::Rollback if result.failure?
       end
@@ -64,9 +63,9 @@ module Shared
       result
     end
 
-    def without_context_transaction(send_notifications, &block)
+    def without_context_transaction(send_notifications:, &)
       User.execute_as user do
-        Journal::NotificationConfiguration.with(send_notifications, &block)
+        Journal::NotificationConfiguration.with(send_notifications, &)
       end
     end
   end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe MemberMailer, type: :mailer do
+RSpec.describe MemberMailer do
   include OpenProject::ObjectLinking
   include ActionView::Helpers::UrlHelper
   include OpenProject::StaticRouting::UrlHelpers
 
-  let(:current_user) { FactoryBot.build_stubbed(:user) }
+  let(:current_user) { build_stubbed(:user) }
   let(:member) do
-    FactoryBot.build_stubbed(:member,
-                             principal: principal,
-                             project: project,
-                             roles: roles)
+    build_stubbed(:member,
+                  principal:,
+                  project:,
+                  roles:)
   end
-  let(:principal) { FactoryBot.build_stubbed(:user) }
-  let(:project) { FactoryBot.build_stubbed(:project) }
-  let(:roles) { [FactoryBot.build_stubbed(:role), FactoryBot.build_stubbed(:role)] }
+  let(:principal) { build_stubbed(:user) }
+  let(:project) { build_stubbed(:project) }
+  let(:roles) { [build_stubbed(:project_role), build_stubbed(:project_role)] }
   let(:message) { nil }
 
   around do |example|
@@ -53,7 +52,7 @@ describe MemberMailer, type: :mailer do
     end
   end
 
-  shared_examples_for 'has a subject' do |key|
+  shared_examples_for "has a subject" do |key|
     it "has a subject" do
       if project
         expect(subject.subject)
@@ -65,10 +64,10 @@ describe MemberMailer, type: :mailer do
     end
   end
 
-  shared_examples_for 'fails for a group' do
-    let(:principal) { FactoryBot.build_stubbed(:group) }
+  shared_examples_for "fails for a group" do
+    let(:principal) { build_stubbed(:group) }
 
-    it 'raises an argument error' do
+    it "raises an argument error" do
       # Calling .to in order to have the mail rendered
       expect { subject.to }
         .to raise_error ArgumentError
@@ -76,34 +75,39 @@ describe MemberMailer, type: :mailer do
   end
 
   shared_examples_for "sends a mail to the member's principal" do
-    let(:principal) { FactoryBot.build_stubbed(:group) }
+    let(:principal) { build_stubbed(:group) }
 
-    it 'raises an argument error' do
+    it "raises an argument error" do
       # Calling .to in order to have the mail rendered
       expect { subject.to }
         .to raise_error ArgumentError
     end
   end
 
-  shared_examples_for 'sets the expected message_id header' do
-    it 'sets the expected message_id header' do
-      expect(subject['Message-ID'].value)
+  shared_examples_for "sets the expected message_id header" do
+    it "sets the expected message_id header" do
+      expect(subject["Message-ID"].value)
         .to eql "<op.member-#{member.id}.#{Time.current.strftime('%Y%m%d%H%M%S')}.#{current_user.id}@example.net>"
     end
   end
 
-  shared_examples_for 'sets the expected openproject header' do
-    it 'sets the expected openproject header' do
-      expect(subject['X-OpenProject-Project'].value)
+  shared_examples_for "sets the expected openproject header" do
+    it "sets the expected openproject header" do
+      expect(subject["X-OpenProject-Project"].value)
         .to eql project.identifier
     end
   end
 
-  shared_examples_for 'has the expected body' do
-    let(:body) { subject.body.parts.detect { |part| part['Content-Type'].value == 'text/html' }.body.to_s }
+  shared_examples_for "has the expected body" do
+    let(:body) { subject.body.parts.detect { |part| part["Content-Type"].value == "text/html" }.body.to_s }
+    let(:i18n_params) do
+      {
+        project: project ? link_to_project(project, only_path: false) : nil,
+        user: link_to_user(current_user, only_path: false)
+      }.compact
+    end
 
-
-    it 'highlights the roles received' do
+    it "highlights the roles received" do
       expected = <<~MSG
         <ul>
           <li> #{roles.first.name} </li>
@@ -113,85 +117,121 @@ describe MemberMailer, type: :mailer do
 
       expect(body)
         .to be_html_eql(expected)
-        .at_path('body/table/tr/td/ul')
+        .at_path("body/table/tr/td/ul")
     end
 
-    context 'with a custom message' do
+    context "when current user and principal have different locales" do
+      let(:principal) { build_stubbed(:user, language: "fr") }
+      let(:current_user) { build_stubbed(:user, language: "de") }
+
+      it "is in the locale of the recipient" do
+        OpenProject::LocaleHelper.with_locale_for(principal) do
+          i18n_params
+        end
+        expect(body).to include(I18n.t(:"#{expected_header}.without_message", locale: :fr, **i18n_params))
+      end
+    end
+
+    context "with a custom message" do
       let(:message) { "Some **styled** message" }
 
-      it 'has the expected header' do
-        params = {
-          project: project ? link_to_project(project, only_path: false) : nil,
-          user: link_to_user(current_user, only_path: false)
-        }.compact
-
+      it "has the expected header" do
         expect(body)
-          .to include(I18n.t(:"#{expected_header}.with_message", **params))
+          .to include(I18n.t(:"#{expected_header}.with_message", **i18n_params))
       end
 
-      it 'includes the custom message' do
+      it "includes the custom message" do
         expect(body)
           .to include("Some <strong>styled</strong> message")
       end
     end
 
-    context 'without a custom message' do
-
-      it 'has the expected header' do
-        params = {
-          project: project ? link_to_project(project, only_path: false) : nil,
-          user: link_to_user(current_user, only_path: false)
-        }.compact
-
+    context "without a custom message" do
+      it "has the expected header" do
         expect(body)
-          .to include(I18n.t(:"#{expected_header}.without_message", **params))
+          .to include(I18n.t(:"#{expected_header}.without_message", **i18n_params))
       end
     end
   end
 
-  describe '#added_project' do
-    subject { MemberMailer.added_project(current_user, member, message) }
+  describe "#added_project" do
+    subject { described_class.added_project(current_user, member, message) }
 
     it_behaves_like "sends a mail to the member's principal"
-    it_behaves_like 'has a subject', :'mail_member_added_project.subject'
-    it_behaves_like 'sets the expected message_id header'
-    it_behaves_like 'sets the expected openproject header'
-    it_behaves_like 'has the expected body' do
+    it_behaves_like "has a subject", :"mail_member_added_project.subject"
+    it_behaves_like "sets the expected message_id header"
+    it_behaves_like "sets the expected openproject header"
+    it_behaves_like "has the expected body" do
       let(:expected_header) do
         "mail_member_added_project.body.added_by"
       end
     end
-    it_behaves_like 'fails for a group'
+    it_behaves_like "fails for a group"
+
+    describe "with a custom message referencing a work package" do
+      shared_let(:persisted_project) { create(:project, identifier: "memberproj") }
+      shared_let(:persisted_principal) { create(:admin) }
+      shared_let(:persisted_role) { create(:project_role) }
+      shared_let(:persisted_member) do
+        create(:member, principal: persisted_principal, project: persisted_project, roles: [persisted_role])
+      end
+      shared_let(:referenced_wp) { create(:work_package, project: persisted_project) }
+
+      let(:html_body) do
+        User.execute_as(persisted_principal) do
+          mail = described_class.added_project(persisted_principal, persisted_member, "see ##{referenced_wp.id}")
+          mail.body.parts.detect { |part| part["Content-Type"].value == "text/html" }.body.to_s
+        end
+      end
+
+      context "with classic mode",
+              with_settings: { work_packages_identifier: "classic" } do
+        it "renders the numeric reference as an absolute work-package link" do
+          expect(html_body).to match(%r{href="http[^"]*/work_packages/#{referenced_wp.id}"})
+        end
+      end
+
+      context "with semantic mode",
+              with_settings: { work_packages_identifier: "semantic" } do
+        before do
+          referenced_wp.update_columns(identifier: "MEMBERPROJ-1", sequence_number: 1)
+        end
+
+        it "renders the formatted_id in the html body" do
+          expect(html_body).to include("MEMBERPROJ-1")
+        end
+      end
+    end
   end
 
-  describe '#updated_project' do
-    subject { MemberMailer.updated_project(current_user, member, message) }
+  describe "#updated_project" do
+    subject { described_class.updated_project(current_user, member, message) }
 
     it_behaves_like "sends a mail to the member's principal"
-    it_behaves_like 'has a subject', :'mail_member_updated_project.subject'
-    it_behaves_like 'sets the expected message_id header'
-    it_behaves_like 'sets the expected openproject header'
-    it_behaves_like 'has the expected body' do
+    it_behaves_like "has a subject", :"mail_member_updated_project.subject"
+    it_behaves_like "sets the expected message_id header"
+    it_behaves_like "sets the expected openproject header"
+    it_behaves_like "has the expected body" do
       let(:expected_header) do
         "mail_member_updated_project.body.updated_by"
       end
     end
-    it_behaves_like 'fails for a group'
+    it_behaves_like "fails for a group"
   end
 
-  describe '#updated_global' do
+  describe "#updated_global" do
     let(:project) { nil }
 
-    subject { MemberMailer.updated_global(current_user, member, message) }
+    subject { described_class.updated_global(current_user, member, message) }
 
     it_behaves_like "sends a mail to the member's principal"
-    it_behaves_like 'has a subject', :'mail_member_updated_global.subject'
-    it_behaves_like 'sets the expected message_id header'
-    it_behaves_like 'has the expected body' do
+    it_behaves_like "has a subject", :"mail_member_updated_global.subject"
+    it_behaves_like "sets the expected message_id header"
+    it_behaves_like "has the expected body" do
       let(:expected_header) do
         "mail_member_updated_global.body.updated_by"
       end
     end
-    it_behaves_like 'fails for a group'
+    it_behaves_like "fails for a group"
   end
 end

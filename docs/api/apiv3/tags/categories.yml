@@ -1,5 +1,8 @@
 ---
 description: |-
+  The categories endpoints return collections or single entities of type `Category`. The following tables list the different properties
+  of `Category` entities.
+
   ## Linked Properties
 
   |  Link           | Description                                         | Type          | Constraints | Supported operations |

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,39 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% content_for :header_tags do %>
-  <meta name="required_script" content="new_user" />
-<% end %>
-
 <% html_title t(:label_administration), t("label_user_new") %>
-<% local_assigns[:additional_breadcrumb] = t(:label_user_new) %>
 
-<%= toolbar title: t(:label_user_new) %>
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { t(:label_user_new) }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: admin_settings_users_path, text: t(:label_user_and_permission) },
+       { href: users_path, text: t(:label_user_plural) },
+       t(:label_user_new)]
+    )
+  end
+%>
 
-<%= error_messages_for_contract @user, @errors %>
+<%= error_messages_for @user %>
 
-<%= labelled_tabular_form_for @user,
-                              url: { action: "create" },
-                              html: { class: nil, autocomplete: 'off' },
-                              as: :user do |f| %>
-  <%= render partial: 'simple_form', locals: { f: f, auth_sources: @auth_sources, user: @user } %>
-
-  <p>
-    <%= styled_button_tag t(:button_create), class: '-highlight -with-icon icon-checkmark' %>
-    <%= styled_button_tag t(:button_create_and_continue), name: 'continue', class: '-highlight -with-icon icon-checkmark' %>
-  </p>
-<% end %>
+<%=
+  settings_primer_form_with(
+    model: @user,
+    url: { action: "create" },
+    html: { autocomplete: "off" },
+    data: {
+      controller: "admin--users",
+      turbo: false,
+      "admin--users-password-auth-selected-value": @user.ldap_auth_source_id.blank?
+    }
+  ) do |f|
+    render(Users::FormComponent.new(builder: f, user: @user, contract: @contract))
+  end
+%>

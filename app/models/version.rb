@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,7 +32,13 @@ class Version < ApplicationRecord
   include ::Scopes::Scoped
 
   belongs_to :project
-  has_many :work_packages, foreign_key: :version_id, dependent: :nullify
+  has_many :work_package_versions, dependent: :delete_all
+  has_many :targeted_work_packages,
+           -> { where(work_package_versions: { kind: "target" }) },
+           through: :work_package_versions, source: :work_package
+  has_many :observed_in_work_packages,
+           -> { where(work_package_versions: { kind: "observed_in" }) },
+           through: :work_package_versions, source: :work_package
   acts_as_customizable
 
   VERSION_STATUSES = %w(open locked closed).freeze
@@ -43,31 +48,46 @@ class Version < ApplicationRecord
             presence: true,
             uniqueness: { scope: [:project_id], case_sensitive: false }
 
-  validates_format_of :effective_date, with: /\A\d{4}-\d{2}-\d{2}\z/, message: :not_a_date, allow_nil: true
-  validates_format_of :start_date, with: /\A\d{4}-\d{2}-\d{2}\z/, message: :not_a_date, allow_nil: true
-  validates_inclusion_of :status, in: VERSION_STATUSES
+  validates :effective_date, format: { with: /\A\d{4}-\d{2}-\d{2}\z/, message: :not_a_date, allow_nil: true }
+  validates :start_date, format: { with: /\A\d{4}-\d{2}-\d{2}\z/, message: :not_a_date, allow_nil: true }
+  validates :status, inclusion: { in: VERSION_STATUSES }
   validate :validate_start_date_before_effective_date
 
-  scopes :order_by_semver_name,
-         :rolled_up,
+  scopes :rolled_up,
          :shared_with
 
+  # Returns versions that are either:
+  # - from projects the user can see (via :view_work_packages)
+  # - systemwide versions
+  # - or referenced by a work package visible to the user (e.g., via sharing)
   scope :visible, ->(*args) {
+    user = args.first || User.current
     joins(:project)
-      .merge(Project.allowed_to(args.first || User.current, :view_work_packages))
+      .merge(Project.allowed_to(user, :view_work_packages))
+      .or(Project.allowed_to(user, :manage_versions))
+      .or(Version.systemwide)
+      .or(Version.shared_via_work_packages(user))
   }
 
-  scope :systemwide, -> { where(sharing: 'system') }
+  scope :systemwide, -> { where(sharing: "system") }
 
-  scope :order_by_name, -> { order(Arel.sql("LOWER(#{Version.table_name}.name) ASC")) }
+  scope :shared_via_work_packages, ->(*args) {
+    user = args.first || User.current
+    where(id: WorkPackageVersion.where(kind: "target")
+                                .where(work_package_id: WorkPackage.visible(user).select(:id))
+                                .select(:version_id))
+  }
 
   def self.with_status_open
-    where(status: 'open')
+    where(status: "open")
   end
 
   # Returns true if +user+ or current user is allowed to view the version
   def visible?(user = User.current)
-    user.allowed_to?(:view_work_packages, project)
+    systemwide? ||
+      user.allowed_in_project?(:view_work_packages, project) ||
+      user.allowed_in_project?(:manage_versions, project) ||
+      targeted_work_packages.visible(user).exists?
   end
 
   def due_date
@@ -77,24 +97,24 @@ class Version < ApplicationRecord
   # Returns the total estimated time for this version
   # (sum of leaves estimated_hours)
   def estimated_hours
-    @estimated_hours ||= work_packages.hierarchy_leaves.sum(:estimated_hours).to_f
+    @estimated_hours ||= targeted_work_packages.leaves.sum(:estimated_hours).to_f
   end
 
   # Returns the total reported time for this version
   def spent_hours
     @spent_hours ||= TimeEntry
-                     .includes(:work_package)
-                     .where(work_packages: { version_id: id })
-                     .sum(:hours)
-                     .to_f
+      .not_ongoing
+      .where(entity_type: "WorkPackage", entity_id: targeted_work_packages.select(:id))
+      .sum(:hours)
+      .to_f
   end
 
   def closed?
-    status == 'closed'
+    status == "closed"
   end
 
   def open?
-    status == 'open'
+    status == "open"
   end
 
   # Returns true if the version is completed: finish date reached and no open issues
@@ -102,15 +122,8 @@ class Version < ApplicationRecord
     effective_date && (effective_date <= Date.today) && open_issues_count.zero?
   end
 
-  def behind_schedule?
-    if completed_percent == 100
-      false
-    elsif due_date && start_date
-      done_date = start_date + ((due_date - start_date + 1) * completed_percent / 100).floor
-      done_date <= Date.today
-    else
-      false # No issues so it's not late
-    end
+  def systemwide?
+    sharing == "system"
   end
 
   # Returns the completion percentage of this version based on the amount of open/closed issues
@@ -141,27 +154,39 @@ class Version < ApplicationRecord
 
   # Returns assigned issues count
   def issues_count
-    @issue_count ||= work_packages.count
+    @issues_count ||= targeted_work_packages.count
   end
 
   # Returns the total amount of open issues for this version.
   def open_issues_count
-    @open_issues_count ||= work_packages.merge(WorkPackage.with_status_open).size
+    @open_issues_count ||= targeted_work_packages.merge(WorkPackage.with_status_open).size
   end
 
   # Returns the total amount of closed issues for this version.
   def closed_issues_count
-    @closed_issues_count ||= work_packages.merge(WorkPackage.with_status_closed).size
+    @closed_issues_count ||= targeted_work_packages.merge(WorkPackage.with_status_closed).size
+  end
+
+  # Returns the total amount of to-do issues for this version.
+  def to_do_issues_count
+    @to_do_issues_count ||= targeted_work_packages.merge(WorkPackage.with_status_to_do).size
+  end
+
+  # Returns the total amount of in progress issues for this version.
+  def in_progress_issues_count
+    @in_progress_issues_count ||= targeted_work_packages.merge(WorkPackage.with_status_in_progress).size
   end
 
   def wiki_page
-    if project.wiki && !wiki_page_title.blank?
+    if project.wiki && wiki_page_title.present?
       @wiki_page ||= project.wiki.find_page(wiki_page_title)
     end
     @wiki_page
   end
 
-  def to_s; name end
+  def to_s
+    name
+  end
 
   def to_s_with_project
     "#{project} - #{name}"
@@ -198,7 +223,7 @@ class Version < ApplicationRecord
   # Used to weight unestimated issues in progress calculation
   def estimated_average
     if @estimated_average.nil?
-      average = work_packages.average(:estimated_hours).to_f
+      average = targeted_work_packages.average(:estimated_hours).to_f
       if average.zero?
         average = 1
       end
@@ -213,21 +238,20 @@ class Version < ApplicationRecord
   # Examples:
   # issues_progress(true)   => returns the progress percentage for open issues.
   # issues_progress(false)  => returns the progress percentage for closed issues.
-  def issues_progress(open)
+  def issues_progress(open) # rubocop:disable Metrics/AbcSize
     @issues_progress ||= {}
     @issues_progress[open] ||= begin
       progress = 0
 
       if issues_count > 0
-        ratio = open ? 'done_ratio' : 100
-        sum_sql = self.class.sanitize_sql_array(
-          ["COALESCE(#{WorkPackage.table_name}.estimated_hours, ?) * #{ratio}", estimated_average]
+        ratio = open ? "done_ratio" : 100
+        sum_sql = OpenProject::SqlSanitization.sanitize(
+          "COALESCE(#{WorkPackage.table_name}.estimated_hours, ?) * #{ratio}", estimated_average
         )
 
-        done = work_packages
-               .where(statuses: { is_closed: !open })
-               .includes(:status)
-               .sum(sum_sql)
+        done = targeted_work_packages
+          .joins(:status).merge(open ? Status.not_closed : Status.closed)
+          .sum(sum_sql)
         progress = done.to_f / (estimated_average * issues_count)
       end
       progress

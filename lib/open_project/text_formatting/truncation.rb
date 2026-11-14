@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,19 +33,30 @@ module OpenProject
       # Used for truncation
       include ActionView::Helpers::TextHelper
 
+      ##
       # Truncates and returns the string as a single line
-      def truncate_single_line(string, *args)
-        truncate(string.to_s, *args).gsub(%r{[\r\n]+}m, ' ').html_safe
-      end
+      #
+      # @overload truncate_single_line(text, options = {}, &block)
+      #   @param [String] text the string to truncate.
+      #   @param [Hash] options
+      #   @option options [Number] :length (30)
+      #     The maximum number of characters that should be returned, excluding
+      #     any extra content from the block.
+      #   @option options [String] :omission ("...")
+      #     The string to append after truncating.
+      #   @option options [String, RegExp] :separator
+      #     A string or regexp used to find a breaking point at which to
+      #     truncate. By default, truncation can occur at any character in text.
+      #   @option options [Boolean] :escape (true)
+      #     Whether to escape the result.
+      #
+      # @see ActionView::Helpers::TextHelper#truncate
+      # @return [String] an HTML-safe safe string as single-line.
+      def truncate_single_line(text, *)
+        truncated = truncate(text, *)
+        return truncated unless truncated
 
-      # Truncates at line break after 250 characters or options[:length]
-      def truncate_lines(string, options = {})
-        length = options[:length] || 250
-        if string.to_s =~ /\A(.{#{length}}.*?)$/m
-          "#{$1}..."
-        else
-          string
-        end
+        truncated.html_safe_gsub(/[\r\n]+/, " ")
       end
     end
   end

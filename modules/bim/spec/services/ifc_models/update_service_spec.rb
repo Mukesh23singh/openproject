@@ -1,22 +1,51 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe Bim::IfcModels::UpdateService do
-  let(:user) { FactoryBot.build_stubbed(:user) }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe Bim::IfcModels::UpdateService do
+  let(:user) { build_stubbed(:user) }
   let(:contract_class) do
-    double('contract_class', '<=': true)
+    double("contract_class", "<=": true)
   end
   let(:model_valid) { true }
   let(:instance) do
-    described_class.new(user: user,
-                        model: model,
-                        contract_class: contract_class)
+    described_class.new(user:,
+                        model:,
+                        contract_class:)
   end
-  let(:call_attributes) { { name: 'Some name', identifier: 'Some identifier' } }
+  let(:call_attributes) { { name: "Some name", identifier: "Some identifier" } }
   let(:set_attributes_success) do
     true
   end
   let(:set_attributes_errors) do
-    double('set_attributes_errors')
+    double("set_attributes_errors")
   end
   let(:set_attributes_result) do
     ServiceResult.new result: model,
@@ -24,7 +53,7 @@ describe Bim::IfcModels::UpdateService do
                       errors: set_attributes_errors
   end
   let!(:model) do
-    FactoryBot.create(:ifc_model).tap do |m|
+    create(:ifc_model).tap do |m|
       allow(m)
         .to receive(:save)
         .and_return(model_valid)
@@ -37,13 +66,13 @@ describe Bim::IfcModels::UpdateService do
     end
   end
   let!(:set_attributes_service) do
-    service = double('set_attributes_service_instance')
+    service = double("set_attributes_service_instance")
 
     allow(Bim::IfcModels::SetAttributesService)
       .to receive(:new)
-      .with(user: user,
-            model: model,
-            contract_class: contract_class,
+      .with(user:,
+            model:,
+            contract_class:,
             contract_options: {})
       .and_return(service)
 
@@ -52,16 +81,16 @@ describe Bim::IfcModels::UpdateService do
       .and_return(set_attributes_result)
   end
   let(:conversion_job) do
-    double('ifc_conversion_job').tap do |job|
+    double("ifc_conversion_job").tap do |job|
       allow(job)
         .to receive(:perform_later)
 
-      stub_const('Bim::IfcModels::IfcConversionJob', job)
+      stub_const("Bim::IfcModels::IfcConversionJob", job)
     end
   end
-  let(:ifc_attachment) { FactoryBot.build_stubbed(:attachment) }
+  let(:ifc_attachment) { build_stubbed(:attachment) }
   let(:other_attachment) do
-    FactoryBot.build_stubbed(:attachment).tap do |a|
+    build_stubbed(:attachment).tap do |a|
       allow(a)
         .to receive(:marked_for_destruction?)
         .and_return(attachment_marked_for_destruction)
@@ -73,19 +102,19 @@ describe Bim::IfcModels::UpdateService do
   let(:attachment_marked_for_destruction) { false }
   let(:attachments) { [ifc_attachment, other_attachment] }
 
-  describe 'call' do
+  describe "call" do
     subject { instance.call(call_attributes) }
 
-    it 'is successful' do
+    it "is successful" do
       expect(subject.success?).to be_truthy
     end
 
-    it 'returns the result of the SetAttributesService' do
+    it "returns the result of the SetAttributesService" do
       expect(subject)
         .to eql set_attributes_result
     end
 
-    it 'persists the model' do
+    it "persists the model" do
       expect(model)
         .to receive(:save)
         .and_return(model_valid)
@@ -93,34 +122,34 @@ describe Bim::IfcModels::UpdateService do
       subject
     end
 
-    it 'returns the model' do
+    it "returns the model" do
       expect(subject.result)
         .to eql model
     end
 
-    it 'schedules no conversion job' do
+    it "schedules no conversion job" do
       expect(conversion_job)
         .not_to receive(:perform_later)
 
       subject
     end
 
-    it 'leaves attachments not marked for destruction' do
+    it "leaves attachments not marked for destruction" do
       expect(other_attachment)
         .not_to receive(:destroy)
 
       subject
     end
 
-    context 'if the attachment is altered' do
+    context "if the attachment is altered" do
       let(:attachment_marked_for_destruction) { true }
       let(:call_attributes) do
-        { name: 'Some name',
-          identifier: 'Some identifier',
-          ifc_attachment: ifc_attachment }
+        { name: "Some name",
+          identifier: "Some identifier",
+          ifc_attachment: }
       end
 
-      it 'schedules conversion job' do
+      it "schedules conversion job" do
         expect(conversion_job)
           .to receive(:perform_later)
           .with(model)
@@ -128,34 +157,34 @@ describe Bim::IfcModels::UpdateService do
         subject
       end
 
-      it 'destroys all attachments marked for destruction' do
+      it "destroys all attachments marked for destruction" do
         expect(other_attachment)
           .to receive(:destroy)
 
         subject
       end
 
-      it "sets the model's converstion_status to pending" do
+      it "sets the model's conversion_status to pending" do
         expect(model).to be_pending
         expect(model.conversion_error_message).to be_nil
       end
     end
 
-    context 'if the SetAttributeService is unsuccessful' do
+    context "if the SetAttributeService is unsuccessful" do
       let(:set_attributes_success) { false }
 
-      it 'is unsuccessful' do
+      it "is unsuccessful" do
         expect(subject.success?).to be_falsey
       end
 
-      it 'returns the result of the SetAttributesService' do
+      it "returns the result of the SetAttributesService" do
         expect(subject)
           .to eql set_attributes_result
       end
 
-      it 'does not persist the changes' do
+      it "does not persist the changes" do
         expect(model)
-          .to_not receive(:save)
+          .not_to receive(:save)
 
         subject
       end
@@ -166,22 +195,23 @@ describe Bim::IfcModels::UpdateService do
         expect(subject.errors).to eql set_attributes_errors
       end
 
-      context 'if the attachment is altered' do
+      context "if the attachment is altered" do
         let(:attachment_marked_for_destruction) { true }
+
         before do
           allow(ifc_attachment)
             .to receive(:new_record?)
             .and_return(true)
         end
 
-        it 'schedules no conversion job' do
+        it "schedules no conversion job" do
           expect(conversion_job)
             .not_to receive(:perform_later)
 
           subject
         end
 
-        it 'does not destroy attachments marked for destruction' do
+        it "does not destroy attachments marked for destruction" do
           expect(other_attachment)
             .not_to receive(:destroy)
 
@@ -190,10 +220,10 @@ describe Bim::IfcModels::UpdateService do
       end
     end
 
-    context 'if the model is invalid' do
+    context "if the model is invalid" do
       let(:model_valid) { false }
 
-      it 'is unsuccessful' do
+      it "is unsuccessful" do
         expect(subject.success?).to be_falsey
       end
 

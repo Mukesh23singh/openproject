@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +20,50 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative '../../spec_helper'
+require_relative "../../spec_helper"
 
-describe 'Create viewpoint from BCF details page',
-         type: :feature,
-         with_config: { edition: 'bim' },
-         js: true do
-  let(:project) { FactoryBot.create :project, enabled_module_names: %i[bim work_package_tracking] }
-  let(:user) { FactoryBot.create :admin }
+RSpec.describe "Create viewpoint from BCF details page",
+               :js,
+               with_config: { edition: "bim" } do
+  include_context "with axe on Cuprite"
+
+  let(:project) { create(:project, enabled_module_names: %i[bim work_package_tracking]) }
+  let(:user) { create(:admin) }
 
   let!(:model) do
-    FactoryBot.create(:ifc_model_minimal_converted,
-                      title: 'minimal',
-                      project: project,
-                      uploader: user)
+    create(:ifc_model_minimal_converted,
+           title: "minimal",
+           project:,
+           uploader: user)
   end
 
   let(:show_model_page) { Pages::IfcModels::ShowDefault.new(project) }
-  let(:card_view) { ::Pages::WorkPackageCards.new(project) }
-  let(:bcf_details) { ::Pages::BcfDetailsPage.new(work_package, project) }
-  let(:model_tree) { ::Components::XeokitModelTree.new }
+  let(:card_view) { Pages::WorkPackageCards.new(project) }
+  let(:bcf_details) { Pages::BcfDetailsPage.new(work_package, project) }
+  let(:model_tree) { Components::XeokitModelTree.new }
 
   before do
     login_as(user)
   end
 
-  shared_examples 'can create a viewpoint from the BCF details page' do
-    it do
+  shared_examples "can create a viewpoint from the BCF details page" do
+    it "creates a viewpoint" do
       show_model_page.visit!
       show_model_page.finished_loading
       card_view.expect_work_package_listed(work_package)
-      card_view.open_full_screen_by_details(work_package)
+      card_view.open_split_view_by_info_icon(work_package)
 
       # Expect no viewpoint
       bcf_details.ensure_page_loaded
       bcf_details.expect_viewpoint_count(0)
 
-      model_tree.select_sidebar_tab('Objects')
-      model_tree.expect_checked('minimal')
+      model_tree.select_sidebar_tab("Objects")
+      model_tree.expect_checked("minimal")
 
       # Expand all nodes until the storeys get listed.
       model_tree.expand_tree
@@ -75,20 +75,23 @@ describe 'Create viewpoint from BCF details page',
       text = item.text
       checkbox.uncheck
 
+      expect(page).to have_button("Viewpoint", accessible_description: "Add viewpoint")
+      expect(page).to be_axe_clean.within(".attributes-group.description-group .button")
       bcf_details.add_viewpoint
       bcf_details.expect_viewpoint_count(1)
 
-      page.driver.browser.navigate.refresh
+      page.refresh
 
       bcf_details.ensure_page_loaded
+      show_model_page.finished_loading
       bcf_details.expect_viewpoint_count(1)
       bcf_details.show_current_viewpoint
 
       sleep 1
 
       # Uncheck the second checkbox for testing
-      model_tree.select_sidebar_tab('Objects')
-      model_tree.expect_checked('minimal')
+      model_tree.select_sidebar_tab("Objects")
+      model_tree.expect_checked("minimal")
       model_tree.expand_tree
       model_tree.expand_tree
       model_tree.expand_tree
@@ -97,16 +100,16 @@ describe 'Create viewpoint from BCF details page',
     end
   end
 
-  context 'with a work package with BCF' do
-    let!(:work_package) { FactoryBot.create(:work_package, project: project) }
-    let!(:bcf) { FactoryBot.create :bcf_issue, work_package: work_package }
+  context "with a work package with BCF" do
+    let!(:work_package) { create(:work_package, project:) }
+    let!(:bcf) { create(:bcf_issue, work_package:) }
 
-    it_behaves_like 'can create a viewpoint from the BCF details page'
+    it_behaves_like "can create a viewpoint from the BCF details page"
   end
 
-  context 'with a work package without BCF' do
-    let!(:work_package) { FactoryBot.create(:work_package, project: project) }
+  context "with a work package without BCF" do
+    let!(:work_package) { create(:work_package, project:) }
 
-    it_behaves_like 'can create a viewpoint from the BCF details page'
+    it_behaves_like "can create a viewpoint from the BCF details page"
   end
 end

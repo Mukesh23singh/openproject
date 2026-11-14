@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe API::V3::WorkPackages::Schema::WorkPackageSchemasAPI, type: :request do
+RSpec.describe API::V3::WorkPackages::Schema::WorkPackageSchemasAPI do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.create(:project) }
-  let(:type) { FactoryBot.create(:type) }
-  let(:role) { FactoryBot.create(:role, permissions: [:view_work_packages]) }
+  let(:project) { create(:project) }
+  let(:type) { create(:type) }
+  let(:role) { create(:project_role, permissions: [:view_work_packages]) }
   let(:current_user) do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
 
-  describe 'GET /api/v3/work_packages/schemas/filters=...' do
+  describe "GET /api/v3/work_packages/schemas/filters=..." do
     let(:filter_values) { ["#{project.id}-#{type.id}"] }
     let(:schema_path) do
-      filter = [{ 'id' => {
-        'operator' => '=',
-        'values' => filter_values
+      filter = [{ "id" => {
+        "operator" => "=",
+        "values" => filter_values
       } }]
 
       "#{api_v3_paths.work_package_schemas}?#{{ filters: filter.to_json }.to_query}"
@@ -56,164 +57,198 @@ describe API::V3::WorkPackages::Schema::WorkPackageSchemasAPI, type: :request do
       get schema_path
     end
 
-    context 'authorized' do
-      context 'valid' do
-        it 'returns HTTP 200' do
-          expect(last_response.status).to eql(200)
+    context "authorized" do
+      context "valid" do
+        it "returns HTTP 200" do
+          expect(last_response).to have_http_status(:ok)
         end
 
-        it 'returns a collection of schemas' do
+        it "returns a collection of schemas" do
           expect(last_response.body)
             .to be_json_eql(api_v3_paths.work_package_schema(project.id, type.id).to_json)
-            .at_path('_embedded/elements/0/_links/self/href')
+            .at_path("_embedded/elements/0/_links/self/href")
         end
 
-        it 'has the self href set correctly' do
+        it "has the self href set correctly" do
           expect(last_response.body)
             .to be_json_eql(schema_path.to_json)
-            .at_path('_links/self/href')
+            .at_path("_links/self/href")
         end
       end
 
-      context 'for a non existing project' do
+      context "for a non existing project" do
         let(:filter_values) { ["#{0}-#{type.id}"] }
 
-        it 'returns HTTP 200' do
-          expect(last_response.status).to eql(200)
+        it "returns HTTP 200" do
+          expect(last_response).to have_http_status(:ok)
         end
 
-        it 'returns an empty collection' do
+        it "returns an empty collection" do
           expect(last_response.body)
             .to be_json_eql(0.to_json)
-            .at_path('count')
+            .at_path("count")
         end
       end
 
-      context 'for a non existing type' do
+      context "for a non existing type" do
         let(:filter_values) { ["#{project.id}-#{0}"] }
 
-        it 'returns HTTP 200' do
-          expect(last_response.status).to eql(200)
+        it "returns HTTP 200" do
+          expect(last_response).to have_http_status(:ok)
         end
 
-        it 'returns an empty collection' do
+        it "returns an empty collection" do
           expect(last_response.body)
             .to be_json_eql(0.to_json)
-            .at_path('count')
+            .at_path("count")
         end
       end
 
-      context 'for a non valid filter' do
-        let(:filter_values) { ['bogus'] }
+      context "for a non valid filter" do
+        let(:filter_values) { ["bogus"] }
 
-        it 'returns HTTP 400' do
-          expect(last_response.status).to eql(400)
+        it "returns HTTP 400" do
+          expect(last_response).to have_http_status(:bad_request)
         end
 
-        it 'returns an error' do
+        it "returns an error" do
           expect(last_response.body)
-            .to be_json_eql('urn:openproject-org:api:v3:errors:InvalidQuery'.to_json)
-            .at_path('errorIdentifier')
+            .to be_json_eql("urn:openproject-org:api:v3:errors:InvalidQuery".to_json)
+            .at_path("errorIdentifier")
         end
       end
     end
 
-    context 'not authorized' do
-      let(:role) { FactoryBot.create(:role, permissions: []) }
+    context "not authorized" do
+      let(:role) { create(:project_role, permissions: []) }
 
-      it 'returns HTTP 403' do
-        expect(last_response.status).to eql(403)
+      it "returns HTTP 403" do
+        expect(last_response).to have_http_status(:forbidden)
       end
     end
   end
 
-  describe 'GET /api/v3/work_packages/schemas/:id' do
+  describe "GET /api/v3/work_packages/schemas/:id" do
     let(:schema_path) { api_v3_paths.work_package_schema project.id, type.id }
 
-    context 'logged in' do
+    context "logged in" do
       before do
         allow(User).to receive(:current).and_return(current_user)
         get schema_path
       end
 
-      context 'valid schema' do
-        it 'should return HTTP 200' do
-          expect(last_response.status).to eql(200)
+      context "valid schema" do
+        it "returns HTTP 200" do
+          expect(last_response).to have_http_status(:ok)
         end
 
-        it 'should set a weak ETag' do
-          expect(last_response.headers['ETag']).to match(/W\/"\w+"/)
+        it "sets a weak ETag" do
+          expect(last_response.headers["ETag"]).to match(/W\/"\w+"/)
         end
 
-        it 'caches the response' do
+        it "caches the response" do
           schema_class = API::V3::WorkPackages::Schema::TypedWorkPackageSchema
           representer_class = API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter
 
-          schema = schema_class.new(project: project,
-                                    type: type)
+          schema = schema_class.new(project:,
+                                    type:)
           self_link = api_v3_paths.work_package_schema(project.id, type.id)
           represented_schema = representer_class.create(schema,
-                                                        self_link: self_link,
-                                                        current_user: current_user)
+                                                        self_link:,
+                                                        current_user:)
 
-          expect(OpenProject::Cache.fetch(represented_schema.json_cache_key)).to_not be_nil
+          expect(OpenProject::Cache.fetch(represented_schema.json_cache_key)).not_to be_nil
+        end
+
+        it "returns HTTP 304 without a body when the cached ETag matches" do
+          header "If-None-Match", last_response.headers.fetch("ETag")
+
+          get schema_path
+
+          expect(last_response).to have_http_status(:not_modified)
+          expect(last_response.body).to be_empty
         end
       end
 
-      context 'id is too long' do
-        it_behaves_like 'not found' do
+      context "with add_work_packages only" do
+        let(:role) do
+          create(:project_role, permissions: %i[view_work_packages add_work_packages change_work_package_status])
+        end
+
+        it "marks labels as not writable" do
+          expect(last_response.body)
+            .to be_json_eql(false.to_json)
+            .at_path("labels/writable")
+        end
+      end
+
+      context "with edit_work_packages" do
+        let(:role) { create(:project_role, permissions: %i[view_work_packages edit_work_packages]) }
+
+        it "marks labels as writable" do
+          expect(last_response.body)
+            .to be_json_eql(true.to_json)
+            .at_path("labels/writable")
+        end
+      end
+
+      context "id is too long" do
+        it_behaves_like "not found" do
           let(:schema_path) { "#{api_v3_paths.work_package_schema project.id, type.id}-1" }
         end
       end
 
-      context 'id is too short' do
-        it_behaves_like 'not found' do
+      context "id is too short" do
+        it_behaves_like "not found" do
           let(:schema_path) { "/api/v3/work_packages/schemas/#{project.id}" }
         end
       end
     end
 
-    context 'not logged in' do
-      it 'should act as if the schema does not exist' do
+    context "not logged in" do
+      before do
         get schema_path
-        expect(last_response.status).to eql(404)
       end
+
+      it_behaves_like "not found response based on login_required"
     end
   end
 
-  describe 'GET /api/v3/work_packages/schemas/sums' do
+  describe "GET /api/v3/work_packages/schemas/sums" do
     let(:schema_path) { api_v3_paths.work_package_sums_schema }
+
     subject { last_response }
 
-    context 'logged in' do
+    context "logged in" do
       before do
         allow(User).to receive(:current).and_return(current_user)
         get schema_path
       end
 
-      context 'valid schema' do
-        it 'should return HTTP 200' do
-          expect(last_response.status).to eql(200)
+      context "valid schema" do
+        it "returns HTTP 200" do
+          expect(last_response).to have_http_status(:ok)
         end
 
         # Further fields are tested in the representer specs
-        it 'should return the schema for estimated_hours' do
-          expected = { 'type': 'Duration',
-                       'name': 'Estimated time',
-                       'required': false,
-                       'hasDefault': false,
-                       'writable': false,
-                       'options': {} }
-          expect(subject.body).to be_json_eql(expected.to_json).at_path('estimatedTime')
+        it "returns the schema for estimated_hours" do
+          expected = { type: "Duration",
+                       name: "Work",
+                       required: false,
+                       hasDefault: false,
+                       writable: false,
+                       options: {} }
+          expect(subject.body).to be_json_eql(expected.to_json).at_path("estimatedTime")
         end
       end
     end
 
-    context 'not logged in' do
-      it 'should act as if the schema does not exist' do
+    context "when not logged in" do
+      before do
         get schema_path
-        expect(last_response.status).to eql(404)
       end
+
+      it_behaves_like "not found response based on login_required"
     end
   end
 end

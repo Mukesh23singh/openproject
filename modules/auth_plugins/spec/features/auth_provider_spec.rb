@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +20,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'rendering the login buttons', js: true do
+RSpec.describe "rendering the login buttons", :js do
   let(:providers) do
     [
-      { name: 'mock_auth' }
+      { name: "mock_auth" }
     ]
   end
 
@@ -39,15 +38,14 @@ describe 'rendering the login buttons', js: true do
     allow(OpenProject::Plugins::AuthPlugin).to receive(:providers).and_return(providers)
   end
 
-  describe 'in a public project', with_settings: { login_required: false } do
-    let(:public_project) { FactoryBot.build(:project, public: true) }
+  describe "in a public project", with_settings: { login_required: false } do
+    let(:public_project) { build(:project, public: true) }
 
-    it 'renders correctly' do
+    it "renders correctly" do
       visit project_path(public_project)
 
-      page.find('a', text: 'Sign in').click
-      item = page.find('a.auth-provider', text: 'mock_auth')
-      expect(item[:href]).to end_with '/auth/mock_auth'
+      click_link_or_button "Sign in"
+      expect(page).to have_link("Continue with mock_auth", href: %r{/login/omniauth/mock_auth})
     end
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,43 +20,56 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.expand_path(File.dirname(__FILE__) + '/../spec_helper.rb')
-require_relative 'support/pages/cost_report_page'
+require_relative "../spec_helper"
+require_relative "support/pages/cost_report_page"
 
-describe "updating a cost report's cost type", type: :feature, js: true do
-  let(:project) { FactoryBot.create :project_with_types, members: { user => FactoryBot.create(:role) } }
+RSpec.describe "updating a cost report's cost type", :js do
+  let(:project) { create(:project_with_types, members: { user => create(:project_role) }) }
   let(:user) do
-    FactoryBot.create(:admin)
+    create(:admin)
   end
 
   let(:cost_type) do
-    FactoryBot.create :cost_type, name: 'Post-war', unit: 'cap', unit_plural: 'caps'
+    create(:cost_type, name: "Post-war", unit: "cap", unit_plural: "caps")
   end
 
   let!(:cost_entry) do
-    FactoryBot.create :cost_entry, user: user, project: project, cost_type: cost_type
+    create(:cost_entry, user:, project:, cost_type:)
   end
 
-  let(:report_page) { ::Pages::CostReportPage.new project }
+  let(:report_page) { Pages::CostReportPage.new project }
 
   before do
     login_as(user)
   end
 
-  it 'works' do
+  it "works" do
     report_page.visit!
-    report_page.save(as: 'My Query', public: true)
-    SeleniumHubWaiter.wait
+
+    report_page.save(as: "My Query", public: true)
+    report_page.wait_for_page_to_reload
+
+    report = CostReport.find_by!(name: "My Query")
+    expect(page).to have_current_path(project_reporting_cost_report_path(project, report))
+
+    expect(page).to have_field("Labor", checked: true)
+
     report_page.switch_to_type cost_type.name
+    expect(page).to have_field(cost_type.name, checked: true, wait: 10)
+
     click_on "Save"
 
+    # Leave the just saved query.
+    report_page.visit!
+
+    # And load it again.
     click_on "My Query"
+
     expect(page).to have_field(cost_type.name, checked: true)
   end
 end

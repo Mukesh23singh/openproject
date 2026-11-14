@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,47 +22,51 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe API::V3::Utilities::ResourceLinkGenerator do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Utilities::ResourceLinkGenerator do
+  include API::V3::Utilities::PathHelper
 
   subject { described_class }
-  describe ':make_link' do
-    it 'supports work packages' do
-      wp = FactoryBot.build_stubbed(:work_package)
+
+  describe ":make_link" do
+    it "supports work packages" do
+      wp = build_stubbed(:work_package)
       expect(subject.make_link(wp)).to eql api_v3_paths.work_package(wp.id)
     end
 
-    it 'supports priorities' do
-      prio = FactoryBot.build_stubbed(:priority)
+    it "supports priorities" do
+      prio = build_stubbed(:priority)
       expect(subject.make_link(prio)).to eql api_v3_paths.priority(prio.id)
     end
 
-    it 'supports statuses' do
-      status = FactoryBot.build_stubbed(:status)
+    it "supports statuses" do
+      status = build_stubbed(:status)
       expect(subject.make_link(status)).to eql api_v3_paths.status(status.id)
     end
 
-    it 'supports the anonymous user' do
-      user = FactoryBot.build_stubbed(:anonymous)
+    it "supports the anonymous user" do
+      user = build_stubbed(:anonymous)
       expect(subject.make_link(user)).to eql api_v3_paths.user(user.id)
     end
 
-    it 'returns nil for unsupported records' do
-      record = FactoryBot.create(:custom_field)
+    it "returns nil for unsupported records" do
+      record = create(:oauth_client_token)
       expect(subject.make_link(record)).to be_nil
     end
 
-    it 'returns nil for non-AR types' do
+    it "returns nil for non-AR types" do
       record = Object.new
       expect(subject.make_link(record)).to be_nil
+    end
+
+    it "returns the undisclosed URN for custom field values the user may not see" do
+      expect(subject.make_link(CustomField::UnavailableValue.new)).to eql API::V3::URN_UNDISCLOSED
     end
   end
 end

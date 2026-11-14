@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -30,32 +29,30 @@ import { NgModule } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
 import { IconModule } from 'core-app/shared/components/icon/icon.module';
+import { OpSpotModule } from 'core-app/spot/spot.module';
 
-import { AttachmentsComponent } from './attachments.component';
-import { AttachmentListComponent } from './attachment-list/attachment-list.component';
-import { AttachmentListItemComponent } from './attachment-list/attachment-list-item.component';
-import { AttachmentsUploadComponent } from './attachments-upload/attachments-upload.component';
-import { AuthoringComponent } from './authoring/authoring.component';
+import { OpAttachmentsComponent } from './attachments.component';
+import { OpAttachmentListComponent } from './attachment-list/attachment-list.component';
+import { OpAttachmentListItemComponent } from './attachment-list/attachment-list-item.component';
+import { OpTooltipDirective } from 'core-app/shared/components/primer/tooltip.directive';
 
 @NgModule({
   imports: [
     CommonModule,
     IconModule,
+    OpSpotModule,
+    OpTooltipDirective,
   ],
   declarations: [
-    AttachmentsComponent,
-    AttachmentListComponent,
-    AttachmentListItemComponent,
-    AttachmentsUploadComponent,
-
-    AuthoringComponent,
+    OpAttachmentsComponent,
+    OpAttachmentListComponent,
+    OpAttachmentListItemComponent,
   ],
   exports: [
-    AttachmentsUploadComponent,
-    AttachmentListComponent,
-    AttachmentsComponent,
+    OpAttachmentListComponent,
+    OpAttachmentsComponent,
 
-    AuthoringComponent,
+    OpAttachmentListItemComponent,
   ],
 })
 export class OpenprojectAttachmentsModule {

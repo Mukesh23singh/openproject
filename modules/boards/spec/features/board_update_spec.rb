@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,49 +20,48 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './support/board_index_page'
-require_relative './support/board_page'
+require "spec_helper"
+require_relative "support/board_index_page"
+require_relative "support/board_page"
 
-describe 'Work Package boards updating spec', type: :feature, js: true do
-  let(:admin) { FactoryBot.create(:admin) }
+RSpec.describe "Work Package boards updating spec",
+               :js do
+  let(:admin) { create(:admin) }
 
-  let(:project) { FactoryBot.create(:project, enabled_module_names: %i[work_package_tracking board_view]) }
-  let!(:priority) { FactoryBot.create :default_priority }
-  let!(:status) { FactoryBot.create :default_status }
+  let(:project) { create(:project, enabled_module_names: %i[work_package_tracking board_view]) }
+  let!(:priority) { create(:default_priority) }
+  let!(:status) { create(:default_status) }
 
   let(:board_index) { Pages::BoardIndex.new(project) }
-  let!(:board_view) { FactoryBot.create :board_grid_with_query, name: 'My board', project: project }
+  let!(:board_view) { create(:board_grid_with_query, name: "My board", project:) }
 
   before do
-    with_enterprise_token :board_view
     project
     login_as(admin)
     board_index.visit!
   end
 
-  it 'Changing the title in the split screen, updates the card automatically' do
+  it "Changing the title in the split screen, updates the card automatically" do
     board_page = board_index.open_board board_view
-    board_page.expect_query 'List 1', editable: true
-    board_page.add_card 'List 1', 'Foo Bar'
+    board_page.expect_query "List 1", editable: true
+    board_page.add_card "List 1", "Foo Bar"
     board_page.expect_toast message: I18n.t(:notice_successful_create)
 
     work_package = WorkPackage.last
-    expect(work_package.subject).to eq 'Foo Bar'
+    expect(work_package.subject).to eq "Foo Bar"
 
     # Open in split view
     card = board_page.card_for(work_package)
     split_view = card.open_details_view
     split_view.expect_subject
-    split_view.edit_field(:subject).update('My super cool new title')
+    split_view.edit_field(:subject).update("My super cool new title")
 
-    split_view.expect_and_dismiss_toaster message: 'Successful update.'
-    card.expect_subject 'My super cool new title'
+    split_view.expect_and_dismiss_toaster message: "Successful update."
+    card.expect_subject "My super cool new title"
   end
 end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'services/base_services/behaves_like_create_service'
+require "spec_helper"
+require "services/base_services/behaves_like_create_service"
 
-describe Members::CreateService, type: :model do
-  it_behaves_like 'BaseServices create service' do
+RSpec.describe Members::CreateService, type: :model do
+  let(:user1) { build_stubbed(:user) }
+  let(:user2) { build_stubbed(:user) }
+  let(:group) do
+    build_stubbed(:group).tap do |g|
+      allow(g)
+        .to receive_messages(user_ids: [user1.id, user2.id], self_and_descendants: [g])
+    end
+  end
+  let!(:inherited_roles_service) do
+    instance_double(Groups::CreateInheritedRolesService).tap do |inherited_roles_service|
+      allow(Groups::CreateInheritedRolesService)
+        .to receive(:new)
+              .and_return(inherited_roles_service)
+
+      allow(inherited_roles_service)
+        .to receive(:call)
+    end
+  end
+  let!(:notifications) do
+    allow(OpenProject::Notifications)
+      .to receive(:send)
+  end
+
+  it_behaves_like "BaseServices create service" do
     let(:call_attributes) do
       {
         project_id: "1",
@@ -43,43 +65,80 @@ describe Members::CreateService, type: :model do
       }
     end
 
-    let!(:allow_notification_call) do
-      allow(OpenProject::Notifications)
-        .to receive(:send)
-    end
-
-    describe 'if successful' do
-      it 'sends a notification' do
-        expect(OpenProject::Notifications)
-          .to receive(:send)
-          .with(OpenProject::Events::MEMBER_CREATED,
-                member: model_instance,
-                message: call_attributes[:notification_message],
-                send_notifications: true)
-
+    describe "if successful" do
+      it "sends a notification" do
         subject
+
+        expect(OpenProject::Notifications)
+          .to have_received(:send)
+                .with(OpenProject::Events::MEMBER_CREATED,
+                      member: model_instance,
+                      message: call_attributes[:notification_message],
+                      send_notifications: true)
+      end
+
+      describe "for a group" do
+        let!(:model_instance) { build_stubbed(:member, principal: group) }
+
+        it "generates the members and roles for the group's users" do
+          subject
+
+          expect(Groups::CreateInheritedRolesService)
+            .to have_received(:new)
+                  .with(group,
+                        current_user: user,
+                        contract_class: EmptyContract)
+
+          expect(inherited_roles_service)
+            .to have_received(:call)
+                  .with(user_ids: group.user_ids,
+                        member_id: model_instance.id,
+                        send_notifications: false)
+        end
       end
     end
 
-    context 'if the SetAttributeService is unsuccessful' do
+    context "if the SetAttributeService is unsuccessful" do
       let(:set_attributes_success) { false }
 
-      it 'sends no notification' do
-        expect(OpenProject::Notifications)
-          .not_to receive(:send)
-
+      it "sends no notification" do
         subject
+
+        expect(OpenProject::Notifications)
+          .not_to have_received(:send)
+      end
+
+      describe "for a group" do
+        let!(:model_instance) { build_stubbed(:member, principal: group) }
+
+        it "does not create any inherited roles" do
+          subject
+
+          expect(Groups::CreateInheritedRolesService)
+            .not_to have_received(:new)
+        end
       end
     end
 
-    context 'when the member is invalid' do
+    context "when the member is invalid" do
       let(:model_save_result) { false }
 
-      it 'sends no notification' do
-        expect(OpenProject::Notifications)
-          .not_to receive(:send)
-
+      it "sends no notification" do
         subject
+
+        expect(OpenProject::Notifications)
+          .not_to have_received(:send)
+      end
+
+      context "for a group" do
+        let!(:model_instance) { build_stubbed(:member, principal: group) }
+
+        it "does not create any inherited roles" do
+          subject
+
+          expect(Groups::CreateInheritedRolesService)
+            .not_to have_received(:new)
+        end
       end
     end
   end

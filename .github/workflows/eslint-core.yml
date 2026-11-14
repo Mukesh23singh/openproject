@@ -1,21 +1,58 @@
-name: "Core/Frontend-Linting"
+name: ESLint
+
 on:
   pull_request:
     branches:
       - dev
       - release/*
     paths:
+      - '**.html'
       - '**.js'
+      - '**.json'
+      - '**.mjs'
       - '**.ts'
+      - 'COPYRIGHT_short'
+      - '!extensions/blocknote-extensions/**'
 
 jobs:
   eslint:
-    name: eslint
+    name: ESLint
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      checks: write
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-      - uses: opf/action-eslint@v2
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v7.1.0
         with:
-          reporter: github-pr-check
+          node-version: '24.22.1'
+          package-manager-cache: false
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+      - name: Install packages
+        id: install
+        run: |
+          npm ci --ignore-scripts
+          npm ci --prefix frontend
+      - name: Run ESLint
+        uses: reviewdog/action-eslint@v1.36.1
+        with:
+          reporter: github-pr-annotations
+          fail_level: any
+          workdir: 'frontend/'
+          eslint_flags: 'src/'
+      - name: Run ESLint on JSON
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        uses: reviewdog/action-eslint@v1.36.1
+        with:
+          reporter: github-pr-annotations
+          fail_level: any
+          eslint_flags: "'**/*.json' --ignore-pattern 'extensions/**'"

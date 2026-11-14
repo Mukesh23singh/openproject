@@ -1,139 +1,201 @@
-require File.expand_path(File.dirname(__FILE__) + '/../../spec_helper')
-require 'messagebird'
+# frozen_string_literal: true
 
-describe ::OpenProject::TwoFactorAuthentication::TokenStrategy::MessageBird, with_2fa_ee: true do
-  describe 'sending messages' do
-    let!(:user) { FactoryBot.create :user, language: locale }
-    let!(:locale) { 'en' }
-    let!(:device) { FactoryBot.create :two_factor_authentication_device_sms, user: user, channel: channel }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-    let(:service_url) { 'https://example.org/foobar' }
+require_relative "../../spec_helper"
+require "messagebird"
+
+RSpec.describe OpenProject::TwoFactorAuthentication::TokenStrategy::MessageBird do
+  describe "sending messages" do
+    let!(:user) { create(:user, language: locale) }
+    let!(:locale) { "en" }
+    let!(:device) { create(:two_factor_authentication_device_sms, user:, channel:) }
+
+    let(:service_url) { "https://example.org/foobar" }
+    let(:apikey) { "whatever" }
     let(:params) do
       {
-        apikey: 'whatever'
+        apikey:
       }
     end
 
-    before do
-      allow(OpenProject::Configuration)
-        .to receive(:[]).with('2fa')
-        .and_return(active_strategies: [:message_bird], message_bird: params)
+    let(:result) { subject.request }
 
-      allow_any_instance_of(::OpenProject::TwoFactorAuthentication::TokenStrategy::MessageBird)
-        .to receive(:create_mobile_otp)
-        .and_return('1234')
+    subject { TwoFactorAuthentication::TokenService.new user: }
+
+    include_context "with settings" do
+      let(:settings) do
+        {
+          plugin_openproject_two_factor_authentication: {
+            "active_strategies" => [:message_bird],
+            "message_bird" => params
+          }
+        }
+      end
     end
 
-    describe '#setup' do
+    before do
+      allow_any_instance_of(OpenProject::TwoFactorAuthentication::TokenStrategy::MessageBird)
+        .to receive(:create_mobile_otp)
+        .and_return("1234")
+    end
+
+    describe "#setup" do
       let(:channel) { :sms }
       let(:params) { { apikey: nil } }
 
-      it 'raises an exception for incomplete params' do
+      it "raises an exception for incomplete params" do
         expect { described_class.validate! }
           .to raise_exception(ArgumentError)
       end
     end
 
-    subject { ::TwoFactorAuthentication::TokenService.new user: user }
-    let(:result) { subject.request }
-
-    describe 'calling the test API' do
-      let(:apikey) { ENV['MESSAGEBIRD_TEST_APIKEY'] }
-      let(:params) { { apikey: apikey } }
+    describe "calling a mocked test API" do
+      let(:channel) { :sms }
 
       before do
-        skip 'Missing MESSAGEBIRD_TEST_APIKEY environment variable' unless apikey.present?
+        allow(MessageBird::Client).to receive(:new)
       end
 
-      context 'with SMS' do
+      it "uses the api key defined in the settings" do
+        result
+        expect(MessageBird::Client).to have_received(:new).with(apikey)
+      end
+    end
+
+    describe "calling the real test API" do
+      let(:apikey) { ENV.fetch("MESSAGEBIRD_TEST_APIKEY", nil) }
+
+      before do
+        skip "Missing MESSAGEBIRD_TEST_APIKEY environment variable" unless apikey.present?
+      end
+
+      context "with SMS" do
         let(:channel) { :sms }
 
-        it 'returns success in the service' do
+        it "returns success in the service" do
           expect(result).to be_success
         end
       end
 
-      context 'with VOICE' do
+      context "with VOICE" do
         let(:channel) { :voice }
 
-        it 'returns success in the service' do
+        it "returns success in the service" do
           expect(result).to be_success
         end
       end
     end
 
-    describe 'calling a mocked API Client' do
-      let(:messagebird) { double(::MessageBird::Client) }
+    describe "calling a mocked API Client" do
+      let(:messagebird) { instance_double(MessageBird::Client) }
 
       let(:failed_count) { 0 }
-      let(:response) { instance_double(::MessageBird::Message, recipients: { 'totalDeliveryFailedCount' => failed_count }) }
+      let(:response) { instance_double(MessageBird::Message, recipients: { "totalDeliveryFailedCount" => failed_count }) }
       let(:channel) { :sms }
 
       before do
-        allow_any_instance_of(::OpenProject::TwoFactorAuthentication::TokenStrategy::MessageBird)
+        allow_any_instance_of(OpenProject::TwoFactorAuthentication::TokenStrategy::MessageBird)
           .to receive(:message_bird_client)
           .and_return(messagebird)
       end
 
-      context 'with SMS' do
+      context "with SMS" do
         before do
-          expect(messagebird)
+          allow(messagebird)
             .to receive(:message_create)
             .with(Setting.app_title,
-                  '49123456789',
-                  I18n.t('two_factor_authentication.text_otp_delivery_message_sms', app_title: Setting.app_title, token: '1234'),
+                  "49123456789",
+                  I18n.t("two_factor_authentication.text_otp_delivery_message_sms", app_title: Setting.app_title, token: "1234"),
                   validity: 720)
             .and_return(response)
         end
 
-        it 'returns success in the service' do
+        it "returns success in the service" do
           expect(result).to be_success
         end
 
-        context 'failure' do
+        context "failure" do
           let(:failed_count) { 1 }
 
-          it 'returns error in the service' do
+          it "returns error in the service" do
             expect(result).not_to be_success
             expect(result.errors).to be_present
           end
         end
       end
 
-      context 'with voice' do
+      context "with voice" do
         let(:channel) { :voice }
-        let(:expected_language) { :'en-us' }
+        let(:expected_language) { :"en-us" }
 
         before do
-          expect(messagebird)
+          allow(subject.strategy)
+            .to receive(:has_localized_text?)
+                  .with(locale)
+                  .and_return true
+
+          allow(messagebird)
             .to receive(:voice_message_create)
-            .with('49123456789',
-                  subject.strategy.send(:localized_message, locale, '1234'),
-                  ifMachine: :continue,
-                  language: expected_language)
             .and_return(response)
         end
 
-        it 'returns success in the service' do
+        it "returns success in the service" do
           expect(result).to be_success
+          expect(messagebird)
+            .to have_received(:voice_message_create)
+                  .with("49123456789",
+                        subject.strategy.send(:localized_message, locale, "1234"),
+                        ifMachine: :continue,
+                        language: expected_language)
         end
 
-        context 'failure' do
+        context "failure" do
           let(:failed_count) { 1 }
 
-          it 'returns error in the service' do
+          it "returns error in the service" do
             expect(result).not_to be_success
             expect(result.errors).to be_present
           end
         end
 
-        context 'with german locale' do
-          let(:locale) { 'de' }
-          let(:expected_language) { :'de-de' }
+        context "with german locale" do
+          let(:locale) { "de" }
+          let(:expected_language) { :"de-de" }
 
-          it 'returns success in the service' do
-            expect(subject.strategy).to receive(:has_localized_text?).with('de').and_return true
+          it "returns success in the service" do
             expect(result).to be_success
+            expect(messagebird)
+              .to have_received(:voice_message_create)
+                    .with("49123456789",
+                          subject.strategy.send(:localized_message, locale, "1234"),
+                          ifMachine: :continue,
+                          language: expected_language)
           end
         end
       end

@@ -1,92 +1,115 @@
 ---
 sidebar_navigation:
   title: Types
-  priority: 980
+  priority: 800
 description: Configure work package types in OpenProject.
-robots: index, follow
-keywords: work package types
+keywords: work package types, work package form, related work package, work package table, relations, pdf export, automatic subject, workflows
 ---
 
 # Manage work package types
 
-You can have as many work package types in the system as needed, e.g. Tasks, Bugs, Ideas, Risks, Features.
+In OpenProject, you can create and manage as many work package types as needed, such as Tasks, Bugs, Ideas, Risks, and Features.
 
-In the *-> Administration -> Work packages -> Types* you can add or edit the work package types.
+To add or modify work package types, navigate to _Administration → Work packages → Types_.
 
-You will see a list of all work package types in the system.
+Here, you will see a list of all existing work package types.
 
-1. Click the work package type name to **edit an existing work package type**.
-2. Click the arrows (up or down) to change the order how work package types should be displayed, e.g. in the list when creating new work packages or when changing the type. 
-   The work package type you moved to the top of the list is the current default type and will be selected when you create a new work package.
-3. Delete work package types.
+1. Click on a work package type name to **edit an existing type**.
+2. Use the up and down arrows to **reorder work package types**. The type at the top of the list becomes the default and is automatically selected when creating a new work package.
+3. Click the delete icon to **remove a work package type**.
 
-![System-admin-work-packages-types](System-admin-work-packages-types.png)
+![System-admin-work-packages-types](openproject_system_guide_work_package_types.png)
+
+## Workflow summary
+
+On the work package types overview page, click the **(...)** menu in the upper-right corner and select **Workflow summary** to open an overview of the configured workflows.
+
+![Workflow summary option on the work package types overview page](openproject_system_guide_work_package_types_workflow_summary.png)
+
+For more information, see [Configure workflows](workflows/#workflow-summary).
 
 ## Create new work package type
 
 Click the green **+ Type** button to add a new work package type in the system, e.g. Risk.
 
 1. Give the new work package type a **name** that easily identifies what kind of work should be tracked.
-2. Choose whether the type should be displayed in the [roadmap](../../../user-guide/roadmap/) by default.
-3. Choose a **color** from the drop-down list which should be used for this work package type in the Gantt chart. You can configure new colors [here](../../colors).
-4. Select if the work package type should be **active in new projects by default**. This way work package types will not need to be [activated in the project settings](../../../user-guide/projects/project-settings/work-package-types/) but will be available for every project.
-5. Choose whether the type should be a **milestone**, e.g. displayed as a milestone in the Gantt chart with the same start and finish date.
-6. You can **copy a [workflow](../work-package-workflows)** from an existing type.
-7. You can enter a **default text for the work package description field**, which always be shown when creating new work package from this type. This way, you can easily create work package templates, e.g. for risk management or bug tracking which already contain certain required information in the description.
-8. Click the blue **Create** button to add the new type.
+2. Choose a **color** from the drop-down list which should be used for this work package type in the Gantt chart. You can configure new colors [here](../../design/#set-a-new-color).
+3. Choose whether the type should be a **milestone**, e.g. displayed as a milestone in the Gantt chart with the same start and finish date.
+4. Choose whether the type should be displayed in the [roadmap](../../../user-guide/roadmap/) by default.
+5. Select if the work package type should be **active in new projects by default**. This way work package types will not need to be [activated in the project settings](../../../user-guide/projects/project-settings/work-packages/#work-package-types) but will be available for every project.
+6. You can **copy a workflow** from an existing type.
+7. Click the **Save** button to add the new type.
 
-![Sys-admin-add-work-package-type](Sys-admin-add-work-package-type.png)
+![Create a new work package type in OpenProject administration](openproject_system_guide_new_work_package_typ.png)
 
-## Work package form configuration
+## Edit a work package type
 
-You can freely **configure the attributes shown** for each work package type to decide which attributes are shown in the form and how they are grouped.
+To edit an existing work package type, select it from the list of work package types.
 
-To configure a type, first select the type from the list of types (see above) and select the tab ***Form configuration*** *(1)*.
+The configuration of a work package type is divided into seven tabs:
 
-Active attributes shown in blue color on the left will be displayed in the work package form for this type.
-You can then decide for each attribute which group it should be assigned to (using drag and drop or removing it by clicking the remove  icon) *(2)*. You can also rename attribute groups simply by clicking on their name or re-order attribute groups with drag and drop.
+- **Details** — configure the basic settings of the work package type.
+- **Defaults** — configure default text and automatic subjects for new work packages of this type.
+- **Form configuration** — configure which attributes are displayed in the work package form and how they are arranged.
+- **Workflows** — configure available statuses and status transitions for different roles. 
+- **Project attributes** — configure which project attributes are displayed in work packages of this types.
+- **Projects** — select the projects in which the work package type is activated. 
+- **Generate PDF** — configure how work packages of this type are exported as PDF.
 
-Inactive attributes shown in the grey color on the right. Attributes which have been removed are shown in the *Inactive* column on the right *(3)*. This column also includes [custom fields](../../custom-fields) which have been created. The custom fields also can be added with drag and drop to the active form (the blue part on the left) to be displayed in the form.
+![Work package type settings showing the available configuration tabs](openproject_system_guide_work_package_type_tabs.png)
 
-To add additional group, click the **+ Group** button *(4)* and select **Add attribute group**. Give the new group a name. You can then assign attributes (e.g. custom fields) via drag and drop. Note that adding attribute groups is only possible  with the [OpenProject Enterprise Edition](https://www.openproject.org/enterprise-edition/) and the [OpenProject Cloud Edition](https://www.openproject.org/hosting/).
+### Details
 
-In case you made a mistake, click the *Reset to defaults (5)* button to reset all settings to the original state.
+The **Details** tab contains the basic settings of the work package type. These are the same settings that are available when creating a new work package type.
 
-Finally, **save** the settings to apply them *(6)*.
+### Defaults
 
-​      ![Sys-admin-type-form-configuration](Sys-admin-type-form-configuration-1579181896505.png)
+The **Defaults** tab allows you to configure **default text for the work package description field**. This text is automatically displayed in the **Description** field when a user creates a new work package of this type. This way, you can easily create work package templates, e.g. for risk management or bug tracking, that already contain certain required information in the description.
 
-If you then create a new work package of this type, the input form will have exactly these attributes selected in the form configuration.
+In the Enterprise edition, you can also configure automatically generated work package subjects.
 
-In this case, all attributes in the blue area on the left are displayed under the corresponding attribute group.
+[feature: work_package_subject_generation ]
 
-![work package form configuration](image-20200116150227458.png)
+Please refer to [this guide](automatic-subjects) for a detailed description of automatically generated work package subjects in OpenProject.
 
-Watch the following video to see how you can customize your work packages with custom fields and configure the work package forms:
+### Form configuration
 
-<video src="https://openproject-docs.s3.eu-central-1.amazonaws.com/videos/OpenProject-Forms-and-Custom-Fields-1.mp4" type="video/mp4" controls="" style="width:100%"></video>
+You can customize the work package form for each work package type to display the attributes most relevant to your team's workflow. Attributes can be added, removed, and arranged within the form as needed.
 
-## Add table of related work packages to a work package form
+In the Enterprise edition, you can also create and rename sections and add a related work packages table.
 
-Also, you can add a table of related work packages to your work package form. Click the green **+ Group** button and choose **Add table of related work package** from the drop-down list.
+[feature: edit_attribute_groups ]
 
-![Sys-admin-table-of-related-work-packages](Sys-admin-table-of-related-work-packages.png)
+To configure the work package form for a type, open the **Form configuration** tab.
 
-Now, you can configure which related work packages should be included in your embedded list, e.g. child work packages or work packages related to this work package, and more. Then you can configure how the list should be filtered, grouped, etc. The configuration of the work package list can be done according to the [work package table configuration](../../../user-guide/work-packages/work-package-table-configuration/).
+For detailed instructions, see [Configure the work package form](form-configuration).
 
-Click the blue **Apply** button to add this work package list to your form.
+### Workflows
 
-![Sys-admin-work-package-table-config](Sys-admin-work-package-table-config.png)
+A workflow defines the status transitions that are available for a work package type and role.
 
-The embedded related work package table in the work package form will look like this. Here, the work packages with the chosen relation will be shown automatically (based on the filtered criteria in the embedded list) or new work packages with this relation can be added. 
+To configure the workflow for a type, open the **Workflows** tab.
 
-![Sys-admin-related-work-package-table](Sys-admin-related-work-package-table.png)
+For detailed instructions, including default transitions, transitions when the user is the author or assignee, and the workflow summary, see [Configure workflows](workflows).
 
-## Activate work package types for projects
+### Project attributes
 
-Under -> *Administration* -> *Work packages* -> *Types* on the tab **Projects** you can select for which projects this work package type should be activated. 
+You can display **[project attributes](../../projects/project-attributes/)** in a dedicated tab within work packages. This allows editing project-level information directly from a work package.
 
-The **Activated for new projects by default** setting in the Types will only activate this type for new projects. For existing projects, the type needs to be activated manually. 
-This can be also configured in the [project settings](../../../user-guide/projects/project-settings).
+Please note that only users with necessary permissions can see or edit the project attributes within a work package.
 
-![activate projects for work package types](image-20200116150513323.png)
+To configure this, open the **Project attributes** tab.
+
+For detailed instructions, see [Display project attributes in work package forms](project-attributes).
+
+### Projects
+
+The **Projects** tab allows you to select for which projects a work package type should be activated.
+
+For detailed instructions, see [Activate work package types for projects](projects).
+
+### Generate PDF
+
+The **Generate PDF** tab allows you to configure how a single work package of this type is exported as a PDF.
+
+For detailed instructions, see [Configure PDF exports for work package types](pdf-export).

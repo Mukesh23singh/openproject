@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +20,40 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component } from '@angular/core';
-import { StateService } from '@uirouter/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnInit, inject } from '@angular/core';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 
 @Component({
   templateUrl: './overview-tab.html',
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-overview-tab',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class WorkPackageOverviewTabComponent extends UntilDestroyedMixin {
-  public workPackageId:string;
+export class WorkPackageOverviewTabComponent extends UntilDestroyedMixin implements OnInit {
+  readonly I18n = inject(I18nService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly cdRef = inject(ChangeDetectorRef);
 
-  public workPackage:WorkPackageResource;
+  @Input() public workPackage:WorkPackageResource;
+
+  public workPackageId:string;
 
   public tabName = this.I18n.t('js.label_latest_activity');
 
-  public constructor(readonly I18n:I18nService,
-    readonly $state:StateService,
-    readonly apiV3Service:APIV3Service) {
-    super();
-
-    this.workPackageId = this.$state.params.workPackageId;
+  ngOnInit() {
+    this.workPackageId = this.workPackage.id!;
 
     this
       .apiV3Service
@@ -59,6 +63,9 @@ export class WorkPackageOverviewTabComponent extends UntilDestroyedMixin {
       .pipe(
         this.untilDestroyed(),
       )
-      .subscribe((wp) => this.workPackage = wp);
+      .subscribe((wp) => {
+        this.workPackage = wp;
+        this.cdRef.markForCheck();
+      });
   }
 }

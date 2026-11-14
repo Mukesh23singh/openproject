@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,28 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
-<%= toolbar title: Forum.name.humanize %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { @forum.name }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       { href: project_forums_path(@project.id), text: t(:label_forum_plural) },
+       @forum.name]
+    )
+  end
+%>
 
-<%= labelled_tabular_form_for [@project, @forum] do |f| %>
-  <%= render partial: 'form', locals: { f: f } %>
-  <%= f.button t(:button_save), class: 'button -highlight -with-icon icon-checkmark' %>
-  <%= link_to t(:button_cancel), project_forums_path(@project), class: 'button -with-icon icon-cancel' %>
-<% end %>
+<%=
+  primer_form_with(
+    model: [@project, @forum],
+    url: project_forum_path(@project, @forum),
+    method: :patch
+  ) do |f|
+    render Forums::Form.new(f, project: @project)
+  end
+%>

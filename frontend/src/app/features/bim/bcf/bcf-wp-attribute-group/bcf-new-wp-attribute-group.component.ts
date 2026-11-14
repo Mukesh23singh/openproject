@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -38,6 +37,7 @@ import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
   templateUrl: './bcf-wp-attribute-group.component.html',
   styleUrls: ['./bcf-wp-attribute-group.component.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class BcfNewWpAttributeGroupComponent extends BcfWpAttributeGroupComponent implements AfterViewInit {
   galleryViewpoints:BcfViewpointItem[] = [];
@@ -74,13 +74,13 @@ export class BcfNewWpAttributeGroupComponent extends BcfWpAttributeGroupComponen
         }),
       )
       .subscribe(() => {
+        this.viewpointsService.resetBcfTopic();
         this.showIndex = this.galleryViewpoints.length - 1;
       });
   }
 
   // Disable show viewpoint functionality
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  showViewpoint(workPackage:WorkPackageResource, index:number):void {
+  showViewpoint(_workPackage:WorkPackageResource, _index:number):void {
 
   }
 

@@ -1,4 +1,4 @@
-@import 'src/assets/sass/helpers'
+@import 'helpers'
 
 $board-list-max-width: 300px
 $board-list-top-offset: 18px
@@ -40,10 +40,11 @@ $board-list-top-offset: 18px
   line-height: 42px
   font-size: 14px
   cursor: pointer
-  color: var(--gray-dark)
+  color: var(--fgColor-muted)
 
   .boards-list--add-item-text
     padding: 5px 15px 0 15px
+    white-space: nowrap
 
   .boards-list--container.-free &
     margin-top: 0
@@ -65,3 +66,7 @@ $board-list-top-offset: 18px
 .boards-list--tooltip
   align-self: start
   margin-top: $board-list-top-offset
+
+.boards-list--enterprise-banner
+  display: block
+  margin-left: $spot-spacing-1

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,7 +30,7 @@ module API
     module TimeEntries
       class TimeEntryCollectionRepresenter < ::API::Decorators::OffsetPaginatedCollection
         link :createTimeEntry do
-          next unless current_user.allowed_to_globally?(:log_time)
+          next unless allowed_to_log_time?
 
           {
             href: api_v3_paths.create_time_entry_form,
@@ -42,12 +39,19 @@ module API
         end
 
         link :createTimeEntryImmediately do
-          next unless current_user.allowed_to_globally?(:log_time)
+          next unless allowed_to_log_time?
 
           {
             href: api_v3_paths.time_entries,
             method: :post
           }
+        end
+
+        private
+
+        def allowed_to_log_time?
+          current_user.allowed_in_any_work_package?(:log_own_time) ||
+          current_user.allowed_in_any_project?(:log_time)
         end
       end
     end

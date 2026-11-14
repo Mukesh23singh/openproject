@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WikiPages::SetAttributesService, type: :model do
-  let(:user) { FactoryBot.build_stubbed(:user) }
+RSpec.describe WikiPages::SetAttributesService, type: :model do
+  let(:user) { build_stubbed(:user) }
   let(:contract_class) do
-    contract = double('contract_class')
+    contract = double("contract_class")
 
     allow(contract)
       .to receive(:new)
@@ -43,30 +42,30 @@ describe WikiPages::SetAttributesService, type: :model do
     contract
   end
   let(:contract_instance) do
-    double('contract_instance', validate: contract_valid, errors: contract_errors)
+    double("contract_instance", validate: contract_valid, errors: contract_errors)
   end
   let(:contract_valid) { true }
   let(:contract_errors) do
-    double('contract_errors')
+    double("contract_errors")
   end
   let(:wiki_page_valid) { true }
   let(:instance) do
-    described_class.new(user: user,
+    described_class.new(user:,
                         model: wiki_page,
-                        contract_class: contract_class)
+                        contract_class:)
   end
   let(:call_attributes) { {} }
   let(:wiki_page) do
-    FactoryBot.build_stubbed(:wiki_page_with_content)
+    build_stubbed(:wiki_page)
   end
 
-  describe 'call' do
+  describe "call" do
     let(:call_attributes) do
       {
-        text: 'some new text',
-        title: 'a new title',
-        slug: 'a new slug',
-        journal_notes: 'the journal notes'
+        text: "some new text",
+        title: "a new title",
+        slug: "a new slug",
+        journal_notes: "the journal notes"
       }
     end
 
@@ -82,64 +81,48 @@ describe WikiPages::SetAttributesService, type: :model do
 
     subject { instance.call(call_attributes) }
 
-    it 'is successful' do
+    it "is successful" do
       expect(subject).to be_success
     end
 
-    context 'for an existing wiki page' do
-      it 'sets the attributes' do
+    context "for an existing wiki page" do
+      it "sets the attributes" do
         subject
 
         expect(wiki_page.attributes.slice(*wiki_page.changed).symbolize_keys)
-          .to eql call_attributes.slice(:title, :slug)
+          .to eql call_attributes.slice(:title, :slug, :text)
 
-        expect(wiki_page.content.attributes.slice(*wiki_page.content.changed).symbolize_keys)
-          .to eql call_attributes.slice(:text)
-
-        expect(wiki_page.content.journal_notes)
+        expect(wiki_page.journal_notes)
           .to eql call_attributes[:journal_notes]
       end
 
-      it 'does not persist the wiki_page' do
+      it "does not persist the wiki_page" do
         expect(wiki_page)
-          .not_to receive(:save)
-
-        expect(wiki_page.content)
           .not_to receive(:save)
 
         subject
       end
     end
 
-    context 'for a new wiki page' do
+    context "for a new wiki page" do
       let(:wiki_page) do
         WikiPage.new
       end
 
-      it 'initializes the content with the user being the author' do
-        subject
-
-        expect(wiki_page.content.author)
-          .to eql user
-      end
-
-      it 'sets the attributes' do
+      it "sets the attributes with the user being the author" do
         subject
 
         expect(wiki_page.attributes.slice(*wiki_page.changed).symbolize_keys)
-          .to eql call_attributes.slice(:title, :slug)
+          .to eql call_attributes.slice(:title, :slug, :text).merge(author_id: user.id)
 
-        expect(wiki_page.content.attributes.slice(*(wiki_page.content.changed - ['author_id'])).symbolize_keys)
-          .to eql call_attributes.slice(:text)
-
-        expect(wiki_page.content.journal_notes)
+        expect(wiki_page.journal_notes)
           .to eql call_attributes[:journal_notes]
       end
 
-      it 'marks the content author to be system changed' do
+      it "marks the author to be system changed" do
         subject
 
-        expect(wiki_page.content.changed_by_system['author_id'])
+        expect(wiki_page.changed_by_system["author_id"])
           .to eql [nil, user.id]
       end
     end

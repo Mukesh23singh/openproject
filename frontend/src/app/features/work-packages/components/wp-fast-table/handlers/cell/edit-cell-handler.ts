@@ -1,26 +1,57 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
-import { displayClassName, editableClassName, readOnlyClassName } from 'core-app/shared/components/fields/display/display-field-renderer';
+import {
+  displayClassName,
+  displayTriggerLink,
+  editableClassName,
+  readOnlyClassName,
+} from 'core-app/shared/components/fields/display/display-field-renderer';
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { getPosition } from 'core-app/shared/helpers/set-click-position/set-click-position';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { EditFieldHandler } from 'core-app/shared/components/fields/edit/editing-portal/edit-field-handler';
-import { States } from 'core-app/core/states/states.service';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { EditActivationCancelled } from 'core-app/shared/components/fields/edit/edit-form/edit-activation-cancelled';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
 import { TableEventComponent, TableEventHandler } from '../table-handler-registry';
 import { ClickOrEnterHandler } from '../click-or-enter-handler';
 import { WorkPackageTable } from '../../wp-fast-table';
 import { tableRowClassName } from '../../builders/rows/single-row-builder';
+import { EventType } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/event-handler-registry';
+import { ConfigurationService } from 'core-app/core/config/configuration.service';
 
 export class EditCellHandler extends ClickOrEnterHandler implements TableEventHandler {
   // Injections
-  @InjectField() public states:States;
+  @LazyInject() public halEditing:HalResourceEditingService;
 
-  @InjectField() public halEditing:HalResourceEditingService;
+  @LazyInject() public configurationService:ConfigurationService;
 
-  // Keep a reference to all
-
-  public get EVENT() {
-    return 'click.table.cell, keydown.table.cell';
+  public get EVENT():EventType[] {
+    return ['click', 'dblclick', 'keydown'];
   }
 
   public get SELECTOR() {
@@ -28,49 +59,91 @@ export class EditCellHandler extends ClickOrEnterHandler implements TableEventHa
   }
 
   public eventScope(view:TableEventComponent) {
-    return jQuery(view.workPackageTable.tableAndTimelineContainer);
+    return view.workPackageTable.tableAndTimelineContainer;
   }
 
   constructor(public readonly injector:Injector) {
     super();
   }
 
-  protected processEvent(table:WorkPackageTable, evt:JQuery.TriggeredEvent):boolean {
+  public handleEvent(view:TableEventComponent, evt:MouseEvent|KeyboardEvent) {
+    if (evt instanceof KeyboardEvent) {
+      super.handleEvent(view, evt);
+      return;
+    }
+
+    if (evt.type !== this.activationEvent) {
+      return;
+    }
+
+    if (evt.type === 'dblclick') {
+      window.getSelection()?.removeAllRanges();
+    }
+
+    this.processEvent(view.workPackageTable, evt);
+  }
+
+  private get activationEvent():'click'|'dblclick' {
+    return this.configurationService.requireDoubleClickForInlineEdit() ? 'dblclick' : 'click';
+  }
+
+  protected processEvent(table:WorkPackageTable, evt:MouseEvent|KeyboardEvent):void {
     debugLog('Starting editing on cell: ', evt.target);
+
+    // Don't intercept clicks on anchor elements - let the browser follow the link
+    const clickTarget = evt.target as HTMLElement;
+    const foundElement = clickTarget.closest(`a:not(.${displayTriggerLink}),macro`);
+    if (foundElement) {
+      return;
+    }
+
+
     evt.preventDefault();
 
     // Locate the cell from event
-    const target = jQuery(evt.target).closest(`.${displayClassName}`);
+    const target = (evt.target as HTMLElement).closest<HTMLElement>(`.${displayClassName}`);
     // Get the target field name
-    const fieldName = target.data('fieldName');
+    const fieldName = target?.dataset.fieldName;
 
     if (!fieldName) {
       debugLog('Click handled by cell not a field? ', evt.target);
-      return true;
+      return;
     }
 
-    // Locate the row
-    const rowElement = target.closest(`.${tableRowClassName}`);
-    // Get the work package we're editing
-    const workPackageId = rowElement.data('workPackageId');
-    const workPackage = this.states.workPackages.get(workPackageId).value!;
-    // Get the row context
-    const classIdentifier = rowElement.data('classIdentifier');
+    let positionOffset = 0;
+    if (evt instanceof MouseEvent) {
+      // Get the position where the user clicked.
+      positionOffset = getPosition(evt);
+    }
 
-    // Get any existing edit state for this work package
-    const form = table.editing.startEditing(workPackage, classIdentifier);
+    activateTableField(table, target, positionOffset);
+  }
+}
 
-    // Get the position where the user clicked.
-    const positionOffset = getPosition(evt);
-
-    // Activate the field
-    form.activate(fieldName)
-      .then((handler:EditFieldHandler) => {
-        handler.$onUserActivate.next();
-        handler.focus(positionOffset);
-      })
-      .catch(() => target.addClass(readOnlyClassName));
-
+/** Opens the inline editor of an editable display field in a table row; false when the field has no name or the table disables inline editing. */
+export function activateTableField(table:WorkPackageTable, target:HTMLElement, positionOffset = 0):boolean {
+  const fieldName = target.dataset.fieldName;
+  if (!fieldName || !table.configuration.inlineEditEnabled) {
     return false;
   }
+
+  const rowElement = target.closest<HTMLTableRowElement>(`.${tableRowClassName}`)!;
+  const workPackage = table.states.workPackages.get(rowElement.dataset.workPackageId!).value!;
+  const form = table.editing.startEditing(workPackage, rowElement.dataset.classIdentifier!);
+
+  form.activate(fieldName, false, true)
+    .then((handler) => {
+      if (table.destroyed) return;
+      if (!handler) {
+        target.classList.add(readOnlyClassName);
+        return;
+      }
+      handler.$onUserActivate.next();
+      handler.focus(positionOffset);
+    })
+    .catch((error:unknown) => {
+      if (!(error instanceof EditActivationCancelled) && !table.destroyed) target.classList.add(readOnlyClassName);
+    });
+
+  return true;
 }

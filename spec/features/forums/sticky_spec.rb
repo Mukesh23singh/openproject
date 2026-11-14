@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,37 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'sticky messages', type: :feature do
-  let(:forum) { FactoryBot.create(:forum) }
+RSpec.describe "sticky messages" do
+  let(:forum) { create(:forum) }
 
   let!(:message1) do
-    FactoryBot.create :message, forum: forum, created_at: Time.now - 1.minute do |message|
-      Message.where(id: message.id).update_all(updated_at: Time.now - 1.minute)
+    create(:message, forum:, created_at: 1.minute.ago) do |message|
+      Message.where(id: message.id).update_all(updated_at: 1.minute.ago)
     end
   end
   let!(:message2) do
-    FactoryBot.create :message, forum: forum, created_at: Time.now - 2.minute do |message|
-      Message.where(id: message.id).update_all(updated_at: Time.now - 2.minute)
+    create(:message, forum:, created_at: 2.minutes.ago) do |message|
+      Message.where(id: message.id).update_all(updated_at: 2.minutes.ago)
     end
   end
   let!(:message3) do
-    FactoryBot.create :message, forum: forum, created_at: Time.now - 3.minute do |message|
-      Message.where(id: message.id).update_all(updated_at: Time.now - 3.minute)
+    create(:message, forum:, created_at: 3.minutes.ago) do |message|
+      Message.where(id: message.id).update_all(updated_at: 3.minutes.ago)
     end
   end
 
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: forum.project,
-                      member_through_role: role
+    create(:user,
+           member_with_roles: { forum.project => role })
   end
-  let(:role) { FactoryBot.create(:role, permissions: [:edit_messages]) }
+  let(:role) { create(:project_role, permissions: [:edit_messages]) }
 
   before do
     login_as user
@@ -60,20 +60,20 @@ describe 'sticky messages', type: :feature do
   end
 
   def expect_order_of_messages(*order)
-    order.each_with_index do |message, index|
-      expect(page).to have_selector("table tbody tr:nth-of-type(#{index + 1})", text: message.subject)
+    order.each.with_index(2) do |message, rowindex|
+      expect(page).to have_selector(:row, message.subject, rowindex:)
     end
   end
 
-  scenario 'sticky messages are on top' do
+  it "sticky messages are on top" do
     expect_order_of_messages(message1, message2, message3)
 
     click_link(message2.subject)
 
-    click_link('Edit')
+    click_link("Edit")
 
-    check('message[sticky]')
-    click_button('Save')
+    check("message[sticky]")
+    click_button("Save")
 
     visit project_forum_path(forum.project, forum)
 

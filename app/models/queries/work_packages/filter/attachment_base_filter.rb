@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,7 +35,7 @@ class Queries::WorkPackages::Filter::AttachmentBaseFilter < Queries::WorkPackage
   end
 
   def available?
-    EnterpriseToken.allows_to?(:attachment_filters) && OpenProject::Database.allows_tsv?
+    OpenProject::Database.allows_tsv?
   end
 
   protected
@@ -46,7 +45,7 @@ class Queries::WorkPackages::Filter::AttachmentBaseFilter < Queries::WorkPackage
       SELECT 1 FROM #{attachment_table}
       WHERE #{attachment_table}.container_id = #{WorkPackage.table_name}.id
       AND #{attachment_table}.container_type = '#{WorkPackage.name}'
-      AND #{tsv_condition}
+      #{tsv_condition}
     SQL
   end
 
@@ -55,14 +54,20 @@ class Queries::WorkPackages::Filter::AttachmentBaseFilter < Queries::WorkPackage
   end
 
   def tsv_condition
-    OpenProject::FullTextSearch.tsv_where(attachment_table,
-                                          search_column,
-                                          values.first,
-                                          normalization: normalization_type)
+    condition = OpenProject::FullTextSearch.tsv_where(attachment_table,
+                                                      search_column,
+                                                      values.first,
+                                                      normalization: normalization_type)
+
+    if condition
+      "AND #{condition}"
+    else
+      ""
+    end
   end
 
   def search_column
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   def normalization_type

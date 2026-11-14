@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,26 +20,27 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module Bim
   module DemoData
     class IfcModelSeeder < ::Seeder
-      attr_reader :project, :key
+      attr_reader :project
+      alias_method :project_data, :seed_data
 
-      def initialize(project, key)
+      def initialize(project, project_data)
+        super(project_data)
         @project = project
-        @key = key
       end
 
       def seed_data!
-        models = project_data_for(key, 'ifc_models')
-        return unless models.present?
+        models = project_data.lookup("ifc_models")
+        return if models.blank?
 
-        print_status '    ↳ Import IFC Models'
+        print_status "    ↳ Import IFC Models"
 
         models.each do |model|
           seed_model model
@@ -51,21 +50,19 @@ module Bim
       private
 
       def seed_model(model)
-        user = User.admin.first
-
-        xkt_data = get_file model[:file], '.xkt'
+        xkt_data = get_xkt_file(model["file"])
 
         if xkt_data.nil?
           print_status "\n    ↳ Missing converted data for ifc model"
         else
-          create_model(model, user, xkt_data)
+          create_model(model, admin_user, xkt_data)
         end
       end
 
       def create_model(model, user, xkt_data)
-        model_container = create_model_container project, user, model[:name], model[:default]
+        model_container = create_model_container project, user, model["name"], model["default"]
 
-        add_ifc_model_attachment model_container, user, xkt_data, 'xkt'
+        add_ifc_model_attachment model_container, user, xkt_data, "xkt"
       end
 
       def create_model_container(project, user, title, default)
@@ -83,20 +80,17 @@ module Bim
         attachment = Attachment.new(
           container: model_container,
           author: user,
-          file: file,
-          description: description
+          file:,
+          description:
         )
         attachment.save!
       end
 
-      def get_file(name, ending)
-        path = 'modules/bim/files/ifc_models/' + name + '/'
-        file_name = name + ending
-        return unless File.exist?(path + file_name)
+      def get_xkt_file(name)
+        xkt_path = OpenProject::Bim::Engine.root.join("files/ifc_models", name, "#{name}.xkt")
+        return unless xkt_path.exist?
 
-        File.new(File.join(Rails.root,
-                           path,
-                           file_name))
+        File.new(xkt_path)
       end
     end
   end

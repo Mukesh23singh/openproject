@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -50,7 +49,7 @@ module Queries
       validate :always_false
 
       def always_false
-        errors.add :base, I18n.t(:'activerecord.errors.messages.does_not_exist')
+        errors.add :base, I18n.t(:"activerecord.errors.messages.filter_does_not_exist")
       end
 
       # deactivating superclass validation
@@ -58,23 +57,16 @@ module Queries
 
       def to_hash
         {
-          non_existent_filter: {
-            operator: operator,
-            values: values
+          name || :non_existent_filter => {
+            operator:,
+            values:
           }
         }
       end
 
-      def scope
-        # TODO: remove switch once the WP query is a
-        # subclass of Queries::Base
-        model = if context.respond_to?(:model)
-                  context.model
-                else
-                  WorkPackage
-                end
-
-        model.unscoped
+      def apply_to(query_scope)
+        # No change to the query scope whatsoever since the filter does not exist.
+        query_scope
       end
 
       def attributes_hash

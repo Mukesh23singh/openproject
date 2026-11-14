@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,72 +22,78 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-RSpec.feature 'Work package pagination', js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "Work package pagination", :js do
+  shared_let(:admin) { create(:admin) }
 
   let(:project) do
-    FactoryBot.create(:project, name: 'project1', identifier: 'project1')
+    create(:project, name: "project1", identifier: "project1")
   end
 
-  shared_examples_for 'paginated work package list' do
-    let!(:work_package_1) { FactoryBot.create(:work_package, project: project) }
-    let!(:work_package_2) { FactoryBot.create(:work_package, project: project) }
+  shared_examples_for "paginated work package list" do
+    let!(:work_package_1) { create(:work_package, project:) }
+    let!(:work_package_2) { create(:work_package, project:) }
+    let(:hierarchies) { Components::WorkPackages::Hierarchies.new }
+    let(:pagination) { Components::TablePagination.new }
 
     before do
       login_as(admin)
-      allow(Setting).to receive(:per_page_options).and_return '1, 50, 100'
+      allow(Setting).to receive(:per_page_options).and_return "1, 50, 100"
 
       visit path
-      expect(current_path).to eq(expected_path)
+      expect(page).to have_current_path(expected_path, ignore_query: true)
     end
 
-    scenario do
-      expect(page).to have_content('All open')
+    it do
+      expect(page).to have_text("All open")
 
-      within('.work-packages-partitioned-query-space--container') do
-        expect(page).to     have_content(work_package_1.subject)
-        expect(page).to_not have_content(work_package_2.subject)
-      end
+      expect(page).to have_test_selector("op-breadcrumbs--item", text: "Work packages")
+      expect(page).to have_css(".op-breadcrumbs--current", text: "All open", aria: { current: "page" })
 
-      within('.op-pagination--pages') do
-        find('.op-pagination--item button', text: '2').click
+      within(".work-packages-partitioned-query-space--container") do
+        expect(page).to have_text(work_package_1.subject)
+        expect(page).to have_no_text(work_package_2.subject)
       end
+      hierarchies.disable_via_header
+      wp_table.expect_row_positions(rowcount: 4, rows: [1, 2, 4])
 
-      within('.work-packages-partitioned-query-space--container') do
-        expect(page).to     have_content(work_package_2.subject)
-        expect(page).to_not have_content(work_package_1.subject)
-      end
+      pagination.go_to_page(2)
 
-      within('.op-pagination--options') do
-        find('.op-pagination--item button', text: '50').click
+      within(".work-packages-partitioned-query-space--container") do
+        expect(page).to have_text(work_package_2.subject)
+        expect(page).to have_no_text(work_package_1.subject)
       end
+      wp_table.expect_row_positions(rowcount: 4, rows: [1, 3, 4])
 
-      within('.work-packages-partitioned-query-space--container') do
-        expect(page).to have_content(work_package_1.subject)
-        expect(page).to have_content(work_package_2.subject)
+      pagination.select_per_page(50)
+
+      within(".work-packages-partitioned-query-space--container") do
+        expect(page).to have_text(work_package_1.subject)
+        expect(page).to have_text(work_package_2.subject)
       end
+      wp_table.expect_row_positions(rowcount: 4, rows: [1, 2, 3, 4])
     end
   end
 
-  context 'with project scope' do
-    it_behaves_like 'paginated work package list' do
+  context "with project scope" do
+    it_behaves_like "paginated work package list" do
       let(:path) { project_work_packages_path(project) }
-      let(:expected_path) { '/projects/project1/work_packages' }
+      let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+      let(:expected_path) { "/projects/project1/work_packages" }
     end
   end
 
-  context 'globally' do
-    it_behaves_like 'paginated work package list' do
+  context "globally" do
+    it_behaves_like "paginated work package list" do
       let(:path) { work_packages_path }
-      let(:expected_path) { '/work_packages' }
+      let(:wp_table) { Pages::WorkPackagesTable.new }
+      let(:expected_path) { "/work_packages" }
     end
   end
 end

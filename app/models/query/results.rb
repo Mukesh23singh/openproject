@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,16 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class ::Query::Results
+class Query::Results
   include ::Query::Results::GroupBy
   include ::Query::Results::Sums
   include Redmine::I18n
+
+  # Mirrors the scan pattern used by ActiveRecord::Associations::AliasTracker.initial_count_for
+  # to detect table references in raw SQL StringJoin nodes. We use the same regex so that
+  # raw_join_table_counts stays in sync with what Rails counts when building alias decisions.
+  # See spec/models/query/results_alias_tracker_parity_spec.rb — that spec directly compares
+  # this constant against the live AliasTracker implementation and will fail if Rails changes theirs.
+  RAW_JOIN_TABLE_SCAN_REGEX = /JOIN(?:\s+\w+)?\s+(?:\S+\s+)?(?:"(\w+)"|(\w+))\sON/i
 
   attr_accessor :query
 
@@ -39,42 +45,58 @@ class ::Query::Results
     self.query = query
   end
 
-  # Returns the work package count
-  def work_package_count
-    work_package_scope
-      .joins(all_filter_joins)
-      .includes(:status, :project)
-      .where(query.statement)
-      .references(:statuses, :projects)
-      .count
-  rescue ::ActiveRecord::StatementInvalid => e
-    raise ::Query::StatementInvalid.new(e.message)
-  end
-
   # Returns the work packages adhering to the filters and ordered by the provided criteria (grouping and sorting)
   def work_packages
+    if query.historic?
+      sorted_work_packages_matching_the_filters_at_any_of_the_given_timestamps
+    else
+      sorted_work_packages_matching_the_filters_today
+    end
+  end
+
+  private
+
+  def sorted_work_packages_matching_the_filters_today
+    sorted_work_packages
+      .merge(filtered_work_packages.merge(filter_merges))
+      .visible
+  end
+
+  # For filtering on historic data, this returns the work packages
+  # matching the filters for any of the timestamps provided in the query.
+  # Visibility (permissions) are checked at all of the times. In combination with the `or`
+  # concatenation that means that a user has to have no permission to see a work package
+  # at any of the timestamps. This has to be used with care. Callers will have to
+  # ensure to not reveal information.
+  def sorted_work_packages_matching_the_filters_at_any_of_the_given_timestamps
+    sorted_work_packages
+      .where(id: filtered_work_packages.visible.at_timestamp(query.timestamps))
+  end
+
+  # Returns an active-record relation that applies the filters to find the matching
+  # work packages.
+  #
+  # This can be chained with `.at_timestamp(...)` in order to search historic data
+  # as required for the baseline-comparison feature.
+  #
+  # https://community.openproject.org/projects/openproject/work_packages/26448
+  #
+  def filtered_work_packages
     work_package_scope
+      .joins(all_filter_joins)
       .where(query.statement)
-      .includes(all_includes)
-      .joins(all_joins)
+  end
+
+  def sorted_work_packages
+    work_package_scope
+      .joins(sort_criteria_joins)
+      .joins(query.group_by_join_statement)
       .order(order_option)
-      .references(:projects)
       .order(sort_criteria_array)
   end
 
-  def versions
-    scope = Version
-            .visible
-
-    if query.project && (limiting_filter = query.project_limiting_filter)
-      scope.where(limiting_filter.where)
-    end
-
-    scope
-  end
-
   def order_option
-    order_option = [group_by_sort].reject(&:blank?).join(', ')
+    order_option = [group_by_sort].compact_blank.join(", ")
 
     if order_option.blank?
       nil
@@ -83,21 +105,14 @@ class ::Query::Results
     end
   end
 
-  private
-
   def work_package_scope
     WorkPackage
-      .visible
-      .merge(filter_merges)
+      .eager_load(all_includes)
   end
 
   def all_includes
-    (%i(status project) +
+    (%i(project) +
       includes_for_columns(include_columns)).uniq
-  end
-
-  def all_joins
-    sort_criteria_joins + all_filter_joins
   end
 
   def includes_for_columns(column_names)
@@ -106,7 +121,7 @@ class ::Query::Results
   end
 
   def custom_field_column?(name)
-    name.to_s =~ /\Acf_\d+\z/
+    CustomField.column_name?(name)
   end
 
   ##
@@ -128,33 +143,105 @@ class ::Query::Results
   def sort_criteria_joins
     query
       .sort_criteria_columns
-      .map { |column, _direction| column.sortable_join_statement(query) }
-      .compact
+      .filter_map { |column, _direction| column.sortable_join_statement(query) }
   end
 
   def sort_criteria_array
     criteria = ::Query::SortCriteria.new query.sortable_columns
     criteria.available_criteria = aliased_sorting_by_column_name
     criteria.criteria = query.sort_criteria
-    criteria.map_each { |criteria| criteria.map { |raw| Arel.sql raw } }
+    criteria.map_each { |c| c.map { |raw| Arel.sql raw } }
   end
 
-  def aliased_sorting_by_column_name
+  def aliased_sorting_by_column_name # rubocop:disable Metrics/AbcSize
     sorting_by_column_name = query.sortable_key_by_column_name
-
     aliases = include_aliases
+    reflections = reflection_includes
 
-    reflection_includes.each do |inc|
-      sorting_by_column_name[inc.to_s] = Array(sorting_by_column_name[inc.to_s]).map do |column|
-        if column.respond_to?(:call)
-          column.call(aliases[inc])
-        else
-          "#{aliases[inc]}.#{column}"
-        end
-      end
+    table_to_alias = table_to_alias_map(reflections, aliases)
+
+    sorting_by_column_name.each_with_object({}) do |(column_key, sortable), hash|
+      column_is_association = reflections.include?(column_key.to_sym)
+      columns_hash = columns_hash_for(column_is_association ? column_key : nil)
+      hash[column_key] = if column_is_association
+                           alias_name = aliases[column_key.to_sym]
+                           expand_association_columns(alias_name, sortable, columns_hash)
+                         else
+                           resolved = apply_association_table_aliases(sortable, table_to_alias)
+                           case_insensitive_condition(column_key, resolved, columns_hash)
+                         end
     end
+  end
 
-    sorting_by_column_name
+  # Replace association table names in sortable SQL expressions with their actual
+  # aliases. This is needed when a raw SQL join causes Rails to alias an association
+  # table (e.g. "projects" -> "projects_work_packages"), but a non-association column's
+  # sortable expression still hardcodes the unaliased table name.
+  def apply_association_table_aliases(sortable, table_to_alias)
+    return sortable if table_to_alias.empty?
+
+    if sortable.is_a?(Array)
+      sortable.map { |s| substitute_association_table_alias(s, table_to_alias) }
+    else
+      substitute_association_table_alias(sortable, table_to_alias)
+    end
+  end
+
+  def substitute_association_table_alias(str, table_to_alias)
+    return str unless str.is_a?(String)
+
+    table_to_alias.reduce(str) do |s, (table_name, alias_name)|
+      # Replaces the unquoted (projects.identifier) and quoted ("projects".identifier) table name:
+      s.gsub(/(?:"#{Regexp.escape(table_name)}"|\b#{Regexp.escape(table_name)})\./, "#{alias_name}.")
+    end
+  end
+
+  ##
+  # Returns the expanded association columns name
+  def expand_association_columns(alias_name, sortable, columns_hash)
+    Array(sortable).map do |column|
+      sort_condition = expand_association_column(column, alias_name)
+      case_insensitive_condition(column, sort_condition, columns_hash)
+    end
+  end
+
+  ##
+  # Returns a single expanded association column name
+  def expand_association_column(column, alias_name)
+    if column.respond_to?(:call)
+      column.call(alias_name)
+    else
+      "#{alias_name}.#{column}"
+    end
+  end
+
+  ##
+  # Return the columns hash for a given association
+  # If the association is nil, then return the WorkPackage.columns_hash
+  def columns_hash_for(association = nil)
+    if association
+      WorkPackage.reflections[association].klass.columns_hash
+    else
+      WorkPackage.columns_hash
+    end
+  end
+
+  ##
+  # Return the case insensitive version for columns with a string type
+  def case_insensitive_condition(column_key, condition, columns_hash)
+    if columns_hash[column_key]&.type == :string || custom_field_type(column_key) == "string"
+      "LOWER(#{condition})"
+    else
+      condition
+    end
+  end
+
+  ##
+  # Find the custom field type based on the column key
+  def custom_field_type(column_key)
+    (column = query.sortable_columns.detect { |c| c.name.to_s == column_key }) &&
+    column.respond_to?(:custom_field) &&
+    column.custom_field.field_format
   end
 
   # To avoid naming conflicts, joined tables are aliased if they are joined
@@ -171,19 +258,57 @@ class ::Query::Results
   #
   # There is no handling for cases when the same association is joined/included
   # multiple times as the rest of the code should prevent that.
-  def include_aliases
-    counts = Hash.new do |h, key|
-      h[key] = 0
-    end
+  #
+  # Raw SQL joins (e.g. the backlog bucket groupable join) may contain nested
+  # subqueries that reference association tables (e.g. INNER JOIN "projects" ON
+  # inside a permission subquery). Rails's AliasTracker scans these raw strings
+  # and counts such occurrences, which can cause it to alias the projects table
+  # as "projects_work_packages". We pre-count the same way so our ORDER BY
+  # expressions use the matching alias.
+  def include_aliases # rubocop:disable Metrics/AbcSize
+    @include_aliases ||= begin
+      counts = Hash.new do |h, key|
+        h[key] = 0
+      end
 
-    reflection_includes.each_with_object({}) do |inc, hash|
+      raw_join_table_counts(counts)
+
+      reflection_includes.each_with_object({}) do |inc, hash|
+        reflection = WorkPackage.reflections[inc.to_s]
+        table_name = reflection.klass.table_name
+
+        hash[inc] = reflection_alias(reflection, counts[table_name])
+
+        counts[table_name] += 1
+      end
+    end
+  end
+
+  # Scan raw SQL join strings for "JOIN ... table ON" patterns, mirroring
+  # ActiveRecord::Associations::AliasTracker.initial_count_for, and increment
+  # counts for each found table name.
+  def raw_join_table_counts(counts)
+    raw_joins = [sort_criteria_joins, query.group_by_join_statement, all_filter_joins].flatten.compact.uniq
+
+    raw_joins.each do |join_sql|
+      join_sql.to_s.scan(RAW_JOIN_TABLE_SCAN_REGEX) do |quoted, unquoted|
+        table = quoted || unquoted
+        counts[table] += 1 if table
+      end
+    end
+  end
+
+  # Build a table_name => alias_name map for substitution in non-association sorts.
+  # When Rails aliases an association table (e.g. "projects" -> "projects_work_packages"),
+  # non-association sortable strings that hardcode the table name (e.g. "projects.identifier"
+  # for the semantic id sort) must use the aliased name, too (-> "projects_work_packages.identifier").
+  def table_to_alias_map(reflection_includes, aliases)
+    reflection_includes.filter_map do |inc|
       reflection = WorkPackage.reflections[inc.to_s]
       table_name = reflection.klass.table_name
-
-      hash[inc] = reflection_alias(reflection, counts[table_name])
-
-      counts[table_name] += 1
-    end
+      alias_name = aliases[inc]
+      [table_name, alias_name] if alias_name != table_name
+    end.to_h
   end
 
   def reflection_includes
@@ -208,8 +333,7 @@ class ::Query::Results
 
   def filter_merges
     query.filters.inject(::WorkPackage.unscoped) do |scope, filter|
-      scope = scope.merge(filter.scope)
-      scope
+      filter.apply_to(scope)
     end
   end
 

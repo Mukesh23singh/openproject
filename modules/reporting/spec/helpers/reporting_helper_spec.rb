@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,56 +20,55 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ReportingHelper, type: :helper do
-  describe '#field_representation_map' do
-    context 'for a custom field' do
-      context 'for which a custom option exists (e.g. a list field)' do
+RSpec.describe ReportingHelper do
+  describe "#field_representation_map" do
+    context "for a custom field" do
+      context "for which a custom option exists (e.g. a list field)" do
         let(:custom_field) do
-          FactoryBot.create(
+          create(
             :list_wp_custom_field,
             name: "Ingredients",
             possible_values: ["ham"]
           )
         end
 
-        it 'returns the option value' do
+        it "returns the option value" do
           option = custom_field.possible_values.first
 
           expect(field_representation_map("custom_field#{custom_field.id}", option.id))
-            .to eql 'ham'
+            .to eql "ham"
         end
 
-        it 'returns not found for an outdated value value' do
+        it "returns not found for an outdated value value" do
           expect(field_representation_map("custom_field#{custom_field.id}", "1234123"))
-            .to eql '1234123 not found'
+            .to eql "1234123 not found"
         end
       end
 
-      context 'for which no custom option exists (e.g. a float field)' do
+      context "for which no custom option exists (e.g. a float field)" do
         let(:custom_field) do
-          FactoryBot.create(
+          create(
             :float_wp_custom_field,
             name: "Estimate"
           )
         end
 
-        it 'returns the option value' do
+        it "returns the option value" do
           expect(field_representation_map("custom_field#{custom_field.id}", 3.0))
-            .to eql 3.0
+            .to eq "3.0"
         end
       end
     end
 
-    context 'for which no custom option exists' do
-      it 'returns the not found value' do
+    context "for which no custom option exists" do
+      it "returns the not found value" do
         expect(field_representation_map("custom_field12345", "345"))
           .to eql "345 not found"
       end

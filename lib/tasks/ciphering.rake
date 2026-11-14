@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,26 +20,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 namespace :db do
-  desc 'Encrypts SCM and LDAP passwords in the database.'
+  desc "Encrypts SCM and LDAP passwords in the database."
   task encrypt: :environment do
     unless Repository.encrypt_all(:password) &&
-           AuthSource.encrypt_all(:account_password)
-      raise 'Some objects could not be saved after encryption, update was rolled back.'
+           LdapAuthSource.encrypt_all(:account_password)
+      raise "Some objects could not be saved after encryption, update was rolled back."
     end
   end
 
-  desc 'Decrypts SCM and LDAP passwords in the database.'
+  desc "Decrypts SCM and LDAP passwords in the database."
   task decrypt: :environment do
     unless Repository.decrypt_all(:password) &&
-           AuthSource.decrypt_all(:account_password)
-      raise 'Some objects could not be saved after decryption, update was rolled back.'
+           LdapAuthSource.decrypt_all(:account_password)
+      raise "Some objects could not be saved after decryption, update was rolled back."
     end
   end
 end

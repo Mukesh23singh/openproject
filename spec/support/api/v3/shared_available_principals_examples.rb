@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,89 +22,129 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'rack/test'
+require "rack/test"
 
-shared_examples_for 'available principals' do |principals|
+RSpec.shared_examples_for "available principals" do |principals, work_package_scope: false|
   include API::V3::Utilities::PathHelper
 
   current_user do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
+  end
+  let(:shared_with_user) do
+    create(:user, member_with_roles: { work_package => assignable_work_package_role })
   end
   let(:other_user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => assignable_project_role })
   end
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
-  let(:project) { FactoryBot.create(:project) }
+  let(:role) { create(:project_role, permissions:) }
+  let(:assignable_project_role) { create(:project_role, permissions: assignable_permissions) }
+  let(:assignable_work_package_role) { create(:work_package_role, permissions: assignable_permissions) }
+  let(:project) { create(:project) }
+  let(:work_package) { create(:work_package, project:) }
   let(:group) do
-    FactoryBot.create(:group,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:group, member_with_roles: { project => assignable_project_role })
   end
   let(:placeholder_user) do
-    FactoryBot.create(:placeholder_user,
-                      member_in_project: project,
-                      member_through_role: role)
-  end
-  let(:permissions) { [:view_work_packages] }
-
-  shared_context "request available #{principals}" do
-    before { get href }
+    create(:placeholder_user, member_with_roles: { project => assignable_project_role })
   end
 
-  describe 'response' do
+  let(:permissions) { base_permissions }
+
+  let(:assignable_permissions) { [:work_package_assigned] }
+  describe "response" do
     shared_examples_for "returns available #{principals}" do |total, count, klass|
-      include_context "request available #{principals}"
+      before { get href }
 
-      it_behaves_like 'API V3 collection response', total, count, klass
+      it_behaves_like "API V3 collection response", total, count, klass
     end
 
-    describe 'users' do
-      context 'single user' do
+    describe "users" do
+      let(:permissions) { base_permissions + assignable_permissions }
+
+      context "for a single user" do
         # The current user
 
-        it_behaves_like "returns available #{principals}", 1, 1, 'User'
+        it_behaves_like "returns available #{principals}", 1, 1, "User"
       end
 
-      context 'multiple users' do
+      context "for multiple users" do
         before do
           other_user
+          shared_with_user
           # and the current user
         end
 
-        it_behaves_like "returns available #{principals}", 2, 2, 'User'
+        user_count = work_package_scope ? 3 : 2
+
+        it_behaves_like "returns available #{principals}", user_count, user_count, "User" do
+          let(:json_response) { JSON.parse(last_response.body) }
+
+          context "without permissions to view user email" do
+            it "returns no email key for other users" do
+              expect(json_response["_embedded"]["elements"])
+                .not_to include(
+                  a_hash_including(
+                    "id" => other_user.id,
+                    "email" => other_user.mail
+                  )
+                )
+            end
+          end
+
+          context "with permissions to view user email" do
+            current_user do
+              create(:user, member_with_roles: { project => role }, global_permissions: [:view_user_email])
+            end
+
+            it "returns email key for other users" do
+              expect(json_response["_embedded"]["elements"])
+                .to include(
+                  a_hash_including(
+                    "id" => other_user.id,
+                    "email" => other_user.mail
+                  )
+                )
+            end
+          end
+        end
+      end
+
+      context "if the user lacks the assignable permission" do
+        let(:permissions) { base_permissions }
+
+        it_behaves_like "returns available #{principals}", 0, 0, "User"
       end
     end
 
-    describe 'groups' do
+    describe "groups" do
       let!(:users) { [group] }
 
-      # current user and group
-      it_behaves_like "returns available #{principals}", 2, 2, 'Group'
+      it_behaves_like "returns available #{principals}", 1, 1, "Group"
     end
 
-    describe 'placeholder users' do
+    describe "placeholder users" do
       let!(:users) { [placeholder_user] }
 
-      # current user and placeholder user
-      it_behaves_like "returns available #{principals}", 2, 2, 'PlaceholderUser'
+      it_behaves_like "returns available #{principals}", 1, 1, "PlaceholderUser"
     end
   end
 
-  describe 'if not allowed' do
+  describe "if not allowed" do
     include Rack::Test::Methods
     let(:permissions) { [] }
+
     before { get href }
 
-    it_behaves_like 'unauthorized access'
+    if work_package_scope
+      it_behaves_like "not found",
+                      I18n.t("api_v3.errors.not_found.work_package")
+    else
+      it_behaves_like "unauthorized access"
+    end
   end
 end

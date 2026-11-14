@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,62 +22,119 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
+require_relative "../../toasts/expectations"
 
 module Components
   module WorkPackages
     class ContextMenu
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
+      include Toasts::Expectations
 
-      def open_for(work_package)
-        # Close
-        find('body').send_keys :escape
-        sleep 0.5
+      def open_for(work_package, check_if_open: true, card_view: nil)
+        close_if_open
+        sleep 0.5 unless using_cuprite?
 
-        if page.has_selector?('#wp-view-toggle-button', text: 'Cards')
-          page.find(".op-wp-single-card-#{work_package.id}").right_click
+        if card_view
+          page.find(".op-wp-single-card-#{work_package.id}", wait: 20).right_click
         else
-          page.find(".wp-row-#{work_package.id}-table").right_click
+          page.find(".wp-row-#{work_package.id}-table", wait: 20).right_click
         end
 
-        expect_open
+        expect_open if check_if_open
       end
 
       def expect_open
-        expect(page).to have_selector(selector)
+        expect(page).to have_selector(:menu, work_package_context_menu_label)
+      end
+
+      # Escape would also clear the selection when no menu owns it.
+      def close_if_open
+        return unless page.has_selector?(:menu, work_package_context_menu_label, wait: 0)
+
+        press_escape
+        expect_closed
+      end
+
+      # Cuprite's send_keys clicks the receiving element first, and a click at
+      # the body center lands on whichever menu item happens to lie there.
+      def press_escape
+        if using_cuprite?
+          page.driver.browser.keyboard.type(:escape)
+        else
+          page.driver.browser.action.send_keys(:escape).perform
+        end
       end
 
       def expect_closed
-        expect(page).to have_no_selector(selector)
+        expect(page).to have_no_selector(:menu, work_package_context_menu_label)
       end
 
       def choose(target)
-        find("#{selector} .menu-item", text: target).click
+        within_menu do
+          find(:menuitem, text: target, exact_text: true).click
+        end
+      end
+
+      def open_submenu(label)
+        within_menu do
+          find(:menuitem, label, exact: true, aria: { haspopup: "menu" }).click
+        end
+        expect(page).to have_menu(label)
+      end
+
+      def choose_in_submenu(submenu, target)
+        open_submenu(submenu)
+        within(:menu, submenu) do
+          find(:menuitem, target, exact: true).click
+        end
+      end
+
+      def expect_no_submenu(label)
+        within_menu do
+          expect(page).to have_no_menuitem(label, exact: true, aria: { haspopup: "menu" })
+        end
+      end
+
+      def choose_delete_and_confirm_deletion
+        choose "Delete"
+
+        dialog = ::Components::WorkPackages::DestroyModal.new
+        dialog.confirm_deletion
       end
 
       def expect_no_options(*options)
         expect_open
-        options.each do |text|
-          expect(page).to have_no_selector("#{selector} .menu-item", text: text)
+        within_menu do
+          options.each do |text|
+            expect(page).to have_no_selector(:menuitem, text:)
+          end
         end
       end
 
-      def expect_options(options)
+      def expect_options(*options)
         expect_open
-        options.each do |text|
-          expect(page).to have_selector("#{selector} .menu-item", text: text)
+        within_menu do
+          options.each do |text|
+            expect(page).to have_selector(:menuitem, text:)
+          end
         end
       end
 
       private
 
-      def selector
-        '#work-package-context-menu'
+      def within_menu(&)
+        within(:menu, work_package_context_menu_label, &)
+      end
+
+      def work_package_context_menu_label
+        I18n.t("js.label_work_package_context_menu")
       end
     end
   end

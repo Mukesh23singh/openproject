@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,49 +22,58 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
-require 'support/pages/work_packages/work_packages_table'
-require 'support/components/ng_select_autocomplete_helpers'
+require "support/pages/page"
+require "support/pages/work_packages/work_packages_table"
+require "support/components/autocompleter/ng_select_autocomplete_helpers"
 
 module Pages
   class EmbeddedWorkPackagesTable < WorkPackagesTable
-    include ::Components::NgSelectAutocompleteHelpers
+    include ::Components::Autocompleter::NgSelectAutocompleteHelpers
 
     attr_reader :container
 
-    def initialize(container, project = nil)
+    def initialize(container, project = nil, entry_control: nil, table_name: nil)
       super(project)
       @container = container
+      @entry_control = entry_control
+      @table_name = table_name
+    end
+
+    def table_name
+      @table_name || super
+    end
+
+    def entry_control
+      @entry_control ? @entry_control.call : super
     end
 
     def table_container
-      container.find('.work-package-table')
+      container.find("table.work-package-table", wait: 10)
+    end
+
+    def axe_scope
+      "##{container.find('table.work-package-table[id]', wait: 10)[:id]}"
     end
 
     def click_reference_inline_create
-      ##
-      # When using the inline create on initial page load,
-      # there is a delay on travis where inline create can be clicked.
-      sleep 1
-      container.find('.wp-inline-create--reference-link').click
+      container.find('[data-test-selector="op-wp-inline-create-reference"]').click
 
       # Returns the autocomplete container
-      container.find('[data-qa-selector="wp-relations-autocomplete"]')
+      container.find('[data-test-selector="wp-relations-autocomplete"]')
     end
 
     def reference_work_package(work_package, query: work_package.subject)
       click_reference_inline_create
 
-      autocomplete_container = container.find('[data-qa-selector="wp-relations-autocomplete"]')
+      autocomplete_container = container.find('[data-test-selector="wp-relations-autocomplete"]')
       select_autocomplete autocomplete_container,
-                          query: query,
-                          results_selector: '.ng-dropdown-panel-items'
+                          query:,
+                          results_selector: ".ng-dropdown-panel-items"
 
       expect_work_package_listed work_package
     end

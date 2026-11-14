@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -29,10 +28,6 @@
 .user-comment
   display: block
   margin: 12px 0 0 0
-  padding: 0 25px 0 0
-
-  li, p
-    word-wrap: break-word
 
   &.wiki
     ul
@@ -70,8 +65,6 @@
     display: inline-block
 
 .comment ul
-  list-style-type: disc !important
-
   li
     padding: 0 !important
     margin: 0 !important
@@ -82,7 +75,7 @@ h4.comment
 
 .work-package-details-activities-list
   list-style-type: none
-  margin: 20px 0 0 0
+  margin: 0
 
 // Position first date with comment toggler
 .activity-date.-with-toggler
@@ -109,25 +102,17 @@ h4.comment
     resize: none
     margin-bottom: 0
 
-  .avatar
-    float: left
-    margin: -2px 10px 0 0
-
-  .avatar-mini
-    float: left
-    margin: -3px 7px 0 0
-
   .comments-icons
     a:hover
       text-decoration: none
   .action-icon
-    color: var(--content-icon-link-color)
+    color: var(--control-iconColor-rest)
     &::before
       padding: 0 0 0 0.3em
 
 ul.work-package-details-activities-messages
   li
-    color: var(--gray-dark)
+    color: var(--fgColor-muted)
     margin-bottom: 0.1rem
 
     &:last-child
@@ -137,3 +122,8 @@ ul.work-package-details-activities-messages
   height: 100px
   display: block
   margin-top: 17px
+
+.work-packages--activity
+  &--add-comment
+    &_top
+      margin-bottom: 20px

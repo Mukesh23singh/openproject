@@ -1,17 +1,38 @@
-/*
-  This is a "Solution Style" tsconfig.json file, and is used by editors and TypeScript’s language server to improve development experience.
-  It is not intended to be used to perform a compilation.
-
-  To learn more about this file see: https://angular.io/config/solution-tsconfig.
-*/
 {
+  "compileOnSave": false,
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "outDir": "./dist/out-tsc",
+    "strict": true,
+    "strictPropertyInitialization": false,
+    "strictFunctionTypes": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": false,
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "moduleResolution": "bundler",
+    "importHelpers": true,
+    "target": "ES2022",
+    "module": "ES2022",
+    "useDefineForClassFields": false,
+    "paths": {
+      "@ng-select/ng-select/*": ["./node_modules/@ng-select/ng-select/*"],
+      "core-app/*": ["./src/app/*"],
+      "core-common/*": ["./src/common/*"],
+      "core-components/*": ["./src/app/components/*"],
+      "core-elements/*": ["./src/elements/*"],
+      "core-stimulus/*": ["./src/stimulus/*"],
+      "core-turbo/*": ["./src/turbo/*"],
+      "core-typings/*": ["./src/typings/*"],
+      "core-vendor/*": ["./src/vendor/*"]
+    }
+  },
   "files": [],
   "references": [
-    {
-      "path": "./src/tsconfig.app.json"
-    },
-    {
-      "path": "./src/tsconfig.spec.json"
-    }
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.spec.json" }
   ]
 }

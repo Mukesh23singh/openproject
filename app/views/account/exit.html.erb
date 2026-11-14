@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,22 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% # LOCALS
-  fail ArgumentError, 'missing instructions' unless defined? instructions
-%>
+<%# LOCALS
+  fail ArgumentError, "missing instructions" unless defined? instructions %>
 
 <% html_title t(:label_login) %>
-<% breadcrumb_paths(t(:label_login)) %>
 <%= call_hook :view_account_login_top %>
-
-<%
-  signin_link = link_to I18n.t('label_here'), signin_path
-  instruction_text = I18n.t "instructions_#{instructions}", signin: signin_link
-%>
 
 <div id="login-form" class="form -bordered">
   <h1><%= I18n.t(:label_login) %></h1>
-  <hr class="form--separator" />
-  <p><%= instruction_text.html_safe %></p>
+  <hr class="form--separator">
+  <p><%= link_translate "instructions_#{instructions}_link",
+                        links: { signin_url: signin_path } %></p>
 </div>
 <%= call_hook :view_account_login_bottom %>

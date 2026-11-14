@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './expected_markdown'
+require "spec_helper"
+require_relative "expected_markdown"
 
-describe OpenProject::TextFormatting,
-         'lists' do
-  include_context 'expected markdown modules'
+RSpec.describe OpenProject::TextFormatting,
+               "lists" do
+  include_context "expected markdown modules"
 
-  context 'ordered lists' do
-    it_behaves_like 'format_text produces' do
+  context "ordered lists" do
+    it_behaves_like "format_text produces" do
       let(:raw) do
         <<~RAW
           1. First item
@@ -57,8 +58,8 @@ describe OpenProject::TextFormatting,
     end
   end
 
-  context 'unordered lists' do
-    it_behaves_like 'format_text produces' do
+  context "unordered lists" do
+    it_behaves_like "format_text produces" do
       let(:raw) do
         <<~RAW
           * First item
@@ -84,8 +85,8 @@ describe OpenProject::TextFormatting,
     end
   end
 
-  context 'todo list' do
-    it_behaves_like 'format_text produces' do
+  context "todo list" do
+    it_behaves_like "format_text produces" do
       let(:raw) do
         <<~RAW
           *   [ ] First ToDo
@@ -114,8 +115,8 @@ describe OpenProject::TextFormatting,
       end
     end
 
-    context 'in a table' do
-      it_behaves_like 'format_text produces' do
+    context "in a table" do
+      it_behaves_like "format_text produces" do
         let(:raw) do
           <<~RAW
             <table>
@@ -135,7 +136,7 @@ describe OpenProject::TextFormatting,
                   <td>
                     <ul class="op-uc-list_task-list op-uc-list">
                       <li>
-                        <a class="op-uc-link" href="https://example.com/">
+                        <a class="op-uc-link" target="_top" href="https://example.com/">
                           <label class="op-uc-list__label">
                             <input type="checkbox" disabled="disabled">
                             <span class="op-uc-list__label__description">asdfasd</span>
@@ -217,7 +218,7 @@ describe OpenProject::TextFormatting,
                         <ul class="op-uc-list_task-list op-uc-list">
                           <li class="op-uc-list--item">
                             <input type="checkbox" class="op-uc-list--task-checkbox" disabled>
-                            <a class="op-uc-link" href="https://example.com/" rel="noopener noreferrer">
+                            <a class="op-uc-link" target="_top" href="https://example.com/" rel="noopener noreferrer nofollow">
                               <span>asdfasd</span>
                               <span> asdf</span>
                             </a>
@@ -267,8 +268,8 @@ describe OpenProject::TextFormatting,
       end
     end
 
-    context 'in a table and with a link on second place' do
-      it_behaves_like 'format_text produces' do
+    context "in a table and with a link on second place" do
+      it_behaves_like "format_text produces" do
         let(:raw) do
           <<~RAW
             <table>
@@ -285,7 +286,7 @@ describe OpenProject::TextFormatting,
                           <input type="checkbox" disabled="disabled">
                           <span class="op-uc-list__label__description">asdfasdfasdf </span>
                         </label>
-                        <a class="op-uc-link" href="https://example.com/">
+                        <a class="op-uc-link" target="_top" href="https://example.com/">
                           <label class="op-uc-list__label">
                             <span class="op-uc-list__label__description">foobar</span>
                           </label>
@@ -316,7 +317,7 @@ describe OpenProject::TextFormatting,
                           <li class="op-uc-list--item">
                             <input type="checkbox" class="op-uc-list--task-checkbox" disabled>
                             <span>asdfasdfasdf </span>
-                            <a class="op-uc-link" href="https://example.com/" rel="noopener noreferrer">
+                            <a class="op-uc-link" href="https://example.com/" target="_top" rel="noopener noreferrer nofollow">
                               <span>foobar</span>
                             </a>
                           </li>

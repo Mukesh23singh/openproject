@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,12 +38,12 @@ class Report::Filter
     accepts_property :values, :value, :operator
 
     mattr_accessor :skip_inherited_operators
-    self.skip_inherited_operators = [:time_operators, 'y', 'n']
+    self.skip_inherited_operators = [:time_operators, "y", "n"]
 
     attr_accessor :values
 
     def cache_key
-      self.class.cache_key + operator.to_s + Array(values).join(',')
+      self.class.cache_key + operator.to_s + Array(values).join(",")
     end
 
     ##
@@ -96,7 +95,7 @@ class Report::Filter
 
     use :default_operators
 
-    def self.new(*args, &block) # :nodoc:
+    def self.new(*args, &) # :nodoc:
       # this class is abstract. instances are only allowed from child classes
       raise "#{name} is an abstract class" if base?
 
@@ -114,15 +113,15 @@ class Report::Filter
     ##
     # Returns an array of [:label_of_value, value]-kind arrays, containing
     # valid id-label combinations of possible filter values
-    def self.available_values(_params = {})
+    def self.available_values(**)
       []
     end
 
     ##
-    # Returns a [:label_of_value, value]-kind array (as in self.vailable_values)
+    # Returns a [:label_of_value, value]-kind array (as in self.available_values)
     # for the given value
     def self.label_for_value(value)
-      available_values(reverse_search: true).find { |v| v.second == value || v.second.to_s == value }
+      available_values.find { |v| v.second == value || v.second.to_s == value }
     end
 
     def correct_position?
@@ -175,7 +174,7 @@ class Report::Filter
     end
 
     def to_hash
-      raise NotImplementedError
+      raise SubclassResponsibilityError
     end
 
     def transformed_values
@@ -183,14 +182,29 @@ class Report::Filter
     end
 
     def sql_statement
-      super.tap do |query|
-        arity = operator.arity
-        query_values = [*transformed_values].compact
-        # if there is just the nil it might be actually intendet to be there
-        query_values.unshift nil if Array(values).size == 1 && Array(values).first.nil?
-        query_values = query_values[0, arity] if query_values and arity >= 0 and arity != query_values.size
-        operator.modify(query, field, *query_values) unless field.empty?
-      end
+      super.tap { |query| apply_operator_to(query) }
+    end
+
+    def apply_operator_to(query)
+      return if field.empty?
+
+      arity = operator.arity
+      query_values = sql_query_values(arity)
+      return if skip_operator?(arity, query_values)
+
+      operator.modify(query, field, *query_values)
+    end
+
+    def sql_query_values(arity)
+      query_values = [*transformed_values].compact
+      # if there is just the nil it might be actually intended to be there
+      query_values.unshift nil if Array(values).size == 1 && Array(values).first.nil?
+      query_values = query_values[0, arity] if query_values && arity >= 0 && arity != query_values.size
+      query_values
+    end
+
+    def skip_operator?(arity, query_values)
+      arity.positive? && query_values.empty?
     end
   end
 end

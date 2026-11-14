@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,59 +22,98 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Posts::PostRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Posts::PostRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
   let(:message) do
-    FactoryBot.build_stubbed(:message) do |wp|
-      allow(wp)
+    build_stubbed(:message) do |message|
+      # Necessary as project is only a 'has_one through' relation.
+      allow(message)
         .to receive(:project)
-        .and_return(project)
+              .and_return(workspace)
     end
   end
-  let(:project) { FactoryBot.build_stubbed(:project) }
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:workspace) { build_stubbed(:project) }
+  let(:current_user) { build_stubbed(:user) }
+  let(:embed_links) { true }
   let(:representer) do
-    described_class.create(message, current_user: user, embed_links: true)
+    described_class.create(message, current_user:, embed_links:)
   end
   let(:permissions) { all_permissions }
   let(:all_permissions) { %i(edit_messages) }
 
   subject { representer.to_json }
 
-  before do
-    allow(user)
-      .to receive(:allowed_to?) do |permission, _project|
-      permissions.include?(permission)
-    end
-  end
-
-  describe '_links' do
-    it_behaves_like 'has an untitled link' do
-      let(:link) { 'self' }
+  describe "_links" do
+    it_behaves_like "has an untitled link" do
+      let(:link) { "self" }
       let(:href) { api_v3_paths.post message.id }
     end
 
-    it_behaves_like 'has an untitled link' do
+    it_behaves_like "has an untitled link" do
       let(:link) { :attachments }
       let(:href) { api_v3_paths.attachments_by_post message.id }
     end
 
-    it_behaves_like 'has a titled link' do
-      let(:link) { :project }
-      let(:title) { project.name }
-      let(:href) { api_v3_paths.project project.id }
+    describe "project" do
+      it_behaves_like "has workspace linked"
     end
 
-    it_behaves_like 'has an untitled action link' do
+    describe "topic" do
+      it_behaves_like "has an untitled link" do
+        let(:link) { :topic }
+        let(:href) { api_v3_paths.post message.id }
+      end
+
+      context "for a reply" do
+        let(:topic) { build_stubbed(:message) }
+        let(:message) do
+          build_stubbed(:message, parent: topic) do |message|
+            allow(message).to receive(:project).and_return(workspace)
+          end
+        end
+
+        it_behaves_like "has an untitled link" do
+          let(:link) { :topic }
+          let(:href) { api_v3_paths.post topic.id }
+        end
+      end
+
+      context "for a reply not saved yet" do
+        let(:topic) { build_stubbed(:message) }
+        let(:message) do
+          build(:message, parent: topic).tap do |message|
+            allow(message).to receive(:project).and_return(workspace)
+          end
+        end
+
+        it_behaves_like "has an untitled link" do
+          let(:link) { :topic }
+          let(:href) { api_v3_paths.post topic.id }
+        end
+      end
+
+      context "for a topic not saved yet" do
+        let(:message) do
+          build(:message).tap do |message|
+            allow(message).to receive(:project).and_return(workspace)
+          end
+        end
+
+        it_behaves_like "has no link" do
+          let(:link) { :topic }
+        end
+      end
+    end
+
+    it_behaves_like "has an untitled action link" do
       let(:link) { :addAttachment }
       let(:href) { api_v3_paths.attachments_by_post message.id }
       let(:method) { :post }
@@ -80,25 +121,21 @@ describe ::API::V3::Posts::PostRepresenter, 'rendering' do
     end
   end
 
-  describe 'properties' do
-    it_behaves_like 'property', :_type do
-      let(:value) { 'Post' }
+  describe "properties" do
+    it_behaves_like "property", :_type do
+      let(:value) { "Post" }
     end
 
-    it_behaves_like 'property', :id do
+    it_behaves_like "property", :id do
       let(:value) { message.id }
     end
 
-    it_behaves_like 'property', :subject do
+    it_behaves_like "property", :subject do
       let(:value) { message.subject }
     end
   end
 
-  describe '_embedded' do
-    it 'has project embedded' do
-      expect(subject)
-        .to be_json_eql(project.name.to_json)
-        .at_path('_embedded/project/name')
-    end
+  describe "_embedded" do
+    it_behaves_like "has workspace embedded"
   end
 end

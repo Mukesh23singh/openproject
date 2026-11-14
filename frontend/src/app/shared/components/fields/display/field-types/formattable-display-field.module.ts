@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +20,23 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { DisplayField } from 'core-app/shared/components/fields/display/display-field.module';
 import { ApplicationRef } from '@angular/core';
-import { DynamicBootstrapper } from 'core-app/core/setup/globals/dynamic-bootstrapper';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { ExpressionService } from 'core-app/core/expression/expression.service';
+import { ConfigurationService } from 'core-app/core/config/configuration.service';
 
 export class FormattableDisplayField extends DisplayField {
-  @InjectField() readonly appRef:ApplicationRef;
+  @LazyInject() readonly appRef:ApplicationRef;
 
-  public render(element:HTMLElement, displayText:string, options:any = {}):void {
+  @LazyInject() readonly configurationService:ConfigurationService;
+
+  public render(element:HTMLElement, displayText:string, options:Record<string, unknown> = {}):void {
     const div = document.createElement('div');
 
     div.classList.add(
@@ -53,9 +54,16 @@ export class FormattableDisplayField extends DisplayField {
 
     element.innerHTML = '';
     element.appendChild(div);
+  }
 
-    // Allow embeddable rendered content
-    DynamicBootstrapper.bootstrapOptionalEmbeddable(this.appRef, div);
+  get placeholder():string {
+    if (this.name === 'description') {
+      return this.configurationService.requireDoubleClickForInlineEdit()
+        ? this.I18n.t('js.placeholders.description_double_click')
+        : this.I18n.t('js.placeholders.description');
+    }
+
+    return super.placeholder;
   }
 
   public get isFormattable():boolean {
@@ -66,8 +74,8 @@ export class FormattableDisplayField extends DisplayField {
     if (!this.schema) {
       return null;
     }
-    const element = this.resource[this.name];
-    if (!(element && element.html)) {
+    const element = this.resource[this.name] as api.v3.Formattable|null|undefined;
+    if (!(element?.html)) {
       return '';
     }
 

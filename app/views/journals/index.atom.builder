@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,9 +30,9 @@
 xml.instruct!
 xml.feed "xmlns" => "http://www.w3.org/2005/Atom" do
   xml.title   title
-  xml.link    "rel" => "self", "href" => url_for(format: 'atom', key: User.current.rss_key, only_path: false)
+  xml.link    "rel" => "self", "href" => url_for(format: "atom", key: User.current.rss_key, only_path: false)
   xml.link    "rel" => "alternate", "href" => home_url(only_path: false)
-  xml.id      url_for(controller: '/homescreen', action: :index, only_path: false)
+  xml.id      url_for(controller: "/homescreen", action: :index, only_path: false)
   xml.updated((journals.first ? journals.first.created_at : Time.now).xmlschema)
   xml.author { xml.name Setting.app_title.to_s }
   journals.each do |change|
@@ -39,21 +40,28 @@ xml.feed "xmlns" => "http://www.w3.org/2005/Atom" do
     xml.entry do
       xml.title   "#{work_package.project.name} - #{work_package.type.name} ##{work_package.id}: #{work_package.subject}"
       xml.link    "rel" => "alternate", "href" => work_package_url(work_package)
-      xml.id      url_for(controller: '/work_packages', action: 'show', id: work_package, journal_id: change,
+      # RFC 4287 §4.2.6.1: atom:id MUST NOT change over time. Feed readers
+      # key entry deduplication on its byte value, so flipping the URL
+      # across a work_packages_identifier mode change would re-surface every
+      # historical entry as new in subscribers' readers. Pin to the numeric
+      # primary key to keep the id stable.
+      xml.id      url_for(controller: "/work_packages", action: "show", id: work_package.id, journal_id: change,
                           only_path: false)
       xml.updated change.created_at.xmlschema
       xml.author do
         xml.name change.user.name
-        xml.email(change.user.mail) if change.user.is_a?(User) && !change.user.mail.blank? && !change.user.pref.hide_mail
+        if change.user.is_a?(User) && change.user.mail.present? && User.current.allowed_globally?(:view_user_email)
+          xml.email(change.user.mail)
+        end
       end
       xml.content "type" => "html" do
-        xml.text! '<ul>'
+        xml.text! "<ul>"
         change.details.each do |detail|
-          change_content = change.render_detail(detail, no_html: false)
+          change_content = change.render_detail(detail, html: true)
           xml.text!(content_tag(:li, change_content)) if change_content.present?
         end
-        xml.text! '</ul>'
-        xml.text! format_text(change, :notes, only_path: false) unless change.notes.blank?
+        xml.text! "</ul>"
+        xml.text! format_text(change, :notes, only_path: false) if change.notes.present?
       end
     end
   end

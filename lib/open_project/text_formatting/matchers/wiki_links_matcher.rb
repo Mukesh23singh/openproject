@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -57,12 +56,12 @@ module OpenProject::TextFormatting
       def self.process_match(m, matched_string, context)
         # Leading string before match
         instance = new(
-          matched_string: matched_string,
+          matched_string:,
           escaped: m[1],
           all: m[2],
           page: m[3],
           title: m[5],
-          context: context
+          context:
         )
 
         instance.process
@@ -116,7 +115,7 @@ module OpenProject::TextFormatting
         link_from_match
       end
 
-      def link_from_match
+      def link_from_match # rubocop:disable Metrics/AbcSize
         # extract anchor
         anchor = nil
         if page =~ /\A(.+?)\#(.+)\z/
@@ -139,18 +138,22 @@ module OpenProject::TextFormatting
                 "##{title}" # used for single-file wiki export
               else
                 wiki_page_id = wiki_page.nil? ? WikiPage.slug(page) : wiki_page.slug
-                url_for only_path: context[:only_path],
-                        controller: '/wiki',
-                        action: 'show',
+                url_for(only_path: context[:only_path],
+                        controller: "/wiki",
+                        action: "show",
                         project_id: project.identifier,
                         title: wiki_page.nil? ? wiki_title.strip : nil,
                         id: wiki_page_id,
-                        anchor: anchor
+                        anchor:)
               end
 
+        render_link(wiki_title, url, wiki_page)
+      end
+
+      def render_link(wiki_title, url, wiki_page)
         link_to h(wiki_title),
                 url,
-                class: ('wiki-page' + (wiki_page ? '' : ' new'))
+                class: ["wiki-page", { new: wiki_page.nil? }]
       end
     end
   end

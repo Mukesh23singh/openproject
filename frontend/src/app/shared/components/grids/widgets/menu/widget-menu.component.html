@@ -1,4 +1,3 @@
-<icon-triggered-context-menu
-    *ngIf="hasMenu"
-    [menu-items]="menuItems">
-</icon-triggered-context-menu>
+@if (hasMenu) {
+  <icon-triggered-context-menu [customAriaLabel]="widgetMenuLabel()" [menuItemsFactory]="menuItemsFactory" />
+}

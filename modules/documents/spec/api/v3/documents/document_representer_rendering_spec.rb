@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,103 +22,204 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Documents::DocumentRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Documents::DocumentRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
   let(:document) do
-    FactoryBot.build_stubbed(:document,
-                             description: 'Some description') do |document|
+    build_stubbed(:document,
+                  description: "Some description") do |document|
       allow(document)
         .to receive(:project)
-        .and_return(project)
+        .and_return(workspace)
     end
   end
-  let(:project) { FactoryBot.build_stubbed(:project) }
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:workspace) { build_stubbed(:project) }
+  let(:current_user) { build_stubbed(:user) }
+  let(:embed_links) { true }
   let(:representer) do
-    described_class.create(document, current_user: user, embed_links: true)
+    described_class.create(document, current_user:, embed_links:)
   end
   let(:permissions) { all_permissions }
   let(:all_permissions) { %i(manage_documents) }
 
   subject { representer.to_json }
 
-  before do
-    allow(user)
-      .to receive(:allowed_to?) do |permission, _|
-      permissions.include?(permission)
-    end
-  end
-
-  describe '_links' do
-    it_behaves_like 'has a titled link' do
-      let(:link) { 'self' }
+  describe "_links" do
+    it_behaves_like "has a titled link" do
+      let(:link) { "self" }
       let(:href) { api_v3_paths.document document.id }
       let(:title) { document.title }
     end
 
-    it_behaves_like 'has an untitled link' do
+    it_behaves_like "has an untitled link" do
       let(:link) { :attachments }
       let(:href) { api_v3_paths.attachments_by_document document.id }
     end
 
-    it_behaves_like 'has a titled link' do
-      let(:link) { :project }
-      let(:title) { project.name }
-      let(:href) { api_v3_paths.project project.id }
-    end
+    it_behaves_like "has workspace linked"
 
-    it_behaves_like 'has an untitled action link' do
+    it_behaves_like "has an untitled action link" do
       let(:link) { :addAttachment }
       let(:href) { api_v3_paths.attachments_by_document document.id }
       let(:method) { :post }
       let(:permission) { :manage_documents }
     end
-  end
 
-  describe 'properties' do
-    it_behaves_like 'property', :_type do
-      let(:value) { 'Document' }
+    it_behaves_like "has an untitled action link" do
+      let(:link) { :update }
+      let(:href) { api_v3_paths.document document.id }
+      let(:method) { :patch }
+      let(:permission) { :manage_documents }
     end
 
-    it_behaves_like 'property', :id do
+    context "when user is not allowed to edit documents" do
+      it_behaves_like "has no link" do
+        let(:link) { :update }
+      end
+    end
+
+    describe "createCollaborationToken",
+             with_flag: { documents_collaboration_token_api: true },
+             with_settings: { real_time_text_collaboration_enabled: true } do
+      let(:link) { :createCollaborationToken }
+      let(:document_permissions) { %i(view_documents) }
+
+      before do
+        mock_permissions_for(current_user) do |mock|
+          mock.allow_in_project(*document_permissions, project: workspace) if document_permissions.any?
+        end
+      end
+
+      context "when the user may view documents" do
+        it_behaves_like "has an untitled link" do
+          let(:href) { api_v3_paths.document_collaboration_token document.id }
+        end
+
+        it "indicates the POST method" do
+          expect(subject).to be_json_eql("post".to_json).at_path("_links/createCollaborationToken/method")
+        end
+      end
+
+      context "when the user may manage documents" do
+        let(:document_permissions) { %i(view_documents manage_documents) }
+
+        it_behaves_like "has an untitled link" do
+          let(:href) { api_v3_paths.document_collaboration_token document.id }
+        end
+      end
+
+      context "when the user may not view documents" do
+        let(:document_permissions) { [] }
+
+        it_behaves_like "has no link"
+      end
+
+      context "when the document is not collaborative" do
+        let(:document) do
+          build_stubbed(:document, kind: "classic") do |document|
+            allow(document)
+              .to receive(:project)
+              .and_return(workspace)
+          end
+        end
+
+        it_behaves_like "has no link"
+      end
+
+      context "when real-time collaboration is disabled",
+              with_settings: { real_time_text_collaboration_enabled: false } do
+        it_behaves_like "has no link"
+      end
+
+      context "when the feature flag is inactive", with_flag: { documents_collaboration_token_api: false } do
+        it_behaves_like "has no link"
+      end
+
+      context "when the feature flag is deactivated after the representer has been cached" do
+        it "no longer renders the link" do
+          expect(described_class.create(document, current_user:, embed_links:).to_json)
+            .to have_json_path("_links/createCollaborationToken")
+
+          allow(OpenProject::FeatureDecisions).to receive(:documents_collaboration_token_api_active?).and_return(false)
+
+          expect(described_class.create(document, current_user:, embed_links:).to_json)
+            .not_to have_json_path("_links/createCollaborationToken")
+        end
+      end
+
+      context "when real-time collaboration is disabled after the representer has been cached" do
+        it "no longer renders the link" do
+          expect(described_class.create(document, current_user:, embed_links:).to_json)
+            .to have_json_path("_links/createCollaborationToken")
+
+          allow(Setting).to receive(:real_time_text_collaboration_enabled?).and_return(false)
+
+          expect(described_class.create(document, current_user:, embed_links:).to_json)
+            .not_to have_json_path("_links/createCollaborationToken")
+        end
+      end
+
+      context "when rendered for a permitted user first and a user without permission afterwards" do
+        let(:other_user) { build_stubbed(:user) }
+        let(:permitted_representer) { described_class.create(document, current_user:, embed_links:) }
+        let(:unpermitted_representer) { described_class.create(document, current_user: other_user, embed_links:) }
+
+        before do
+          mock_permissions_for(other_user, &:forbid_everything)
+        end
+
+        it "does not leak the link through the representer cache" do
+          expect(permitted_representer.to_json).to have_json_path("_links/createCollaborationToken")
+
+          # Make sure the second rendering is actually served from the cache filled by the first one.
+          expect(unpermitted_representer.json_cache_key).to eq(permitted_representer.json_cache_key)
+          expect(Rails.cache.exist?(OpenProject::Cache::CacheKey.key(permitted_representer.json_cache_key)))
+            .to be(true)
+
+          expect(unpermitted_representer.to_json).not_to have_json_path("_links/createCollaborationToken")
+        end
+      end
+    end
+  end
+
+  describe "properties" do
+    it_behaves_like "property", :_type do
+      let(:value) { "Document" }
+    end
+
+    it_behaves_like "property", :id do
       let(:value) { document.id }
     end
 
-    it_behaves_like 'property', :title do
+    it_behaves_like "property", :title do
       let(:value) { document.title }
     end
 
-    it_behaves_like 'has UTC ISO 8601 date and time' do
+    it_behaves_like "has UTC ISO 8601 date and time" do
       let(:date) { document.created_at }
-      let(:json_path) { 'createdAt' }
+      let(:json_path) { "createdAt" }
     end
 
-    it_behaves_like 'has UTC ISO 8601 date and time' do
+    it_behaves_like "has UTC ISO 8601 date and time" do
       let(:date) { document.updated_at }
-      let(:json_path) { 'updatedAt' }
+      let(:json_path) { "updatedAt" }
     end
 
-    it_behaves_like 'API V3 formattable', 'description' do
-      let(:format) { 'markdown' }
+    it_behaves_like "API V3 formattable", "description" do
+      let(:format) { "markdown" }
       let(:raw) { document.description }
-      let(:html) { '<p class="op-uc-p">' + document.description + '</p>' }
+      let(:html) { '<p class="op-uc-p">' + document.description + "</p>" }
     end
   end
 
-  describe '_embedded' do
-    it 'has project embedded' do
-      expect(subject)
-        .to be_json_eql(project.name.to_json)
-        .at_path('_embedded/project/name')
-    end
+  describe "_embedded" do
+    it_behaves_like "has workspace embedded"
   end
 end

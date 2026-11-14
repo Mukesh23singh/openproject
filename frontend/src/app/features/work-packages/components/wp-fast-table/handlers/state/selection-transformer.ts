@@ -1,67 +1,112 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
-import { takeUntil } from 'rxjs/operators';
+import { onDestroySafely } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { FocusHelperService } from 'core-app/shared/directives/focus/focus-helper';
-import {
-  WorkPackageViewSelectionService,
-  WorkPackageViewSelectionState,
-} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { tableRowClassName } from '../../builders/rows/single-row-builder';
-import { checkedClassName } from '../../builders/ui-state-link-builder';
-import { locateTableRow, scrollTableRowIntoView } from '../../helpers/wp-table-row-helpers';
+import { WorkPackageViewSelectionService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { WorkPackageTable } from '../../wp-fast-table';
+import { selectionGesture } from './selection-feedback';
+import { registerWorkPackageDeselectAll } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/wp-selection-keyboard';
 
 export class SelectionTransformer {
-  @InjectField() public wpTableSelection:WorkPackageViewSelectionService;
+  @LazyInject() public wpTableSelection:WorkPackageViewSelectionService;
 
-  @InjectField() public wpTableFocus:WorkPackageViewFocusService;
+  @LazyInject() public wpTableFocus:WorkPackageViewFocusService;
 
-  @InjectField() public querySpace:IsolatedQuerySpace;
-
-  @InjectField() public FocusHelper:FocusHelperService;
+  @LazyInject() public querySpace:IsolatedQuerySpace;
 
   constructor(public readonly injector:Injector,
     public readonly table:WorkPackageTable) {
-    // Focus a single selection when active
+    const destroyRef = table.destroyRef;
+
+    const { selectionFeedback } = table;
+
     this.querySpace.tableRendered.values$()
       .pipe(
-        takeUntil(this.querySpace.stopAllSubscriptions),
+        takeUntilDestroyed(destroyRef),
       )
-      .subscribe(() => {
-        this.wpTableFocus.ifShouldFocus((wpId:string) => {
-          const element = locateTableRow(wpId);
-          if (element.length) {
-            scrollTableRowIntoView(wpId);
-            this.FocusHelper.focusElement(element, true);
-          }
-        });
+      .subscribe((rows) => {
+        if (table.ledger.generation > 0) {
+          selectionFeedback.prune(() => this.wpTableSelection.retainRendered(rows));
+        }
+        this.painted = this.currentMarkers();
       });
 
-    // Update selection state
     this.wpTableSelection.live$()
       .pipe(
-        takeUntil(this.querySpace.stopAllSubscriptions),
+        takeUntilDestroyed(destroyRef),
       )
-      .subscribe((state:WorkPackageViewSelectionState) => {
-        this.renderSelectionState(state);
-      });
+      .subscribe(() => this.paintRows());
 
-    this.wpTableSelection.registerSelectAllListener(() => table.renderedRows);
-    this.wpTableSelection.registerDeselectAllListener();
-  }
+    this.wpTableFocus.whenChanged()
+      .pipe(
+        takeUntilDestroyed(destroyRef),
+      )
+      .subscribe(() => this.paintRows());
 
-  /**
-   * Update all currently visible rows to match the selection state.
-   */
-  private renderSelectionState(state:WorkPackageViewSelectionState) {
-    const context = jQuery(this.table.tableAndTimelineContainer);
-
-    context.find(`.${tableRowClassName}.${checkedClassName}`).removeClass(checkedClassName);
-
-    _.each(state.selected, (selected:boolean, workPackageId:any) => {
-      context.find(`.${tableRowClassName}[data-work-package-id="${workPackageId}"]`).toggleClass(checkedClassName, selected);
+    const unregisterDeselectAll = registerWorkPackageDeselectAll({
+      root: table.tableAndTimelineContainer,
+      hasState: () => this.wpTableSelection.hasSelectionState,
+      clear: () => selectionGesture(table, 'selection', () => this.wpTableSelection.reset()),
     });
+    onDestroySafely(destroyRef, unregisterDeselectAll);
   }
+
+  private painted:SelectionMarkers = { selected: new Set(), focused: null };
+
+  /** Repaints the rows whose selection or focus marker changed since the last paint; the render path paints every row, so a render resets the baseline. */
+  private paintRows():void {
+    if (this.table.ledger.generation === 0) return;
+    const current = this.currentMarkers();
+    const changed = new Set<string>();
+    this.painted.selected.forEach((id) => { if (!current.selected.has(id)) changed.add(id); });
+    current.selected.forEach((id) => { if (!this.painted.selected.has(id)) changed.add(id); });
+    if (this.painted.focused !== current.focused) {
+      [this.painted.focused, current.focused].forEach((id) => { if (id) changed.add(id); });
+    }
+    this.painted = current;
+    const keys = this.table.ledger.keysOfAll(changed);
+    if (keys.size === 0) return;
+    this.table.mutate(keys.size > this.table.ledger.size / 2 ? 'all' : keys, () => undefined);
+  }
+
+  private currentMarkers():SelectionMarkers {
+    return {
+      selected: new Set(this.wpTableSelection.getSelectedWorkPackageIds()),
+      focused: this.wpTableFocus.explicitlyFocusedWorkPackage,
+    };
+  }
+}
+
+interface SelectionMarkers {
+  readonly selected:ReadonlySet<string>;
+  readonly focused:string|null;
 }

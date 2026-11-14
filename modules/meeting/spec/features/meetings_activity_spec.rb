@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,35 +22,30 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Meetings', type: :feature, js: true do
-  let(:project) { FactoryBot.create :project, enabled_module_names: %w[meetings activity] }
-  let(:user) { FactoryBot.create(:admin) }
+RSpec.describe "Meetings", :js do
+  let(:project) { create(:project, enabled_module_names: %w[meetings activity]) }
+  let(:user) { create(:admin) }
 
-  let!(:meeting) { FactoryBot.create :meeting, project: project, title: 'Awesome meeting!' }
-  let!(:agenda) { FactoryBot.create :meeting_agenda, meeting: meeting, text: 'foo' }
-  let!(:minutes) { FactoryBot.create :meeting_minutes, meeting: meeting, text: 'minutes' }
+  let!(:meeting) { create(:meeting, project:, title: "Awesome meeting!") }
 
   before do
     login_as(user)
   end
 
-  describe 'project activity' do
-    it 'can show the meeting in the project activity' do
+  describe "project activity" do
+    it "can show the meeting in the project activity" do
       visit project_activity_index_path(project)
 
-      check 'Meetings'
-      click_on 'Apply'
-
-      expect(page).to have_selector('li.meeting', text: 'Awesome meeting!')
-      expect(page).to have_selector('.meeting-agenda', text: 'Agenda: Awesome meeting!')
+      check "Meetings"
+      click_on "Apply"
+      expect(page).to have_css(".op-activity-list--item-title", text: "Meeting: Awesome meeting!")
     end
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-RSpec.feature 'Work package show page', selenium: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:project) { FactoryBot.create(:project) }
+RSpec.describe "Work package show page" do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project) }
+  let(:grand_parent) do
+    build(:work_package,
+          project:)
+  end
+  let(:parent) do
+    build(:work_package,
+          project:,
+          parent: grand_parent)
+  end
   let(:work_package) do
-    FactoryBot.build(:work_package,
-                     project: project,
-                     assigned_to: user,
-                     responsible: user)
+    build(:work_package,
+          project:,
+          parent:,
+          assigned_to: user,
+          responsible: user)
   end
 
   before do
@@ -43,7 +54,7 @@ RSpec.feature 'Work package show page', selenium: true do
     work_package.save!
   end
 
-  scenario 'all different angular based work package views', js: true do
+  it "all different angular based work package views", :js do
     wp_page = Pages::FullWorkPackage.new(work_package)
 
     wp_page.visit!
@@ -53,5 +64,34 @@ RSpec.feature 'Work package show page', selenium: true do
                               priority: work_package.priority.name,
                               assignee: work_package.assigned_to.name,
                               responsible: work_package.responsible.name
+  end
+
+  it "navigates the breadcrumb (#69640)", :js do
+    wp_page = Pages::FullWorkPackage.new(work_package)
+
+    wp_page.visit!
+
+    # Navigate to parent element
+    click_on accessible_name: parent.subject, exact: true
+    expect(page).to have_test_selector "op-wp-breadcrumb-parent", text: grand_parent.subject, wait: 10
+
+    expect(page).to have_current_path project_work_packages_path(project) + "/#{parent.id}/activity"
+
+    # Go back
+    page.go_back
+    expect(page).to have_test_selector "op-wp-breadcrumb-parent", text: parent.subject, wait: 10
+
+    # Navigate to Grandparent
+    click_on accessible_name: grand_parent.subject, exact: true
+    expect(page).to have_current_path project_work_packages_path(project) + "/#{grand_parent.id}/activity", wait: 10
+  end
+
+  context "as an accessible page" do
+    it "is AXe clean", :js, :selenium do
+      wp_page = Pages::FullWorkPackage.new(work_package)
+      wp_page.visit!
+      wp_page.expect_attributes type: work_package.type.name.upcase
+      expect(page).to be_axe_clean
+    end
   end
 end

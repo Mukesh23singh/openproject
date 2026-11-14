@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require File.dirname(__FILE__) + '/../spec_helper'
 
-describe Document do
-  let(:documentation_category) { FactoryBot.create :document_category, name: 'User documentation' }
-  let(:project)                { FactoryBot.create :project }
-  let(:user)                   { FactoryBot.create(:user) }
-  let(:admin)                  { FactoryBot.create(:admin) }
+require "spec_helper"
+require_module_spec_helper
+
+RSpec.describe Document do
+  let(:project)                { create(:project) }
+  let(:user)                   { create(:user) }
+  let(:admin)                  { create(:admin) }
 
   let(:mail) do
     mock = Object.new
@@ -39,28 +41,50 @@ describe Document do
     mock
   end
 
-  context "validation" do
-    it { is_expected.to validate_presence_of :project }
+  describe "Enums" do
+    it do
+      expect(subject).to define_enum_for(:kind)
+        .with_values(classic: "classic", collaborative: "collaborative")
+        .backed_by_column_of_type(:string)
+    end
+  end
+
+  describe "Associations" do
+    it { is_expected.to belong_to(:project) }
+    it { is_expected.to belong_to(:type).class_name("DocumentType").optional }
+  end
+
+  describe "title normalization" do
+    it_behaves_like "strips invisible characters", :title
+  end
+
+  describe "Validations" do
     it { is_expected.to validate_presence_of :title }
-    it { is_expected.to validate_presence_of :category }
+    it { is_expected.to validate_length_of(:title).is_at_most(255) }
+  end
+
+  describe "Database constraints" do
+    it { is_expected.to have_db_column(:title).of_sql_type("character varying(255)") }
+
+    it "defaults to 'collaborative' kind" do
+      expect(described_class.new).to be_collaborative
+    end
   end
 
   describe "create with a valid document" do
-    let(:valid_document) { Document.new(title: "Test", project: project, category: documentation_category) }
+    let(:valid_document) { build(:document, title: "Test", project:) }
 
-    it "should add a document" do
+    it "adds a document" do
       expect  do
         valid_document.save
-      end.to change { Document.count }.by 1
+      end.to change(described_class, :count).by 1
     end
 
-    it "should set a default-category, if none is given" do
-      default_category = FactoryBot.create :document_category, name: 'Technical documentation', is_default: true
-      document = Document.new(project: project, title: "New Document")
-      expect(document.category).to eql default_category
-      expect do
-        document.save
-      end.to change { Document.count }.by 1
+    it "sets a default type, if none is given" do
+      default_type = create(:document_type, name: "Technical documentation", is_default: true)
+      document = described_class.new(project:, title: "New Document")
+      expect(document.type).to eql default_type
+      expect { document.save }.to change(described_class, :count).by 1
     end
 
     it "with attachments should change the updated_at-date on the document to the attachment's date" do
@@ -69,9 +93,9 @@ describe Document do
       expect do
         Attachments::CreateService
           .new(user: admin)
-          .call(container: valid_document, file: FactoryBot.attributes_for(:attachment)[:file], filename: 'foo')
+          .call(container: valid_document, file: attributes_for(:attachment)[:file], filename: "foo")
 
-        expect(valid_document.attachments.size).to eql 1
+        expect(valid_document.attachments.size).to be 1
       end.to(change do
         valid_document.reload
         valid_document.updated_at
@@ -79,17 +103,41 @@ describe Document do
     end
 
     it "without attachments, the updated-on-date is taken from the document's date" do
-      document = FactoryBot.create(:document, project: project)
+      document = create(:document, project:)
       expect(document.attachments).to be_empty
       expect(document.created_at).to eql document.updated_at
+    end
+  end
+
+  describe "#real_time_collaboration_available?" do
+    let(:document) { build(:document, kind:) }
+    let(:kind) { "collaborative" }
+    let(:collaboration_enabled) { true }
+
+    before do
+      allow(Setting).to receive(:real_time_text_collaboration_enabled?).and_return(collaboration_enabled)
+    end
+
+    it { expect(document).to be_real_time_collaboration_available }
+
+    context "when real-time collaboration is disabled" do
+      let(:collaboration_enabled) { false }
+
+      it { expect(document).not_to be_real_time_collaboration_available }
+    end
+
+    context "when the document is classic" do
+      let(:kind) { "classic" }
+
+      it { expect(document).not_to be_real_time_collaboration_available }
     end
   end
 
   describe "acts as event" do
     let(:now) { Time.zone.now }
     let(:document) do
-      FactoryBot.build(:document,
-                       created_at: now)
+      build(:document,
+            created_at: now)
     end
 
     it { expect(document.event_datetime.to_i).to eq(now.to_i) }

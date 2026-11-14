@@ -1,21 +1,49 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Injector } from '@angular/core';
-import { filter, takeUntil } from 'rxjs/operators';
+import { filter } from 'rxjs/operators';
 import { States } from 'core-app/core/states/states.service';
 import { WorkPackageViewOrderService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-order.service';
 import { WorkPackageViewSortByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { WorkPackageTable } from '../../wp-fast-table';
 
 export class RowsTransformer {
-  @InjectField() querySpace:IsolatedQuerySpace;
+  @LazyInject() querySpace:IsolatedQuerySpace;
 
-  @InjectField() wpTableSortBy:WorkPackageViewSortByService;
+  @LazyInject() wpTableSortBy:WorkPackageViewSortByService;
 
-  @InjectField() wpTableOrder:WorkPackageViewOrderService;
+  @LazyInject() wpTableOrder:WorkPackageViewOrderService;
 
-  @InjectField() states:States;
+  @LazyInject() states:States;
 
   constructor(public readonly injector:Injector,
     public table:WorkPackageTable) {
@@ -24,7 +52,7 @@ export class RowsTransformer {
       .initialized
       .values$()
       .pipe(
-        takeUntil(this.querySpace.stopAllSubscriptions),
+        takeUntilDestroyed(table.destroyRef),
       )
       .subscribe(() => {
         let rows:WorkPackageResource[];
@@ -41,13 +69,10 @@ export class RowsTransformer {
     // Refresh a single row if it exists
     this.states.workPackages.observeChange()
       .pipe(
-        takeUntil(this.querySpace.stopAllSubscriptions.asObservable()),
-        filter(() => {
-          const rendered = this.querySpace.tableRendered.getValueOr([]);
-          return rendered && rendered.length > 0;
-        }),
+        takeUntilDestroyed(table.destroyRef),
+        filter(() => table.hasPendingRender || this.querySpace.tableRendered.getValueOr([]).length > 0),
       )
-      .subscribe(([changedId, wp]) => {
+      .subscribe(([, wp]) => {
         if (wp === undefined) {
           return;
         }

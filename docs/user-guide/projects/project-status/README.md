@@ -1,49 +1,40 @@
 ---
 sidebar_navigation:
   title: Project status
-  priority: 499
+  priority: 600
 description: How to set and display the project status.
-robots: index, follow
 keywords: project status
 ---
 # Project status
 
-The project status serves as an information for yourself and the team if the project is on track to then being able to quickly act in case it is off track.
+The project status provides information for you and your team on whether the project is on track, enabling quick action if it's not.
 
-## Setting the project status
+## Set the project status
 
-You can set your project status in the **project settings**. For this, click on **project settings** in the menu on the left and then select the relevant status. To add more information to your project status, you can use the status description directly underneath to manually describe changes, project KPIs etc.
+You can set your project status in the **project settings**. To do this, click Project settings in the left-hand project modules menu and then select the relevant status. To add more information to your project status, you can use the status description field below to manually note changes, project KPIs, or other relevant details.
 
-![project-settings-project-status](project-settings-project-status.png)
+![Information section under project settings module in OpenProject](openproject_userguide_projects_project_settings.png)
 
-Alternatively, you can also set the project status in the **project overview**. If you haven't configured anything yet, the project status widget will be displayed by default and you can set the project status by using the drop down.
+![Project status section under project settings module in OpenProject](openproject_userguide_projects_project_status.png)
 
-![Set-project-status-project-overview](Set-project-status-project-overview.png)
+Alternatively, you can also set the project status on the **project home page**. If not configured yet, the project status widget appears by default and you can set the project status using the dropdown menu.
 
-If the widget is not yet displayed on the project overview, you can add the project status to your **project overview** widget by clicking on **+** at the top right corner. Then you can choose where you would like to position your additional widget by clicking on the respective **+** at the top, bottom, left or right of existing widgets. Then set your project status from the drop down as shown above.
+![Project status widget on a project overview page in OpenProject](openproject_userguide_projects_project_status_widget.png)
 
-![project-status-widget](project-status-widget.png)
+Learn more about [project status widget on a project home page](../../projects/project-home/project-widgets/#status-widget).
 
-## Displaying the project status
+## Display the project status
 
 The project status is displayed in different OpenProject modules.
 
-### Project list
+### Project lists
 
-Select **View all projects** from the header menu, it will then open your [project list](../../projects/#global-projects-overview---view-all-projects) which displays all your projects including the project status.
+[Project lists](../../projects/project-lists/) displays all your projects including their status.
 
-![View-all-projects](View-all-projects-4478986.png)
+![Project list displaying project status column and project status filters in OpenProject](openproject_userguide_projects_project_lists_status_column.png)
 
-![project-list-project-status](project-list-project-status.png)
+### Project home
 
-### Project overview
+The [project home page](../project-home/) will also display your project status. The project status appears as a widget, which you can drag and drop to customize your project overview layout.
 
-Your [dashboard](../../project-overview/) will also display your project status. The project status is a widget that you can drag and drop to configure your view in the project overview.
-
-![Project-status-project-overview](Project-status-project-overview.png)
-
-## FAQ
-
-### Can I create a custom project status?
-
-There are three project status to choose from: on track, at risk and off track. These cannot be changed. However, if you want to add additional information, you can do so in the status description or you can create an additional [project custom field](../../../system-admin-guide/custom-fields/custom-fields-projects/). Both, status description and the project custom field can be displayed in the **project list**.
+![Project status widget on a project home page in OpenProject](openproject_userguide_projects_project_status_widget_overview.png)

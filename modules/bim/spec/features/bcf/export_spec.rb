@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +20,24 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
-require_relative '../../support/pages/ifc_models/show_default'
 
-describe 'bcf export',
-         type: :feature,
-         js: true,
-         with_config: { edition: 'bim' } do
-  let(:status) { FactoryBot.create(:status, name: 'New', is_default: true) }
-  let(:closed_status) { FactoryBot.create(:closed_status, name: 'Closed') }
-  let(:project) { FactoryBot.create :project, enabled_module_names: %i[bim work_package_tracking] }
+require "spec_helper"
+require_relative "../../support/pages/ifc_models/show_default"
 
-  let!(:open_work_package) { FactoryBot.create(:work_package, project: project, subject: 'Open WP', status: status) }
-  let!(:closed_work_package) { FactoryBot.create(:work_package, project: project, subject: 'Closed WP', status: closed_status) }
-  let!(:open_bcf_issue) { FactoryBot.create(:bcf_issue, work_package: open_work_package) }
-  let!(:closed_bcf_issue) { FactoryBot.create(:bcf_issue, work_package: closed_work_package) }
+RSpec.describe "bcf export", :js,
+               with_config: { edition: "bim" } do
+  let(:status) { create(:status, name: "New", is_default: true) }
+  let(:closed_status) { create(:closed_status, name: "Closed") }
+  let(:project) { create(:project, enabled_module_names: %i[bim work_package_tracking]) }
+
+  let!(:open_work_package) { create(:work_package, project:, subject: "Open WP", status:) }
+  let!(:closed_work_package) { create(:work_package, project:, subject: "Closed WP", status: closed_status) }
+  let!(:open_bcf_issue) { create(:bcf_issue, work_package: open_work_package) }
+  let!(:closed_bcf_issue) { create(:bcf_issue, work_package: closed_work_package) }
 
   let(:permissions) do
     %i[view_ifc_models
@@ -52,20 +50,19 @@ describe 'bcf export',
   end
 
   let(:current_user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: permissions
+    create(:user,
+           member_with_permissions: { project => permissions })
   end
 
   let!(:model) do
-    FactoryBot.create(:ifc_model_minimal_converted,
-                      project: project,
-                      uploader: current_user)
+    create(:ifc_model_minimal_converted,
+           project:,
+           uploader: current_user)
   end
 
-  let(:model_page) { ::Pages::IfcModels::ShowDefault.new project }
-  let(:wp_cards) { ::Pages::WorkPackageCards.new(project) }
-  let(:filters) { ::Components::WorkPackages::Filters.new }
+  let(:model_page) { Pages::IfcModels::ShowDefault.new project }
+  let(:wp_cards) { Pages::WorkPackageCards.new(project) }
+  let(:filters) { Components::WorkPackages::Filters.new }
 
   before do
     login_as current_user
@@ -78,17 +75,17 @@ describe 'bcf export',
 
   def export_into_bcf_extractor
     DownloadList.clear
-    page.find('.export-bcf-button').click
+    page.find(".export-bcf-button").click
 
     # Expect to get a response regarding queuing
-    expect(page).to have_content(I18n.t('js.job_status.generic_messages.in_queue'),
-                                 wait: 10)
+    expect(page).to have_text(I18n.t("job_status_dialog.generic_messages.in_queue"),
+                              wait: 10)
 
     perform_enqueued_jobs
-    expect(page).to have_text("completed successfully")
+    expect(page).to have_text(I18n.t("export.succeeded"))
 
     # Close the modal
-    page.find('.op-modal--close-button').click
+    page.find(".Overlay-closeButton").click
 
     @download_list.refresh_from(page)
 
@@ -96,11 +93,11 @@ describe 'bcf export',
     OpenProject::Bim::BcfXml::Importer.new(
       @download_list.latest_download,
       project,
-      current_user: current_user
+      current_user:
     ).extractor_list
   end
 
-  it 'can export the open and closed BCF issues (Regression #30953)' do
+  it "can export the open and closed BCF issues (Regression #30953)" do
     model_page.visit!
     wp_cards.expect_work_package_listed(open_work_package)
     wp_cards.expect_work_package_not_listed(closed_work_package)
@@ -109,12 +106,12 @@ describe 'bcf export',
     # Expect only the open issue
     extractor_list = export_into_bcf_extractor
     expect(extractor_list.length).to eq(1)
-    expect(extractor_list.first[:title]).to eq('Open WP')
+    expect(extractor_list.first[:title]).to eq("Open WP")
 
     model_page.visit!
     # Change the query to show all statuses
     filters.open
-    filters.remove_filter('status')
+    filters.remove_filter("status")
     filters.expect_filter_count(0)
 
     wp_cards.expect_work_package_listed(open_work_package, closed_work_package)
@@ -123,7 +120,7 @@ describe 'bcf export',
     extractor_list = export_into_bcf_extractor
     expect(extractor_list.length).to eq(2)
 
-    titles = extractor_list.map { |hash| hash[:title] }
-    expect(titles).to contain_exactly('Open WP', 'Closed WP')
+    titles = extractor_list.pluck(:title)
+    expect(titles).to contain_exactly("Open WP", "Closed WP")
   end
 end

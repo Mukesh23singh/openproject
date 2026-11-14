@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,15 +33,25 @@ module BecomeMember
   end
 
   module InstanceMethods
-    def become_member_with_permissions(project, user, permissions = [])
-      role = FactoryBot.create :role, permissions: Array(permissions)
+    def become_member_with_permissions(project, user, permissions)
+      role = create(:project_role, permissions: Array(permissions), add_public_permissions: false)
 
-      add_user_to_project! user: user, project: project, role: role
+      add_user_to_project! user:, project:, role:
+    end
+
+    def become_member(project, user)
+      become_member_with_permissions(project, user, [])
+    end
+
+    def grant_global_permissions(user, permissions)
+      role = create(:global_role, permissions: Array(permissions))
+
+      create(:global_member, principal: user, roles: [role])
     end
 
     def add_user_to_project!(user:, project:, role: nil, permissions: nil)
-      role ||= FactoryBot.create :existing_role, permissions: Array(permissions)
-      FactoryBot.create :member, principal: user, project: project, roles: [role]
+      role ||= create(:existing_project_role, permissions: Array(permissions))
+      create(:member, principal: user, project:, roles: [role])
     end
   end
 end

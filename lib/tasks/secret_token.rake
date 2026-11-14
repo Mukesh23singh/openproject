@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +20,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-desc 'Generates a secret token file.'
+desc "Generates a secret token file."
 
-file 'config/secret_token.yml' do
-  path = Rails.root.join('config/secret_token.yml').to_s
+file "config/secret_token.yml" do
+  path = Rails.root.join("config/secret_token.yml").to_s
   secret = SecureRandom.hex(64)
-  File.open(path, 'w') do |f|
-    f.write <<~"EOF"
-      secret_token: '#{secret}'
-    EOF
-  end
+  File.write(path, <<~"EOF")
+    secret_token: '#{secret}'
+  EOF
 end
 
-desc 'Generates a secret token file.'
-task generate_secret_token: ['config/secret_token.yml']
+desc "Generates a secret token file."
+task generate_secret_token: ["config/secret_token.yml"]

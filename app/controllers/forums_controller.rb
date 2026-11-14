@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,53 +22,57 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class ForumsController < ApplicationController
   default_search_scope :messages
-  before_action :find_project_by_project_id,
-                :authorize
+  before_action :find_project_by_project_id
   before_action :new_forum, only: %i[new create]
   before_action :find_forum, only: %i[show edit update move destroy]
-  accept_key_auth :show
+
+  before_action :authorize
+
+  accept_rss_key_auth :show
 
   include SortHelper
-  include WatchersHelper
   include PaginationHelper
+  include OpTurbo::ComponentStream
+  include SortableLists::DropRequestValidation
+
+  configure_drop_request list_type: Forum::SORTABLE_LIST_TYPE, list_id_scoped: false
 
   def index
-    @forums = @project.forums
+    @forums = @project.forums.includes(last_message: :author)
   end
 
   current_menu_item [:index, :show] do
     :forums
   end
 
-  def show
-    sort_init 'updated_at', 'desc'
-    sort_update 'created_at' => "#{Message.table_name}.created_at",
-                'replies' => "#{Message.table_name}.replies_count",
-                'updated_at' => "#{Message.table_name}.updated_at"
+  def show # rubocop:disable Metrics/AbcSize
+    sort_init "updated_at", "desc"
+    sort_update "created_at" => "#{Message.table_name}.created_at",
+                "replies" => "#{Message.table_name}.replies_count",
+                "updated_at" => "#{Message.table_name}.updated_at"
 
     respond_to do |format|
       format.html do
         set_topics
         @message = Message.new
-        render action: 'show', layout: !request.xhr?
+        render action: "show", layout: !request.xhr?
       end
-      format.json do
-        set_topics
-
-        render template: 'messages/index'
-      end
+      # The JSON template does not exist anymore, this never rendered
+      #    format.json do
+      #      set_topics
+      #      render template: "messages/index"
+      #    end
       format.atom do
         @messages = @forum
                     .messages
-                    .order(["#{Message.table_name}.sticked_on ASC", sort_clause].compact.join(', '))
+                    .order(["#{Message.table_name}.sticked_on ASC", sort_clause].compact.join(", "))
                     .includes(:author, :forum)
                     .limit(Setting.feeds_limit.to_i)
 
@@ -78,58 +82,79 @@ class ForumsController < ApplicationController
   end
 
   def set_topics
-    @topics =  @forum
-               .topics
-               .order(["#{Message.table_name}.sticked_on ASC", sort_clause].compact.join(', '))
-               .includes(:author, last_reply: :author)
-               .page(page_param)
-               .per_page(per_page_param)
+    @topics = @forum
+              .topics
+              .order(["#{Message.table_name}.sticked_on ASC", sort_clause].compact.join(", "))
+              .includes(:author, last_reply: :author)
+              .page(page_param)
+              .per_page(per_page_param)
   end
 
   def new; end
 
+  def edit; end
+
   def create
     if @forum.save
       flash[:notice] = I18n.t(:notice_successful_create)
-      redirect_to action: 'index'
+      redirect_to project_forums_path(@project)
     else
-      render :new
+      render :new, status: :unprocessable_entity
     end
   end
-
-  def edit; end
 
   def update
     if @forum.update(permitted_params.forum)
       flash[:notice] = I18n.t(:notice_successful_update)
-      redirect_to action: 'index'
+      redirect_to project_forums_path(@project)
     else
-      render :edit
+      render :edit, status: :unprocessable_entity
     end
   end
 
   def move
-    if @forum.update(permitted_params.forum_move)
-      flash[:notice] = t(:notice_successful_update)
+    moved = menu_move? ? move_in_direction : move_after_anchor
+
+    if moved
+      render_success_flash_message_via_turbo_stream(message: I18n.t(:notice_successful_update))
+      update_via_turbo_stream(component: index_component, method: :morph)
     else
-      flash.now[:error] = t('forum_could_not_be_saved')
-      render action: 'edit'
+      error_key = menu_move? ? "forums.index.could_not_be_moved" : :error_invalid_list_move_anchor
+      render_error_flash_message_via_turbo_stream(message: I18n.t(error_key))
     end
-    redirect_to action: 'index'
+
+    respond_with_turbo_streams(status: moved ? :ok : :unprocessable_entity)
   end
 
   def destroy
-    @forum.destroy
+    @forum.destroy!
+
     flash[:notice] = I18n.t(:notice_successful_delete)
-    redirect_to action: 'index'
+    redirect_to project_forums_path(@project), status: :see_other
   end
 
   private
 
+  def index_component
+    Forums::IndexComponent.new(forums: @project.forums.includes(last_message: :author), project: @project)
+  end
+
+  def move_in_direction
+    move_to = permitted_params.forum_move[:move_to]
+
+    move_to.in?(%w[highest higher lower lowest]) && @forum.update(move_to:)
+  end
+
+  def menu_move?
+    params.key?(:forum)
+  end
+
+  def move_after_anchor
+    valid_drop_request? && @forum.move_after_anchor(drop_params[:prev_id], scope: @project.forums)
+  end
+
   def find_forum
-    @forum = @project.forums.find(params[:id])
-  rescue ActiveRecord::RecordNotFound
-    render_404
+    @forum = @project.forums.find(params.expect(:id))
   end
 
   def new_forum

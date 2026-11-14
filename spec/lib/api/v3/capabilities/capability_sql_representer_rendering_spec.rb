@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +22,38 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Capabilities::CapabilitySqlRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Capabilities::CapabilitySqlRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
+  shared_let(:project) { create(:project) }
+  shared_let(:program) { create(:program) }
+  shared_let(:portfolio) { create(:portfolio) }
+  shared_let(:capability_user) do
+    create(:user,
+           member_with_permissions: {
+             project => %i[view_members],
+             program => %i[view_members],
+             portfolio => %i[view_members]
+           })
+  end
+  shared_let(:capability_group) do
+    create(:group,
+           member_with_permissions: {
+             project => %i[view_members],
+             program => %i[view_members],
+             portfolio => %i[view_members]
+           })
+  end
+
+  let(:context) { project }
+  let(:principal) { capability_user }
   let(:scope) do
     Capability
       .where(principal_id: principal.id,
@@ -38,120 +61,218 @@ describe ::API::V3::Capabilities::CapabilitySqlRepresenter, 'rendering' do
       .order(:action)
       .limit(1)
   end
-  let(:principal) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_members])
-  end
-  let(:project) do
-    FactoryBot.create(:project)
-  end
-  let(:context) do
-    project
-  end
 
   current_user do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: [])
+    create(:user,
+           member_with_permissions: { project => [] })
   end
 
   subject(:json) do
-    ::API::V3::Utilities::SqlRepresenterWalker
-      .new(scope,
-           embed: {},
-           select: { 'id' => {}, '_type' => {}, 'self' => {}, 'action' => {}, 'context' => {}, 'principal' => {} },
-           current_user: current_user)
-      .walk(API::V3::Capabilities::CapabilitySqlRepresenter)
+    API::V3::Utilities::SqlRepresenterWalker
+      .new(
+        scope,
+        current_user:,
+        url_query: { select: { "id" => {}, "_type" => {}, "self" => {}, "action" => {}, "context" => {}, "principal" => {} } }
+      )
+      .walk(described_class)
       .to_json
   end
 
-  context 'with a project and user' do
-    it 'renders as expected' do
+  context "with a project and user" do
+    it "renders as expected" do
       expect(json)
         .to be_json_eql({
-          "id": "memberships/read/p#{context.id}-#{principal.id}",
-          "_type": "Capability",
-          "_links": {
-            "context": {
-              "href": api_v3_paths.project(project.id),
-              "title": project.name
+          id: "activities/read/w#{context.id}-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.project(project.id),
+              title: project.name
             },
-            "principal": {
-              "href": api_v3_paths.user(principal.id),
-              "title": principal.name
+            principal: {
+              href: api_v3_paths.user(principal.id),
+              title: principal.name
             },
-            "action": {
-              "href": api_v3_paths.action("memberships/read")
+            action: {
+              href: api_v3_paths.action("activities/read")
             },
-            "self": {
-               "href": api_v3_paths.capability("memberships/read/p#{context.id}-#{principal.id}")
+            self: {
+              href: api_v3_paths.capability("activities/read/w#{context.id}-#{principal.id}")
             }
           }
         }.to_json)
     end
   end
 
-  context 'with a project and group' do
-    let(:principal) do
-      FactoryBot.create(:group,
-                        member_in_project: project,
-                        member_with_permissions: %i[view_members])
-    end
+  context "with a project and group" do
+    let(:principal) { capability_group }
 
-    it 'renders as expected' do
+    it "renders as expected" do
       expect(json)
         .to be_json_eql({
-          "id": "memberships/read/p#{context.id}-#{principal.id}",
-          "_type": "Capability",
-          "_links": {
-            "context": {
-              "href": api_v3_paths.project(project.id),
-              "title": project.name
+          id: "memberships/read/w#{context.id}-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.project(project.id),
+              title: project.name
             },
-            "principal": {
-              "href": api_v3_paths.group(principal.id),
-              "title": principal.name
+            principal: {
+              href: api_v3_paths.group(principal.id),
+              title: principal.name
             },
-            "action": {
-              "href": api_v3_paths.action("memberships/read")
+            action: {
+              href: api_v3_paths.action("activities/read")
             },
-            "self": {
-              "href": api_v3_paths.capability("memberships/read/p#{context.id}-#{principal.id}")
+            self: {
+              href: api_v3_paths.capability("activities/read/w#{context.id}-#{principal.id}")
             }
           }
         }.to_json)
     end
   end
 
-  context 'with a global permission' do
+  context "with a program and user" do
+    let(:context) { program }
+
+    it "renders as expected" do
+      expect(json)
+        .to be_json_eql({
+          id: "activities/read/w#{context.id}-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.program(program.id),
+              title: program.name
+            },
+            principal: {
+              href: api_v3_paths.user(principal.id),
+              title: principal.name
+            },
+            action: {
+              href: api_v3_paths.action("activities/read")
+            },
+            self: {
+              href: api_v3_paths.capability("activities/read/w#{context.id}-#{principal.id}")
+            }
+          }
+        }.to_json)
+    end
+  end
+
+  context "with a program and group" do
+    let(:context) { program }
+    let(:principal) { capability_group }
+
+    it "renders as expected" do
+      expect(json)
+        .to be_json_eql({
+          id: "memberships/read/w#{context.id}-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.program(program.id),
+              title: program.name
+            },
+            principal: {
+              href: api_v3_paths.group(principal.id),
+              title: principal.name
+            },
+            action: {
+              href: api_v3_paths.action("activities/read")
+            },
+            self: {
+              href: api_v3_paths.capability("activities/read/w#{context.id}-#{principal.id}")
+            }
+          }
+        }.to_json)
+    end
+  end
+
+  context "with a portfolio and user" do
+    let(:context) { portfolio }
+
+    it "renders as expected" do
+      expect(json)
+        .to be_json_eql({
+          id: "activities/read/w#{context.id}-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.portfolio(portfolio.id),
+              title: portfolio.name
+            },
+            principal: {
+              href: api_v3_paths.user(principal.id),
+              title: principal.name
+            },
+            action: {
+              href: api_v3_paths.action("activities/read")
+            },
+            self: {
+              href: api_v3_paths.capability("activities/read/w#{context.id}-#{principal.id}")
+            }
+          }
+        }.to_json)
+    end
+  end
+
+  context "with a portfolio and group" do
+    let(:context) { portfolio }
+    let(:principal) { capability_group }
+
+    it "renders as expected" do
+      expect(json)
+        .to be_json_eql({
+          id: "memberships/read/w#{context.id}-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.portfolio(portfolio.id),
+              title: portfolio.name
+            },
+            principal: {
+              href: api_v3_paths.group(principal.id),
+              title: principal.name
+            },
+            action: {
+              href: api_v3_paths.action("activities/read")
+            },
+            self: {
+              href: api_v3_paths.capability("activities/read/w#{context.id}-#{principal.id}")
+            }
+          }
+        }.to_json)
+    end
+  end
+
+  context "with a global permission" do
     let(:principal) do
-      FactoryBot.create(:user,
-                        global_permission: %i[manage_user],
-                        member_in_project: project,
-                        member_with_permissions: [])
+      create(:user,
+             global_permissions: %i[create_user],
+             member_with_permissions: { project => [] })
     end
     let(:context) { nil }
 
-    it 'renders as expected' do
+    it "renders as expected" do
       expect(json)
         .to be_json_eql({
-          "id": "users/create/g-#{principal.id}",
-          "_type": "Capability",
-          "_links": {
-            "context": {
-              "href": api_v3_paths.capabilities_contexts_global,
-              "title": 'Global'
+          id: "users/create/g-#{principal.id}",
+          _type: "Capability",
+          _links: {
+            context: {
+              href: api_v3_paths.capabilities_contexts_global,
+              title: "Global"
             },
-            "principal": {
-              "href": api_v3_paths.user(principal.id),
-              "title": principal.name
+            principal: {
+              href: api_v3_paths.user(principal.id),
+              title: principal.name
             },
-            "action": {
-              "href": api_v3_paths.action("users/create")
+            action: {
+              href: api_v3_paths.action("users/create")
             },
-            "self": {
-              "href": api_v3_paths.capability("users/create/g-#{principal.id}")
+            self: {
+              href: api_v3_paths.capability("users/create/g-#{principal.id}")
             }
           }
         }.to_json)

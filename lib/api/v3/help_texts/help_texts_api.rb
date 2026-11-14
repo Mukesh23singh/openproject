@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require_dependency 'api/v3/help_texts/help_text_representer'
-require_dependency 'api/v3/help_texts/help_text_collection_representer'
 
 module API
   module V3
@@ -36,16 +32,16 @@ module API
         resources :help_texts do
           get do
             @entries = AttributeHelpText.visible(current_user)
-            HelpTextCollectionRepresenter.new(@entries, self_link: api_v3_paths.help_texts, current_user: current_user)
+            HelpTextCollectionRepresenter.new(@entries, self_link: api_v3_paths.help_texts, current_user:)
           end
 
-          route_param :id, type: Integer, desc: 'Help text ID' do
+          route_param :id, type: Integer, desc: "Help text ID" do
             after_validation do
               @help_text = AttributeHelpText.visible(current_user).find(params[:id])
             end
 
             get do
-              HelpTextRepresenter.new(@help_text, current_user: current_user)
+              HelpTextRepresenter.new(@help_text, current_user:)
             end
 
             mount ::API::V3::Attachments::AttachmentsByHelpTextAPI

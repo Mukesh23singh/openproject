@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module V3
@@ -41,7 +40,7 @@ module API
         def initialize(model, current_user:, **_opts)
           # We force `embed_links` so that github_user and github_check_runs
           # are embedded and we can avoid having separate endpoints.
-          super(model, current_user: current_user, embed_links: true)
+          super(model, current_user:, embed_links: true)
         end
 
         cached_representer key_parts: %i[github_user merged_by]
@@ -55,12 +54,13 @@ module API
         property :state,
                  render_nil: true
 
-        property :repository,
-                 render_nil: true
+        property :repository
+
+        property :repository_html_url
 
         date_time_property :github_updated_at,
                            render_nil: true,
-                           setter: ->(*) { nil }
+                           setter: ->(*) {}
 
         property :title,
                  render_nil: true
@@ -114,7 +114,7 @@ module API
         date_time_property :updated_at
 
         def _type
-          'GithubPullRequest'
+          "GithubPullRequest"
         end
 
         self.to_eager_load = %i[github_user merged_by]

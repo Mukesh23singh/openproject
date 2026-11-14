@@ -1,12 +1,39 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { RelationColumnType } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-relation-columns.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { States } from 'core-app/core/states/states.service';
-import { RelationResource } from 'core-app/features/hal/resources/relation-resource';
 import { commonRowClassName, SingleRowBuilder, tableRowClassName } from '../rows/single-row-builder';
 import { tdClassName } from '../cell-builder';
+import { navigableCellClassName } from '../../handlers/state/keyboard/roving-tabindex';
+import { removeTabStops } from 'core-app/shared/helpers/dom/remove-tab-stops';
 import { WorkPackageTable } from '../../wp-fast-table';
 import { isRelationColumn, QueryColumn } from '../../../wp-query/query-column';
 
@@ -21,12 +48,14 @@ export function relationIdentifier(targetId:string, workPackageId:string) {
 export const relationCellClassName = 'wp-table--relation-cell-td';
 
 export class RelationRowBuilder extends SingleRowBuilder {
-  @InjectField() public states:States;
+  @LazyInject() public states:States;
 
-  @InjectField() public I18n:I18nService;
+  @LazyInject() public I18n:I18nService;
 
-  constructor(public readonly injector:Injector,
-    protected workPackageTable:WorkPackageTable) {
+  constructor(
+public readonly injector:Injector,
+              protected workPackageTable:WorkPackageTable,
+) {
     super(injector, workPackageTable);
   }
 
@@ -37,7 +66,7 @@ export class RelationRowBuilder extends SingleRowBuilder {
    * @param column
    * @return {any}
    */
-  public buildCell(workPackage:WorkPackageResource, column:QueryColumn):HTMLElement|null {
+  public buildCell(workPackage:WorkPackageResource, column:QueryColumn):HTMLTableCellElement|null {
     // handle relation types
     if (isRelationColumn(column)) {
       return this.emptyRelationCell(column);
@@ -49,14 +78,10 @@ export class RelationRowBuilder extends SingleRowBuilder {
   /**
    * Build the columns on the given empty row
    */
-  public buildEmptyRelationRow(from:WorkPackageResource, relation:RelationResource, type:RelationColumnType):[HTMLElement, WorkPackageResource] {
-    const denormalized = relation.denormalized(from);
-
-    const to = this.states.workPackages.get(denormalized.targetId).value!;
-
+  public buildEmptyRelationRow(from:WorkPackageResource, to:WorkPackageResource):[HTMLTableRowElement, WorkPackageResource] {
     // Let the primary row builder build the row
     const row = this.createEmptyRelationRow(from, to);
-    const [tr, _] = super.buildEmptyRow(to, row);
+    const [tr] = super.buildEmptyRow(to, row);
 
     return [tr, to];
   }
@@ -71,13 +96,16 @@ export class RelationRowBuilder extends SingleRowBuilder {
     const tr = document.createElement('tr');
     tr.dataset.workPackageId = to.id!;
     tr.dataset.classIdentifier = identifier;
+    tr.setAttribute('tabindex', '-1');
 
     tr.classList.add(
-      commonRowClassName, tableRowClassName, 'issue',
-      'wp-table--relations-aditional-row',
-      identifier,
-      `${identifier}-table`,
-      relationGroupClass(from.id!),
+      commonRowClassName,
+tableRowClassName,
+'issue',
+'wp-table--relations-additional-row',
+identifier,
+`${identifier}-table`,
+relationGroupClass(from.id!),
     );
 
     return tr;
@@ -89,37 +117,29 @@ export class RelationRowBuilder extends SingleRowBuilder {
 
   /**
    *
-   * @param from
-   * @param denormalized
-   * @param type
+   * @param row
+   * @param typeLabel
+   * @param columnId
    */
-  public appendRelationLabel(jRow:JQuery, from:WorkPackageResource, relation:RelationResource, columnId:string, type:RelationColumnType) {
-    const denormalized = relation.denormalized(from);
-    let typeLabel = '';
-
-    // Add the relation label if this is a "Relations for <WP Type>" column
-    if (type === 'toType') {
-      typeLabel = this.I18n.t(`js.relation_labels.${denormalized.reverseRelationType}`);
-    }
-    // Add the WP type label if this is a "<Relation Type> Relations" column
-    if (type === 'ofType') {
-      const wp = this.states.workPackages.get(denormalized.target.id!).value!;
-      typeLabel = wp.type.name;
-    }
-
+  public appendRelationLabel(
+    row:HTMLTableRowElement,
+    typeLabel:string,
+    columnId:string,
+  ):void {
     const relationLabel = document.createElement('span');
-    relationLabel.classList.add('relation-row--type-label');
+    relationLabel.classList.add('relation-row--type-label', 'badge');
     relationLabel.textContent = typeLabel;
 
-    const textNode = document.createTextNode(denormalized.target.name);
-
-    jRow.find(`.${relationCellClassName}`).empty();
-    jRow.find(`.${relationCellClassName}.${columnId}`).append(relationLabel);
+    row.querySelector(`.${relationCellClassName}`)!.innerHTML = '';
+    const labelCell = row.querySelector<HTMLElement>(`.${relationCellClassName}.${columnId}`)!;
+    labelCell.append(relationLabel);
+    removeTabStops(labelCell);
   }
 
   protected emptyRelationCell(column:QueryColumn) {
     const cell = document.createElement('td');
     cell.classList.add(relationCellClassName, tdClassName, column.id);
+    cell.classList.add(navigableCellClassName);
 
     return cell;
   }

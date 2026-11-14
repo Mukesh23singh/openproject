@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Menu item traversal', type: :feature do
-  shared_let(:admin) { FactoryBot.create(:admin) }
+RSpec.describe "Menu item traversal" do
+  shared_let(:admin) { create(:admin) }
 
-  describe 'EnterpriseToken management' do
+  describe "EnterpriseToken management" do
     before do
       login_as(admin)
       visit admin_index_path
     end
 
-    it 'correctly maps the menu items for controllers in their namespace (Regression #30859)' do
-      expect(page).to have_selector('.admin-overview-menu-item.selected', text: 'Overview')
+    it "correctly maps the menu items for controllers in their namespace (Regression #30859)" do
+      expect(page).to have_css(".admin-overview-menu-item.selected", text: "Overview")
 
-      find('.plugin-webhooks-menu-item').click
+      find(".plugin-webhooks-menu-item").click
 
       # using `controller_name` in `menu_controller.rb` has broken this example,
       # due to the plugin controller also being named 'admin' thus falling back to 'admin#index' => overview selected
-      expect(page).to have_selector('.plugin-webhooks-menu-item.selected', text: 'Webhooks', wait: 5)
-      expect(page).to have_no_selector('.admin-overview-menu-item.selected')
+      expect(page).to have_css(".plugin-webhooks-menu-item.selected", text: "Webhooks", wait: 5)
+      expect(page).to have_no_css(".admin-overview-menu-item.selected")
     end
   end
 
-  describe 'route authorization', with_settings: { login_required?: false } do
-    let(:user) { FactoryBot.create :user }
+  describe "route authorization", with_settings: { login_required?: false } do
+    let(:user) { create(:user) }
     let(:anon) { User.anonymous }
 
     let(:check_link) do
@@ -58,7 +59,7 @@ describe 'Menu item traversal', type: :feature do
         visit link
 
         if current_url.include? "/login?back_url="
-          expect(page).to have_text('Sign in'), "#{link} should redirect to sign in"
+          expect(page).to have_text("Sign in"), "#{link} should redirect to sign in"
         else
           expect(page).to have_text(I18n.t(:notice_not_authorized)), "#{link} should result in 403 response"
         end
@@ -70,20 +71,20 @@ describe 'Menu item traversal', type: :feature do
         visit link
 
         expect(current_url).to include link
-        expect(page).to have_http_status(200)
+        expect(page).to have_http_status(:ok)
         expect(page).to have_no_text(I18n.t(:notice_not_authorized))
-        expect(page).to have_selector '#menu-sidebar .selected'
+        expect(page).to have_css "#menu-sidebar .selected"
       }
     end
 
-    it 'checks for authorized status for all links' do
+    it "checks for authorized status for all links" do
       login_as admin
       visit admin_index_path
 
       # Get all admin links from there
-      links = all('#menu-sidebar a[href]', visible: :all)
-        .map { |node| node['href'] }
-        .reject { |link| link.end_with? '/#' }
+      links = all("#menu-sidebar .menu_root a[href]:not([data-test-selector='main-menu--arrow-left-to-project'])", visible: :all)
+        .map { |node| node["href"] }
+        .reject { |link| link.end_with? "/#" }
         .compact
         .uniq
 

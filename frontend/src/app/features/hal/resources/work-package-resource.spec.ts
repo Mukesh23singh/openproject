@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,13 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { TestBed, waitForAsync } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { Injector } from '@angular/core';
 import { States } from 'core-app/core/states/states.service';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
@@ -36,23 +34,25 @@ import { PathHelperService } from 'core-app/core/path-helper/path-helper.service
 import { LoadingIndicatorService } from 'core-app/core/loading-indicator/loading-indicator.service';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { StateService } from '@uirouter/core';
 import { WorkPackageCreateService } from 'core-app/features/work-packages/components/wp-new/wp-create.service';
 import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
 import { WorkPackagesActivityService } from 'core-app/features/work-packages/components/wp-single-view-tabs/activity-panel/wp-activity.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { OpenProjectFileUploadService } from 'core-app/core/file-upload/op-file-upload.service';
-import { OpenProjectDirectFileUploadService } from 'core-app/core/file-upload/op-direct-file-upload.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { TimezoneService } from 'core-app/core/datetime/timezone.service';
 import { AttachmentCollectionResource } from 'core-app/features/hal/resources/attachment-collection-resource';
 import { OpenprojectHalModule } from 'core-app/features/hal/openproject-hal.module';
+import { UserResource } from 'core-app/features/hal/resources/user-resource';
+import { initializeHalResourceConfig } from 'core-app/features/hal/services/hal-resource.config';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { WeekdayService } from 'core-app/core/days/weekday.service';
+import { of } from 'rxjs';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient, withInterceptorsFromDi, withXhr } from '@angular/common/http';
 
 describe('WorkPackage', () => {
   let halResourceService:HalResourceService;
-  let injector:Injector;
-  let halResourceNotification:HalResourceNotificationService;
 
   let source:any;
   let workPackage:WorkPackageResource;
@@ -62,50 +62,210 @@ describe('WorkPackage', () => {
     workPackage = halResourceService.createHalResourceOfType('WorkPackage', { ...source });
   };
 
-  beforeEach(waitForAsync(() => {
-    // noinspection JSIgnoredPromiseFromCall
-    TestBed.configureTestingModule({
-      imports: [
-        OpenprojectHalModule,
-      ],
+  const WeekdayServiceStub = {
+    loadWeekdays: () => of(true),
+  };
+
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
+      imports: [OpenprojectHalModule],
       providers: [
         HalResourceService,
         States,
         TimezoneService,
         WorkPackagesActivityService,
+        { provide: WeekdayService, useValue: WeekdayServiceStub },
         ConfigurationService,
-        OpenProjectFileUploadService,
-        OpenProjectDirectFileUploadService,
         LoadingIndicatorService,
         PathHelperService,
         I18nService,
-        APIV3Service,
+        ApiV3Service,
         { provide: HalResourceNotificationService, useValue: { handleRawError: () => false } },
         { provide: WorkPackageNotificationService, useValue: {} as any },
         { provide: WorkPackageCreateService, useValue: {} },
-        { provide: StateService, useValue: {} },
         { provide: SchemaCacheService, useValue: {} },
-      ],
-    })
-      .compileComponents()
-      .then(() => {
-        halResourceService = TestBed.inject(HalResourceService);
-        injector = TestBed.inject(Injector);
-        halResourceNotification = injector.get(HalResourceNotificationService);
+        provideHttpClient(withXhr(), withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+      ]
+    }).compileComponents();
+    halResourceService = TestBed.inject(HalResourceService);
 
-        halResourceService.registerResource('WorkPackage', { cls: WorkPackageResource });
-      });
-  }));
+    halResourceService.registerResource('WorkPackage', {
+      cls: WorkPackageResource,
+      attrTypes: {
+        parent: 'WorkPackage',
+        ancestors: 'WorkPackage',
+        children: 'WorkPackage',
+      },
+    });
+  });
 
   describe('when creating an empty work package', () => {
     beforeEach(createWorkPackage);
 
     it('should have an attachments property of type `AttachmentCollectionResource`', () => {
-      expect(workPackage.attachments).toEqual(jasmine.any(AttachmentCollectionResource));
+      expect(workPackage.attachments).toEqual(expect.any(AttachmentCollectionResource));
     });
 
     it('should return true for `isNewResource`', () => {
       expect(isNewResource(workPackage)).toBeTruthy();
+    });
+  });
+
+  describe('single-view metadata', () => {
+    afterEach(() => { source = undefined; });
+
+    it('keeps the API timestamp as an ISO string', () => {
+      source = { id: 42, updatedAt: '2026-10-29T09:30:00Z' };
+      createWorkPackage();
+
+      expect(workPackage.updatedAt).toBe('2026-10-29T09:30:00Z');
+    });
+
+    it('builds an embedded author as a user resource', () => {
+      source = { id: 42, _embedded: { author: { _type: 'User', id: 7, name: 'Author' } } };
+      createWorkPackage();
+
+      expect(workPackage.author).toBeInstanceOf(UserResource);
+      expect(workPackage.author.id).toBe('7');
+    });
+
+    it('builds a linked author as a user resource using the production mapping', () => {
+      initializeHalResourceConfig(halResourceService)();
+      source = { id: 42, _links: { author: { href: '/api/v3/users/7', title: 'Author' } } };
+      createWorkPackage();
+
+      expect(workPackage.author).toBeInstanceOf(UserResource);
+      expect(workPackage.author.id).toBe('7');
+      expect(workPackage.author.name).toBe('Author');
+    });
+  });
+
+  describe('displayId', () => {
+    afterEach(() => {
+      source = undefined;
+    });
+
+    describe('when displayId is present (semantic mode)', () => {
+      beforeEach(() => {
+        source = { id: 42, displayId: 'PROJ-7' };
+        createWorkPackage();
+      });
+
+      it('should return the semantic identifier', () => {
+        expect(workPackage.displayId).toEqual('PROJ-7');
+      });
+
+      it('should not override the numeric id', () => {
+        expect(workPackage.id).toEqual('42');
+      });
+    });
+
+    describe('when displayId is present (classic mode)', () => {
+      beforeEach(() => {
+        source = { id: 42, displayId: '42' };
+        createWorkPackage();
+      });
+
+      it('should return the numeric displayId as string', () => {
+        expect(workPackage.displayId).toEqual('42');
+      });
+    });
+
+    describe('when displayId is absent but present on the self link (linked ancestor/child)', () => {
+      beforeEach(() => {
+        source = {
+          _links: {
+            self: {
+              href: '/api/v3/work_packages/11099',
+              title: 'subj child',
+              displayId: 'ACSMT-15',
+            },
+          },
+        };
+        createWorkPackage();
+      });
+
+      it('should fall back to the semantic identifier on the self link', () => {
+        expect(workPackage.displayId).toEqual('ACSMT-15');
+      });
+    });
+
+    describe('when built from a parent work package _links.ancestors array', () => {
+      // Mirrors the real HAL pipeline: the parent exposes an ancestors link
+      // array; each entry carries displayId alongside href/title; the builder
+      // creates an ancestor WorkPackageResource through HalLink, which must
+      // preserve displayId end-to-end.
+      beforeEach(() => {
+        source = {
+          _links: {
+            self: { href: '/api/v3/work_packages/42' },
+            ancestors: [
+              {
+                href: '/api/v3/work_packages/11099',
+                title: 'subj child',
+                displayId: 'ACSMT-15',
+              },
+            ],
+          },
+        };
+        createWorkPackage();
+      });
+
+      it('surfaces the semantic displayId on each ancestor resource', () => {
+        const ancestor = (workPackage as any).ancestors[0] as WorkPackageResource;
+
+        expect(ancestor.displayId).toEqual('ACSMT-15');
+      });
+    });
+
+  });
+
+  describe('formattedId', () => {
+    afterEach(() => {
+      source = undefined;
+    });
+
+    it('should return semantic identifier without hash prefix', () => {
+      source = { id: 42, displayId: 'PROJ-7' };
+      createWorkPackage();
+
+      expect(workPackage.formattedId).toEqual('PROJ-7');
+    });
+
+    it('should prefix numeric id with # in classic mode', () => {
+      source = { id: 42, displayId: '42' };
+      createWorkPackage();
+
+      expect(workPackage.formattedId).toEqual('#42');
+    });
+
+  });
+
+  describe('subjectWithId', () => {
+    afterEach(() => {
+      source = undefined;
+    });
+
+    it('should include semantic displayId without hash in parentheses', () => {
+      source = { id: 42, displayId: 'PROJ-7', subject: 'Fix the bug' };
+      createWorkPackage();
+
+      expect(workPackage.subjectWithId()).toEqual('Fix the bug (PROJ-7)');
+    });
+
+    it('should include hash-prefixed numeric id in classic mode', () => {
+      source = { id: 42, displayId: '42', subject: 'Fix the bug' };
+      createWorkPackage();
+
+      expect(workPackage.subjectWithId()).toEqual('Fix the bug (#42)');
+    });
+
+    it('should omit id suffix for new resources', () => {
+      source = { subject: 'New task' };
+      createWorkPackage();
+
+      expect(workPackage.subjectWithId()).toEqual('New task');
     });
   });
 
@@ -118,96 +278,21 @@ describe('WorkPackage', () => {
 
     it('when work package is not new', () => {
       workPackage.$source.id = 420;
+
       expect(workPackage.canAddAttachments).toEqual(false);
     });
 
-    it('when the work work package has no `addAttachment` link and is not new', () => {
+    it('when the work package has no `addAttachment` link and is not new', () => {
       workPackage.$source.id = 69;
       workPackage.$links.addAttachment = null as any;
+
       expect(workPackage.canAddAttachments).toEqual(false);
     });
 
-    it('when the work work package has an `addAttachment` link', () => {
-      workPackage.$links.addAttachment = <any> _.noop;
+    it('when the work package has an `addAttachment` link', () => {
+      workPackage.$links.addAttachment = (() => Promise.resolve()) as unknown as CallableHalLink;
+
       expect(workPackage.canAddAttachments).toEqual(true);
-    });
-  });
-
-  describe('when a work package is created with attachments and activities', () => {
-    beforeEach(() => {
-      source = {
-        _links: {
-          schema: { _type: 'Schema', href: 'schema' },
-          attachments: { href: 'attachments' },
-          activities: { href: 'activities' },
-        },
-        isNew: true,
-      };
-      createWorkPackage();
-    });
-  });
-
-  describe('when using removeAttachment', () => {
-    let file:any;
-    let attachment:any;
-
-    beforeEach(() => {
-      file = {};
-      attachment = {
-        $isHal: true,
-        delete: () => undefined,
-      };
-
-      createWorkPackage();
-      workPackage.attachments.elements = [attachment];
-    });
-
-    describe('when the attachment is an attachment resource', () => {
-      beforeEach(() => {
-        attachment.delete = jasmine.createSpy('delete').and.returnValue(Promise.resolve());
-        spyOn(workPackage, 'updateAttachments');
-      });
-
-      it('should call its delete method', (done) => {
-        workPackage.removeAttachment(attachment).then(() => {
-          expect(attachment.delete).toHaveBeenCalled();
-          done();
-        });
-      });
-
-      describe('when the deletion gets resolved', () => {
-        it('should call updateAttachments()', (done) => {
-          workPackage.removeAttachment(attachment).then(() => {
-            expect(workPackage.updateAttachments).toHaveBeenCalled();
-            done();
-          });
-        });
-      });
-
-      describe('when an error occurs', () => {
-        let errorStub:jasmine.Spy;
-
-        beforeEach(() => {
-          attachment.delete = jasmine.createSpy('delete')
-            .and.returnValue(Promise.reject({ foo: 'bar' }));
-
-          errorStub = spyOn(halResourceNotification, 'handleRawError');
-        });
-
-        it('should call the handleRawError notification', (done) => {
-          workPackage.removeAttachment(attachment).then(() => {
-            expect(errorStub).toHaveBeenCalled();
-            done();
-          });
-        });
-
-        it('should not remove the attachment from the elements array', (done) => {
-          workPackage.removeAttachment(attachment).then(() => {
-            expect(workPackage.attachments.elements.length).toEqual(1);
-            done();
-          });
-        });
-      });
     });
   });
 });

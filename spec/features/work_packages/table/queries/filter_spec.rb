@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,33 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'filter work packages', js: true do
-  let(:user) { FactoryBot.create :admin }
-  let(:watcher) { FactoryBot.create :user }
-  let(:project) { FactoryBot.create :project, members: { watcher => role } }
-  let(:role) { FactoryBot.create :existing_role, permissions: [:view_work_packages] }
-  let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
-  let(:filters) { ::Components::WorkPackages::Filters.new }
+RSpec.describe "filter work packages", :js do
+  include Components::Autocompleter::NgSelectAutocompleteHelpers
+
+  shared_let(:user) { create(:admin, preferences: { time_zone: "Europe/Kyiv" }) }
+  shared_let(:watcher) { create(:user) }
+  shared_let(:role) { create(:existing_project_role, permissions: [:view_work_packages]) }
+  shared_let(:project) { create(:project, members: { watcher => role }) }
+  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+  let(:filters) { Components::WorkPackages::Filters.new }
 
   current_user { user }
 
-  context 'by watchers' do
+  context "by watchers" do
     let(:work_package_with_watcher) do
-      wp = FactoryBot.build :work_package, project: project
+      wp = build(:work_package, project:)
       wp.add_watcher watcher
       wp.save!
 
       wp
     end
-    let(:work_package_without_watcher) { FactoryBot.create :work_package, project: project }
+    let(:work_package_without_watcher) { create(:work_package, project:) }
 
     before do
       work_package_with_watcher
@@ -56,11 +59,11 @@ describe 'filter work packages', js: true do
     end
 
     # Regression test for bug #24114 (broken watcher filter)
-    it 'should only filter work packages by watcher' do
+    it "onlies filter work packages by watcher" do
       filters.open
       loading_indicator_saveguard
 
-      filters.add_filter_by 'Watcher', 'is', watcher.name
+      filters.add_filter_by "Watcher", "is (OR)", watcher.name
       loading_indicator_saveguard
 
       wp_table.expect_work_package_listed work_package_with_watcher
@@ -68,60 +71,150 @@ describe 'filter work packages', js: true do
     end
   end
 
-  context 'by version in project' do
-    let(:version) { FactoryBot.create :version, project: project }
-    let(:work_package_with_version) do
-      FactoryBot.create :work_package, project: project, subject: 'With version', version: version
+  context "when filtering version" do
+    shared_let(:other_project) { create(:project) }
+    shared_let(:inaccessible_version) { create(:version, name: "Inaccessible Version", project: other_project) }
+    shared_let(:shared_version) { create(:version, name: "Shared Version", project: other_project, sharing: "system") }
+
+    let!(:version) { create(:version, project:) }
+    let!(:work_package_with_version) do
+      create(:work_package, project:, subject: "With version", version:)
     end
-    let(:work_package_without_version) { FactoryBot.create :work_package, subject: 'Without version', project: project }
+    let!(:work_package_without_version) { create(:work_package, subject: "Without version", project:) }
 
     before do
-      work_package_with_version
-      work_package_without_version
+      wp_table.visit!
+
+      filters.open
+      # Expect filters to be grouped by project name
+      filters.add_filter("Target versions")
+    end
+
+    context "in a project" do
+      let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+
+      it "allows filtering, saving, retrieving and altering the saved filter" do
+        expect_ng_option(
+          page.find_by_id("values-targetVersion"),
+          version,
+          grouping: project.name,
+          results_selector: "body"
+        )
+
+        expect_ng_option(
+          page.find_by_id("values-targetVersion"),
+          shared_version,
+          grouping: other_project.name,
+          results_selector: "body"
+        )
+
+        expect_no_ng_option(
+          page.find_by_id("values-targetVersion"),
+          inaccessible_version,
+          results_selector: "body"
+        )
+
+        filters.remove_filter "targetVersion"
+
+        filters.add_filter_by("Target versions", "is (OR)", version.name, "targetVersion")
+
+        loading_indicator_saveguard
+        wp_table.expect_work_package_listed work_package_with_version
+        wp_table.ensure_work_package_not_listed! work_package_without_version
+
+        wp_table.save_as("Some query name")
+
+        filters.remove_filter "targetVersion"
+
+        loading_indicator_saveguard
+        wp_table.expect_work_package_listed work_package_with_version, work_package_without_version
+
+        last_query = Query.last
+
+        wp_table.visit_query(last_query)
+
+        loading_indicator_saveguard
+        wp_table.expect_work_package_listed work_package_with_version
+        wp_table.ensure_work_package_not_listed! work_package_without_version
+
+        filters.open
+
+        filters.expect_filter_by("Target versions", "is (OR)", version.name, "targetVersion")
+
+        filters.set_operator "Target versions", "is not", "targetVersion"
+
+        loading_indicator_saveguard
+        wp_table.expect_work_package_listed work_package_without_version
+        wp_table.ensure_work_package_not_listed! work_package_with_version
+      end
+    end
+
+    context "in the global page" do
+      shared_let(:user) { create(:user, preferences: { time_zone: "Etc/UTC" }) }
+      shared_let(:project) { create(:project, members: { user => role }) }
+      let(:wp_table) { Pages::WorkPackagesTable.new }
+
+      it "allows filtering, saving, retrieving and altering the saved filter" do
+        expect_ng_option(
+          page.find_by_id("values-targetVersion"),
+          version,
+          grouping: project.name,
+          results_selector: "body"
+        )
+
+        expect_ng_option(
+          page.find_by_id("values-targetVersion"),
+          shared_version,
+          grouping: I18n.t(:"api_v3.undisclosed.project"),
+          results_selector: "body"
+        )
+
+        expect_no_ng_option(
+          page.find_by_id("values-targetVersion"),
+          inaccessible_version,
+          results_selector: "body"
+        )
+      end
+    end
+  end
+
+  context "when filtering by status in project" do
+    let(:status) { create(:status, name: "Open status") }
+    let(:closed_status) { create(:closed_status, name: "Closed status") }
+    let(:work_package_with_status) do
+      create(:work_package, project:, subject: "With open status", status:)
+    end
+    let(:work_package_without_status) { create(:work_package, subject: "With closed status", project:, status: closed_status) }
+
+    before do
+      work_package_with_status
+      work_package_without_status
 
       wp_table.visit!
     end
 
-    it 'allows filtering, saving, retrieving and altering the saved filter' do
+    it "allows filtering and matching the selected value" do
       filters.open
 
-      filters.add_filter_by('Version', 'is', version.name)
+      filters.remove_filter :status
+      filters.expect_no_filter_by :status
+      filters.add_filter_by("Status", "is (OR)", status.name)
 
       loading_indicator_saveguard
-      wp_table.expect_work_package_listed work_package_with_version
-      wp_table.ensure_work_package_not_listed! work_package_without_version
+      wp_table.expect_work_package_listed work_package_with_status
+      wp_table.ensure_work_package_not_listed! work_package_without_status
 
-      wp_table.save_as('Some query name')
+      filters.open_autocompleter :status
 
-      filters.remove_filter 'version'
-
-      loading_indicator_saveguard
-      wp_table.expect_work_package_listed work_package_with_version, work_package_without_version
-
-      last_query = Query.last
-
-      wp_table.visit_query(last_query)
-
-      loading_indicator_saveguard
-      wp_table.expect_work_package_listed work_package_with_version
-      wp_table.ensure_work_package_not_listed! work_package_without_version
-
-      filters.open
-
-      filters.expect_filter_by('Version', 'is', version.name)
-
-      filters.set_operator 'Version', 'is not'
-
-      loading_indicator_saveguard
-      wp_table.expect_work_package_listed work_package_without_version
-      wp_table.ensure_work_package_not_listed! work_package_with_version
+      expect(page).to have_css(".ng-option", text: closed_status.name)
+      expect(page).to have_no_css(".ng-option", text: status.name)
     end
   end
 
-  context 'by finish date outside of a project' do
-    let(:work_package_with_due_date) { FactoryBot.create :work_package, project: project, due_date: Date.today }
-    let(:work_package_without_due_date) { FactoryBot.create :work_package, project: project, due_date: Date.today + 5.days }
-    let(:wp_table) { ::Pages::WorkPackagesTable.new }
+  context "by finish date outside of a project" do
+    let(:work_package_with_due_date) { create(:work_package, project:, due_date: Date.current) }
+    let(:work_package_without_due_date) { create(:work_package, project:, due_date: 5.days.from_now) }
+    let(:wp_table) { Pages::WorkPackagesTable.new }
 
     before do
       work_package_with_due_date
@@ -130,21 +223,21 @@ describe 'filter work packages', js: true do
       wp_table.visit!
     end
 
-    it 'allows filtering, saving and retrieving and altering the saved filter' do
+    it "allows filtering, saving and retrieving and altering the saved filter" do
       filters.open
 
-      filters.add_filter_by('Finish date',
-                            'between',
-                            [(Date.today - 1.day).strftime('%Y-%m-%d'), Date.today.strftime('%Y-%m-%d')],
-                            'dueDate')
+      filters.add_filter_by("Finish date",
+                            "between",
+                            [1.day.ago.strftime("%Y-%m-%d"), Date.current.strftime("%Y-%m-%d")],
+                            "dueDate")
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_with_due_date
       wp_table.ensure_work_package_not_listed! work_package_without_due_date
 
-      wp_table.save_as('Some query name')
+      wp_table.save_as("Some query name")
 
-      filters.remove_filter 'dueDate'
+      filters.remove_filter "dueDate"
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_with_due_date, work_package_without_due_date
@@ -159,12 +252,12 @@ describe 'filter work packages', js: true do
 
       filters.open
 
-      filters.expect_filter_by('Finish date',
-                               'between',
-                               [(Date.today - 1.day).strftime('%Y-%m-%d'), Date.today.strftime('%Y-%m-%d')],
-                               'dueDate')
+      filters.expect_filter_by("Finish date",
+                               "between",
+                               [1.day.ago.strftime("%Y-%m-%d"), Date.current.strftime("%Y-%m-%d")],
+                               "dueDate")
 
-      filters.set_filter 'Finish date', 'in more than', '1', 'dueDate'
+      filters.set_filter "Finish date", "in more than", "1", "dueDate"
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_without_due_date
@@ -172,34 +265,33 @@ describe 'filter work packages', js: true do
     end
   end
 
-  context 'by list cf inside a project' do
+  context "by list cf inside a project" do
     let(:type) do
-      type = FactoryBot.create(:type)
+      type = create(:type)
 
-      project.types << type
+      project.project_types.create!(type:)
 
       type
     end
 
     let(:work_package_with_list_value) do
-      wp = FactoryBot.create :work_package, project: project, type: type
-      wp.send("#{list_cf.accessor_name}=", list_cf.custom_options.first.id)
+      wp = create(:work_package, project:, type:)
+      wp.send(list_cf.attribute_setter, list_cf.custom_options.first.id)
       wp.save!
       wp
     end
 
     let(:work_package_with_anti_list_value) do
-      wp = FactoryBot.create :work_package, project: project, type: type
-      wp.send("#{list_cf.accessor_name}=", list_cf.custom_options.last.id)
+      wp = create(:work_package, project:, type:)
+      wp.send(list_cf.attribute_setter, list_cf.custom_options.last.id)
       wp.save!
       wp
     end
 
     let(:list_cf) do
-      cf = FactoryBot.create :list_wp_custom_field
+      cf = create(:list_wp_custom_field)
 
-      project.work_package_custom_fields << cf
-      type.custom_fields << cf
+      type.default_variant.custom_field_ids |= [cf.id]
 
       cf
     end
@@ -212,72 +304,54 @@ describe 'filter work packages', js: true do
       wp_table.visit!
     end
 
-    it 'allows filtering, saving and retrieving the saved filter' do
+    it "filters by a list custom field and excludes the selected value from the autocomplete" do
       # Wait for form to load
       filters.expect_loaded
 
       filters.open
       filters.add_filter_by(list_cf.name,
-                            'is not',
+                            "is not",
                             list_cf.custom_options.last.value,
-                            "customField#{list_cf.id}")
+                            list_cf.attribute_name(:camel_case))
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_with_list_value
       wp_table.ensure_work_package_not_listed! work_package_with_anti_list_value
 
-      wp_table.save_as('Some query name')
+      # Do not display already selected values in the autocompleter (Regression #46249)
+      filters.open_autocompleter list_cf.attribute_name(:camel_case)
 
-      filters.remove_filter "customField#{list_cf.id}"
-
-      loading_indicator_saveguard
-      wp_table.expect_work_package_listed work_package_with_list_value, work_package_with_anti_list_value
-
-      last_query = Query.last
-
-      wp_table.visit_query(last_query)
-
-      loading_indicator_saveguard
-      wp_table.expect_work_package_listed work_package_with_list_value
-      wp_table.ensure_work_package_not_listed! work_package_with_anti_list_value
-
-      filters.open
-
-      filters.expect_filter_by(list_cf.name,
-                               'is not',
-                               list_cf.custom_options.last.value,
-                               "customField#{list_cf.id}")
+      expect(page).to have_no_css(".ng-option", text: list_cf.custom_options.last.value)
     end
   end
 
-  context 'by string cf inside a project with url-query relevant chars' do
+  context "by string cf inside a project with url-query relevant chars" do
     let(:type) do
-      type = FactoryBot.create(:type)
+      type = create(:type)
 
-      project.types << type
+      project.project_types.create!(type:)
 
       type
     end
 
     let(:work_package_plus) do
-      wp = FactoryBot.create :work_package, project: project, type: type
-      wp.send("#{string_cf.accessor_name}=", 'G+H')
+      wp = create(:work_package, project:, type:)
+      wp.send(string_cf.attribute_setter, "G+H")
       wp.save!
       wp
     end
 
     let(:work_package_and) do
-      wp = FactoryBot.create :work_package, project: project, type: type
-      wp.send("#{string_cf.accessor_name}=", 'A&B')
+      wp = create(:work_package, project:, type:)
+      wp.send(string_cf.attribute_setter, "A&B")
       wp.save!
       wp
     end
 
     let(:string_cf) do
-      cf = FactoryBot.create :string_wp_custom_field
+      cf = create(:string_wp_custom_field)
 
-      project.work_package_custom_fields << cf
-      type.custom_fields << cf
+      type.default_variant.custom_field_ids |= [cf.id]
 
       cf
     end
@@ -290,23 +364,23 @@ describe 'filter work packages', js: true do
       wp_table.visit!
     end
 
-    it 'allows filtering, saving and retrieving the saved filter' do
+    it "allows filtering, saving and retrieving the saved filter" do
       # Wait for form to load
       filters.expect_loaded
 
       filters.open
       filters.add_filter_by(string_cf.name,
-                            'is',
-                            ['G+H'],
-                            "customField#{string_cf.id}")
+                            "is",
+                            ["G+H"],
+                            string_cf.attribute_name(:camel_case))
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_plus
       wp_table.ensure_work_package_not_listed! work_package_and
 
-      wp_table.save_as('Some query name')
+      wp_table.save_as("Some query name")
 
-      filters.remove_filter "customField#{string_cf.id}"
+      filters.remove_filter string_cf.attribute_name(:camel_case)
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_plus, work_package_and
@@ -322,14 +396,14 @@ describe 'filter work packages', js: true do
       filters.open
 
       filters.expect_filter_by(string_cf.name,
-                               'is',
-                               ['G+H'],
+                               "is",
+                               ["G+H"],
                                "customField#{string_cf.id}")
 
       filters.set_filter(string_cf,
-                         'is',
-                         ['A&B'],
-                         "customField#{string_cf.id}")
+                         "is",
+                         ["A&B"],
+                         string_cf.attribute_name(:camel_case))
 
       loading_indicator_saveguard
       wp_table.expect_work_package_listed work_package_and
@@ -337,107 +411,59 @@ describe 'filter work packages', js: true do
     end
   end
 
-  context 'by attachment content' do
-    let(:attachment_a) { FactoryBot.build(:attachment, filename: 'attachment-first.pdf') }
-    let(:attachment_b) { FactoryBot.build(:attachment, filename: 'attachment-second.pdf') }
+  context "by attachment content" do
+    let(:attachment_a) { build(:attachment, filename: "attachment-first.pdf") }
+    let(:attachment_b) { build(:attachment, filename: "attachment-second.pdf") }
     let(:wp_with_attachment_a) do
-      FactoryBot.create :work_package, subject: 'WP attachment A', project: project, attachments: [attachment_a]
+      create(:work_package, subject: "WP attachment A", project:, attachments: [attachment_a])
     end
     let(:wp_with_attachment_b) do
-      FactoryBot.create :work_package, subject: 'WP attachment B', project: project, attachments: [attachment_b]
+      create(:work_package, subject: "WP attachment B", project:, attachments: [attachment_b])
     end
-    let(:wp_without_attachment) { FactoryBot.create :work_package, subject: 'WP no attachment', project: project }
-    let(:wp_table) { ::Pages::WorkPackagesTable.new }
+    let(:wp_without_attachment) { create(:work_package, subject: "WP no attachment", project:) }
+    let(:wp_table) { Pages::WorkPackagesTable.new }
+    let(:plaintext_file_handler) do
+      Plaintext::Resolver.file_handlers.find { |h| h.accept? "text/plain" }
+    end
 
     before do
-      allow(EnterpriseToken).to receive(:allows_to?).and_return(false)
-      allow(EnterpriseToken).to receive(:allows_to?).with(:attachment_filters).and_return(true)
-
-      allow_any_instance_of(Plaintext::Resolver).to receive(:text).and_return('I am the first text $1.99.')
+      allow(plaintext_file_handler).to receive(:text).and_return("I am the first text $1.99.")
       wp_with_attachment_a
-      ExtractFulltextJob.perform_now(attachment_a.id)
-      allow_any_instance_of(Plaintext::Resolver).to receive(:text).and_return('I am the second text.')
+      Attachments::ExtractFulltextJob.perform_now(attachment_a.id)
+      allow(plaintext_file_handler).to receive(:text).and_return("I am the second text.")
       wp_with_attachment_b
-      ExtractFulltextJob.perform_now(attachment_b.id)
+      Attachments::ExtractFulltextJob.perform_now(attachment_b.id)
       wp_without_attachment
     end
 
-    context 'with full text search capabilities' do
+    context "with full text search capabilities" do
       before do
         skip("Database does not support full text search.") unless OpenProject::Database::allows_tsv?
       end
 
-      it 'allows filtering and retrieving and altering the saved filter' do
+      it "wires attachment content and file name filters to the table" do
         wp_table.visit!
         wp_table.expect_work_package_listed wp_with_attachment_a, wp_with_attachment_b
 
         filters.open
 
-        # content contains with multiple hits
-        filters.add_filter_by('Attachment content',
-                              'contains',
-                              ['text'],
-                              'attachmentContent')
+        filters.add_filter_by("Attachment content",
+                              "contains",
+                              ["text"],
+                              "attachmentContent")
 
         loading_indicator_saveguard
         wp_table.expect_work_package_listed wp_with_attachment_a, wp_with_attachment_b
         wp_table.ensure_work_package_not_listed! wp_without_attachment
 
         # content contains single hit with numbers
-        filters.remove_filter 'attachmentContent'
-
-        filters.add_filter_by('Attachment content',
-                              'contains',
-                              ['first 1.99'],
-                              'attachmentContent')
-
+        filters.remove_filter "attachmentContent"
         loading_indicator_saveguard
-        wp_table.expect_work_package_listed wp_with_attachment_a
-        wp_table.ensure_work_package_not_listed! wp_without_attachment, wp_with_attachment_b
 
-        filters.remove_filter 'attachmentContent'
-
-        # content does not contain
-        filters.add_filter_by('Attachment content',
-                              'doesn\'t contain',
-                              ['first'],
-                              'attachmentContent')
-
-        loading_indicator_saveguard
-        wp_table.expect_work_package_listed wp_with_attachment_b, wp_without_attachment
-        wp_table.ensure_work_package_not_listed! wp_with_attachment_a
-
-        filters.remove_filter 'attachmentContent'
-
-        # ignores special characters
-        filters.add_filter_by('Attachment content',
-                              'contains',
-                              ['! first:* \')'],
-                              'attachmentContent')
-
-        loading_indicator_saveguard
-        wp_table.expect_work_package_listed wp_with_attachment_a
-        wp_table.ensure_work_package_not_listed! wp_without_attachment, wp_with_attachment_b
-
-        filters.remove_filter 'attachmentContent'
-
-        # file name contains
-        filters.add_filter_by('Attachment file name',
-                              'contains',
-                              ['first'],
-                              'attachmentFileName')
-
-        loading_indicator_saveguard
-        wp_table.expect_work_package_listed wp_with_attachment_a
-        wp_table.ensure_work_package_not_listed! wp_without_attachment, wp_with_attachment_b
-
-        filters.remove_filter 'attachmentFileName'
-
-        # file name does not contain
-        filters.add_filter_by('Attachment file name',
-                              'doesn\'t contain',
-                              ['first'],
-                              'attachmentFileName')
+        filters.add_filter_by("Attachment file name",
+                              "doesn't contain",
+                              ["first"],
+                              "attachmentFileName")
 
         loading_indicator_saveguard
         wp_table.expect_work_package_listed wp_with_attachment_b
@@ -446,72 +472,267 @@ describe 'filter work packages', js: true do
     end
   end
 
-  context 'DB does not offer TSVector support' do
+  context "DB does not offer TSVector support" do
     before do
       allow(OpenProject::Database).to receive(:allows_tsv?).and_return(false)
     end
 
     it "does not offer attachment filters" do
-      expect(page).to_not have_select 'add_filter_select', with_options: ['Attachment content', 'Attachment file name']
+      expect(page).to have_no_select "add_filter_select", with_options: ["Attachment content", "Attachment file name"]
     end
   end
 
-  describe 'specific filters' do
-    describe 'filters on date by created_at (Regression #28459)' do
-      let!(:wp_updated_today) do
-        FactoryBot.create :work_package, subject: 'Created today', project: project, created_at: (Date.today + 12.hours)
+  describe "datetime filters", with_settings: { date_format: "%Y-%m-%d", time_format: "%H:%M" } do
+    shared_let(:business_day_at_noon) { Time.find_zone!("Europe/Kyiv").local(2025, 1, 8, 12, 0, 0) }
+
+    before do
+      travel_to(business_day_at_noon)
+    end
+
+    after do
+      travel_back
+    end
+
+    shared_let(:wp_updated_today) do
+      create(:work_package,
+             subject: "Created today",
+             project:,
+             created_at: business_day_at_noon,
+             updated_at: business_day_at_noon)
+    end
+    shared_let(:wp_updated_3d_ago) do
+      create(:work_package,
+             subject: "Created 3d ago",
+             project:,
+             created_at: business_day_at_noon - 3.days,
+             updated_at: business_day_at_noon - 3.days)
+    end
+    shared_let(:wp_updated_5d_ago) do
+      create(:work_package,
+             subject: "Created 5d ago",
+             project:,
+             created_at: business_day_at_noon - 5.days,
+             updated_at: business_day_at_noon - 5.days)
+    end
+
+    it "filters on date by created_at (Regression #28459)" do
+      wp_table.visit!
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      filters.open
+
+      filters.add_filter_by "Created on",
+                            "on",
+                            [Date.current.iso8601],
+                            "createdAt"
+
+      loading_indicator_saveguard
+
+      wp_table.expect_work_package_listed wp_updated_today
+      wp_table.ensure_work_package_not_listed! wp_updated_3d_ago, wp_updated_5d_ago
+    end
+
+    it "filters on date by updated_at" do
+      wp_table.visit!
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      filters.open
+
+      filters.add_filter_by "Updated",
+                            "on",
+                            [Date.current.iso8601],
+                            "updatedAt"
+
+      loading_indicator_saveguard
+
+      wp_table.expect_work_package_listed wp_updated_today
+      wp_table.ensure_work_package_not_listed! wp_updated_3d_ago, wp_updated_5d_ago
+    end
+
+    it "filters between date by updated_at", skip: "flickering spec (#68677)" do
+      wp_table.visit!
+      wait_for_network_idle
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      filters.open
+
+      filters.add_filter_by "Updated",
+                            "between",
+                            ["#{4.days.ago.to_date.iso8601} 00:00", "#{2.days.ago.to_date.iso8601} 23:59"],
+                            "updatedAt"
+
+      wait_for_network_idle
+      loading_indicator_saveguard
+
+      wp_table.expect_work_package_listed wp_updated_3d_ago
+      wp_table.ensure_work_package_not_listed! wp_updated_today, wp_updated_5d_ago
+
+      wp_table.save_as("Some query name")
+
+      filters.remove_filter "updatedAt"
+
+      wait_for_network_idle
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      last_query = Query.where(name: "Some query name").first
+      date_filter = last_query.filters.last
+
+      Time.use_zone(user.time_zone) do
+        expect(date_filter.values)
+          .to eq [4.days.ago.beginning_of_day.utc.iso8601, 2.days.ago.end_of_day.change(sec: 0).utc.iso8601]
       end
-      let!(:wp_updated_5d_ago) do
-        FactoryBot.create :work_package, subject: 'Created 5d ago', project: project, created_at: (Date.today - 5.days)
+
+      wp_table.visit_query(last_query)
+
+      wait_for_network_idle
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_3d_ago
+      wp_table.ensure_work_package_not_listed! wp_updated_today, wp_updated_5d_ago
+
+      filters.open
+
+      filters.expect_filter_by "Updated on",
+                               "between",
+                               ["#{4.days.ago.to_date.iso8601} 00:00", "#{2.days.ago.to_date.iso8601} 23:59"],
+                               "updatedAt"
+    end
+
+    it "filters between date by updated_at (lower boundary only)" do
+      wp_table.visit!
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      filters.open
+
+      filters.add_filter_by "Updated",
+                            "between",
+                            ["#{3.days.ago.to_date.iso8601} 00:00"],
+                            "updatedAt"
+
+      loading_indicator_saveguard
+
+      wp_table.expect_work_package_listed wp_updated_3d_ago, wp_updated_today
+      wp_table.ensure_work_package_not_listed! wp_updated_5d_ago
+
+      wp_table.save_as("Some query name")
+
+      filters.remove_filter "updatedAt"
+
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_5d_ago
+
+      filters.add_filter_by "Updated",
+                            "between",
+                            ["#{6.days.ago.to_date.iso8601} 00:00"],
+                            "updatedAt"
+
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      last_query = Query.where(name: "Some query name").first
+      date_filter = last_query.filters.last
+      Time.use_zone(user.time_zone) do
+        expect(date_filter.values)
+          .to eq [3.days.ago.beginning_of_day.utc.iso8601]
       end
 
-      it do
-        wp_table.visit!
-        loading_indicator_saveguard
-        wp_table.expect_work_package_listed wp_updated_today, wp_updated_5d_ago
+      wp_table.visit_query(last_query)
 
-        filters.open
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_3d_ago, wp_updated_today
+      wp_table.ensure_work_package_not_listed! wp_updated_5d_ago
 
-        filters.add_filter_by 'Created on',
-                              'on',
-                              [Date.today.iso8601],
-                              'createdAt'
+      filters.open
 
-        loading_indicator_saveguard
+      filters.expect_filter_by "Updated on",
+                               "between",
+                               ["#{3.days.ago.to_date.iso8601} 00:00", ""],
+                               "updatedAt"
+    end
 
-        wp_table.expect_work_package_listed wp_updated_today
-        wp_table.ensure_work_package_not_listed! wp_updated_5d_ago
+    it "filters between date by updated_at (upper boundary only)" do
+      wp_table.visit!
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      filters.open
+
+      filters.add_filter_by "Updated",
+                            "between",
+                            [nil, "#{4.days.ago.to_date.iso8601} 23:59"],
+                            "updatedAt"
+
+      loading_indicator_saveguard
+
+      wp_table.expect_work_package_listed wp_updated_5d_ago
+      wp_table.ensure_work_package_not_listed! wp_updated_3d_ago, wp_updated_today
+
+      wp_table.save_as("Some query name")
+
+      filters.remove_filter "updatedAt"
+
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_today, wp_updated_3d_ago, wp_updated_5d_ago
+
+      filters.add_filter_by "Updated",
+                            "between",
+                            [nil, "#{6.days.ago.to_date.iso8601} 23:59"],
+                            "updatedAt"
+
+      loading_indicator_saveguard
+      wp_table.ensure_work_package_not_listed! wp_updated_5d_ago, wp_updated_3d_ago, wp_updated_today
+
+      last_query = Query.where(name: "Some query name").first
+      date_filter = last_query.filters.last
+      Time.use_zone(user.time_zone) do
+        expect(date_filter.values)
+          .to eq ["", 4.days.ago.end_of_day.change(sec: 0).utc.iso8601]
       end
+
+      wp_table.visit_query(last_query)
+
+      loading_indicator_saveguard
+      wp_table.expect_work_package_listed wp_updated_5d_ago
+      wp_table.ensure_work_package_not_listed! wp_updated_3d_ago, wp_updated_today
+
+      filters.open
+
+      filters.expect_filter_by "Updated on",
+                               "between",
+                               ["", "#{4.days.ago.to_date.iso8601} 23:59"],
+                               "updatedAt"
     end
   end
 
-  describe 'keep the filter attribute order (Regression #33136)' do
-    let(:version1) { FactoryBot.create :version, project: project, name: 'Version 1', id: 1 }
-    let(:version2) { FactoryBot.create :version, project: project, name: 'Version 2', id: 2 }
+  describe "keep the filter attribute order (Regression #33136)" do
+    let(:version1) { create(:version, project:, name: "Version 1", id: 1) }
+    let(:version2) { create(:version, project:, name: "Version 2", id: 2) }
 
     it do
       wp_table.visit!
       loading_indicator_saveguard
 
       filters.open
-      filters.add_filter_by 'Version', 'is', [version2.name, version1.name]
+      filters.add_filter_by "Target versions", "is (OR)", [version2.name, version1.name], "targetVersion"
       loading_indicator_saveguard
 
-      sleep(3)
-
-      filters.expect_filter_by 'Version', 'is', [version1.name]
-      filters.expect_filter_by 'Version', 'is', [version2.name]
+      filters.expect_filter_by "Target versions", "is (OR)", [version1.name], "targetVersion"
+      filters.expect_filter_by "Target versions", "is (OR)", [version2.name], "targetVersion"
 
       # Order should stay unchanged
-      filters.expect_filter_order('Version', [version2.name, version1.name])
+      filters.expect_filter_order("Target versions", [version2.name, version1.name], "targetVersion")
     end
   end
 
-  describe 'add parent WP filter' do
-    let(:wp_parent) { FactoryBot.create :work_package, project: project, subject: 'project' }
-    let(:wp_child1) { FactoryBot.create :work_package, project: project, subject: 'child 1', parent: wp_parent }
-    let(:wp_child2) { FactoryBot.create :work_package, project: project, subject: 'child 2', parent: wp_parent }
-    let(:wp_default) { FactoryBot.create :work_package, project: project, subject: 'default' }
+  describe "add parent WP filter" do
+    let(:wp_parent) { create(:work_package, project:, subject: "project") }
+    let(:wp_child1) { create(:work_package, project:, subject: "child 1", parent: wp_parent) }
+    let(:wp_child2) { create(:work_package, project:, subject: "child 2", parent: wp_parent) }
+    let(:wp_default) { create(:work_package, project:, subject: "default") }
 
     it do
       wp_parent
@@ -522,7 +743,7 @@ describe 'filter work packages', js: true do
       loading_indicator_saveguard
       filters.expect_loaded
       filters.open
-      filters.add_filter_by 'Parent', 'is', [wp_parent.subject]
+      filters.add_filter_by "Parent", "is (OR)", [wp_parent.subject]
       loading_indicator_saveguard
 
       # It should show the children of the selected parent

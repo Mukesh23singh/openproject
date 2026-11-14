@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,12 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
+
+require "spec_helper"
 
 class WorkPackageCards
   include Capybara::DSL
@@ -34,11 +36,12 @@ class WorkPackageCards
 
   def initialize(project = nil)
     @project = project
+    super()
   end
 
   def open_full_screen_by_doubleclick(work_package)
     loading_indicator_saveguard
-    page.driver.browser.action.double_click(card(work_package).native).perform
+    card(work_package).double_click
 
     Pages::FullWorkPackage.new(work_package, project)
   end

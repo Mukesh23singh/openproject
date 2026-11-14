@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module Decorators
@@ -37,8 +34,18 @@ module API
       include API::Decorators::FormattableProperty
 
       def initialize(
-        type:, name:, location: nil, required: true, has_default: false, writable: true,
-        attribute_group: nil, description: nil, current_user: nil
+        type:,
+        name:,
+        location: nil,
+        required: true,
+        has_default: false,
+        writable: true,
+        attribute_group: nil,
+        description: nil,
+        current_user: nil,
+        deprecated: nil,
+        placeholder: nil,
+        options: nil
       )
         @type = type
         @name = name
@@ -48,8 +55,11 @@ module API
         @attribute_group = attribute_group
         @location = derive_location(location)
         @description = description
+        @deprecated = deprecated
+        @placeholder = placeholder
+        @options = options
 
-        super(nil, current_user: current_user)
+        super(nil, current_user:)
       end
 
       attr_accessor :type,
@@ -60,10 +70,15 @@ module API
                     :attribute_group,
                     :min_length,
                     :max_length,
+                    :minimum,
+                    :maximum,
                     :regular_expression,
                     :options,
+                    :formula,
                     :location,
-                    :description
+                    :description,
+                    :deprecated,
+                    :placeholder
 
       property :type, exec_context: :decorator
       property :name, exec_context: :decorator
@@ -73,17 +88,23 @@ module API
       property :attribute_group, exec_context: :decorator
       property :min_length, exec_context: :decorator
       property :max_length, exec_context: :decorator
+      property :minimum, exec_context: :decorator
+      property :maximum, exec_context: :decorator
       property :regular_expression, exec_context: :decorator
+      property :deprecated, exec_context: :decorator
       property :options, exec_context: :decorator
+      property :formula, exec_context: :decorator, render_nil: false
+      property :placeholder, exec_context: :decorator, render_nil: false
 
-      property :location, exec_context: :decorator, render_nil: false
+      property :location, exec_context: :decorator
 
       formattable_property :description,
                            exec_context: :decorator,
                            render_nil: false,
                            setter: nil,
                            getter: ->(*) do
-                             next unless description.present?
+                             next if description.blank?
+
                              ::API::Decorators::Formattable.new(description)
                            end
 
@@ -99,11 +120,11 @@ module API
       # either nil, _links, or _meta depending on the input
       def derive_location(location)
         case location.to_s
-        when 'link'
+        when "link"
           :_links
-        when 'meta'
+        when "meta"
           :_meta
-        when ''
+        when ""
           nil
         else
           raise ArgumentError, "Invalid location attribute #{location}"

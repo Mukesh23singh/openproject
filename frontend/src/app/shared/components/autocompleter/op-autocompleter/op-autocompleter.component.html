@@ -1,48 +1,66 @@
-<div class="inline-label ng-select-container">
+<div class="inline-label">
+  @if (inputName && !(multiple && multipleAsSeparateInputs)) {
+    <input
+      #syncedInput
+      type="hidden"
+      [attr.name]="inputName"
+      [value]="mappedInputValue"
+      [attr.data-action]="hiddenFieldAction">
+  }
+  @if (multiple && multipleAsSeparateInputs) {
+    @for (value of mappedInputValue; track $index) {
+      <input
+        type="hidden"
+        [attr.name]="inputName+'[]'"
+        [attr.data-action]="hiddenFieldAction"
+        [value]="value">
+    }
+  }
   <ng-select
     #ngSelectInstance
     [(ngModel)]="model"
-    [items]="results$ | async"
-    [ngClass]="classes"
-    [typeahead]="typeahead"
+    [items]="(results$ | async) ?? []"
+    [ngClass]="classes ?? ''"
+    [typeahead]="typeahead ?? localSearch"
     [clearOnBackspace]="clearOnBackspace"
     [clearSearchOnAdd]="clearSearchOnAdd"
     [hideSelected]="hideSelected"
     [appendTo]="appendTo"
     [multiple]="multiple"
-    [loading]="isLoading"
+    [loading]="(loading$ | async) && ngSelectInstance.isOpen()"
     [addTag]="addTag"
     [virtualScroll]="virtualScroll"
     [required]="required"
     [clearable]="clearable"
     [closeOnSelect]="closeOnSelect"
     [openOnEnter]="openOnEnter"
-    [disabled]="disabled"
-    [name]="name"
+    [disabled]="disabled ?? false"
+    [name]="name ?? ''"
     [id]="id"
     [attr.accesskey]="accesskey||undefined"
-    bindLabel="name"
-    [bindValue]="bindValue"
+    [bindLabel]="bindLabel ?? ''"
+    [bindValue]="bindValue ?? ''"
     [markFirst]="markFirst"
     [notFoundText]="notFoundText"
-    [typeToSearchText]="typeToSearchText"
     [addTagText]="addTagText"
     [loadingText]="loadingText"
-    [clearAllText]="clearAllText"
-    [appearance]="appearance"
+    [clearAllText]="clearAllText ?? ''"
+    [appearance]="appearance ?? ''"
     [dropdownPosition]="dropdownPosition"
     [selectOnTab]="selectOnTab"
     [maxSelectedItems]="maxSelectedItems"
     [placeholder]="placeholder"
-    [groupBy]="groupBy"
-    [groupValue]="groupValue"
+    [groupBy]="groupBy ?? ''"
     [bufferAmount]="bufferAmount"
     [selectableGroup]="selectableGroup"
     [searchable]="searchable"
     [selectableGroupAsModel]="selectableGroupAsModel"
     [trackByFn]="trackByFn"
+    [compareWith]="compareWith"
+    [searchFn]="searchFn"
     [labelForId]="labelForId"
     [inputAttrs]="inputAttrs"
+    [ariaLabel]="ariaLabel"
     [tabIndex]="tabIndex"
     [readonly]="readonly"
     [searchWhileComposing]="searchWhileComposing"
@@ -51,43 +69,41 @@
     [keyDownFn]="keyDownFn"
 
     (change)="changed($event)"
-    (open)="opened($event)"
-    (close)="closed($event)"
+    (open)="opened()"
+    (close)="closed()"
     (blur)="blured($event)"
     (focus)="focused($event)"
-    (clear)="cleared($event)"
+    (clear)="cleared()"
     (keydown)="keydowned($event)"
+    (keydown.escape)="canceled($event)"
     (search)="searched($event)"
     (scroll)="scrolled($event)"
-    (scrollToEnd)="scrolledToEnd($event)"
+    (scrollToEnd)="scrolledToEnd()"
     (add)="added($event)"
     (remove)="removed($event)"
-  >
-    <ng-template
-      ng-header-tmp
-      let-item="item"
-      let-index="index"
-      let-search="searchTerm"
-      *ngIf="headerTemplate"
     >
-      <ng-container
-        [ngTemplateOutlet]="headerTemplate"
-        [ngTemplateOutletContext]="{$implicit:item, search:search, index:index }"
-      ></ng-container>
-    </ng-template>
+    @if (headerTemplate || projectedHeaderTemplate) {
+      <ng-template
+        ng-header-tmp
+        let-search="searchTerm"
+      >
+        <ng-container [ngTemplateOutlet]="headerTemplate || projectedHeaderTemplate"
+          [ngTemplateOutletContext]="{ search:search }"
+         />
+      </ng-template>
+    }
 
-    <ng-template
-      ng-label-tmp
-      let-item="item"
-      let-index="index"
-      let-search="searchTerm"
-      *ngIf="labelRequired"
-    >
-      <ng-container
-        [ngTemplateOutlet]="labelTemplate ? labelTemplate : defaultLabel"
-        [ngTemplateOutletContext]="{$implicit:item, search:search, index:index }"
-      ></ng-container>
-    </ng-template>
+    @if (labelRequired) {
+      <ng-template
+        ng-label-tmp
+        let-item="item"
+        let-clear="clear"
+      >
+        <ng-container [ngTemplateOutlet]="projectedLabelTemplate || labelTemplate || defaultLabel"
+          [ngTemplateOutletContext]="{ $implicit:item, clear:clear }"
+         />
+      </ng-template>
+    }
 
     <ng-template
       ng-option-tmp
@@ -95,95 +111,150 @@
       let-index="index"
       let-search="searchTerm"
     >
-      <ng-container
-        [ngTemplateOutlet]="optionTemplate ? optionTemplate : defaultOption"
+      <ng-container [ngTemplateOutlet]="projectedOptionTemplate || optionTemplate || defaultOption"
         [ngTemplateOutletContext]="{$implicit:item, search:search, index:index }"
-      ></ng-container>
+       />
     </ng-template>
 
-    <ng-template
-      ng-footer-tmp
-      let-item="item"
-      let-index="index"
-      let-search="searchTerm"
-      *ngIf="footerTemplate"
-    >
-      <ng-container
-        [ngTemplateOutlet]="footerTemplate"
-        [ngTemplateOutletContext]="{$implicit:item, search:search, index:index }"
-      ></ng-container>
-    </ng-template>
+    @if (footerTemplate || projectedFooterTemplate) {
+      <ng-template
+        ng-footer-tmp
+        let-search="searchTerm"
+      >
+        <ng-container [ngTemplateOutlet]="footerTemplate || projectedFooterTemplate"
+          [ngTemplateOutletContext]="{ search:search }"
+         />
+      </ng-template>
+    }
+
+    @if (tagTemplate) {
+      <ng-template
+        ng-tag-tmp
+        let-search="searchTerm"
+      >
+        <ng-container [ngTemplateOutlet]="tagTemplate"
+          [ngTemplateOutletContext]="{ search:search }"
+         />
+      </ng-template>
+    }
+
+    @if (notFoundTemplate) {
+      <ng-template
+        ng-notfound-tmp
+        let-search="searchTerm"
+      >
+        <ng-container [ngTemplateOutlet]="notFoundTemplate"
+          [ngTemplateOutletContext]="{ search:search }"
+         />
+      </ng-template>
+    }
   </ng-select>
 </div>
 
-<ng-template let-item let-search="search"  #defaultOption [ngSwitch]="true">
-  <ng-container *ngSwitchCase="resource === 'work_packages' || resource === 'parent-child'">
-    <div class="op-autocompleter--option-wrapper">
-      <op-principal
-        class="op-autocompleter--option-principal"
-        *ngIf="item.author && item.author.href"
-        [principal]="item.author"
-        [hideName]="true"
-      ></op-principal>
+<ng-template let-item let-search="search" #defaultOption>
+  @switch (true) {
+    @case (!resource && !!item.depth) {
       <span
-        class="op-autocompleter--wp-subject"
-      >
-        <span
-          *ngIf="item.type"
-          [ngClass]="highlighting('type', item.type.id)"
-          textContent="{{ item.type.name }} "
-          ></span>
-        <span
-          [ngOptionHighlight]="search"
-          [textContent]="item.subject">
-        </span>
+        [textContent]="item.name"
+        [ngStyle]="{'padding-left.px': item.depth * 16}"
+        class="ng-option-label ellipsis">
       </span>
-
-      <div class="op-autocompleter--wp-content">
+    }
+    @case (resource === 'work_packages' || resource === 'parent-child') {
+      <ng-container [ngTemplateOutlet]="workPackageOption"
+        [ngTemplateOutletContext]="{$implicit: item, search: search}"
+       />
+    }
+    @case (resource ==='users' || resource ==='assignee' || resource === 'principals') {
+      @if (item && item.href) {
+        <op-principal [principal]="item"
+          [hideName]="true"
+          class="op-autocompleter--option-principal-avatar"
+          size="mini"
+         />
+      }
+      <span
+        [attr.data-hover-card-trigger-target]="getHoverCardTriggerTarget(item)"
+        [attr.data-hover-card-url]="getHoverCardUrl(item)">{{ item.name }}</span>
+      @if (item.email) {
         <span
-          [ngOptionHighlight]="search"
-          [textContent]="item.project?.name" 
-          class="op-autocompleter--wp-project"
-        ></span>
-
+          class="op-autocompleter__option-principal-email">{{ item.email }}</span>
+      }
+    }
+    @case (resource ==='subproject' || resource ==='version' || resource ==='status' || resource ==='default' || (!resource && !item.depth)) {
+      <span
+        [ngClass]="'ng-option-label ' + (additionalClassProperty ? item?.[additionalClassProperty] || '' : '')"
+        [attr.data-hover-card-trigger-target]="getHoverCardTriggerTarget(item)"
+        [attr.data-hover-card-url]="getHoverCardUrl(item)">{{ item.name }}
+      </span>
+      @if (item.email) {
         <span
-          class="op-autocompleter--wp-id"
-          [ngOptionHighlight]="search"
-        >#{{item.id}}</span>
-
-        <span
-          [textContent]="item.status?.name"
-          [ngClass]="highlighting('status',item.status?.id)"
-          class="op-autocompleter--wp-status"
-        ></span>
-
-      </div>
-    </div>
-  </ng-container>
-
-  <ng-container *ngSwitchCase="resource ==='user' || resource ==='assignee'">
-    <op-principal
-      *ngIf="item && item.href"
-      [principal]="item"
-      [hideName]="true"
-      size="mini"
-    ></op-principal>
-    <span [ngOptionHighlight]="search">{{ item.name }}</span>
-  </ng-container>
-
-  <ng-container *ngSwitchCase="resource ==='subproject' || resource ==='version' || resource ==='status' || resource ==='default'">
-    <span [ngOptionHighlight]="search">{{ item.name }}</span>
-  </ng-container>
+          class="op-autocompleter__option-principal-email">{{ item.email }}</span>
+      }
+    }
+  }
 </ng-template>
 
-<ng-template let-item let-search="search" #defaultLabel [ngSwitch]="resource">
-  <ng-container *ngSwitchCase="'work_packages'">
-    <span [ngOptionHighlight]="search">
-      {{item.type?.name }} #{{ item.id }} {{ item.subject }}
-    </span>
-  </ng-container>
+<ng-template let-item let-search="search" #workPackageOption>
+  <div class="op-autocompleter--wp-wrapper" title="{{ item.subject }}">
+    <div class="op-autocompleter--wp-line">
+      @if (item.type) {
+        <span
+          [ngClass]="highlighting('type', item.type.id)"
+          [textContent]="item.type.name"
+        ></span>
+      }
+      <span
+        class="op-autocompleter--wp-id"
+      >{{ item.formattedId }}</span>
+      @if (item.status) {
+        <span
+          [ngClass]="highlighting('status', item.status.id)"
+          [textContent]="item.status.name"
+          class="op-autocompleter--wp-status"
+        ></span>
+      }
+      @if (item.project?.name) {
+        <span>-</span>
+        <span
+          [textContent]="item.project.name"
+          class="op-autocompleter--wp-project"
+        ></span>
+      }
+    </div>
+    <span
+      [textContent]="item.subject"
+      class="op-autocompleter--wp-subject"
+    ></span>
+  </div>
+</ng-template>
 
-  <ng-container *ngSwitchDefault>
-    <span [ngOptionHighlight]="search">{{ item.name }}</span>
-  </ng-container>
+<ng-template let-item let-search="search" let-clear="clear" #defaultLabel>
+  @if (resource === 'work_packages') {
+    <span class="ng-value-icon left"
+          tabindex="0"
+          (click)="clear(item)"
+          (keydown.enter)="clear(item)"
+          (keydown.space)="clear(item)">×</span>
+    @if (item.id) {
+      <span
+        class="ng-value-label"
+        >
+        {{ item.type?.name }} {{ item.formattedId }} {{ item.subject || item.name }}
+      </span>
+    }
+  }
+
+  @if (resource !== 'work_packages') {
+    @if (!item.disabled) {
+      <span class="ng-value-icon left"
+            tabindex="0"
+            (click)="clear(item)"
+            (keydown.enter)="$event.preventDefault(); clear(item)"
+            (keydown.space)="$event.preventDefault(); clear(item)">×</span>
+    }
+    <span
+      [ngClass]=" additionalClassProperty ? item[additionalClassProperty] : ''"
+    class="ng-value-label">{{ item.name }}</span>
+  }
 </ng-template>

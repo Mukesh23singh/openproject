@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-# TODO: This is but a stub
 module Messages
   class UpdateContract < BaseContract
+    attribute :forum_id, permission: :edit_messages
+    attribute :locked, permission: :edit_messages
+    attribute :sticky, permission: :edit_messages
+
+    validate :moving_message_to_another_forum
+
+    private
+
+    def moving_message_to_another_forum
+      return if !model.forum_id_changed?
+      return if model.forum_id_was.nil?
+
+      old_forum = Forum.find_by(id: model.forum_id_was)
+      return if old_forum.nil?
+
+      return if old_forum.project_id == model.forum.project_id
+
+      errors.add(:forum_id, :cannot_move_message_to_forum_of_different_project)
+    end
   end
 end

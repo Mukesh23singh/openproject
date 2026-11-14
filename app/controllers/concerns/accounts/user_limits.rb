@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,12 +41,12 @@ module Accounts::UserLimits
 
         redirect_back fallback_location: redirect_to
       else
-        show_user_limit_warning! flash_now: flash_now
+        show_user_limit_warning! flash_now:
       end
 
       true
     elsif imminent_user_limit?
-      show_imminent_user_limit_warning! flash_now: flash_now
+      show_imminent_user_limit_warning!(flash_now:)
 
       true
     else
@@ -89,12 +90,16 @@ module Accounts::UserLimits
   end
 
   def user_limit_warning
-    warning = I18n.t(
-      :warning_user_limit_reached,
-      upgrade_url: OpenProject::Enterprise.upgrade_url
-    )
-
-    warning.html_safe
+    if current_user.admin?
+      link_translate(
+        :warning_user_limit_reached_admin_html,
+        links: { upgrade_url: OpenProject::Enterprise.upgrade_url }
+      )
+    else
+      I18n.t(
+        :warning_user_limit_reached
+      )
+    end
   end
 
   def show_imminent_user_limit_warning!(flash_now: false)
@@ -107,12 +112,10 @@ module Accounts::UserLimits
   # A warning for when the user limit has technically not been reached yet
   # but if all invited users were to activate their accounts it would be reached.
   def imminent_user_limit_warning
-    warning = I18n.t(
-      :warning_imminent_user_limit,
-      upgrade_url: OpenProject::Enterprise.upgrade_url
+    link_translate(
+      :warning_imminent_user_limit_html,
+      links: { upgrade_url: OpenProject::Enterprise.upgrade_url }
     )
-
-    warning.html_safe
   end
 
   def user_limit_reached?

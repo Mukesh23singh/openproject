@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,52 +20,24 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, Injector, OnInit,
+  ChangeDetectionStrategy,
+  Component,
 } from '@angular/core';
-import { AbstractWidgetComponent } from 'core-app/shared/components/grids/widgets/abstract-widget.component';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
-import { Observable } from 'rxjs';
-import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
-import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { AbstractTurboWidgetComponent } from 'core-app/shared/components/grids/widgets/abstract-turbo-widget.component';
 
 @Component({
+  selector: 'op-project-description-widget',
   templateUrl: './project-description.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [
-    HalResourceEditingService,
-  ],
+  standalone: false,
 })
-export class WidgetProjectDescriptionComponent extends AbstractWidgetComponent implements OnInit {
-  public project$:Observable<ProjectResource>;
-
-  constructor(protected readonly i18n:I18nService,
-    protected readonly injector:Injector,
-    protected readonly apiV3Service:APIV3Service,
-    protected readonly currentProject:CurrentProjectService,
-    protected readonly cdRef:ChangeDetectorRef) {
-    super(i18n, injector);
-  }
-
-  ngOnInit() {
-    this.project$ = this
-      .apiV3Service
-      .projects
-      .id(this.currentProject.id!)
-      .get();
-
-    this.cdRef.detectChanges();
-  }
-
-  public get isEditable() {
-    return false;
-  }
+export class WidgetProjectDescriptionComponent extends AbstractTurboWidgetComponent {
+  override frameId = 'grids-widgets-description';
+  override name = 'description';
 }

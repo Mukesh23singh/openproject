@@ -1,16 +1,57 @@
-import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import {
+  input,
+  InputState,
+} from '@openproject/reactivestates';
+import { cloneDeep } from 'lodash-es';
+
 import { FormResource } from 'core-app/features/hal/resources/form-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { ChangeItem, ChangeMap, Changeset } from 'core-app/shared/components/fields/changeset/changeset';
-import { input, InputState } from 'reactivestates';
+import { ChangeMap, Changeset } from 'core-app/shared/components/fields/changeset/changeset';
 import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
-import { take } from 'rxjs/operators';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
-import { SchemaProxy } from 'core-app/features/hal/schemas/schema-proxy';
+import { ISchemaProxy, SchemaProxy } from 'core-app/features/hal/schemas/schema-proxy';
+import { IHalOptionalTitledLink } from 'core-app/core/state/hal-resource';
 import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { firstValueFrom } from 'rxjs';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 
 export const PROXY_IDENTIFIER = '__is_changeset_proxy';
+
+export interface ChangesetPayload {
+  [key:string]:unknown;
+  _links:Record<string, unknown>;
+  _meta?:{ validateCustomFields?:boolean };
+}
+
+type LinkedValue = { href:string|null }|{ href:string }[];
 
 /**
  * Temporary class living while a resource is being edited
@@ -29,11 +70,17 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
   /** Reference and load promise for the current form */
   protected form$ = input<FormResource>();
 
+  /** The latest form update triggered by a dependent attribute change. */
+  private pendingFormUpdate:Promise<FormResource>|undefined;
+
   /** Request cache for objects within the changeset for the current form */
-  protected cache:{ [key:string]:Promise<unknown> } = {};
+  protected cache:Record<string, Promise<unknown>> = {};
 
   /** Flag whether this is currently being saved */
   public inFlight = false;
+
+  /** Flag whether to validate all custom fields */
+  public validateCustomFields = false;
 
   /** Keep a reference to the original resource */
   protected _pristineResource:T;
@@ -46,9 +93,11 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * */
   protected schemaCache:SchemaCacheService;
 
-  constructor(pristineResource:T,
+  constructor(
+    pristineResource:T,
     public readonly state?:InputState<ResourceChangeset<T>>,
-    loadedForm:FormResource|null = null) {
+    loadedForm:FormResource|null = null,
+  ) {
     this.updatePristineResource(pristineResource);
 
     this.schemaCache = (pristineResource.injector).get(SchemaCacheService);
@@ -71,10 +120,17 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
   /**
    * Build the request attributes against the fresh form
    */
-  public buildRequestPayload():Promise<Object> {
-    return this
-      .getForm()
-      .then(() => this.buildPayloadFromChanges());
+  public async buildRequestPayload():Promise<object> {
+    await this.getForm();
+
+    // Changing attributes such as project or type refreshes the form schema.
+    // Do not build a save payload from the previous schema while that request
+    // is still in flight. A newer update may have been queued while awaiting.
+    while (this.pendingFormUpdate) {
+      await this.pendingFormUpdate;
+    }
+
+    return this.buildPayloadFromChanges();
   }
 
   /**
@@ -84,7 +140,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    */
   public updatePristineResource(resource:T) {
     // Ensure we're not passing in a proxy
-    if ((resource as any)[PROXY_IDENTIFIER]) {
+    if (resource[PROXY_IDENTIFIER]) {
       throw new Error("You're trying to pass proxy object as a pristine resource. This will cause errors");
     }
 
@@ -93,7 +149,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
       this._pristineResource,
       {
         get: (_, key:string) => this.proxyGet(key),
-        set: (_, key:string, val:any) => {
+        set: (_, key:string, val:unknown) => {
           this.setValue(key, val);
           return true;
         },
@@ -108,16 +164,12 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
   /**
    * Returns the cached form or loads it if necessary.
    */
-  public getForm():Promise<FormResource> {
-    if (this.form$.isPristine() && !this.form$.hasActivePromiseRequest()) {
+  public getForm(reload = false):Promise<FormResource> {
+    if ((this.form$.isPristine() || reload) && !this.form$.hasActivePromiseRequest()) {
       return this.updateForm();
     }
 
-    return this
-      .form$
-      .values$()
-      .pipe(take(1))
-      .toPromise();
+    return firstValueFrom(this.form$.values$());
   }
 
   /**
@@ -130,11 +182,14 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * to get the up to date projected object.
    */
   protected updateForm():Promise<FormResource> {
-    const payload = this.buildPayloadFromChanges();
+    const update = this.pristineResource.$links.update as CallableHalLink<FormResource>|undefined;
+    if (!update) {
+      return Promise.reject();
+    }
 
-    const promise = this.pristineResource
-      .$links
-      .update(payload)
+    const previousUpdate = this.pendingFormUpdate;
+    const promise = (previousUpdate ? previousUpdate.catch(() => undefined) : Promise.resolve())
+      .then(() => update(this.buildPayloadFromChanges()))
       .then((form:FormResource) => {
         this.cache = {};
         this.form$.putValue(form);
@@ -143,8 +198,20 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
         return form;
       });
 
+    this.pendingFormUpdate = promise;
+    promise.then(
+      () => this.clearPendingFormUpdate(promise),
+      () => this.clearPendingFormUpdate(promise),
+    );
+
     this.form$.putFromPromiseIfPristine(() => promise);
     return promise;
+  }
+
+  private clearPendingFormUpdate(promise:Promise<FormResource>):void {
+    if (this.pendingFormUpdate === promise) {
+      this.pendingFormUpdate = undefined;
+    }
   }
 
   /**
@@ -165,16 +232,16 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * Return the HAL href of the resource we're editing
    */
   public get href():string {
-    return this.pristineResource.href as string;
+    return this.pristineResource.href!;
   }
 
   /**
    * Returns the changed `to` values of the ChangeMap
    */
-  public get changes():{ [key:string]:unknown } {
-    const changes:{ [key:string]:unknown } = {};
+  public get changes():Record<string, unknown> {
+    const changes:Record<string, unknown> = {};
 
-    _.each(this.changeset.all, (item, key) => {
+    Object.entries(this.changeset.all).forEach(([key, item]) => {
       changes[key] = item.to;
     });
 
@@ -203,7 +270,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    */
   public isWritable(key:string):boolean {
     const fieldSchema = this.schema.ofProperty(key) as IFieldSchema|null;
-    return !!(fieldSchema && fieldSchema.writable);
+    return !!fieldSchema?.writable;
   }
 
   /**
@@ -211,7 +278,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * @param attribute
    */
   public humanName(attribute:string):string {
-    return _.get(this.schema, `${attribute}.name`, attribute);
+    return (this.schema?.[attribute] as { name?:string }|undefined)?.name ?? attribute;
   }
 
   /**
@@ -237,17 +304,17 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * Retrieve the editing value for the given attribute
    *
    * @param {string} key The attribute to read
-   * @return {any} Either the value from the overriden change, or the default value
+   * @return {any} Either the value from the overridden change, or the default value
    */
-  public value(key:string) {
+  public value<R>(key:string):R {
     // Overridden value by user?
     if (this.changeset.contains(key)) {
-      return this.changeset.getValue(key);
+      return this.changeset.getValue(key) as R;
     }
 
     // Return whatever is on the base.
     // TODO this needs to be typed
-    return this.pristineResource[key];
+    return this.pristineResource[key] as R;
   }
 
   /**
@@ -257,7 +324,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * @param key
    */
   public valueExists(key:string):boolean {
-    return this.changeset.contains(key) || this.pristineResource.hasOwnProperty(key);
+    return this.changeset.contains(key) || Object.hasOwn(this.pristineResource, key);
   }
 
   /**
@@ -266,7 +333,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * @param key
    * @param val
    */
-  public setValue(key:string, val:any) {
+  public setValue(key:string, val:unknown) {
     this.changeset.set(key, val, this.pristineResource[key]);
   }
 
@@ -280,7 +347,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
   }
 
   public clear() {
-    this.state && this.state.clear();
+    this.state?.clear();
     this.changeset.clear();
     this.cache = {};
     this.form$.clear();
@@ -300,7 +367,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * @return {boolean}
    */
   public isOverridden(key:string) {
-    return this.changes.hasOwnProperty(key);
+    return Object.hasOwn(this.changes, key);
   }
 
   /**
@@ -308,7 +375,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * If loaded, return the form schema, which provides better information on writable status
    * and contains available values.
    */
-  public get schema():SchemaResource {
+  public get schema():ISchemaProxy {
     if (this.form$.hasValue()) {
       return SchemaProxy.create(this.form$.value!.schema, this.projectedResource);
     }
@@ -319,15 +386,17 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * Access some promised value
    * that should be cached for the lifetime duration of the form.
    */
-  public cacheValue<T>(key:string, request:() => Promise<T>):Promise<T> {
-    if (this.cache[key]) {
-      return this.cache[key] as Promise<T>;
+  public cacheValue<V>(key:string, request:() => Promise<V>):Promise<V> {
+    if (this.cache[key] !== undefined) {
+      return this.cache[key] as Promise<V>;
     }
 
-    return this.cache[key] = request();
+    const promise = request();
+    this.cache[key] = promise;
+    return promise;
   }
 
-  protected get minimalPayload() {
+  protected get minimalPayload():ChangesetPayload {
     return { lockVersion: this.pristineResource.lockVersion, _links: {} };
   }
 
@@ -335,16 +404,16 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * Merge the current changes into the payload resource.
    *
    * @param {plainPayload:unknown} A set of attributes to merge into the payload
-   * @return {any}
+   * @return {ChangesetPayload}
    */
-  protected applyChanges(plainPayload:any) {
+  protected applyChanges(plainPayload:ChangesetPayload):ChangesetPayload {
     // Fall back to the last known state of the HalResource should the form not be loaded.
     let reference = this.pristineResource.$source;
     if (this.form$.value) {
       reference = this.form$.value.payload.$source;
     }
 
-    _.each(this.changeset.all, (val:ChangeItem, key:string) => {
+    Object.entries(this.changeset.all).forEach(([key, val]) => {
       if (!this.schema.isAttributeEditable(key)) {
         debugLog(`Trying to write ${key} but is not writable in schema`);
         return;
@@ -359,6 +428,12 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
       }
     });
 
+    // Validate all custom fields if the flag is set
+    if (this.validateCustomFields) {
+      plainPayload._meta ??= {};
+      plainPayload._meta.validateCustomFields = true;
+    }
+
     return plainPayload;
   }
 
@@ -366,27 +441,33 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * Create the payload from the current changes, and extend it with the current lock version.
    * -- This is the place to add additional logic when the lockVersion changed in between --
    */
-  protected buildPayloadFromChanges() {
-    let payload;
+  protected buildPayloadFromChanges():ChangesetPayload {
+    let payload:ChangesetPayload;
 
     if (isNewResource(this.pristineResource)) {
       // If the resource is new, we need to pass the entire form payload
       // to let all default values be transmitted (type, status, etc.)
       // We clone the object to avoid later manipulations to affect the original resource.
       if (this.form$.value) {
-        payload = _.cloneDeep(this.form$.value.payload.$source);
+        payload = cloneDeep((this.form$.value.payload as { $source:unknown }).$source) as typeof payload;
       } else {
-        payload = _.cloneDeep(this.pristineResource.$source);
+        payload = cloneDeep(this.pristineResource.$source);
       }
 
       // Add attachments to be assigned.
-      // They will already be created on the server but now
+      // They will already be created on the server, but now
       // we need to claim them for the newly created work package.
       if (this.pristineResource.attachments) {
-        payload._links.attachments = this.pristineResource
-          .attachments
+        payload._links.attachments = (this.pristineResource.attachments as { elements:IHalOptionalTitledLink[] })
           .elements
-          .map((a:HalResource) => ({ href: a.href }));
+          .map((a) => ({ href: a.href }));
+      }
+
+      // Add file links to be assigned.
+      if (this.pristineResource.fileLinks) {
+        payload._links.fileLinks = (this.pristineResource.fileLinks as { elements:IHalOptionalTitledLink[] })
+          .elements
+          .map((fl) => ({ href: fl.href }));
       }
     } else {
       // Otherwise, simply use the bare minimum
@@ -399,10 +480,10 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
   /**
    * Extract the link(s) in the given changed value
    */
-  protected getLinkedValue(val:any, fieldSchema:IFieldSchema) {
+  protected getLinkedValue(val:unknown, fieldSchema:IFieldSchema):LinkedValue {
     // Links should always be nullified as { href: null }, but
     // this wasn't always the case, so ensure null values are returned as such.
-    if (_.isNil(val)) {
+    if (val == null) {
       return { href: null };
     }
 
@@ -411,7 +492,8 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
     const isArrayType = (fieldSchema.type || '').startsWith('[]');
     let isArray = false;
 
-    if (val.forEach || val.elements) {
+    const collection = val as { forEach?:unknown, elements?:{ href:string }[] };
+    if (collection.forEach || collection.elements) {
       isArray = true;
     }
 
@@ -419,7 +501,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
       const links:{ href:string }[] = [];
 
       if (val) {
-        const elements = (val.forEach && val) || val.elements;
+        const elements = (collection.forEach ? val : collection.elements) as { href:string }[];
 
         elements.forEach((link:{ href:string }) => {
           if (link.href) {
@@ -430,7 +512,7 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
 
       return links;
     }
-    return { href: _.get(val, 'href', null) };
+    return { href: (val as { href?:string }|null|undefined)?.href ?? null };
   }
 
   /**
@@ -438,9 +520,9 @@ export class ResourceChangeset<T extends HalResource = HalResource> {
    * that we need to set.
    */
   protected setNewDefaults(form:FormResource) {
-    _.each(form.payload, (val:unknown, key:string) => {
+    Object.entries(form.payload).forEach(([key, val]) => {
       const fieldSchema:IFieldSchema|null = this.schema.ofProperty(key);
-      if (!fieldSchema?.writable) {
+      if (!fieldSchema?.writable && !fieldSchema?.required) {
         return;
       }
 

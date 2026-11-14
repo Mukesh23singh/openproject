@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,378 +22,499 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Work package form resource', type: :request, with_mail: false do
+RSpec.describe "API v3 Work package form resource" do
   include Rack::Test::Methods
   include Capybara::RSpecMatchers
   include API::V3::Utilities::PathHelper
 
   shared_let(:all_allowed_permissions) { %i[view_work_packages edit_work_packages assign_versions view_budgets] }
   shared_let(:assign_permissions) { %i[view_work_packages assign_versions] }
-  shared_let(:project) { FactoryBot.create(:project, public: false) }
+  shared_let(:cf_all) { create(:work_package_custom_field, is_for_all: true, field_format: "text") }
+  shared_let(:type) { create(:type_bug, custom_fields: [cf_all]) }
+  shared_let(:project) { create(:project, public: false, types: [type]) }
   shared_let(:authorized_user) do
-    FactoryBot.create(:user, member_in_project: project, member_with_permissions: all_allowed_permissions)
+    create(:user, member_with_permissions: { project => all_allowed_permissions })
   end
   shared_let(:work_package) do
     # Prevent executing as potentially unsaved AnyonymousUser which would
     # lead to the creation failing as the journal cannot be written with user_id = nil.
     User.execute_as authorized_user do
-      FactoryBot.create(:work_package, project: project)
+      create(:work_package, project:)
     end
   end
   shared_let(:authorized_assign_user) do
-    FactoryBot.create(:user, member_in_project: project, member_with_permissions: assign_permissions)
+    create(:user, member_with_permissions: { project => assign_permissions })
   end
-  shared_let(:unauthorized_user) { FactoryBot.create(:user) }
+  shared_let(:unauthorized_user) { create(:user) }
 
-  describe '#post' do
+  describe "#post" do
     let(:post_path) { api_v3_paths.work_package_form work_package.id }
     let(:valid_params) do
       {
-        _type: 'WorkPackage',
+        _type: "WorkPackage",
         lockVersion: work_package.lock_version
       }
     end
 
     subject(:response) { last_response }
 
-    shared_context 'post request' do
-      before(:each) do
+    shared_context "with post request" do
+      before do
         login_as(current_user)
-        post post_path, (params ? params.to_json : nil), 'CONTENT_TYPE' => 'application/json'
+        post post_path, params&.to_json, "CONTENT_TYPE" => "application/json"
       end
     end
 
-    context 'user without needed permissions' do
+    context "for a user without needed permissions" do
       let(:params) { {} }
 
-      include_context 'post request' do
+      include_context "with post request" do
         let(:current_user) { unauthorized_user }
       end
 
-      it_behaves_like 'not found',
-                      I18n.t('api_v3.errors.not_found.work_package')
+      it_behaves_like "not found",
+                      I18n.t("api_v3.errors.not_found.work_package")
     end
 
-    context 'user with all edit permissions' do
-      let(:params) {}
+    context "for a user with all edit permissions" do
+      let(:params) { nil }
       let(:current_user) { authorized_user }
 
-      context 'non-existing work package' do
-        let(:post_path) { api_v3_paths.work_package_form 'eeek' }
+      context "with non-existing work package" do
+        let(:post_path) { api_v3_paths.work_package_form "eeek" }
 
-        include_context 'post request'
+        include_context "with post request"
 
-        it_behaves_like 'param validation error' do
-          let(:id) { 'eeek' }
-          let(:type) { 'WorkPackage' }
-        end
+        it_behaves_like "not found",
+                        I18n.t("api_v3.errors.not_found.work_package")
       end
 
-      context 'existing work package' do
-        shared_examples_for 'valid payload' do
+      context "with existing work package" do
+        shared_examples_for "valid payload" do
           subject { last_response.body }
 
-          it { expect(last_response.status).to eq(200) }
+          it { expect(last_response).to have_http_status(:ok) }
 
-          it { is_expected.to have_json_path('_embedded/payload') }
+          it { is_expected.to have_json_path("_embedded/payload") }
 
-          it { is_expected.to have_json_path('_embedded/payload/lockVersion') }
+          it { is_expected.to have_json_path("_embedded/payload/lockVersion") }
 
-          it { is_expected.to have_json_path('_embedded/payload/subject') }
+          it { is_expected.to have_json_path("_embedded/payload/subject") }
 
-          it_behaves_like 'API V3 formattable', '_embedded/payload/description' do
-            let(:format) { 'markdown' }
+          it_behaves_like "API V3 formattable", "_embedded/payload/description" do
+            let(:format) { "markdown" }
             let(:raw) { defined?(raw_value) ? raw_value : work_package.description.to_s }
             let(:html) do
-              defined?(html_value) ? html_value : ('<p class="op-uc-p">' + work_package.description.to_s + '</p>')
+              defined?(html_value) ? html_value : "<p class=\"op-uc-p\">#{work_package.description}</p>"
             end
+          end
+
+          it "denotes subject to be writable" do
+            expect(subject)
+              .to be_json_eql(true)
+              .at_path("_embedded/schema/subject/writable")
+          end
+
+          it "denotes target versions to be writable" do
+            expect(subject)
+              .to be_json_eql(true)
+              .at_path("_embedded/schema/targetVersions/writable")
+          end
+
+          it "denotes string custom_field to be writable" do
+            expect(subject)
+              .to be_json_eql(true)
+              .at_path("_embedded/schema/#{cf_all.attribute_name.camelcase(:lower)}/writable")
           end
         end
 
-        shared_examples_for 'valid payload with initial values' do
+        shared_examples_for "valid payload with initial values" do
           it {
             expect(subject.body).to be_json_eql(work_package.lock_version.to_json)
-              .at_path('_embedded/payload/lockVersion')
+              .at_path("_embedded/payload/lockVersion")
           }
 
           it {
             expect(subject.body).to be_json_eql(work_package.subject.to_json)
-              .at_path('_embedded/payload/subject')
+              .at_path("_embedded/payload/subject")
           }
         end
 
-        shared_examples_for 'having no errors' do
+        shared_examples_for "having no errors" do
           it {
             expect(subject.body).to be_json_eql({}.to_json)
-              .at_path('_embedded/validationErrors')
+              .at_path("_embedded/validationErrors")
           }
         end
 
-        shared_examples_for 'having an error' do |property|
+        shared_examples_for "having an error" do |property|
           it { expect(subject.body).to have_json_path("_embedded/validationErrors/#{property}") }
 
-          describe 'error body' do
-            let(:error_id) { 'urn:openproject-org:api:v3:errors:PropertyConstraintViolation' }
+          describe "error body" do
+            let(:error_id) { "urn:openproject-org:api:v3:errors:PropertyConstraintViolation" }
 
-            let(:error_body) { parse_json(subject.body)['_embedded']['validationErrors'][property] }
+            let(:error_body) { parse_json(subject.body)["_embedded"]["validationErrors"][property] }
 
-            it { expect(error_body['errorIdentifier']).to eq(error_id) }
+            it { expect(error_body["errorIdentifier"]).to eq(error_id) }
           end
         end
 
-        describe 'body' do
-          context 'empty' do
-            include_context 'post request'
+        describe "body" do
+          context "as empty" do
+            include_context "with post request"
 
-            it_behaves_like 'valid payload'
+            it_behaves_like "valid payload"
 
-            it_behaves_like 'valid payload with initial values'
+            it_behaves_like "valid payload with initial values"
 
-            it_behaves_like 'having no errors'
+            it_behaves_like "having no errors"
           end
 
-          context 'filled' do
+          context "for filled" do
             let(:valid_params) do
               {
-                _type: 'WorkPackage',
+                _type: "WorkPackage",
                 lockVersion: work_package.lock_version
               }
             end
 
-            describe 'no change' do
+            describe "no change" do
               let(:params) { valid_params }
 
-              include_context 'post request'
+              include_context "with post request"
 
-              it_behaves_like 'valid payload'
+              it_behaves_like "valid payload"
 
-              it_behaves_like 'valid payload with initial values'
+              it_behaves_like "valid payload with initial values"
 
-              it_behaves_like 'having no errors'
+              it_behaves_like "having no errors"
             end
 
-            context 'invalid content' do
+            describe "labels" do
+              let(:label) { create(:label) }
+              let(:params) do
+                valid_params.merge(_links: { labels: [{ href: api_v3_paths.label(label.id) }] })
+              end
+
+              include_context "with post request"
+
+              it_behaves_like "having no errors"
+
+              it "echoes the pending labels back" do
+                expect(last_response.body)
+                  .to be_json_eql(api_v3_paths.label(label.id).to_json)
+                        .at_path("_embedded/payload/_links/labels/0/href")
+              end
+
+              it "does not persist them" do
+                expect(Labeling.where(labelable: work_package)).not_to exist
+              end
+
+              context "with a title for a label that does not exist yet" do
+                let(:params) do
+                  valid_params.merge(_links: { labels: [{ href: nil, title: "Needs triage" }] })
+                end
+
+                it_behaves_like "having no errors"
+
+                it "echoes the pending name back without a href" do
+                  expect(last_response.body)
+                    .to be_json_eql({ href: nil, title: "Needs triage" }.to_json)
+                          .at_path("_embedded/payload/_links/labels/0")
+                end
+
+                it "creates neither the label nor the labeling" do
+                  expect(Label.where(name: "Needs triage")).not_to exist
+                  expect(Labeling.where(labelable: work_package)).not_to exist
+                end
+              end
+
+              context "with a title for a label that does not exist yet by a user the work package is shared with" do
+                let(:current_user) do
+                  create(:user).tap do |user|
+                    create(:work_package_member,
+                           principal: user,
+                           entity: work_package,
+                           roles: [create(:edit_work_package_role)])
+                  end
+                end
+                let(:params) do
+                  valid_params.merge(_links: { labels: [{ href: nil, title: "Needs triage" }] })
+                end
+
+                it_behaves_like "having no errors"
+
+                it "creates no label" do
+                  expect(Label.count).to eq(0)
+                end
+              end
+
+              context "with a title matching an existing label in different casing" do
+                let(:label) { create(:label, name: "Needs triage") }
+                let(:params) do
+                  valid_params.merge(_links: { labels: [{ href: nil, title: label.name.upcase }] })
+                end
+
+                it "echoes the existing label's href" do
+                  expect(last_response.body)
+                    .to be_json_eql(api_v3_paths.label(label.id).to_json)
+                          .at_path("_embedded/payload/_links/labels/0/href")
+                end
+
+                it "does not create another label" do
+                  expect(Label.count).to eq(1)
+                end
+              end
+            end
+
+            context "for invalid content" do
               before do
                 allow(User).to receive(:current).and_return current_user
-                post post_path, '{ ,', 'CONTENT_TYPE' => 'application/json; charset=utf-8'
+                post post_path, "{ ,", "CONTENT_TYPE" => "application/json; charset=utf-8"
               end
 
-              it_behaves_like 'parse error',
-                              'unexpected comma (after ) at line 1, column 3'
+              it_behaves_like "parse error",
+                              "expected object key, got ',' at line 1 column 3"
             end
 
-            describe 'lock version' do
-              context 'missing lock version' do
+            describe "lock version" do
+              context "with missing lock version" do
                 let(:params) { valid_params.except(:lockVersion) }
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it_behaves_like 'update conflict'
+                it_behaves_like "update conflict"
               end
 
-              context 'stale object' do
-                let(:params) { valid_params.merge(subject: 'Updated subject') }
+              context "with stale object" do
+                let(:params) { valid_params.merge(subject: "Updated subject") }
 
                 before do
                   params
 
-                  work_package.subject = 'I am the first!'
+                  work_package.subject = "I am the first!"
                   work_package.save!
-
-                  expect(valid_params[:lockVersion]).not_to eq(work_package.lock_version)
                 end
 
-                include_context 'post request'
+                it { expect(valid_params[:lockVersion]).not_to eq(work_package.lock_version) }
 
-                it { expect(last_response.status).to eq(409) }
+                include_context "with post request"
 
-                it_behaves_like 'update conflict'
+                it { expect(last_response).to have_http_status(:conflict) }
+
+                it_behaves_like "update conflict"
               end
             end
 
-            describe 'subject' do
-              include_context 'post request'
+            describe "subject" do
+              include_context "with post request"
 
-              context 'valid subject' do
-                let(:params) { valid_params.merge(subject: 'Updated subject') }
+              context "for valid subject" do
+                let(:params) { valid_params.merge(subject: "Updated subject") }
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package subject' do
-                  expect(subject.body).to be_json_eql('Updated subject'.to_json)
-                    .at_path('_embedded/payload/subject')
+                it "responds with updated work package subject" do
+                  expect(subject.body).to be_json_eql("Updated subject".to_json)
+                    .at_path("_embedded/payload/subject")
                 end
               end
 
-              context 'invalid subject' do
+              context "for invalid subject" do
                 let(:params) { valid_params.merge(subject: nil) }
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having an error', 'subject'
+                it_behaves_like "having an error", "subject"
 
-                it 'should respond with updated work package subject' do
+                it "responds with updated work package subject" do
                   expect(subject.body).to be_json_eql(nil.to_json)
-                    .at_path('_embedded/payload/subject')
+                    .at_path("_embedded/payload/subject")
                 end
               end
             end
 
-            describe 'description' do
-              let(:path) { '_embedded/payload/description/raw' }
-              let(:description) { '**Some text** *describing* **something**...' }
+            describe "description" do
+              let(:path) { "_embedded/payload/description/raw" }
+              let(:description) { "**Some text** *describing* **something**..." }
               let(:params) { valid_params.merge(description: { raw: description }) }
 
-              include_context 'post request'
+              include_context "with post request"
 
-              it_behaves_like 'valid payload' do
+              it_behaves_like "valid payload" do
                 let(:raw_value) { description }
                 let(:html_value) do
                   '<p class="op-uc-p"><strong>Some text</strong> <em>describing</em> ' \
-                  '<strong>something</strong>...</p>'
+                    "<strong>something</strong>...</p>"
                 end
               end
 
-              it_behaves_like 'having no errors'
+              it_behaves_like "having no errors"
             end
 
-            describe 'start date' do
-              include_context 'post request'
+            describe "start date" do
+              include_context "with post request"
 
-              context 'valid date' do
-                let(:params) { valid_params.merge(startDate: '2015-01-31') }
+              context "for valid date" do
+                let(:params) { valid_params.merge(startDate: "2015-01-31") }
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package' do
-                  expect(subject.body).to be_json_eql('2015-01-31'.to_json)
-                    .at_path('_embedded/payload/startDate')
+                it "responds with updated work package" do
+                  expect(subject.body).to be_json_eql("2015-01-31".to_json)
+                    .at_path("_embedded/payload/startDate")
                 end
               end
 
-              context 'invalid date' do
-                let(:params) { valid_params.merge(startDate: 'not a date') }
+              context "for invalid date" do
+                let(:params) { valid_params.merge(startDate: "not a date") }
 
-                it_behaves_like 'format error',
-                                I18n.t('api_v3.errors.invalid_format',
-                                       property: 'startDate',
-                                       expected_format: I18n.t('api_v3.errors.expected.date'),
-                                       actual: 'not a date')
+                it_behaves_like "format error",
+                                I18n.t("api_v3.errors.invalid_format",
+                                       property: "startDate",
+                                       expected_format: I18n.t("api_v3.errors.expected.date"),
+                                       actual: "not a date")
               end
             end
 
-            describe 'finish date' do
-              include_context 'post request'
+            describe "finish date" do
+              include_context "with post request"
 
-              context 'valid date' do
-                let(:params) { valid_params.merge(dueDate: '2015-01-31') }
+              context "for valid date" do
+                let(:params) { valid_params.merge(dueDate: "2015-01-31") }
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package' do
-                  expect(subject.body).to be_json_eql('2015-01-31'.to_json)
-                    .at_path('_embedded/payload/dueDate')
+                it "responds with updated work package" do
+                  expect(subject.body).to be_json_eql("2015-01-31".to_json)
+                    .at_path("_embedded/payload/dueDate")
                 end
               end
 
-              context 'invalid date' do
-                let(:params) { valid_params.merge(dueDate: 'not a date') }
+              context "for invalid date" do
+                let(:params) { valid_params.merge(dueDate: "not a date") }
 
-                it_behaves_like 'format error',
-                                I18n.t('api_v3.errors.invalid_format',
-                                       property: 'dueDate',
-                                       expected_format: I18n.t('api_v3.errors.expected.date'),
-                                       actual: 'not a date')
+                it_behaves_like "format error",
+                                I18n.t("api_v3.errors.invalid_format",
+                                       property: "dueDate",
+                                       expected_format: I18n.t("api_v3.errors.expected.date"),
+                                       actual: "not a date")
               end
             end
 
-            describe 'status' do
-              let(:path) { '_embedded/payload/_links/status/href' }
-              let(:target_status) { FactoryBot.create(:status) }
+            describe "remaining work" do
+              include_context "with post request"
+
+              context "for valid duration" do
+                let(:params) { valid_params.merge(remainingTime: "PT12H45M") }
+
+                it_behaves_like "valid payload"
+
+                it_behaves_like "having no errors"
+
+                it "responds with updated work package" do
+                  expect(subject.body).to be_json_eql("PT12H45M".to_json)
+                    .at_path("_embedded/payload/remainingTime")
+                end
+              end
+
+              context "for invalid duration" do
+                let(:params) { valid_params.merge(remainingTime: "not a duration") }
+
+                it_behaves_like "format error",
+                                I18n.t("api_v3.errors.invalid_format",
+                                       property: "remainingTime",
+                                       expected_format: I18n.t("api_v3.errors.expected.duration"),
+                                       actual: "not a duration")
+              end
+            end
+
+            describe "status" do
+              let(:path) { "_embedded/payload/_links/status/href" }
+              let(:target_status) { create(:status) }
               let(:status_link) { api_v3_paths.status target_status.id }
               let(:status_parameter) { { _links: { status: { href: status_link } } } }
               let(:params) { valid_params.merge(status_parameter) }
 
-              context 'valid status' do
+              context "for valid status" do
                 let!(:workflow) do
-                  FactoryBot.create(:workflow,
-                                    type_id: work_package.type.id,
-                                    old_status: work_package.status,
-                                    new_status: target_status,
-                                    role: current_user.memberships[0].roles[0])
+                  create(:workflow,
+                         type_id: work_package.type.id,
+                         old_status: work_package.status,
+                         new_status: target_status,
+                         role: current_user.memberships[0].roles[0])
                 end
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package status' do
+                it "responds with updated work package status" do
                   expect(subject.body).to be_json_eql(status_link.to_json).at_path(path)
                 end
 
-                it 'should still show the original allowed statuses' do
+                it "stills show the original allowed statuses" do
                   expect(subject.body).to be_json_eql(status_link.to_json)
-                    .at_path('_embedded/schema/status/_links/allowedValues/1/href')
+                    .at_path("_embedded/schema/status/_links/allowedValues/1/href")
                 end
               end
 
-              context 'invalid status' do
-                context 'no transition' do
-                  include_context 'post request'
+              context "for invalid status" do
+                context "when no transition" do
+                  include_context "with post request"
 
-                  it_behaves_like 'valid payload'
+                  it_behaves_like "valid payload"
 
-                  it_behaves_like 'having an error', 'status'
+                  it_behaves_like "having an error", "status"
 
-                  it 'should respond with updated work package status' do
+                  it "responds with updated work package status" do
                     expect(subject.body).to be_json_eql(status_link.to_json).at_path(path)
                   end
                 end
 
-                context 'status does not exist' do
+                context "when status does not exist" do
                   let(:error_id) do
-                    'urn:openproject-org:api:v3:errors:MultipleErrors'.to_json
+                    "urn:openproject-org:api:v3:errors:MultipleErrors".to_json
                   end
                   let(:status_link) { api_v3_paths.status -1 }
 
-                  include_context 'post request'
+                  include_context "with post request"
 
-                  it_behaves_like 'valid payload'
+                  it_behaves_like "valid payload"
 
-                  it_behaves_like 'having an error', 'status'
+                  it_behaves_like "having an error", "status"
 
-                  it 'should respond with updated work package status' do
+                  it "responds with updated work package status" do
                     expect(subject.body).to be_json_eql(status_link.to_json).at_path(path)
                   end
                 end
 
-                context 'wrong resource' do
+                context "for wrong resource" do
                   let(:status_link) { api_v3_paths.user authorized_user.id }
 
-                  include_context 'post request'
+                  include_context "with post request"
 
-                  it_behaves_like 'invalid resource link' do
+                  it_behaves_like "invalid resource link" do
                     let(:message) do
-                      I18n.t('api_v3.errors.invalid_resource',
-                             property: 'status',
-                             expected: '/api/v3/statuses/:id',
+                      I18n.t("api_v3.errors.invalid_resource",
+                             property: "status",
+                             expected: "/api/v3/statuses/:id",
                              actual: status_link)
                     end
                   end
@@ -399,98 +522,96 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
               end
             end
 
-            describe 'assignee and responsible' do
-              shared_examples_for 'handling people' do |property|
+            describe "assignee and responsible" do
+              shared_examples_for "handling people" do |property|
                 let(:path) { "_embedded/payload/_links/#{property}/href" }
                 let(:visible_user) do
-                  FactoryBot.create(:user,
-                                    member_in_project: project)
+                  create(:user,
+                         member_with_permissions: { project => [:work_package_assigned] })
                 end
                 let(:user_parameter) { { _links: { property => { href: user_link } } } }
                 let(:params) { valid_params.merge(user_parameter) }
 
-                shared_examples_for 'having updated work package principal' do
-                  it "should respond with updated work package #{property}" do
+                shared_examples_for "having updated work package principal" do
+                  it "responds with updated work package #{property}" do
                     expect(subject.body).to be_json_eql(user_link.to_json).at_path(path)
                   end
                 end
 
                 context "valid #{property}" do
-                  shared_examples_for 'valid user assignment' do
-                    include_context 'post request'
+                  shared_examples_for "valid user assignment" do
+                    include_context "with post request"
 
-                    it_behaves_like 'valid payload'
+                    it_behaves_like "valid payload"
 
-                    it_behaves_like 'having no errors'
+                    it_behaves_like "having no errors"
 
-                    it_behaves_like 'having updated work package principal'
+                    it_behaves_like "having updated work package principal"
                   end
 
-                  context 'empty user' do
+                  context "for empty user" do
                     let(:user_link) { nil }
 
-                    it_behaves_like 'valid user assignment'
+                    it_behaves_like "valid user assignment"
                   end
 
-                  context 'existing user' do
+                  context "for existing user" do
                     let(:user_link) { api_v3_paths.user visible_user.id }
 
-                    it_behaves_like 'valid user assignment'
+                    it_behaves_like "valid user assignment"
                   end
 
-                  context 'existing group' do
+                  context "for existing group" do
                     let(:user_link) { api_v3_paths.group group.id }
-                    let(:group) { FactoryBot.create(:group) }
-                    let(:role) { FactoryBot.create(:role) }
+                    let(:group) { create(:group) }
+                    let(:role) { create(:project_role, permissions: %i[work_package_assigned]) }
                     let(:group_member) do
-                      FactoryBot.create(:member,
-                                        principal: group,
-                                        project: project,
-                                        roles: [role])
+                      create(:member,
+                             principal: group,
+                             project:,
+                             roles: [role])
                     end
 
                     before do
                       group_member.save!
                     end
 
-                    it_behaves_like 'valid user assignment'
+                    it_behaves_like "valid user assignment"
                   end
 
-                  context 'existing placeholder_user' do
+                  context "for existing placeholder_user" do
                     let(:user_link) { api_v3_paths.placeholder_user placeholder_user.id }
-                    let(:role) { FactoryBot.create(:role) }
                     let(:placeholder_user) do
-                      FactoryBot.create(:placeholder_user,
-                                        member_in_project: project,
-                                        member_through_role: role)
+                      create(:placeholder_user,
+                             member_with_permissions: { project => %i[work_package_assigned] })
                     end
 
-                    it_behaves_like 'valid user assignment'
+                    it_behaves_like "valid user assignment"
                   end
                 end
 
                 context "invalid #{property}" do
-                  context 'non-existing user' do
-                    let(:user_link) { api_v3_paths.user 4200 }
+                  context "for non-existing user" do
+                    let(:user_link) { api_v3_paths.user(not_existing_id(User)) }
 
-                    include_context 'post request'
+                    include_context "with post request"
 
-                    it_behaves_like 'valid payload'
+                    it_behaves_like "valid payload"
 
-                    it_behaves_like 'having an error', property
+                    it_behaves_like "having an error", property
 
-                    it_behaves_like 'having updated work package principal'
+                    it_behaves_like "having updated work package principal"
                   end
 
-                  context 'wrong resource' do
+                  context "for wrong resource" do
                     let(:user_link) { api_v3_paths.status work_package.status.id }
 
-                    include_context 'post request'
+                    include_context "with post request"
 
-                    it_behaves_like 'invalid resource link' do
+                    it_behaves_like "invalid resource link" do
                       let(:message) do
-                        I18n.t('api_v3.errors.invalid_resource',
-                               property: property,
+                        I18n.t("api_v3.errors.invalid_resource",
+                               property:,
                                expected: "/api/v3/groups/:id' or '/api/v3/users/:id' or '/api/v3/placeholder_users/:id",
                                actual: user_link)
                       end
@@ -499,27 +620,27 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
                 end
               end
 
-              it_behaves_like 'handling people', 'assignee'
+              it_behaves_like "handling people", "assignee"
 
-              it_behaves_like 'handling people', 'responsible'
+              it_behaves_like "handling people", "responsible"
             end
 
-            describe 'version' do
-              let(:path) { '_embedded/payload/_links/version/href' }
-              let(:target_version) { FactoryBot.create(:version, project: project, start_date: Date.today - 2.days) }
-              let(:other_version) { FactoryBot.create(:version, project: project, start_date: Date.today - 1.day) }
+            describe "version", with_settings: { work_package_multiple_versions: false } do
+              let(:path) { "_embedded/payload/_links/version/href" }
+              let(:target_version) { create(:version, project:, start_date: Time.zone.today - 2.days) }
+              let(:other_version) { create(:version, project:, start_date: Time.zone.today - 1.day) }
               let(:version_link) { api_v3_paths.version target_version.id }
               let(:version_parameter) { { _links: { version: { href: version_link } } } }
               let(:params) { valid_params.merge(version_parameter) }
 
-              describe 'allowed values' do
+              describe "allowed values" do
                 before do
                   other_version
                 end
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it 'should list all versions available for the project' do
+                it "lists all versions available for the project" do
                   [target_version, other_version].sort.each_with_index do |v, i|
                     expect(subject.body).to be_json_eql(api_v3_paths.version(v.id).to_json)
                       .at_path("_embedded/schema/version/_links/allowedValues/#{i}/href")
@@ -527,36 +648,59 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
                 end
               end
 
-              context 'valid version' do
-                include_context 'post request'
+              context "for valid version" do
+                include_context "with post request"
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package version' do
+                it "responds with updated work package version" do
                   expect(subject.body).to be_json_eql(version_link.to_json).at_path(path)
                 end
               end
             end
 
-            describe 'category' do
-              let(:path) { '_embedded/payload/_links/category/href' }
-              let(:links_path) { '_embedded/schema/category/_links' }
-              let(:target_category) { FactoryBot.create(:category, project: project) }
-              let(:other_category) { FactoryBot.create(:category, project: project) }
+            describe "targetVersions" do
+              let(:path) { "_embedded/payload/_links/targetVersions" }
+              let(:target_version) { create(:version, project:) }
+              let(:version_parameter) do
+                { _links: { targetVersions: [{ href: api_v3_paths.version(target_version.id) }] } }
+              end
+              let(:params) { valid_params.merge(version_parameter) }
+
+              context "for a valid version" do
+                include_context "with post request"
+
+                it_behaves_like "valid payload"
+
+                it_behaves_like "having no errors"
+
+                it "echoes the requested target versions although they are not persisted yet" do
+                  expect(subject.body)
+                    .to be_json_eql(api_v3_paths.version(target_version.id).to_json)
+                    .at_path("#{path}/0/href")
+                end
+              end
+            end
+
+            describe "category" do
+              let(:path) { "_embedded/payload/_links/category/href" }
+              let(:links_path) { "_embedded/schema/category/_links" }
+              let(:target_category) { create(:category, project:) }
+              let(:other_category) { create(:category, project:) }
               let(:category_link) { api_v3_paths.category target_category.id }
               let(:category_parameter) { { _links: { category: { href: category_link } } } }
               let(:params) { valid_params.merge(category_parameter) }
 
-              describe 'allowed values' do
+              describe "allowed values" do
                 before do
                   other_category
                 end
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it 'should list the categories' do
+                it "lists the categories" do
                   [target_category, other_category].sort.each_with_index do |c, i|
                     expect(subject.body).to be_json_eql(api_v3_paths.category(c.id).to_json)
                       .at_path("#{links_path}/allowedValues/#{i}/href")
@@ -564,37 +708,37 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
                 end
               end
 
-              context 'valid category' do
-                include_context 'post request'
+              context "for valid category" do
+                include_context "with post request"
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package category' do
+                it "responds with updated work package category" do
                   expect(subject.body).to be_json_eql(category_link.to_json).at_path(path)
                 end
               end
             end
 
-            describe 'priority' do
-              let(:path) { '_embedded/payload/_links/priority/href' }
-              let(:links_path) { '_embedded/schema/priority/_links' }
-              let(:target_priority) { FactoryBot.create(:priority) }
+            describe "priority" do
+              let(:path) { "_embedded/payload/_links/priority/href" }
+              let(:links_path) { "_embedded/schema/priority/_links" }
+              let(:target_priority) { create(:priority) }
               let(:other_priority) { work_package.priority }
               let(:priority_link) { api_v3_paths.priority target_priority.id }
               let(:other_priority_link) { api_v3_paths.priority other_priority.id }
               let(:priority_parameter) { { _links: { priority: { href: priority_link } } } }
               let(:params) { valid_params.merge(priority_parameter) }
 
-              describe 'allowed values' do
+              describe "allowed values" do
                 before do
                   other_priority
                 end
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it 'should list the priorities' do
+                it "lists the priorities" do
                   expect(subject.body).to be_json_eql(priority_link.to_json)
                     .at_path("#{links_path}/allowedValues/1/href")
                   expect(subject.body).to be_json_eql(other_priority_link.to_json)
@@ -602,23 +746,23 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
                 end
               end
 
-              context 'valid priority' do
-                include_context 'post request'
+              context "for valid priority" do
+                include_context "with post request"
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package priority' do
+                it "responds with updated work package priority" do
                   expect(subject.body).to be_json_eql(priority_link.to_json).at_path(path)
                 end
               end
             end
 
-            describe 'type' do
-              let(:path) { '_embedded/payload/_links/type/href' }
-              let(:links_path) { '_embedded/schema/type/_links' }
-              let(:target_type) { FactoryBot.create(:type) }
+            describe "type" do
+              let(:path) { "_embedded/payload/_links/type/href" }
+              let(:links_path) { "_embedded/schema/type/_links" }
+              let(:target_type) { create(:type, custom_fields: [cf_all]) }
               let(:other_type) { work_package.type }
               let(:type_link) { api_v3_paths.type target_type.id }
               let(:other_type_link) { api_v3_paths.type other_type.id }
@@ -626,17 +770,17 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
               let(:params) { valid_params.merge(type_parameter) }
 
               before do
-                project.types << target_type # make sure we have a valid transition
+                project.project_types.create!(type: target_type) # make sure we have a valid transition
               end
 
-              describe 'allowed values' do
+              describe "allowed values" do
                 before do
                   other_type
                 end
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it 'should list the types' do
+                it "lists the types" do
                   expect(subject.body).to be_json_eql(type_link.to_json)
                     .at_path("#{links_path}/allowedValues/1/href")
                   expect(subject.body).to be_json_eql(other_type_link.to_json)
@@ -644,36 +788,36 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
                 end
               end
 
-              context 'valid type' do
-                include_context 'post request'
+              context "for valid type" do
+                include_context "with post request"
 
-                it_behaves_like 'valid payload'
+                it_behaves_like "valid payload"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package type' do
+                it "responds with updated work package type" do
                   expect(subject.body).to be_json_eql(type_link.to_json).at_path(path)
                 end
               end
             end
 
-            describe 'budget' do
-              let(:path) { '_embedded/payload/_links/budget/href' }
-              let(:links_path) { '_embedded/schema/budget/_links' }
-              let(:target_budget) { FactoryBot.create(:budget, project: project) }
-              let(:other_budget) { FactoryBot.create(:budget, project: project) }
+            describe "budget" do
+              let(:path) { "_embedded/payload/_links/budget/href" }
+              let(:links_path) { "_embedded/schema/budget/_links" }
+              let(:target_budget) { create(:budget, project:) }
+              let(:other_budget) { create(:budget, project:) }
               let(:budget_link) { api_v3_paths.budget target_budget.id }
               let(:budget_parameter) { { _links: { budget: { href: budget_link } } } }
               let(:params) { valid_params.merge(budget_parameter) }
 
-              describe 'allowed values' do
+              describe "allowed values" do
                 before do
                   other_budget
                 end
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it 'should list the budgets' do
+                it "lists the budgets" do
                   budgets = project.budgets
 
                   budgets.each_with_index do |budget, index|
@@ -683,31 +827,31 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
                 end
               end
 
-              context 'valid budget' do
-                include_context 'post request'
+              context "for valid budget" do
+                include_context "with post request"
 
-                it_behaves_like 'having no errors'
+                it_behaves_like "having no errors"
 
-                it 'should respond with updated work package budget' do
+                it "responds with updated work package budget" do
                   expect(subject.body).to be_json_eql(budget_link.to_json).at_path(path)
                 end
               end
 
-              context 'invalid budget' do
-                let(:target_budget) { FactoryBot.create(:budget) }
+              context "for invalid budget" do
+                let(:target_budget) { create(:budget) }
 
-                include_context 'post request'
+                include_context "with post request"
 
-                it_behaves_like 'having an error', 'budget'
+                it_behaves_like "having an error", "budget"
 
-                it 'should respond with updated work package budget' do
+                it "responds with updated work package budget" do
                   expect(subject.body).to be_json_eql(budget_link.to_json).at_path(path)
                 end
               end
             end
 
-            describe 'multiple errors' do
-              let(:user_link) { api_v3_paths.user 4200 }
+            describe "multiple errors" do
+              let(:user_link) { api_v3_paths.user(not_existing_id(User)) }
               let(:status_link) { api_v3_paths.status -1 }
               let(:links) do
                 {
@@ -720,45 +864,120 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
               end
               let(:params) { valid_params.merge(subject: nil).merge(links) }
 
-              include_context 'post request'
+              include_context "with post request"
 
-              it_behaves_like 'valid payload'
+              it_behaves_like "valid payload"
 
               it {
-                expect(subject.body).to have_json_size(4).at_path('_embedded/validationErrors')
+                expect(subject.body).to have_json_size(4).at_path("_embedded/validationErrors")
               }
 
-              it { expect(subject.body).to have_json_path('_embedded/validationErrors/subject') }
+              it { expect(subject.body).to have_json_path("_embedded/validationErrors/subject") }
 
-              it { expect(subject.body).to have_json_path('_embedded/validationErrors/status') }
+              it { expect(subject.body).to have_json_path("_embedded/validationErrors/status") }
 
-              it { expect(subject.body).to have_json_path('_embedded/validationErrors/assignee') }
+              it { expect(subject.body).to have_json_path("_embedded/validationErrors/assignee") }
 
               it {
-                expect(subject.body).to have_json_path('_embedded/validationErrors/responsible')
+                expect(subject.body).to have_json_path("_embedded/validationErrors/responsible")
               }
             end
 
-            describe 'formattable custom field set to nil' do
-              let(:custom_field) do
-                FactoryBot.create :work_package_custom_field, field_format: 'text'
+            describe "custom fields" do
+              describe "formattable custom field set to nil" do
+                let(:custom_field) do
+                  create(:work_package_custom_field, field_format: "text")
+                end
+
+                let(:cf_param) { { custom_field.attribute_name(:camel_case) => nil } }
+                let(:params) { valid_params.merge(cf_param) }
+
+                before do
+                  project.save!
+                  work_package.type.default_variant.custom_field_ids |= [custom_field.id]
+                  work_package.save!
+
+                  login_as(current_user)
+                  post post_path, params&.to_json, "CONTENT_TYPE" => "application/json"
+                end
+
+                it "responds with a valid body (Regression OP#37510)" do
+                  expect(last_response).to have_http_status(:ok)
+                end
               end
 
-              let(:cf_param) { { "customField#{custom_field.id}" => nil } }
-              let(:params) { valid_params.merge(cf_param) }
+              context "when the custom field is required" do
+                let!(:required_custom_field) do
+                  create(:work_package_custom_field,
+                         field_format: "string",
+                         name: "Department",
+                         is_required: true,
+                         types: [work_package.type])
+                end
 
-              before do
-                project.work_package_custom_fields << custom_field
-                project.save!
-                work_package.type.custom_fields << custom_field
-                work_package.save!
+                context "when no custom field value is provided" do
+                  let(:params) { valid_params }
 
-                login_as(current_user)
-                post post_path, (params ? params.to_json : nil), 'CONTENT_TYPE' => 'application/json'
-              end
+                  include_context "with post request"
 
-              it 'should respond with a valid body (Regression OP#37510)' do
-                expect(last_response.status).to eq(200)
+                  it_behaves_like "having no errors"
+
+                  it "has a commit link" do
+                    expect(subject.body)
+                      .to be_json_eql(api_v3_paths.work_package(work_package.id).to_json)
+                      .at_path("_links/commit/href")
+                  end
+                end
+
+                context "when the custom field value is provided but empty" do
+                  let(:params) do
+                    valid_params.merge("customField#{required_custom_field.id}" => "")
+                  end
+
+                  include_context "with post request"
+
+                  it "has validation errors for the required custom field" do
+                    expect(subject.body).to have_json_path("_embedded/validationErrors/customField#{required_custom_field.id}")
+                  end
+
+                  it "explains the custom field error" do
+                    expect(subject.body)
+                      .to be_json_eql("Department can't be blank.".to_json)
+                      .at_path("_embedded/validationErrors/customField#{required_custom_field.id}/message")
+                  end
+
+                  it "includes the empty value in the payload" do
+                    expect(subject.body)
+                      .to be_json_eql("".to_json)
+                      .at_path("_embedded/payload/customField#{required_custom_field.id}")
+                  end
+
+                  it "does not have a commit link" do
+                    expect(subject.body).not_to have_json_path("_links/commit")
+                  end
+                end
+
+                context "when the custom field value is provided and valid" do
+                  let(:params) do
+                    valid_params.merge("customField#{required_custom_field.id}" => "Engineering")
+                  end
+
+                  include_context "with post request"
+
+                  it_behaves_like "having no errors"
+
+                  it "has a commit link" do
+                    expect(subject.body)
+                      .to be_json_eql(api_v3_paths.work_package(work_package.id).to_json)
+                      .at_path("_links/commit/href")
+                  end
+
+                  it "has the custom field value in the payload" do
+                    expect(subject.body)
+                      .to be_json_eql("Engineering".to_json)
+                      .at_path("_embedded/payload/customField#{required_custom_field.id}")
+                  end
+                end
               end
             end
           end
@@ -766,43 +985,49 @@ describe 'API v3 Work package form resource', type: :request, with_mail: false d
       end
     end
 
-    context 'user with assign version permissions' do
+    context "for user with assign version permissions" do
       let(:params) do
         {
           lockVersion: work_package.lock_version
         }
       end
 
-      include_context 'post request' do
+      include_context "with post request" do
         let(:current_user) { authorized_assign_user }
       end
 
       subject { last_response.body }
 
-      shared_examples_for 'valid payload' do
-        it { expect(last_response.status).to eq(200) }
+      shared_examples_for "valid payload" do
+        it { expect(last_response).to have_http_status(:ok) }
 
-        it { is_expected.to have_json_path('_embedded/payload') }
+        it { is_expected.to have_json_path("_embedded/payload") }
 
-        it { is_expected.to have_json_path('_embedded/payload/lockVersion') }
+        it { is_expected.to have_json_path("_embedded/payload/lockVersion") }
 
-        it { is_expected.to have_json_path('_embedded/payload/_links/version') }
+        it { is_expected.to have_json_path("_embedded/payload/_links/targetVersions") }
 
-        it { is_expected.not_to have_json_path('_embedded/payload/subject') }
+        it { is_expected.not_to have_json_path("_embedded/payload/subject") }
       end
 
-      it_behaves_like 'valid payload'
+      it_behaves_like "valid payload"
 
-      it 'denotes subject to not be writeable' do
-        is_expected
+      it "denotes subject to not be writable" do
+        expect(subject)
           .to be_json_eql(false)
-          .at_path('_embedded/schema/subject/writable')
+          .at_path("_embedded/schema/subject/writable")
       end
 
-      it 'denotes version to be writeable' do
-        is_expected
+      it "denotes target versions to be writable" do
+        expect(subject)
           .to be_json_eql(true)
-          .at_path('_embedded/schema/version/writable')
+          .at_path("_embedded/schema/targetVersions/writable")
+      end
+
+      it "denotes custom_field to not be writable" do
+        expect(subject)
+          .to be_json_eql(false)
+          .at_path("_embedded/schema/#{cf_all.attribute_name.camelcase(:lower)}/writable")
       end
     end
   end

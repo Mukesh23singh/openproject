@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +20,16 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import {
   combine, deriveRaw, InputState, multiInput, State, StatesGroup,
-} from 'reactivestates';
+} from '@openproject/reactivestates';
 import { filter, map } from 'rxjs/operators';
-import { Injectable, Injector } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { Subject } from 'rxjs';
 import { FormResource } from 'core-app/features/hal/resources/form-resource';
 import { ChangeMap } from 'core-app/shared/components/fields/changeset/changeset';
@@ -40,6 +39,7 @@ import { HookService } from 'core-app/features/plugins/hook-service';
 import { HalEventsService } from 'core-app/features/hal/services/hal-events.service';
 import { StateCacheService } from 'core-app/core/apiv3/cache/state-cache.service';
 import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 
 class ChangesetStates extends StatesGroup {
   name = 'Changesets';
@@ -88,25 +88,25 @@ export class ResourceChangesetCommit<T extends HalResource = HalResource> {
   }
 }
 
-export interface ResourceChangesetClass {
-  new(...args:any[]):ResourceChangeset;
-}
+export type ResourceChangesetClass = new(...args:ConstructorParameters<typeof ResourceChangeset>) => ResourceChangeset;
 
 @Injectable()
 export class HalResourceEditingService extends StateCacheService<ResourceChangeset> {
+  protected readonly injector = inject(Injector);
+  protected readonly halEvents = inject(HalEventsService);
+  protected readonly hook = inject(HookService);
+
   /** Committed / saved changes to work packages observable */
   public committedChanges = new Subject<ResourceChangesetCommit>();
 
-  constructor(protected readonly injector:Injector,
-    protected readonly halEvents:HalEventsService,
-    protected readonly hook:HookService) {
+  constructor() {
     super(new ChangesetStates().changesets);
   }
 
   public async save<V extends HalResource, T extends ResourceChangeset<V>>(change:T):Promise<ResourceChangesetCommit<V>> {
     // Form the payload we're going to save
     const payload = await change.buildRequestPayload();
-    const savedResource = await change.pristineResource.$links.updateImmediately(payload);
+    const savedResource = await (change.pristineResource.$links.updateImmediately as CallableHalLink)(payload) as V;
 
     // Initialize any potentially new HAL values
     savedResource.retainFrom(change.pristineResource);
@@ -198,7 +198,7 @@ export class HalResourceEditingService extends StateCacheService<ResourceChanges
       return this.edit<V, T>(resource);
     }
 
-    if (resource.hasOwnProperty('lockVersion') && changeset.pristineResource.lockVersion < resource.lockVersion) {
+    if (Object.hasOwn(resource, 'lockVersion') && (changeset.pristineResource.lockVersion as number) < (resource.lockVersion as number)) {
       return this.edit<V, T>(resource);
     }
 
@@ -227,7 +227,7 @@ export class HalResourceEditingService extends StateCacheService<ResourceChanges
           filter(([resource, _]) => !!resource),
           map(([resource, change]) => {
             if (change) {
-              change.updatePristineResource(resource as V);
+              change.updatePristineResource(resource!);
               return change.projectedResource;
             }
 

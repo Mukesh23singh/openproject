@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 # Scrolls a native element into view using JS
-def scroll_to_element(element)
+# @param element [Capybara::Node::Element] the element to scroll into view
+# @param block [Symbol] (optional) Defines vertical alignment.
+#   One of `:start`, `:center`, `:end`, or `:nearest`. Defaults to `:start`.
+# @param inline [Symbol] (optional) Defines horizontal alignment.
+#   One of `:start`, `:center`, `:end`, or `:nearest`. Defaults to `:nearest`..
+def scroll_to_element(element, block: :start, inline: :nearest)
   script = <<-JS
-    arguments[0].scrollIntoView(true);
+    arguments[0].scrollIntoView({block: "#{block}", inline: "#{inline}"});
   JS
-  Capybara.current_session.driver.browser.execute_script(script, element.native)
+  if using_cuprite?
+    page.driver.execute_script(script, element.native)
+  else
+    Capybara.current_session.driver.browser.execute_script(script, element.native)
+  end
 end
 
-def scroll_to_and_click(element)
-  retry_block do
-    scroll_to_element(element)
-    sleep 0.2
-    element.click
+def scroll_to_and_click(element = nil, block: :start, inline: :nearest)
+  page.document.synchronize do
+    current_element = block_given? ? yield : element
+    scroll_to_element(current_element, block:, inline:)
+    current_element.click
   end
+end
+
+def scroll_to_top
+  top_element = page.find_by_id("content-body")
+  page.execute_script("arguments[0].scrollTo(0, 0);", top_element.native)
 end
 
 def expect_element_in_view(element)

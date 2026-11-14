@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -33,11 +32,10 @@ import { WorkPackageRelationsService } from 'core-app/features/work-packages/com
 
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
-import { Directive } from '@angular/core';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { Directive, OnInit, inject } from '@angular/core';
 
 @Directive()
-export class WorkPackageCopyController extends WorkPackageCreateComponent {
+export class WorkPackageCopyController extends WorkPackageCreateComponent implements OnInit {
   private __initialized_at:number;
 
   private copiedWorkPackageId:string;
@@ -45,9 +43,9 @@ export class WorkPackageCopyController extends WorkPackageCreateComponent {
   /** Are we in the copying substates ? */
   public copying = true;
 
-  @InjectField() wpRelations:WorkPackageRelationsService;
+  readonly wpRelations = inject(WorkPackageRelationsService);
 
-  @InjectField() halEditing:HalResourceEditingService;
+  readonly halEditing = inject(HalResourceEditingService);
 
   ngOnInit() {
     super.ngOnInit();
@@ -63,8 +61,15 @@ export class WorkPackageCopyController extends WorkPackageCreateComponent {
       });
   }
 
+  public cancelAndBack() {
+    this.wpCreate.cancelCreation();
+
+    const link = this.pathHelper.genericWorkPackagePath(this.currentProjectService.id, this.copiedWorkPackageId);
+    Turbo.visit(link + window.location.search, { action: 'advance' });
+  }
+
   protected createdWorkPackage() {
-    this.copiedWorkPackageId = this.stateParams.copiedFromWorkPackageId;
+    this.copiedWorkPackageId = this.stateParams.copiedFromWorkPackageId!;
     return new Promise<WorkPackageChangeset>((resolve, reject) => {
       this
         .apiV3Service
@@ -81,7 +86,7 @@ export class WorkPackageCopyController extends WorkPackageCreateComponent {
   }
 
   protected setTitle() {
-    this.titleService.setFirstPart(this.I18n.t('js.work_packages.copy.title'));
+    this.titleService.setFirstPart(this.I18n.t('js.work_packages.duplicate.title'));
   }
 
   private createCopyFrom(wp:WorkPackageResource) {

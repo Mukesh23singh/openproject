@@ -1,70 +1,43 @@
-import { AbstractWidgetComponent } from 'core-app/shared/components/grids/widgets/abstract-widget.component';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, Injector, OnInit,
+  ChangeDetectionStrategy,
+  Component,
 } from '@angular/core';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
-import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { Apiv3ListParameters } from 'core-app/core/apiv3/paths/apiv3-list-resource.interface';
-import { TimezoneService } from 'core-app/core/datetime/timezone.service';
+import { AbstractTurboWidgetComponent } from 'core-app/shared/components/grids/widgets/abstract-turbo-widget.component';
 
 @Component({
+  selector: 'op-subitems-widget',
   templateUrl: './subprojects.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
-export class WidgetSubprojectsComponent extends AbstractWidgetComponent implements OnInit {
-  public text = {
-    noResults: this.i18n.t('js.grid.widgets.subprojects.no_results'),
-  };
-
-  public projects:ProjectResource[];
-
-  constructor(readonly halResource:HalResourceService,
-    readonly pathHelper:PathHelperService,
-    readonly i18n:I18nService,
-    protected readonly injector:Injector,
-    readonly timezone:TimezoneService,
-    readonly apiV3Service:APIV3Service,
-    readonly currentProject:CurrentProjectService,
-    readonly cdr:ChangeDetectorRef) {
-    super(i18n, injector);
-  }
-
-  ngOnInit() {
-    this
-      .apiV3Service
-      .projects
-      .list(this.projectListParams)
-      .subscribe((collection) => {
-        this.projects = collection.elements;
-
-        this.cdr.detectChanges();
-      });
-  }
-
-  public get isEditable() {
-    return false;
-  }
-
-  public projectPath(project:ProjectResource) {
-    return this.pathHelper.projectPath(project.identifier);
-  }
-
-  public projectName(project:ProjectResource) {
-    return project.name;
-  }
-
-  public get noEntries() {
-    return this.projects && !this.projects.length;
-  }
-
-  private get projectListParams():Apiv3ListParameters {
-    return {
-      sortBy: [['name', 'asc']],
-      filters: [['parent_id', '=', [this.currentProject.id!]]],
-    };
-  }
+export class WidgetSubprojectsComponent extends AbstractTurboWidgetComponent {
+  override frameId = 'grids-widgets-subitems';
+  override name = 'subitems';
 }

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,7 +37,7 @@ module Bim::Bcf
       end
 
       def set_default_attributes(_params)
-        viewpoint['guid'] = model.uuid
+        viewpoint["guid"] = model.uuid
       end
 
       def set_snapshot
@@ -46,7 +45,7 @@ module Bim::Bcf
 
         name = "snapshot.#{snapshot_extension}"
         file = OpenProject::Files
-                 .create_uploaded_file(name: name,
+                 .create_uploaded_file(name:,
                                        content_type: snapshot_content_type,
                                        content: snapshot_binary_contents,
                                        binary: true)
@@ -56,44 +55,43 @@ module Bim::Bcf
         # delete any existing snapshot right away while the expectation
         # on a SetAttributesService is to not perform persisted changes.
         model.snapshot&.mark_for_destruction
-        model.build_snapshot file, user: user
+        model.build_snapshot file, user:
       end
 
       def snapshot_data_complete?
-        viewpoint['snapshot'] &&
+        viewpoint["snapshot"] &&
           snapshot_extension &&
-          snapshot_base64 &&
-          snapshot_url_parts.length > 1
+          snapshot_base64
       end
 
       def snapshot_content_type
         # Return nil when the extension is not within the specified set
         # which will lead to the snapshot not being created.
         # The contract will catch the error.
-        return unless viewpoint['snapshot']
+        return unless viewpoint["snapshot"]
 
-        case viewpoint['snapshot']['snapshot_type']
-        when 'png'
-          'image/png'
-        when 'jpg'
-          'image/jpeg'
+        case viewpoint["snapshot"]["snapshot_type"]
+        when "png"
+          "image/png"
+        when "jpg"
+          "image/jpeg"
         end
       end
 
       def snapshot_extension
-        viewpoint['snapshot']['snapshot_type']
+        viewpoint["snapshot"]["snapshot_type"]
       end
 
       def snapshot_base64
-        viewpoint['snapshot']['snapshot_data']
+        viewpoint["snapshot"]["snapshot_data"]
       end
 
       def snapshot_binary_contents
-        Base64.decode64(snapshot_url_parts[2])
-      end
-
-      def snapshot_url_parts
-        snapshot_base64.match(/\Adata:([-\w]+\/[-\w+.]+)?;base64,(.*)/m) || []
+        if snapshot_base64.include?("base64,")
+          Base64.decode64(snapshot_base64.split("base64,").last)
+        else
+          Base64.decode64(snapshot_base64)
+        end
       end
 
       def viewpoint

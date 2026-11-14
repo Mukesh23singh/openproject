@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,6 +30,10 @@
 module UserPreferences
   class BaseContract < ::BaseContract
     property :settings
+
+    delegate :avatar_text, to: :model
+
+    validates :avatar_text, avatar_text: true, allow_nil: true
 
     validate :user_allowed_to_access
     validates :settings,
@@ -42,8 +45,9 @@ module UserPreferences
                 if: -> { model.settings.present? }
               }
 
-    validate :time_zone_correctness,
-             if: -> { model.time_zone.present? }
+    validate :time_zone_correctness
+    validate :date_format_correctness
+    validate :time_format_correctness
 
     validate :full_hour_reminder_time,
              if: -> { model.daily_reminders.present? }
@@ -53,6 +57,9 @@ module UserPreferences
 
     validate :valid_pause_days,
              if: -> { model.pause_reminders.present? && model.pause_reminders[:enabled] }
+
+    validate :avatar_color_correctness,
+             if: -> { model.avatar_color.present? }
 
     class << self
       ##
@@ -83,7 +90,7 @@ module UserPreferences
         if time_zones.length == 1
           time_zones.first
         else
-          time_zones.detect { |tz| tz.tzinfo.name.include?(tz.name.gsub(' ', '_')) }
+          time_zones.detect { |tz| tz.tzinfo.name.include?(tz.name.tr(" ", "_")) }
         end
       end
     end
@@ -95,25 +102,46 @@ module UserPreferences
     protected
 
     def time_zone_correctness
-      if model.time_zone.present? &&
-         assignable_time_zones.none? { |tz| tz.tzinfo.canonical_identifier == model.time_zone }
-        errors.add(:time_zone, :inclusion)
-      end
+      time_zone = model.settings[:time_zone]
+      return if time_zone.blank?
+      return if assignable_time_zones.any? { |tz| tz.tzinfo.canonical_identifier == time_zone }
+
+      errors.add(:time_zone, :inclusion)
+    end
+
+    def date_format_correctness
+      format = model.settings[:date_format]
+      return if format.blank?
+      return if Settings::Definition[:date_format].allowed.include?(format)
+
+      errors.add(:date_format, :inclusion)
+    end
+
+    def time_format_correctness
+      format = model.settings[:time_format]
+      return if format.blank?
+      return if Settings::Definition[:time_format].allowed.include?(format)
+
+      errors.add(:time_format, :inclusion)
     end
 
     ##
     # User preferences can only be accessed with the manage_user permission
     # or if an active, logged user is editing their own prefs
     def user_allowed_to_access
-      unless user.allowed_to_globally?(:manage_user) || (user.logged? && user.active? && user.id == model.user_id)
+      unless user.allowed_globally?(:manage_user) || (user.logged? && user.active? && user.id == model.user_id)
         errors.add :base, :error_unauthorized
       end
     end
 
     def full_hour_reminder_time
-      unless model.daily_reminders[:times].all? { |time| time.match?(/00:00\+00:00\z/) }
+      unless model.daily_reminders[:times].all? { |time| time.end_with?("00:00+00:00") }
         errors.add :daily_reminders, :full_hour
       end
+    end
+
+    def avatar_color_correctness
+      errors.add(:avatar_color, :invalid) unless model.avatar_color.match?(/\A#[0-9A-F]{6}\z/)
     end
 
     def no_duplicate_workdays

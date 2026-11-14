@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,149 +22,147 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class WorkPackages::MovesController < ApplicationController
+  include WorkPackages::BulkErrorMessage
+  include WorkPackages::IdListNormalization
+  include OpTurbo::ComponentStream
+
   default_search_scope :work_packages
   before_action :find_work_packages, :check_project_uniqueness
-  before_action :authorize
+  before_action :authorize_move_or_copy
+  authorization_checked! :new, :create, :refresh_form
 
   def new
     prepare_for_work_package_move
+
+    @move_form_component = move_form_component
   end
 
   def create
     prepare_for_work_package_move
 
-    new_type = params[:new_type_id].blank? ? nil : @target_project.types.find_by(id: params[:new_type_id])
+    perform_operation
+  end
 
-    unsaved_work_package_ids = []
-    moved_work_packages = []
+  def refresh_form
+    prepare_for_work_package_move
 
-    @work_packages.each do |work_package|
-      work_package.reload
+    update_via_turbo_stream(component: move_form_component)
 
-      call_hook(:controller_work_packages_move_before_save,
-                params: params,
-                work_package: work_package,
-                target_project: @target_project,
-                copy: !!@copy)
+    respond_with_turbo_streams
+  end
 
-      service_call = WorkPackages::MoveService
-                     .new(work_package, current_user)
-                     .call(@target_project,
-                           new_type,
-                           copy: @copy,
-                           attributes: permitted_create_params,
-                           journal_note: @notes)
+  private
 
-      if service_call.success?
-        moved_work_packages << service_call.result
-      elsif @copy
-        unsaved_work_package_ids.concat dependent_error_ids(work_package.id, service_call)
-      else
-        unsaved_work_package_ids << work_package.id
-      end
-    end
+  def authorize_move_or_copy
+    permission = params.has_key?(:copy) ? :copy_work_packages : :move_work_packages
+    do_authorize(permission)
+  end
 
-    set_flash_from_bulk_work_package_save(@work_packages, unsaved_work_package_ids)
-
-    if params[:follow]
-      if @work_packages.size == 1 && moved_work_packages.size == 1
-        redirect_to work_package_path(moved_work_packages.first)
-      else
-        redirect_to project_work_packages_path(@target_project || @project)
-      end
+  def perform_operation
+    if within_frontend_threshold?
+      perform_in_frontend
     else
+      perform_in_background
+    end
+  end
+
+  def within_frontend_threshold?
+    WorkPackageHierarchy.where(ancestor_id: @work_packages).count <= Setting.work_packages_bulk_request_limit
+  end
+
+  # rubocop:disable Metrics/AbcSize
+  def perform_in_frontend
+    call = job_class
+             .perform_now(**job_args)
+
+    if call.success? && @work_packages.any?
+      flash[:notice] = call.message
+      redirect_to call.result
+    else
+      flash[:error] = bulk_error_message(@work_packages, call.dependent_results.first)
       redirect_back_or_default(project_work_packages_path(@project))
     end
   end
 
-  def set_flash_from_bulk_work_package_save(work_packages, unsaved_work_package_ids)
-    if unsaved_work_package_ids.empty? and not work_packages.empty?
-      flash[:notice] = @copy ? I18n.t(:notice_successful_create) : I18n.t(:notice_successful_update)
+  # rubocop:enable Metrics/AbcSize
+
+  def perform_in_background
+    job = job_class.perform_later(**job_args)
+    redirect_to job_status_path(job.job_id)
+  end
+
+  def job_args
+    {
+      user: current_user,
+      work_package_ids: @work_packages.pluck(:id),
+      project: @project,
+      target_project: @target_project,
+      params: attributes_for_create,
+      follow: params[:follow]
+    }
+  end
+
+  def job_class
+    if @copy
+      WorkPackages::BulkCopyJob
     else
-      flash[:error] = I18n.t(:notice_failed_to_save_work_packages,
-                             count: unsaved_work_package_ids.size,
-                             total: work_packages.size,
-                             ids: '#' + unsaved_work_package_ids.join(', #'))
+      WorkPackages::BulkMoveJob
     end
   end
-
-  ##
-  # When copying, add work package ids that are failing
-  def dependent_error_ids(parent_id, service_call)
-    ids = service_call
-      .results_with_errors(include_self: false)
-      .map { |result| result.state.copied_from_work_package_id }
-      .compact
-
-    if ids.present?
-      joined = ids.map { |id| "##{id}" }.join(" ")
-      ["#{parent_id} (+ children errors: #{joined})"]
-    else
-      [parent_id]
-    end
-  end
-
-  def default_breadcrumb
-    I18n.t(:label_move_work_package)
-  end
-
-  private
 
   # Check if project is unique before bulk operations
   def check_project_uniqueness
     unless @project
       # TODO: let users bulk move/copy work packages from different projects
-      render_error message: :'work_packages.move.unsupported_for_multiple_projects', status: 400
+      render_error message: :"work_packages.move.unsupported_for_multiple_projects", status: 400
       false
     end
   end
 
+  def move_form_component
+    WorkPackages::Moves::FormComponent.new(
+      work_packages: @work_packages,
+      project: @project,
+      target_project: @target_project,
+      notes: @notes,
+      copy: @copy,
+      selected_values: permitted_params.move_work_package_form_values,
+      current_user:
+    )
+  end
+
   def prepare_for_work_package_move
-    @work_packages = @work_packages.includes(:ancestors)
     @copy = params.has_key? :copy
-    @allowed_projects = WorkPackage.allowed_target_projects_on_move(current_user)
-    @target_project = @allowed_projects.detect { |p| p.id.to_s == params[:new_project_id].to_s } if params[:new_project_id]
+    if params[:new_project_id]
+      @target_project = allowed_target_projects.find_by(id: params[:new_project_id])
+    end
     @target_project ||= @project
-    @types = @target_project.types
-    @available_versions = @target_project.shared_versions.order_by_semver_name
-    @available_statuses = Workflow.available_statuses(@project)
-    @notes = params[:notes]
-    @notes ||= ''
+    @notes = params[:notes] || ""
+  end
 
-    # When copying, avoid copying elements when any of their ancestors
-    # are in the set to be copied
+  def allowed_target_projects
     if @copy
-      @work_packages = remove_hierarchy_duplicates
+      WorkPackage.allowed_target_projects_on_copy(current_user)
+    else
+      WorkPackage.allowed_target_projects_on_move(current_user)
     end
   end
 
-  # Check if a parent work package is also selected for copying
-  def remove_hierarchy_duplicates
-    # Get all ancestors of the work_packages to copy
-    selected_ids = @work_packages.pluck(:id)
+  def attributes_for_create
+    attributes = permitted_params.move_work_package
+    id_lists = extract_normalized_id_lists(attributes)
 
-    @work_packages.reject do |wp|
-      wp.ancestors.where(id: selected_ids).exists?
-    end
-  end
-
-  def permitted_create_params
-    params
-      .permit(:assigned_to_id,
-              :responsible_id,
-              :start_date,
-              :due_date,
-              :status_id,
-              :version_id,
-              :priority_id)
+    attributes
+      .compact_blank
+      # 'none' is used in the frontend as a value to unset the property, e.g. the assignee.
+      .transform_values { |v| v == "none" ? nil : v }
       .to_h
-      .reject { |_, v| v.blank? }
+      .merge(id_lists)
   end
 end

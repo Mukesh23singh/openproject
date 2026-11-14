@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,73 +22,94 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe OpenProject::ChangedBySystem do
+RSpec.describe OpenProject::ChangedBySystem do
   subject(:model) do
     model = News.new
     model.extend(described_class)
     model
   end
 
-  describe '#changed_by_user' do
-    context 'when an attribute is changed' do
+  describe "#changed_by_user" do
+    context "when an attribute is changed" do
       before do
-        model.title = 'abc'
+        model.title = "abc"
       end
 
-      it 'returns the attribute' do
+      it "returns the attribute" do
         expect(model.changed_by_user)
-          .to match_array ['title']
+          .to contain_exactly("title")
       end
     end
 
-    context 'when an attribute is changed by the system' do
+    context "when an attribute is changed by the system" do
       before do
         model.change_by_system do
-          model.title = 'abc'
+          model.title = "abc"
         end
       end
 
-      it 'returns no attributes' do
+      it "returns no attributes" do
         expect(model.changed_by_user)
           .to be_empty
       end
     end
 
-    context 'when an attribute is changed by the system first and then by the user to a different value' do
+    context "when an attribute is changed by the system first and then by the user to a different value" do
       before do
         model.change_by_system do
-          model.title = 'abc'
+          model.title = "abc"
         end
 
-        model.title = 'xyz'
+        model.title = "xyz"
       end
 
-      it 'returns the attribute' do
+      it "returns the attribute" do
         expect(model.changed_by_user)
-          .to match_array ['title']
+          .to contain_exactly("title")
       end
     end
 
-    context 'when an attribute is changed by the system first and then by the user to the same value' do
+    context "when an attribute is changed by the system first and then by the user to the same value" do
       before do
         model.change_by_system do
-          model.title = 'abc'
+          model.title = "abc"
         end
 
-        model.title = 'abc'
+        model.title = "abc"
       end
 
-      it 'returns no attribute' do
+      it "returns no attribute" do
         expect(model.changed_by_user)
           .to be_empty
+      end
+    end
+
+    context "when the model has the acts_as_customizable plugin included" do
+      subject(:model) do
+        create(:work_package, project:).tap do |wp|
+          wp.extend(described_class)
+        end
+      end
+
+      let(:type) { create(:type_task) }
+      let(:project) { create(:project, types: [type]) }
+      let(:cf1) { create(:work_package_custom_field) }
+
+      before do
+        type.default_variant.custom_field_ids |= [cf1.id]
+      end
+
+      it "returns the custom fields too" do
+        model.custom_field_values = { cf1.id => "test" }
+        expect(model.changed_by_user)
+          .to include(cf1.attribute_name)
       end
     end
   end

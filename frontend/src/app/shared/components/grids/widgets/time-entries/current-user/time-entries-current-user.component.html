@@ -1,21 +1,10 @@
 <widget-header
+  [headingId]="headingId"
   [name]="widgetName"
   [editable]="isEditable">
 
-  <widget-time-entries-current-user-menu
-    slot="menu"
-    [resource]="resource"
-    (onConfigured)="updateConfiguration($event)">
-  </widget-time-entries-current-user-menu>
+  <widget-menu slot="menu"
+    [resource]="resource" />
 </widget-header>
 
-<te-calendar
-  (entries)="updateEntries($event)"
-  [displayedDays]="displayedDays"
-></te-calendar>
-
-<ng-container>
-  <div class="total-hours">
-    <p>Total: <span [textContent]="total"></span></p>
-  </div>
-</ng-container>
+<turbo-frame class="grid--widget-content" [id]="frameId" [src]="src" loading="lazy" />

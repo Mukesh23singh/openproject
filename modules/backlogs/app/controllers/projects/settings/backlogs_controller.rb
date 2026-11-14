@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,40 +30,52 @@
 class Projects::Settings::BacklogsController < Projects::SettingsController
   menu_item :settings_backlogs
 
-  def show
-    @statuses_done_for_project = @project.done_statuses.select(:id).map(&:id)
-  end
+  def show; end
 
   def update
-    selected_statuses = (params[:statuses] || []).map do |work_package_status|
-      Status.find(work_package_status[:status_id].to_i)
-    end.compact
+    call = Projects::UpdateService
+      .new(model: @project,
+           user: current_user,
+           contract_class: ::Backlogs::Projects::BacklogsTypesAndStatusesContract)
+      .call(backlogs_settings_params)
 
-    @project.done_statuses = selected_statuses
-    @project.save!
-
-    flash[:notice] = I18n.t(:notice_successful_update)
-
-    redirect_to_backlogs_settings
+    if call.success?
+      flash[:notice] = I18n.t(:notice_successful_update)
+      redirect_back_or_to_backlogs_settings
+    else
+      flash.now[:error] = I18n.t(:notice_unsuccessful_update_with_reason, reason: call.message)
+      render action: :show, status: :unprocessable_entity
+    end
   end
 
   def rebuild_positions
-    @project.rebuild_positions
-    flash[:notice] = I18n.t('backlogs.positions_rebuilt_successfully')
+    ::Backlogs::WorkPackages::RebuildPositionsService.new(project: @project).call
+    flash[:notice] = I18n.t("backlogs.positions_rebuilt_successfully")
 
-    redirect_to_backlogs_settings
+    redirect_back_or_to_backlogs_settings
   rescue ActiveRecord::ActiveRecordError
-    flash[:error] = I18n.t('backlogs.positions_could_not_be_rebuilt')
+    flash[:error] = I18n.t("backlogs.positions_could_not_be_rebuilt")
 
     log_rebuild_position_error
 
-    redirect_to_backlogs_settings
+    redirect_back_or_to_backlogs_settings
   end
 
   private
 
-  def redirect_to_backlogs_settings
-    redirect_to project_settings_backlogs_path(@project)
+  def backlogs_settings_params
+    permitted = params.expect(project: { done_status_ids: [], backlog_excluded_type_ids: [] })
+
+    %i[done_status_ids backlog_excluded_type_ids].each do |key|
+      # De-duplicate submitted values:
+      permitted[key] = permitted[key]&.uniq
+    end
+
+    permitted
+  end
+
+  def redirect_back_or_to_backlogs_settings
+    redirect_back_or_to project_settings_backlogs_path(@project)
   end
 
   def log_rebuild_position_error

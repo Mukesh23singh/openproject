@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -19,23 +19,43 @@
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 hu:
   js:
     github_integration:
-      work_packages:
-        tab_name: "GitHub"
+      github_actions: Műveletek
+      pull_requests:
+        merged_message: 'Pull request #%{pr_number} %{pr_link} for %{repository_link} has been %{pr_state} by %{github_user_link}.'
+        message: 'Pull request #%{pr_number} %{pr_link} for %{repository_link} authored by %{github_user_link} has been %{pr_state}.'
+        referenced_message: 'Pull request #%{pr_number} %{pr_link} for %{repository_link} authored by %{github_user_link} referenced this work package.'
+        states:
+          closed: lezárt
+          draft: piszkozat
+          merged: egyesített
+          opened: nyitott
+          ready_for_review: véleményezésre megjelölve
       tab_header:
-        title: "Pull request-ek"
         copy_menu:
+          description: 'Git snippetek másolása a vágólapra
+
+            '
           label: Git snippets
-          description: "Git snippetek másolása a vágólapra\n"
         git_actions:
           branch_name: Branch neve
-          commit_message: Üzenet közzététele
           cmd: Branch létrehozása üres commit-al
-          title: "Gyors snippetek a Git-hez\n"
-          copy_success: '✅ Másolva!'
-          copy_error: '❌ Másolás sikertelen!'
+          commit_message: Üzenet közzététele
+          copy_error: "❌ Másolás sikertelen!"
+          copy_success: "✅ Másolva!"
+          title: 'Gyors snippetek a Git-hez
+
+            '
+        title: Pull request-ek
       tab_prs:
-        empty: "Még nincsenek összekapcsolt pull-kérelmek. Linkelj egy meglévő PR-t a PR leírásában található <code>OP#%{wp_id}</code> kód használatával, vagy hozz létre egy új PR-t.\n"
-      github_actions: Műveletek
+        empty: 'Még nincsenek összekapcsolt pull-kérelmek. Linkelj egy meglévő PR-t a PR leírásában található <code>OP#%{wp_id}</code> kód használatával, vagy hozz létre egy új PR-t.
+
+          '
+      work_packages:
+        tab_name: GitHub
+    work_packages:
+      tabs:
+        github: GitHub

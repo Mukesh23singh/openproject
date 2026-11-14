@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +20,47 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% html_title t(:label_administration), "#{t(:label_edit)} #{Status.model_name.human} #{h @status.name}" %>
-<% local_assigns[:additional_breadcrumb] =  @status.name %>
-<%= breadcrumb_toolbar @status.name %>
+<% html_title t(:label_administration), "#{t(:label_edit)} #{Status.model_name.human} #{h @status.name_was}" %>
 
-<%= labelled_tabular_form_for(@status) do |f| %>
-  <%= render partial: 'form', locals: { f: f } %>
-  <%= styled_button_tag t(:button_save), class: '-highlight -with-icon icon-checkmark' %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { @status.name_was }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: admin_settings_work_packages_general_path, text: t(:label_work_package_plural) },
+       { href: statuses_path, text: t(:label_status_plural) },
+       @status.name_was]
+    )
+  end
+%>
+
+<%= error_messages_for :status %>
+
+<% workflow_count = @status.workflow_count %>
+<% if workflow_count.positive? %>
+  <%= render(Primer::Alpha::Banner.new(scheme: :default, mb: 3)) do |banner| %>
+    <% banner.with_action_content do %>
+      <%= render(Primer::Beta::Button.new(tag: :a, href: status_workflows_filter_path(@status))) do %>
+        <%= t("statuses.edit.view_workflows_button") %>
+      <% end %>
+    <% end %>
+    <%= t("statuses.edit.used_by_workflows", count: workflow_count) %>
+  <% end %>
 <% end %>
+
+<%=
+  settings_primer_form_with(
+    model: @status,
+    data: {
+      controller: "admin--statuses"
+    }
+  ) do |f|
+    render Statuses::Form.new(f)
+  end
+%>

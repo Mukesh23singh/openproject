@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,21 +20,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'json'
+require "json"
 
 module Webhooks
   module Incoming
     class HooksController < ApplicationController
-      accept_key_auth :handle_hook
+      accept_api_key_auth :handle_hook
 
       # Disable CSRF detection since we openly welcome POSTs here!
       skip_before_action :verify_authenticity_token
+      # Authorization cannot be applied since authentication is skipped.
+      # It is then to be ensured when handling the hook.
+      no_authorization_required! :handle_hook
 
       # Wrap the JSON body as 'payload' param
       # making it available as params[:payload]
@@ -52,7 +52,7 @@ module Webhooks
       end
 
       def handle_hook
-        hook = OpenProject::Webhooks.find(params.require('hook_name'))
+        hook = OpenProject::Webhooks.find(params.require("hook_name"))
 
         if hook
           code = hook.handle(request, params, find_current_user)

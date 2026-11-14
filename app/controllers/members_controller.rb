@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,43 +22,47 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class MembersController < ApplicationController
-  model_object Member
-  before_action :find_model_object_and_project, except: [:autocomplete_for_member]
-  before_action :find_project_by_project_id, only: [:autocomplete_for_member]
+  include MemberHelper
+
+  before_action :find_project_by_project_id
+  before_action :find_member, except: %i[index create autocomplete_for_member destroy_by_principal]
   before_action :authorize
-
-  include Pagination::Controller
-  paginate_model User
-  search_for User, :search_in_project
-  search_options_for User, lambda { |*| { project: @project } }
-
-  include CellsHelper
 
   def index
     set_index_data!
   end
 
-  def create
-    service_call = create_members
+  def create # rubocop:disable Metrics/AbcSize
+    overall_result = []
 
-    if service_call.success?
-      display_success(members_added_notice(service_call.all_results))
+    find_or_create_users(send_notification: true) do |member_params|
+      service_call = Members::CreateService
+                       .new(user: current_user)
+                       .call(member_params)
 
-      redirect_to project_members_path(project_id: @project, status: 'all')
+      overall_result.push(service_call)
+    end
+
+    if overall_result.empty?
+      flash[:error] = I18n.t("activerecord.errors.models.member.principal_blank")
+      redirect_to project_members_path(project_id: @project, status: "all")
+    elsif overall_result.all?(&:success?)
+      flash[:notice] = members_added_notice(overall_result.map(&:result))
+
+      redirect_to project_members_path(project_id: @project, status: "all")
     else
-      display_error(service_call)
+      display_error(overall_result.first, now: true)
 
       set_index_data!
 
       respond_to do |format|
-        format.html { render 'index' }
+        format.html { render "index" }
       end
     end
   end
@@ -69,7 +73,7 @@ class MembersController < ApplicationController
                      .call(permitted_params.member)
 
     if service_call.success?
-      display_success(I18n.t(:notice_successful_update))
+      flash[:notice] = I18n.t(:notice_successful_update)
     else
       display_error(service_call)
     end
@@ -79,81 +83,107 @@ class MembersController < ApplicationController
                                      per_page: params[:per_page])
   end
 
-  def destroy
-    service_call = Members::DeleteService
-      .new(user: current_user, model: @member)
-      .call
+  def destroy_by_principal # rubocop:disable Metrics/AbcSize
+    principal = Principal.visible.find(params[:principal_id])
+
+    service_call = Members::DeleteByPrincipalService
+                     .new(user: current_user, project: @project, principal:)
+                     .call(params.permit(:project, :work_package_shares_role_id))
 
     if service_call.success?
-      display_success(I18n.t(:notice_member_removed, user: @member.principal.name))
+      flash[:notice] = I18n.t(:notice_member_removed, user: principal.name)
+    else
+      display_error(service_call)
     end
 
-    redirect_to project_members_path(project_id: @project)
+    redirect_to project_members_path(project_id: @project), status: :see_other
   end
 
   def autocomplete_for_member
-    @principals = possible_members(params[:q], 100)
+    type = params[:type]
+    @principals = possible_members(params[:q], 100, type:)
 
-    @email = suggest_invite_via_email? current_user,
-                                       params[:q],
-                                       (@principals | @project.principals)
+    if type.nil? || type == "User"
+      @email = suggest_invite_via_email?(current_user, params[:q], @principals | @project.principals)
+    end
 
     respond_to do |format|
       format.json do
-        render json: build_members
+        render json: build_members, escape: true
       end
     end
   end
 
   private
 
-  def authorize_for(controller, action)
-    current_user.allowed_to?({ controller: controller, action: action }, @project)
+  def find_member
+    @member = @project.memberships.visible.find(params[:id])
+  end
+
+  def authorize_for?(controller, action)
+    current_user.allowed_in_project?({ controller:, action: }, @project)
+  end
+
+  def user_allowed_to_view_emails?
+    current_user.allowed_globally?(:view_user_email)
   end
 
   def build_members
     paths = API::V3::Utilities::PathHelper::ApiV3Path
     principals = @principals.map do |principal|
-      {
+      member = {
         id: principal.id,
         name: principal.name,
         href: paths.send(principal.type.underscore, principal.id)
       }
+      member[:email] = principal.mail if user_allowed_to_view_emails?
+      member
     end
 
     if @email
-      principals << { id: @email, name: I18n.t('members.invite_by_mail', mail: @email) }
+      principals << { id: @email, name: I18n.t("members.invite_by_mail", mail: @email) }
     end
 
     principals
   end
 
   def members_table_options(roles)
+    shared_role = WorkPackageRole.find_by(id: params[:shared_role_id])
+    shared_role_name = shared_role && Members::UserFilterComponent.mapped_shared_role_name(shared_role)
+
     {
       project: @project,
       available_roles: roles,
-      authorize_update: authorize_for('members', 'update'),
-      is_filtered: Members::UserFilterCell.filtered?(params)
+      authorize_update: authorize_for?("members", :update),
+      authorize_delete: authorize_for?("members", :destroy),
+      authorize_work_package_shares_view: current_user.allowed_in_project?(:view_shared_work_packages, @project),
+      authorize_work_package_shares_delete: current_user.allowed_in_project?(:share_work_packages, @project),
+      authorize_manage_user: current_user.allowed_globally?(:manage_user),
+      is_filtered: Members::UserFilterComponent.filtered?(params),
+      shared_role_name:
     }
   end
 
   def members_filter_options(roles)
-    groups = Group.all.sort
-    status = Members::UserFilterCell.status_param(params)
+    groups = Group.visible.sort
+    shares = WorkPackageRole.all
+    status = Members::UserFilterComponent.status_param(params)
 
     {
-      groups: groups,
-      roles: roles,
-      status: status,
+      groups:,
+      roles:,
+      status:,
+      shares:,
       clear_url: project_members_path(@project),
       project: @project
     }
   end
 
-  def suggest_invite_via_email?(user, query, principals)
-    user.allowed_to_globally?(:manage_user) &&
-      query =~ mail_regex &&
-      principals.none? { |p| p.mail == query || p.login == query } &&
+  def suggest_invite_via_email?(user, query, visible_principals)
+    return false unless user_allowed_to_invite?(user)
+
+    query =~ mail_regex &&
+      visible_principals.none? { |p| p.mail == query || p.login == query } &&
       query # finally return email
   end
 
@@ -170,107 +200,24 @@ class MembersController < ApplicationController
   end
 
   def set_roles_and_principles!
-    @roles = Role.givable
+    @roles = ProjectRole.givable
     # Check if there is at least one principal that can be added to the project
-    @principals_available = possible_members('', 1)
+    @principals_available = possible_members("", 1)
   end
 
-  def possible_members(criteria, limit)
+  def possible_members(criteria, limit, type: nil)
     Principal
-      .possible_member(@project)
-      .like(criteria)
+      .visible
+      .possible_member(@project, type:)
+      .like(criteria, email: user_allowed_to_view_emails?)
       .limit(limit)
   end
 
   def index_members
-    filters = params.slice(:name, :group_id, :role_id, :status)
+    filters = params.slice(*Members::UserFilterComponent.filter_param_keys)
     filters[:project_id] = @project.id.to_s
 
-    @members_query = Members::UserFilterCell.query(filters)
-  end
-
-  def create_members
-    overall_result = nil
-
-    with_new_member_params do |member_params|
-      service_call = Members::CreateService
-                       .new(user: current_user)
-                       .call(member_params)
-
-      if overall_result
-        overall_result.merge!(service_call)
-      else
-        overall_result = service_call
-      end
-    end
-
-    overall_result
-  end
-
-  def with_new_member_params
-    user_ids = user_ids_for_new_members(params[:member])
-
-    group_ids = Group.where(id: user_ids).pluck(:id)
-
-    user_ids.sort_by! { |id| group_ids.include?(id) ? 1 : -1 }
-
-    user_ids.each do |id|
-      yield permitted_params.member.merge(user_id: id, project: @project)
-    end
-  end
-
-  def user_ids_for_new_members(member_params)
-    invite_new_users possibly_separated_ids_for_entity(member_params, :user)
-  end
-
-  def invite_new_users(user_ids)
-    user_ids.map do |id|
-      if id.to_i == 0 && id.present? # we've got an email - invite that user
-        # Only users with the manage_member permission can add users.
-        if current_user.allowed_to_globally?(:manage_user) && enterprise_allow_new_users?
-          # The invitation can pretty much only fail due to the user already
-          # having been invited. So look them up if it does.
-          user = UserInvitation.invite_new_user(email: id) ||
-                 User.find_by_mail(id)
-
-          user&.id
-        end
-      else
-        id
-      end
-    end.compact
-  end
-
-  def enterprise_allow_new_users?
-    !OpenProject::Enterprise.user_limit_reached? || !OpenProject::Enterprise.fail_fast?
-  end
-
-  def each_comma_separated(array, &block)
-    array.map do |e|
-      if e.to_s.match /\d(,\d)*/
-        block.call(e)
-      else
-        e
-      end
-    end.flatten
-  end
-
-  def transform_array_of_comma_separated_ids(array)
-    return array if array.blank?
-
-    each_comma_separated(array) do |elem|
-      elem.to_s.split(',')
-    end
-  end
-
-  def possibly_separated_ids_for_entity(array, entity = :user)
-    if !array[:"#{entity}_ids"].nil?
-      transform_array_of_comma_separated_ids(array[:"#{entity}_ids"])
-    elsif !array[:"#{entity}_id"].nil? && (id = array[:"#{entity}_id"]).present?
-      [id]
-    else
-      []
-    end
+    @members_query = Members::UserFilterComponent.query(filters)
   end
 
   def members_added_notice(members)
@@ -282,7 +229,7 @@ class MembersController < ApplicationController
   end
 
   def no_create_errors?(members)
-    members.present? && members.map(&:errors).select(&:any?).empty?
+    members.present? && members.map(&:errors).none?(&:any?)
   end
 
   def sort_by_groups_last(members)
@@ -291,11 +238,13 @@ class MembersController < ApplicationController
     members.sort_by { |m| group_ids.include?(m.user_id) ? 1 : -1 }
   end
 
-  def display_error(service_call)
-    flash[:error] = service_call.errors.full_messages.compact.join(', ')
-  end
+  def display_error(service_call, now: false)
+    message = service_call.errors.full_messages.compact.join(", ")
 
-  def display_success(message)
-    flash[:notice] = message
+    if now
+      flash.now[:error] = message
+    else
+      flash[:error] = message
+    end
   end
 end

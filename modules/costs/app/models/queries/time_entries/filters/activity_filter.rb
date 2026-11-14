@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,22 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Queries::TimeEntries::Filters::ActivityFilter < Queries::TimeEntries::Filters::TimeEntryFilter
   def allowed_values
-    @allowed_values ||= begin
-      # To mask the internal complexity of time entries and to
-      # allow filtering by a combined value only shared activities are
-      # valid values
-      ::TimeEntryActivity
-        .shared
-        .pluck(:name, :id)
-    end
+    # To mask the internal complexity of time entries and to
+    # allow filtering by a combined value only shared activities are
+    # valid values
+    @allowed_values ||= ::TimeEntryActivity
+      .shared
+      .pluck(:name, :id)
   end
 
   def type
@@ -56,7 +53,7 @@ class Queries::TimeEntries::Filters::ActivityFilter < Queries::TimeEntries::Filt
                 .or(shared_values)
                 .pluck(:id)
 
-    operator_strategy.sql_for_field(db_values, self.class.model.table_name, self.class.key)
+    operator_strategy.sql_for_field(db_values, self.class.model.table_name, key)
   end
 
   private

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +20,53 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { OpModalService } from 'core-app/shared/components/modal/modal.service';
-import { Injectable, Injector } from '@angular/core';
-import { WpButtonMacroModalComponent } from 'core-app/shared/components/modals/editor/macro-wp-button-modal/wp-button-macro.modal';
-import { WikiIncludePageMacroModalComponent } from 'core-app/shared/components/modals/editor/macro-wiki-include-page-modal/wiki-include-page-macro.modal';
-import { CodeBlockMacroModalComponent } from 'core-app/shared/components/modals/editor/macro-code-block-modal/code-block-macro.modal';
-import { ChildPagesMacroModalComponent } from 'core-app/shared/components/modals/editor/macro-child-pages-modal/child-pages-macro.modal';
+import { Injectable, Injector, inject } from '@angular/core';
+import {
+  WpButtonMacroModalComponent,
+} from 'core-app/shared/components/modals/editor/macro-wp-button-modal/wp-button-macro.modal';
+import {
+  WikiIncludePageMacroModalComponent,
+} from 'core-app/shared/components/modals/editor/macro-wiki-include-page-modal/wiki-include-page-macro.modal';
+import {
+  CodeBlockMacroModalComponent,
+} from 'core-app/shared/components/modals/editor/macro-code-block-modal/code-block-macro.modal';
+import {
+  ChildPagesMacroModalComponent,
+} from 'core-app/shared/components/modals/editor/macro-child-pages-modal/child-pages-macro.modal';
+import { PortalOutletTarget } from 'core-app/shared/components/modal/portal-outlet-target.enum';
 
 @Injectable()
 export class EditorMacrosService {
-  constructor(readonly opModalService:OpModalService,
-    readonly injector:Injector) {
-  }
+  readonly opModalService = inject(OpModalService);
+  readonly injector = inject(Injector);
+
 
   /**
    * Show a modal to edit the work package button macro settings.
    * Used from within ckeditor-augmented-textarea.
    */
   public configureWorkPackageButton(typeName?:string, classes?:string):Promise<{ type:string, classes:string }> {
-    return new Promise<{ type:string, classes:string }>((resolve, reject) => {
-      const modal = this.opModalService.show(WpButtonMacroModalComponent, this.injector, { type: typeName, classes });
-      modal.closingEvent.subscribe((modal:WpButtonMacroModalComponent) => {
+    const target = document.querySelector('opce-custom-modal-overlay') ? PortalOutletTarget.Custom : PortalOutletTarget.Default;
+
+    return new Promise<{ type:string, classes:string }>((resolve, _) => {
+      this.opModalService.show(
+        WpButtonMacroModalComponent,
+        this.injector,
+        { type: typeName, classes },
+        false,
+        false,
+        target,
+      ).subscribe((modal) => modal.closingEvent.subscribe(() => {
         if (modal.changed) {
           resolve({ type: modal.type, classes: modal.classes });
         }
-      });
+      }));
     });
   }
 
@@ -61,12 +77,15 @@ export class EditorMacrosService {
   public configureWikiPageInclude(page:string):Promise<string> {
     return new Promise<string>((resolve, _) => {
       const pageValue = page || '';
-      const modal = this.opModalService.show(WikiIncludePageMacroModalComponent, this.injector, { page: pageValue });
-      modal.closingEvent.subscribe((modal:WikiIncludePageMacroModalComponent) => {
+      this.opModalService.show(
+        WikiIncludePageMacroModalComponent,
+        this.injector,
+        { page: pageValue },
+      ).subscribe((modal) => modal.closingEvent.subscribe(() => {
         if (modal.changed) {
           resolve(modal.page);
         }
-      });
+      }));
     });
   }
 
@@ -76,12 +95,20 @@ export class EditorMacrosService {
    */
   public editCodeBlock(content:string, languageClass:string):Promise<{ content:string, languageClass:string }> {
     return new Promise<{ content:string, languageClass:string }>((resolve, _) => {
-      const modal = this.opModalService.show(CodeBlockMacroModalComponent, this.injector, { content, languageClass });
-      modal.closingEvent.subscribe((modal:CodeBlockMacroModalComponent) => {
+      const target = document.querySelector('opce-custom-modal-overlay') ? PortalOutletTarget.Custom : PortalOutletTarget.Default;
+
+      this.opModalService.show(
+        CodeBlockMacroModalComponent,
+        this.injector,
+        { content, languageClass },
+        false,
+        false,
+        target,
+      ).subscribe((modal) => modal.closingEvent.subscribe(() => {
         if (modal.changed) {
           resolve({ languageClass: modal.languageClass, content: modal.content });
         }
-      });
+      }));
     });
   }
 
@@ -91,15 +118,18 @@ export class EditorMacrosService {
    */
   public configureChildPages(page:string, includeParent:string):Promise<object> {
     return new Promise<object>((resolve, _) => {
-      const modal = this.opModalService.show(ChildPagesMacroModalComponent, this.injector, { page, includeParent });
-      modal.closingEvent.subscribe((modal:ChildPagesMacroModalComponent) => {
+      this.opModalService.show(
+        ChildPagesMacroModalComponent,
+        this.injector,
+        { page, includeParent },
+      ).subscribe((modal) => modal.closingEvent.subscribe(() => {
         if (modal.changed) {
           resolve({
             page: modal.page,
             includeParent: modal.includeParent,
           });
         }
-      });
+      }));
     });
   }
 }

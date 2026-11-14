@@ -1,22 +1,29 @@
-/*-- copyright
- * OpenProject Costs Plugin
- *
- * Copyright (C) 2009 - 2015 the OpenProject Foundation (OPF)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 3.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
- *
- */
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
 
 .costs.costTypes
   .separator
@@ -30,8 +37,38 @@ table.list.members
   margin-bottom: 0
 
 .progress-bar .inner-progress.done
-  background-color: #E1B9B9
+  background-color: var(--display-red-bgColor-muted)
 
-.budget-row-template,
-.subform-row-template
+.budget-row-template
   display: none
+
+// Column widths come from the colgroup, so that editing a row (typing, loading
+// options, selecting a long value) cannot reflow the table.
+#labor_budget_items,
+#material_budget_items
+  table-layout: fixed
+
+  .form--text-field,
+  .form--select
+    width: 100%
+
+  opce-user-autocompleter
+    display: block
+    width: 100%
+
+    .inline-label
+      width: 100%
+
+    ng-select
+      min-width: 0
+
+  td.units .form--field-container
+    align-items: center
+    gap: 0.5rem
+    flex-wrap: nowrap
+
+  .budget-item--unit-name
+    color: var(--fgColor-muted)
+    white-space: nowrap
+    overflow: hidden
+    text-overflow: ellipsis

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/work_packages/schema/typed_work_package_schema'
-require 'api/v3/work_packages/schema/work_package_sums_schema'
-require 'api/v3/work_packages/schema/work_package_schema_representer'
-require 'api/v3/work_packages/schema/work_package_sums_schema_representer'
+require "api/v3/work_packages/schema/typed_work_package_schema"
+require "api/v3/work_packages/schema/work_package_sums_schema"
+require "api/v3/work_packages/schema/work_package_schema_representer"
+require "api/v3/work_packages/schema/work_package_sums_schema_representer"
 
 module API
   module V3
@@ -43,8 +42,8 @@ module API
               end
 
               def raise_invalid_query
-                message = I18n.t('api_v3.errors.missing_or_malformed_parameter',
-                                 parameter: 'filters')
+                message = I18n.t("api_v3.errors.missing_or_malformed_parameter",
+                                 parameter: "filters")
 
                 raise ::API::Errors::InvalidQuery.new(message)
               end
@@ -52,7 +51,7 @@ module API
               def parse_filter_for_project_type_pairs
                 begin
                   filter = JSON::parse(params[:filters])
-                rescue TypeError, JSON::ParseError
+                rescue TypeError, JSON::ParserError
                   raise_invalid_query
                 end
 
@@ -73,17 +72,17 @@ module API
             end
 
             get do
-              authorize(:view_work_packages, global: true)
+              authorize_in_any_work_package(:view_work_packages)
 
               project_type_pairs = parse_filter_for_project_type_pairs
 
               schemas = project_type_pairs.map do |project, type|
-                TypedWorkPackageSchema.new(project: project, type: type)
+                TypedWorkPackageSchema.new(project:, type:)
               end
 
               WorkPackageSchemaCollectionRepresenter.new(schemas,
                                                          self_link: schemas_path_with_filters_params,
-                                                         current_user: current_user)
+                                                         current_user:)
             end
 
             # The schema identifier is an artificial identifier that is composed of a work package's
@@ -92,10 +91,10 @@ module API
             # but with better caching capabilities than simply using the work package id as
             # identifier for the schema.
             params do
-              requires :project, desc: 'Work package schema id'
-              requires :type, desc: 'Work package schema id'
+              requires :project, desc: "Work package schema id"
+              requires :type, desc: "Work package schema id"
             end
-            namespace ':project-:type' do
+            namespace ":project-:type" do
               after_validation do
                 begin
                   @project = Project.find(params[:project])
@@ -104,7 +103,7 @@ module API
                   raise404
                 end
 
-                authorize(:view_work_packages, context: @project) do
+                authorize_in_any_work_package(:view_work_packages, in_project: @project) do
                   raise404
                 end
               end
@@ -113,8 +112,8 @@ module API
                 schema = TypedWorkPackageSchema.new(project: @project, type: @type)
                 self_link = api_v3_paths.work_package_schema(@project.id, @type.id)
                 represented_schema = WorkPackageSchemaRepresenter.create(schema,
-                                                                         self_link: self_link,
-                                                                         current_user: current_user)
+                                                                         self_link:,
+                                                                         current_user:)
 
                 with_etag! represented_schema.json_cache_key
 
@@ -122,22 +121,22 @@ module API
               end
             end
 
-            namespace 'sums' do
+            namespace "sums" do
               get do
-                authorize(:view_work_packages, global: true) do
+                authorize_in_any_work_package(:view_work_packages) do
                   raise404
                 end
 
                 schema = WorkPackageSumsSchema.new
                 @representer = WorkPackageSumsSchemaRepresenter.create(schema,
-                                                                       current_user: current_user)
+                                                                       current_user:)
               end
             end
 
             # Because the namespace declaration above does not match for shorter IDs we need
             # to catch those cases (e.g. '12' instead of '12-13') here and manually return 404
             # Otherwise we get a no route error
-            namespace ':id' do
+            namespace ":id" do
               get do
                 raise404
               end

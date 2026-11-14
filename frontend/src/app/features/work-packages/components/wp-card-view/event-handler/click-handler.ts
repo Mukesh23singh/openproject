@@ -1,92 +1,101 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { CardEventHandler } from 'core-app/features/work-packages/components/wp-card-view/event-handler/card-view-handler-registry';
 import { WorkPackageCardViewComponent } from 'core-app/features/work-packages/components/wp-card-view/wp-card-view.component';
-import { WorkPackageViewSelectionService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
+import { WorkPackageViewSelectionGesturesService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection-gestures.service';
 import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
 import { WorkPackageCardViewService } from 'core-app/features/work-packages/components/wp-card-view/services/wp-card-view.service';
-import { StateService } from '@uirouter/core';
 import { DeviceService } from 'core-app/core/browser/device.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { isInsideDisabledControl } from 'core-common/interactive-element-helper';
+import { EventType } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/event-handler-registry';
 
 export class CardClickHandler implements CardEventHandler {
   // Injections
-  @InjectField() deviceService:DeviceService;
+  @LazyInject() deviceService:DeviceService;
 
-  @InjectField() $state:StateService;
+  @LazyInject() selectionGestures:WorkPackageViewSelectionGesturesService;
 
-  @InjectField() wpTableSelection:WorkPackageViewSelectionService;
+  @LazyInject() wpTableFocus:WorkPackageViewFocusService;
 
-  @InjectField() wpTableFocus:WorkPackageViewFocusService;
-
-  @InjectField() wpCardView:WorkPackageCardViewService;
+  @LazyInject() wpCardView:WorkPackageCardViewService;
 
   constructor(public readonly injector:Injector,
-    card:WorkPackageCardViewComponent) {
+    _card:WorkPackageCardViewComponent) {
   }
 
-  public get EVENT() {
-    return 'click.cardView.card';
+  public get EVENT():EventType {
+    return 'click';
   }
 
   public get SELECTOR() {
-    return `[data-qa-selector="op-wp-single-card"]`;
+    return '[data-test-selector="op-wp-single-card"]';
   }
 
   public eventScope(card:WorkPackageCardViewComponent) {
-    return jQuery(card.container.nativeElement);
+    return card.container.nativeElement;
   }
 
-  public handleEvent(card:WorkPackageCardViewComponent, evt:JQuery.TriggeredEvent) {
-    const target = jQuery(evt.target);
+  public handleEvent(card:WorkPackageCardViewComponent, evt:MouseEvent) {
+    const target = evt.target as HTMLElement;
 
     // Ignore links
-    if (target.is('a') || target.parent().is('a')) {
+    if (target instanceof HTMLAnchorElement || target.parentElement instanceof HTMLAnchorElement) {
+      return true;
+    }
+
+    if (isInsideDisabledControl(target)) {
       return true;
     }
 
     // Locate the card from event
-    const element = target.closest('wp-single-card');
-    const wpId = element.data('workPackageId');
+    const element = target.closest<HTMLElement>('wp-single-card')!;
+    const wpId = element.dataset.workPackageId;
 
     if (!wpId) {
       return true;
     }
 
-    this.handleWorkPackage(card, wpId, element, evt);
+    this.handleWorkPackage(card, wpId, evt, element.dataset.classIdentifier);
 
     return false;
   }
 
-  protected handleWorkPackage(card:WorkPackageCardViewComponent, wpId:any, element:JQuery, evt:JQuery.TriggeredEvent) {
-    this.setSelection(card, wpId, element, evt);
+  protected handleWorkPackage(card:WorkPackageCardViewComponent, wpId:string, evt:MouseEvent, classIdentifier?:string) {
+    this.setSelection(wpId, evt, classIdentifier);
 
     card.itemClicked.emit({ workPackageId: wpId, double: false });
   }
 
-  protected setSelection(card:WorkPackageCardViewComponent, wpId:string, element:JQuery, evt:JQuery.TriggeredEvent) {
-    const classIdentifier = element.data('classIdentifier');
-    const index = this.wpCardView.findRenderedCard(classIdentifier);
+  protected setSelection(wpId:string, evt:MouseEvent, classIdentifier?:string) {
+    this.selectionGestures.handleClick(wpId, this.wpCardView.renderedCards, evt, classIdentifier);
 
-    // Update single selection if no modifier present
-    if (!(evt.ctrlKey || evt.metaKey || evt.shiftKey)) {
-      this.wpTableSelection.setSelection(wpId, index);
-    }
-
-    // Multiple selection if shift present
-    if (evt.shiftKey) {
-      this.wpTableSelection.setMultiSelectionFrom(this.wpCardView.renderedCards, wpId, index);
-    }
-
-    // Single selection expansion if ctrl / cmd(mac)
-    if (evt.ctrlKey || evt.metaKey) {
-      this.wpTableSelection.toggleRow(wpId);
-    }
-
-    card.selectionChanged.emit(this.wpTableSelection.getSelectedWorkPackageIds());
-
-    // The current card is the last selected work package
-    // not matter what other card are (de-)selected below.
-    // Thus save that card for the details view button.
     this.wpTableFocus.updateFocus(wpId);
   }
 }

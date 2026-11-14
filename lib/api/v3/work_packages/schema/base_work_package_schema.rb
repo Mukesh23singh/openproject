@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -41,6 +38,20 @@ module API
             nil
           end
 
+          # The type to read configuration from: #type is the family's root, while the project
+          # may resolve the family to a variant configured differently.
+          def type_variant
+            project&.type_variant(type)
+          end
+
+          def form_configuration
+            type_variant&.form_configuration
+          end
+
+          def custom_field_required?(custom_field_id)
+            type_variant&.required_custom_field_ids&.include?(custom_field_id) || false
+          end
+
           def assignable_values(_property, _current_user)
             nil
           end
@@ -53,19 +64,17 @@ module API
             []
           end
 
+          delegate :assignable_project_phases,
+                   to: :contract
+
           def writable?(property)
-            property = property.to_sym
+            property = property.to_s
 
             # Special case for milestones + date property
-            property = :start_date if property == :date && milestone?
+            property = "start_date" if property == "date" && milestone?
 
-            @writable_attributes ||= begin
-              contract.writable_attributes
-            end
-
-            property_name = ::API::Utilities::PropertyNameConverter.to_ar_name(property, context: work_package)
-
-            @writable_attributes.include?(property_name)
+            @writable_attributes ||= contract.writable_attributes
+            @writable_attributes.include?(property)
           end
 
           def milestone?
@@ -76,10 +85,15 @@ module API
             work_package.readonly_status?
           end
 
+          # Alias method will not work since work_package is only defined in subclasses.
+          def model
+            work_package
+          end
+
           private
 
           def contract
-            raise NotImplementedError
+            raise SubclassResponsibilityError
           end
         end
       end

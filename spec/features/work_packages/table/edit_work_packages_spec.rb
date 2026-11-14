@@ -1,87 +1,112 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Inline editing work packages', js: true do
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Inline editing work packages", :js do
+  let(:manager_permissions) { %i[view_work_packages edit_work_packages] }
   let(:manager_role) do
-    FactoryBot.create :role,
-                      permissions: %i[view_work_packages
-                                      edit_work_packages]
+    create(:project_role, permissions: manager_permissions)
   end
+  let(:manager_projects) { { project => manager_role } }
   let(:manager) do
-    FactoryBot.create :user,
-                      firstname: 'Manager',
-                      lastname: 'Guy',
-                      member_in_project: project,
-                      member_through_role: manager_role
+    create(:user,
+           firstname: "Manager",
+           lastname: "Guy",
+           member_with_roles: manager_projects)
   end
-  let(:type) { FactoryBot.create :type }
-  let(:status1) { FactoryBot.create :status }
-  let(:status2) { FactoryBot.create :status }
+  let(:type) { create(:type) }
+  let(:status1) { create(:status) }
+  let(:status2) { create(:status) }
 
-  let(:project) { FactoryBot.create(:project, types: [type]) }
-  let(:work_package) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      type: type,
-                      status: status1,
-                      subject: 'Foobar')
+  let(:project) { create(:project, name: "Test Project", types: [type]) }
+  let!(:work_package) do
+    create(:work_package,
+           project:,
+           type:,
+           status: status1,
+           subject: "Foobar")
   end
 
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
 
   let(:workflow) do
-    FactoryBot.create :workflow,
-                      type_id: type.id,
-                      old_status: status1,
-                      new_status: status2,
-                      role: manager_role
+    create(:workflow,
+           type_id: type.id,
+           old_status: status1,
+           new_status: status2,
+           role: manager_role)
   end
-  let(:version) { FactoryBot.create :version, project: project }
-  let(:category) { FactoryBot.create :category, project: project }
+  let(:version) { create(:version, project:) }
+  let(:category) { create(:category, project:) }
 
   before do
     login_as(manager)
   end
 
-  context 'simple work package' do
+  context "simple work package" do
     before do
-      work_package
       workflow
 
       wp_table.visit!
       wp_table.expect_work_package_listed(work_package)
     end
 
-    it 'allows updating and seeing the results' do
+    it "allows updating and seeing the results" do
       subject_field = wp_table.edit_field(work_package, :subject)
-      subject_field.expect_text('Foobar')
+      subject_field.expect_text("Foobar")
 
       subject_field.activate!
 
-      subject_field.set_value('New subject!')
+      subject_field.set_value("New subject!")
 
       expect(WorkPackages::UpdateService).to receive(:new).and_call_original
       subject_field.save!
-      subject_field.expect_text('New subject!')
+      subject_field.expect_text("New subject!")
 
       wp_table.expect_toast(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
+        message: "Successful update."
       )
 
       work_package.reload
-      expect(work_package.subject).to eq('New subject!')
+      expect(work_package.subject).to eq("New subject!")
     end
 
-    it 'allows to subsequently edit multiple fields' do
+    it "allows to subsequently edit multiple fields" do
       subject_field = wp_table.edit_field(work_package, :subject)
       status_field  = wp_table.edit_field(work_package, :status)
 
       subject_field.activate!
-      subject_field.set_value('Other subject!')
+      subject_field.set_value("Other subject!")
       subject_field.save!
 
-      wp_table.expect_toast(message: 'Successful update')
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(message: 'Successful update')
+      wp_table.expect_and_dismiss_toaster(message: "Successful update")
 
       status_field.activate!
       status_field.set_value(status2.name)
@@ -89,80 +114,101 @@ describe 'Inline editing work packages', js: true do
       subject_field.expect_inactive!
       status_field.expect_inactive!
 
-      subject_field.expect_text('Other subject!')
+      subject_field.expect_text("Other subject!")
       status_field.expect_text(status2.name)
 
-      wp_table.expect_toast(message: 'Successful update')
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(message: 'Successful update')
+      wp_table.expect_and_dismiss_toaster(message: "Successful update")
 
       work_package.reload
-      expect(work_package.subject).to eq('Other subject!')
+      expect(work_package.subject).to eq("Other subject!")
       expect(work_package.status.id).to eq(status2.id)
     end
 
-    it 'provides error handling' do
+    it "closes the status popup before cancelling its editor" do
+      wp_table.focus_cell_by_keyboard(work_package, :status)
+      wp_table.press_keys(:enter)
+      status_field = wp_table.edit_field(work_package, :status)
+      status_field.expect_active!
+      status_field.openSelectField
+      expect(page).to have_css(".ng-dropdown-panel")
+
+      wp_table.press_keys(:escape)
+      expect(page).to have_no_css(".ng-dropdown-panel")
+      status_field.expect_active!
+
+      wp_table.press_keys(:escape)
+      status_field.expect_inactive!
+      wp_table.expect_focus_on_cell(work_package, :status)
+    end
+
+    it "provides error handling" do
       subject_field = wp_table.edit_field(work_package, :subject)
-      subject_field.expect_text('Foobar')
+      subject_field.expect_text("Foobar")
 
       subject_field.activate!
 
-      subject_field.set_value('')
+      subject_field.set_value("")
       subject_field.expect_invalid
 
       subject_field.save!
-      expect(work_package.reload.subject).to eq 'Foobar'
+
+      wp_table.expect_toast(type: :error, message: "Subject can't be blank.")
+      expect(subject_field.input_element).to match_selector('[aria-invalid="true"]', focused: true)
+      subject_field.expect_invalid
+
+      expect(work_package.reload.subject).to eq "Foobar"
     end
   end
 
-  context 'custom field' do
-    let(:custom_fields) do
+  context "custom field" do
+    let!(:custom_fields) do
       fields = [
-        FactoryBot.create(
+        create(
           :work_package_custom_field,
-          field_format: 'list',
+          field_format: "list",
           possible_values: %w(foo bar xyz),
-          is_required: true,
-          is_for_all: false
+          is_required: false,
+          is_for_all: false,
+          types: [type]
         ),
-        FactoryBot.create(
+        create(
           :work_package_custom_field,
-          field_format: 'string',
-          is_required: true,
-          is_for_all: false
+          field_format: "string",
+          is_required: false,
+          is_for_all: false,
+          types: [type]
         )
       ]
 
       fields
     end
-    let(:type) { FactoryBot.create(:type_task, custom_fields: custom_fields) }
-    let(:project) { FactoryBot.create(:project, types: [type]) }
-    let(:work_package) do
-      FactoryBot.create(:work_package,
-                        subject: 'Foobar',
-                        status: status1,
-                        type: type,
-                        project: project)
+    let(:type) { create(:type_task) }
+    let(:project) { create(:project, types: [type]) }
+    let!(:work_package) do
+      create(:work_package,
+             subject: "Foobar",
+             status: status1,
+             type:,
+             project:)
     end
 
     before do
-      work_package
       workflow
 
-      # Require custom fields for this project
-      project.work_package_custom_fields = custom_fields
-      project.save!
+      custom_fields.each do |custom_field|
+        custom_field.update_attribute(:is_required, true)
+      end
 
       wp_table.visit!
       wp_table.expect_work_package_listed(work_package)
     end
 
-    it 'opens required custom fields when not set' do
+    it "opens required custom fields when not set" do
       subject_field = wp_table.edit_field(work_package, :subject)
-      subject_field.expect_text('Foobar')
+      subject_field.expect_text("Foobar")
 
       subject_field.activate!
-      subject_field.set_value('New subject!')
+      subject_field.set_value("New subject!")
       subject_field.save!
 
       # Should raise two errors
@@ -173,32 +219,92 @@ describe 'Inline editing work packages', js: true do
         message: "#{cf_list_name} can't be blank.\n#{cf_text_name} can't be blank."
       )
 
-      expect(page).to have_selector('th a', text: cf_list_name.upcase)
-      expect(page).to have_selector('th a', text: cf_text_name.upcase)
-      expect(wp_table.row(work_package)).to have_selector('.wp-table--cell-container.-error', count: 2)
+      expect(page).to have_columnheader(cf_list_name)
+      expect(page).to have_columnheader(cf_text_name)
+      expect(wp_table.row(work_package)).to have_css(".wp-table--cell-container.-error", count: 2)
 
-      cf_text = wp_table.edit_field(work_package, "customField#{custom_fields.last.id}")
-      cf_text.update('my custom text', expect_failure: true)
+      cf_text = wp_table.edit_field(work_package, custom_fields.last.attribute_name(:camel_case))
+      cf_text.update("my custom text", expect_failure: true)
 
-      cf_list = wp_table.edit_field(work_package, "customField#{custom_fields.first.id}")
-      cf_list.field_type = 'create-autocompleter'
+      cf_list = wp_table.edit_field(work_package, custom_fields.first.attribute_name(:camel_case))
+      cf_list.field_type = "create-autocompleter"
       cf_list.openSelectField
-      cf_list.set_value('bar')
+      cf_list.set_value("bar")
 
       cf_text.expect_inactive!
       cf_list.expect_inactive!
 
       wp_table.expect_toast(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
+        message: "Successful update."
       )
 
       work_package.reload
-      expect(work_package.send(custom_fields.first.accessor_name)).to eq('bar')
-      expect(work_package.send(custom_fields.last.accessor_name)).to eq('my custom text')
+      expect(work_package.send(custom_fields.first.attribute_getter)).to eq("bar")
+      expect(work_package.send(custom_fields.last.attribute_getter)).to eq("my custom text")
 
-      # Saveguard to let the background update complete
+      # Safeguard to let the background update complete
       wp_table.visit!
       wp_table.expect_work_package_listed(work_package)
+    end
+  end
+
+  context "when editing the project field with workspace types" do
+    let!(:portfolio) { create(:portfolio, name: "Test Portfolio") }
+    let!(:program) { create(:program, name: "Test Program") }
+    let(:manager_permissions) { %i[view_work_packages edit_work_packages move_work_packages] }
+    let(:manager_projects) do
+      {
+        project => manager_role,
+        portfolio => manager_role,
+        program => manager_role
+      }
+    end
+    let(:query) do
+      create(:public_query,
+             user: manager,
+             project: work_package.project,
+             column_names: %w[subject project])
+    end
+
+    before do
+      wp_table.visit_query query
+      wp_table.expect_work_package_listed(work_package)
+    end
+
+    it "displays workspace type badges for portfolios and programs in the project column" do
+      project_field = wp_table.edit_field(work_package, :project)
+      project_field.activate!
+
+      # Search for portfolio and verify badge
+      project_field.search_for("Test Portfolio")
+      project_field.expect_option(
+        "Test Portfolio",
+        workspace_badge: "Portfolio"
+      )
+
+      # Search for program and verify badge
+      project_field.clear_search
+      project_field.search_for("Test Program")
+      project_field.expect_option(
+        "Test Program",
+        workspace_badge: "Program"
+      )
+
+      # Search for regular project and verify there is no badge
+      project_field.clear_search
+      project_field.search_for("Project")
+      project_field.expect_option("Test Project", workspace_badge: false)
+    end
+
+    it "finds a workspace by its identifier, which is never displayed itself" do
+      project_field = wp_table.edit_field(work_package, :project)
+      project_field.activate!
+
+      project_field.search_for(portfolio.identifier)
+
+      expect(project_field.dropdown).to have_no_text("Test Program")
+      expect(project_field.dropdown).to have_no_text("Test Project")
+      project_field.expect_option("Test Portfolio", workspace_badge: "Portfolio")
     end
   end
 end

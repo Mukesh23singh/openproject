@@ -1,0 +1,104 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Backlogs
+  module CommonHelper
+    include PermittedParamsHelper
+
+    def user_allowed?(permission, project: nil)
+      current_user.allowed_in_project?(permission, project || self.project)
+    end
+
+    def backlog_bucket_creation_allowed?
+      user_allowed?(:create_sprints)
+    end
+
+    def sprint_creation_allowed?
+      user_allowed?(:create_sprints) &&
+        !project.receive_shared_sprints?
+    end
+
+    def sprint_management_allowed?
+      user_allowed?(:share_sprint)
+    end
+
+    # Batch selection is the same capability as ordering: without the right to
+    # reorder, enabling it would only cost the viewer their Space, arrow,
+    # Home/End and Ctrl/Cmd+A keys.
+    #
+    # Takes the project because the backlog view, unlike the components the
+    # predicates above serve, exposes no `project` method.
+    def batch_selection_allowed?(project)
+      user_allowed?(:manage_sprint_items, project:)
+    end
+
+    def backlog_filters
+      RequestStore.fetch(:backlog_filters) do
+        Backlogs::BacklogFilters.from_params(permitted_params.backlog_filters)
+      end
+    end
+
+    def backlog_filter_params
+      backlog_filters.to_h
+    end
+
+    # A morph refresh only reloads the container frame in place when its src is unchanged, character
+    # for character. The filters form sets it client-side, and re-encoding the params here would
+    # differ (e.g. `~` vs `%7E`), so keep the query exactly as the browser sent it. This will make
+    # Turbo to reload the frame in place instead of replacing the whole frame, losing scroll position.
+    def backlogs_container_src(project)
+      [project_backlogs_backlog_path(project), request.query_string.presence].compact.join("?")
+    end
+
+    def all_sprints_for(project)
+      Sprint.assignable(project:).order_by_date
+    end
+
+    def filtered_sprints_for(project)
+      relation = all_sprints_for(project).includes(:project, :task_boards, :goals)
+      backlog_filters.sprint_ids.present? ? relation.where(id: backlog_filters.sprint_ids) : relation
+    end
+
+    def all_buckets_for(project)
+      BacklogBucket.for_project(project)
+    end
+
+    def filtered_buckets_for(project)
+      relation = all_buckets_for(project)
+      backlog_filters.bucket_ids.present? ? relation.where(id: backlog_filters.bucket_ids_without_inbox) : relation
+    end
+
+    def backlogs_move_url_template(project)
+      id_placeholder = "__work_package_id__"
+
+      move_project_backlogs_work_package_path(project, id_placeholder)
+        .sub(id_placeholder, "{id}")
+    end
+  end
+end

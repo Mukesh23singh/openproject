@@ -1,126 +1,323 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { escapeRegExp } from 'lodash-es';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   ICKEditorContext,
+  ICKEditorInstance,
   ICKEditorStatic,
-  ICKEditorWatchdog,
+  OpenProjectEditorConfig,
 } from 'core-app/shared/components/editor/components/ckeditor/ckeditor.types';
-import { Constructor } from '@angular/cdk/schematics';
+import type { ToolbarConfigItem } from '@ckeditor/ckeditor5-core';
+import { ConfigurationService } from 'core-app/core/config/configuration.service';
 
 export type ICKEditorType = 'full'|'constrained';
-export type ICKEditorMacroType = 'none'|'resource'|'full'|boolean|string[];
+
+// What editor authors pass; resolveMacros() turns it into an ICKEditorResolvedMacros value.
+// The wiki-link macros are appended to any array result when a wiki provider is available.
+//   'none' / false → no macros (dropdown hidden)
+//   'resource'     → ToC, embedded table, WP button/quickinfo (+ wiki links when available)
+//   'wiki'         → only the wiki links, and only when a provider is available (else none)
+//   true           → keep every macro the build ships, regardless of wiki availability
+//   string[]       → exactly these macro plugin names (+ wiki links when available)
+export type ICKEditorMacroType = 'none'|'resource'|'wiki'|boolean|string[];
+
+// What the CKEditor build consumes: false = none, true = all, array = exactly these.
+export type ICKEditorResolvedMacros = boolean|string[];
+
+// Wiki-page-link macros, added to any editor when a wiki provider is configured (see resolveMacros).
+const wikiLinkMacros = ['OpMacroWikiPageLinkAddExisting', 'OpMacroWikiPageLinkCreateNew'];
 
 declare global {
   interface Window {
     OPConstrainedEditor:ICKEditorStatic;
     OPClassicEditor:ICKEditorStatic;
-    OPEditorWatchdog:Constructor<ICKEditorWatchdog>;
   }
 }
 
 @Injectable()
 export class CKEditorSetupService {
-  constructor(private PathHelper:PathHelperService) {
+  readonly PathHelper = inject(PathHelperService);
+  readonly configurationService = inject(ConfigurationService);
+
+  /** The language CKEditor was able to load, falls back to 'en' */
+  private loadedLocale = 'en';
+
+  /** Prefetch ckeditor when browser is idle */
+  private prefetch:Promise<unknown>;
+
+  public initialize() {
+    this.prefetch = this.load();
+    this.watchTopLayer();
   }
 
   /**
    * Create a CKEditor instance of the given type on the wrapper element.
    * Pass a ICKEditorContext object that will be used to decide active plugins.
    *
-   * Returns a Watchdog instance that has access to the editor and monitors its state.
-   *
    * @param {HTMLElement} wrapper
    * @param {ICKEditorContext} context
-   * @param {string|null} initialData
-   * @returns {Promise<ICKEditorWatchdog>}
+   * @param {string} initialData
+   * @returns {Promise<ICKEditorInstance>}
    */
   public async create(
-    wrapper:HTMLElement, context:ICKEditorContext,
-    initialData:string|null = null,
-  ):Promise<ICKEditorWatchdog> {
-    // Load the bundle
-    await CKEditorSetupService.load();
+    wrapper:HTMLElement,
+    context:ICKEditorContext,
+    initialData = '',
+  ):Promise<ICKEditorInstance> {
+    // Load the bundle and the matching locale, if found.
+    await this.prefetch;
 
     const { type } = context;
     const editorClass = type === 'constrained' ? window.OPConstrainedEditor : window.OPClassicEditor;
     wrapper.classList.add(`ckeditor-type-${type}`);
 
-    const toolbarWrapper = wrapper.querySelector('.document-editor__toolbar') as HTMLElement;
-    const contentWrapper = wrapper.querySelector('.document-editor__editable') as HTMLElement;
-    const contentLanguage = context.options && context.options.rtl ? 'ar' : 'en';
+    const toolbarWrapper = wrapper.querySelector<HTMLElement>('.document-editor__toolbar');
+    const contentWrapper = wrapper.querySelector<HTMLElement>('.document-editor__editable');
+    if (!toolbarWrapper || !contentWrapper) {
+      throw new Error('Missing CKEditor wrapper elements.');
+    }
+    const config = this.createConfig(context, initialData);
 
-    const config = {
-      openProject: this.createConfig(context),
-      initialData,
-      language: {
-        content: contentLanguage,
-      },
-    };
+    return editorClass
+      .createCustomized(contentWrapper, config)
+      .then((editor:ICKEditorInstance) => {
+        const toolbar = editor.ui.view.toolbar.element;
+        if (!toolbar) {
+          throw new Error('CKEditor toolbar has not been rendered.');
+        }
+        const updateLastUpdated = () => {
+          const editable = wrapper.querySelector<HTMLElement>('.ck-editor__editable_inline');
+          if (!editable) {
+            return;
+          }
 
-    return this
-      .createWatchdog(editorClass, contentWrapper, config)
-      .then((watchdog:ICKEditorWatchdog) => {
-        const { editor } = watchdog;
-        toolbarWrapper.appendChild(editor.ui.view.toolbar.element);
+          editable.dataset.lastUpdated = String(new Date().getTime());
+        };
+        toolbarWrapper.appendChild(toolbar);
 
         // Allow custom events on wrapper to set/get data for debugging
-        jQuery(wrapper)
-          .on('op:ckeditor:setData', (event:unknown, data:string) => editor.setData(data))
-          .on('op:ckeditor:clear', () => editor.setData(' '))
-          .on('op:ckeditor:getData', (event:unknown, cb:(data:string) => void) => cb(editor.getData({ trim: false })));
+        wrapper.addEventListener('op:ckeditor:autosave', () => {
+          void editor.config.get('autosave')?.save?.(editor);
+        });
+        wrapper.addEventListener('op:ckeditor:setData', (event:CustomEvent<string>) => {
+          editor.setData(event.detail);
+          updateLastUpdated();
+        });
+        wrapper.addEventListener('op:ckeditor:clear', () => {
+          editor.setData(' ');
+          updateLastUpdated();
+        });
+        wrapper.addEventListener('op:ckeditor:getData', (event:CustomEvent<(data:string) => void>) => {
+          event.detail(editor.getData({ trim: 'none' }));
+        });
 
-        return watchdog;
+        return editor;
       });
   }
 
   /**
-   * Build the given editor class with a watchdog around it, returning the watchdog.
+   * Call the callback for each unhandled error of the given editor.
+   * The editor keeps running with its content after such an error.
    *
-   * @param editorClass
-   * @param contentWrapper
-   * @param config
-   * @private
+   * Returns a function that removes the callback.
    */
-  private createWatchdog(
-    editorClass:ICKEditorStatic,
-    contentWrapper:HTMLElement,
-    config:unknown,
-  ):Promise<ICKEditorWatchdog> {
-    const watchdog = new window.OPEditorWatchdog();
+  public onEditorError(editor:ICKEditorInstance, callback:(error:Error) => void):() => void {
+    // The registry is page-wide, so the static method of either editor class covers all editors.
+    return window.OPClassicEditor.onEditorError(({ error, source }) => {
+      if (source === editor) {
+        callback(error);
+      }
+    });
+  }
 
-    watchdog.setCreator(() => editorClass.createCustomized(contentWrapper, config));
-    watchdog.setDestructor((editor) => editor.destroy());
+  private createConfig(context:ICKEditorContext, initialData:string):OpenProjectEditorConfig {
+    const uiLocale = this.loadedLocale;
+    const contentLanguage = context.options?.rtl ? 'ar' : 'en';
+    const macros = this.resolveMacros(context.macros);
+    const resolvedContext:ICKEditorContext = { ...context, macros };
 
-    return watchdog
-      .create(contentWrapper, {})
-      .then(() => watchdog);
+    const config:OpenProjectEditorConfig = {
+      openProject: this.createContext(resolvedContext),
+      removePlugins: context.removePlugins,
+      root: {
+        initialData,
+      },
+      ui: {
+        poweredBy: {
+          side: 'left',
+        },
+      },
+      language: {
+        ui: uiLocale,
+        content: contentLanguage,
+      },
+      link: {},
+      storageKey: context.storageKey,
+      ...this.toolbarConfig(context, macros),
+    };
+
+    const allowedLinkProtocols = this.configurationService.allowedLinkProtocols;
+    if (allowedLinkProtocols) {
+      config.link = { allowedProtocols: allowedLinkProtocols.map((el:string) => escapeRegExp(el)) };
+    }
+
+    return config;
   }
 
   /**
    * Load the ckeditor asset
    */
-  private static load():Promise<unknown> {
-    // untyped module cannot be dynamically imported
-    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
-    return import(/* webpackChunkName: "ckeditor" */ 'core-vendor/ckeditor/ckeditor.js');
-  }
+  private async load():Promise<void> {
+    const loadEditorScript = import('core-vendor/ckeditor/ckeditor');
 
-  private createConfig(context:ICKEditorContext):unknown {
-    if (context.macros === 'none') {
-      context.macros = false;
-    } else if (context.macros === 'resource') {
-      context.macros = [
-        'OPMacroToc',
-        'OPMacroEmbeddedTable',
-        'OPMacroWpButton',
-      ];
+    const promises:Promise<unknown>[] = [loadEditorScript];
+
+    if (I18n.locale !== 'en') {
+      promises.push(this.loadLocale());
     }
 
+    await Promise.all(promises);
+  }
+
+  private async loadLocale():Promise<void> {
+    try {
+      await import(`../../../../../../vendor/ckeditor/translations/${I18n.locale}.js`);
+      this.loadedLocale = I18n.locale;
+    } catch (e:unknown) {
+      console.warn(`Failed to load translation for CKEditor: ${e as string}`);
+    }
+  }
+
+  private createContext(context:ICKEditorContext):OpenProjectEditorConfig['openProject'] {
     return {
       context,
       helpURL: this.PathHelper.textFormattingHelp(),
       pluginContext: window.OpenProject.pluginContext.value,
     };
+  }
+
+  private toolbarConfig(context:ICKEditorContext, macros:ICKEditorResolvedMacros):Pick<OpenProjectEditorConfig, 'toolbar'> {
+    const additionalItems = context.additionalToolbarItems ?? [];
+    // Constrained editors have no macro dropdown by default; add one when macros are present.
+    const withMacroList = context.type === 'constrained' && Array.isArray(macros);
+
+    if (!withMacroList && additionalItems.length === 0) {
+      return {};
+    }
+
+    const items = withMacroList ? this.constrainedToolbarWithMacroList() : this.defaultToolbarItems(context.type);
+
+    return { toolbar: { items: this.insertAfterBlockQuote(items, additionalItems) } };
+  }
+
+  private defaultToolbarItems(type:ICKEditorType):ToolbarConfigItem[] {
+    const editorClass = type === 'constrained' ? window.OPConstrainedEditor : window.OPClassicEditor;
+    const toolbar = editorClass.defaultConfig?.toolbar;
+
+    return [...(Array.isArray(toolbar) ? toolbar : toolbar?.items ?? [])];
+  }
+
+  // Splice `macroList` into the constrained editor's own toolbar (which omits it by default).
+  private constrainedToolbarWithMacroList():ToolbarConfigItem[] {
+    const items = this.defaultToolbarItems('constrained');
+
+    return items.includes('macroList') ? items : this.insertAfterBlockQuote(items, ['|', 'macroList']);
+  }
+
+  private insertAfterBlockQuote(items:ToolbarConfigItem[], newItems:ToolbarConfigItem[]):ToolbarConfigItem[] {
+    const anchor = items.indexOf('blockQuote');
+    const insertAt = anchor === -1 ? items.length : anchor + 1;
+
+    return [...items.slice(0, insertAt), ...newItems, ...items.slice(insertAt)];
+  }
+
+  // Expand macro tokens and add/withhold the wiki macros based on `wikisAvailable`.
+  // `false`/`'none'` stay macro-free, keeping custom fields and read-only editors untouched.
+  private resolveMacros(macros:ICKEditorMacroType|undefined):ICKEditorResolvedMacros {
+    let resolved = macros;
+
+    if (!resolved || resolved === 'none') {
+      return false;
+    }
+    if (resolved === true) {
+      return true;
+    }
+    if (resolved === 'resource') {
+      resolved = [
+        'OPMacroToc',
+        'OPMacroEmbeddedTable',
+        'OPMacroWpButton',
+        'OPMacroWpQuickinfo',
+      ];
+    } else if (resolved === 'wiki') {
+      resolved = [];
+    }
+
+    if (Array.isArray(resolved)) {
+      resolved = this.configurationService.wikisAvailable
+        ? [...new Set([...resolved, ...wikiLinkMacros])]
+        : resolved.filter((name) => !wikiLinkMacros.includes(name));
+
+      // Empty set ⇒ false, so no (empty) dropdown is shown.
+      if (resolved.length === 0) {
+        return false;
+      }
+    }
+
+    return resolved;
+  }
+
+  private watchTopLayer() {
+    const targetClassNames = ['ck-body-wrapper', 'ck-inspector-'];
+
+    const observer = new MutationObserver((mutations) => {
+      const dialog = document.querySelector('dialog[open]');
+      if (!dialog) {
+        return;
+      }
+
+      mutations.forEach((mutation) => {
+        mutation.addedNodes.forEach((node) => {
+          if (!(node instanceof HTMLElement)) {
+            return;
+          }
+
+          if (targetClassNames.some((className) => node.classList.contains(className))) {
+            dialog.append(node);
+          }
+        });
+      });
+    });
+
+    observer.observe(document.body, {
+      childList: true,
+    });
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe API::V3::Backups::BackupsAPI, type: :request, with_config: { backup_enabled: true } do
+RSpec.describe API::V3::Backups::BackupsAPI, with_config: { backup_enabled: true } do
   include API::V3::Utilities::PathHelper
 
-  let(:user) { FactoryBot.create :user, global_permissions: [:create_backup] }
+  let(:user) { create(:user, global_permissions: [:create_backup]) }
   let(:params) { { backupToken: backup_token.plain_value } }
 
-  let(:backup_token) { FactoryBot.create :backup_token, user: user }
+  let(:backup_token) { create(:backup_token, user:) }
 
   before do
     login_as user
@@ -59,7 +60,7 @@ describe API::V3::Backups::BackupsAPI, type: :request, with_config: { backup_ena
         include_context "request"
 
         it "results in a bad request error" do
-          expect(last_response.status).to eq 400
+          expect(last_response).to have_http_status :bad_request
         end
       end
 
@@ -67,14 +68,14 @@ describe API::V3::Backups::BackupsAPI, type: :request, with_config: { backup_ena
         before do
           expect(Backups::CreateService)
             .to receive(:new)
-            .with(user: user, backup_token: backup_token.plain_value, include_attachments: true)
+            .with(user:, backup_token: backup_token.plain_value, include_attachments: true)
             .and_call_original
 
           create_backup
         end
 
         it "enqueues the backup including attachments" do
-          expect(last_response.status).to eq 202
+          expect(last_response).to have_http_status :accepted
         end
       end
 
@@ -84,47 +85,47 @@ describe API::V3::Backups::BackupsAPI, type: :request, with_config: { backup_ena
         before do
           expect(Backups::CreateService)
             .to receive(:new)
-            .with(user: user, backup_token: backup_token.plain_value, include_attachments: false)
+            .with(user:, backup_token: backup_token.plain_value, include_attachments: false)
             .and_call_original
-          
+
           create_backup
         end
 
         it "enqueues a backup not including attachments" do
-          expect(last_response.status).to eq 202
+          expect(last_response).to have_http_status :accepted
         end
       end
     end
 
     context "with pending backups" do
-      let!(:backup) { FactoryBot.create :backup }
-      let!(:status) { FactoryBot.create :delayed_job_status, user: user, reference: backup }
+      let!(:backup) { create(:backup) }
+      let!(:status) { create(:delayed_job_status, user:, reference: backup) }
 
       include_context "request"
 
       it "results in a conflict" do
-        expect(last_response.status).to eq 409
+        expect(last_response).to have_http_status :conflict
       end
     end
 
     context "with missing permissions" do
-      let(:user) { FactoryBot.create :user }
+      let(:user) { create(:user) }
 
       include_context "request"
 
       it "is forbidden" do
-        expect(last_response.status).to eq 403
+        expect(last_response).to have_http_status :forbidden
       end
     end
 
     context "with another user's token" do
-      let(:other_user) { FactoryBot.create :user }
-      let(:backup_token) { FactoryBot.create :backup_token, user: other_user }
+      let(:other_user) { create(:user) }
+      let(:backup_token) { create(:backup_token, user: other_user) }
 
       include_context "request"
 
       it "is forbidden" do
-        expect(last_response.status).to eq 403
+        expect(last_response).to have_http_status :forbidden
       end
     end
 
@@ -132,17 +133,17 @@ describe API::V3::Backups::BackupsAPI, type: :request, with_config: { backup_ena
       include_context "request"
 
       it "is rate limited" do
-        expect(last_response.status).to eq 429
+        expect(last_response).to have_http_status :too_many_requests
       end
     end
 
     context "with backup token on cooldown", with_config: { backup_initial_waiting_period: 24.hours } do
-      let(:backup_token) { FactoryBot.create :backup_token, :with_waiting_period, user: user, since: 5.hours }
+      let(:backup_token) { create(:backup_token, :with_waiting_period, user:, since: 5.hours) }
 
       include_context "request"
 
       it "is forbidden" do
-        expect(last_response.status).to eq 403
+        expect(last_response).to have_http_status :forbidden
       end
 
       it "shows the remaining hours until the token is valid" do

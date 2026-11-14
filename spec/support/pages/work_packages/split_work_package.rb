@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +22,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/work_packages/abstract_work_package'
-require 'support/pages/work_packages/split_work_package_create'
+require "support/pages/work_packages/abstract_work_package"
+require "support/pages/work_packages/split_work_package_create"
 
 module Pages
   class SplitWorkPackage < Pages::AbstractWorkPackage
     attr_reader :selector
 
     def initialize(work_package, project = nil)
-      super work_package, project
-      @selector = '.work-packages--details'
+      super
+      @selector = ".work-packages--details"
     end
 
     def switch_to_fullscreen
-      find('.work-packages--details-fullscreen-icon').click
+      find(".work-packages--details-fullscreen-icon").click
       FullWorkPackage.new(work_package, project)
     end
 
     def expect_closed
-      expect(page).to have_no_selector(@selector)
+      expect(page).to have_no_selector(@selector, wait: 20)
     end
 
     def expect_open
+      wait_for_reload
       expect(page).to have_selector(@selector)
       expect_subject
     end
 
     def close
-      find('.work-packages--details-close-icon').click
+      find(".work-packages--details-close-icon").click
+    end
+
+    def go_back
+      find(".work-packages-back-button").click
     end
 
     def container
@@ -62,19 +68,17 @@ module Pages
 
     protected
 
-    def path(tab = 'overview')
-      state = "#{work_package.id}/#{tab}"
-
+    def path(tab = "overview")
       if project
-        project_work_packages_path(project, "details/#{state}")
+        details_project_work_packages_path(project, work_package.id, tab)
       else
-        details_work_packages_path(state)
+        details_work_packages_path(work_package.id, tab)
       end
     end
 
     def create_page(args)
-      args.merge!(project: project || work_package.project)
-      SplitWorkPackageCreate.new(args)
+      args[:project] = project || work_package.project
+      SplitWorkPackageCreate.new(**args)
     end
   end
 end

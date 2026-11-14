@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -63,13 +64,13 @@ module Versions
           true
         else
           case s
-          when 'system'
+          when "system"
             # Only admin users can set a systemwide sharing
             user.admin?
-          when 'hierarchy', 'tree'
+          when "hierarchy", "tree"
             # Only users allowed to manage versions of the root project can
             # set sharing to hierarchy or tree
-            model.project.nil? || user.allowed_to?(:manage_versions, model.project.root)
+            model.project.nil? || user.allowed_in_project?(:manage_versions, model.project.root)
           else
             true
           end
@@ -83,7 +84,7 @@ module Versions
       if wiki
         wiki.pages
       else
-        WikiPage.where('1=0')
+        WikiPage.where("1=0")
       end
     end
 
@@ -94,13 +95,13 @@ module Versions
     private
 
     def validate_sharing_included
-      if model.sharing_changed? && !assignable_sharings.include?(model.sharing)
+      if model.sharing_changed? && assignable_sharings.exclude?(model.sharing)
         errors.add :sharing, :inclusion
       end
     end
 
     def user_allowed_to_manage
-      if model.project && !user.allowed_to?(:manage_versions, model.project)
+      if model.project && !user.allowed_in_project?(:manage_versions, model.project)
         errors.add :base, :error_unauthorized
       end
     end

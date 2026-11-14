@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,69 +20,99 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { Observable } from 'rxjs';
-import { APIV3WorkPackagePaths } from 'core-app/core/apiv3/endpoints/work_packages/api-v3-work-package-paths';
+import { ApiV3WorkPackagePaths } from 'core-app/core/apiv3/endpoints/work_packages/api-v3-work-package-paths';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
-import { APIv3WorkPackageForm } from 'core-app/core/apiv3/endpoints/work_packages/apiv3-work-package-form';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { CachableAPIV3Collection } from 'core-app/core/apiv3/cache/cachable-apiv3-collection';
+import { ApiV3WorkPackageForm } from 'core-app/core/apiv3/endpoints/work_packages/apiv3-work-package-form';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Collection } from 'core-app/core/apiv3/cache/cachable-apiv3-collection';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
 import { WorkPackageCache } from 'core-app/core/apiv3/endpoints/work_packages/work-package.cache';
-import { APIv3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { ApiV3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
 import { ApiV3WorkPackageCachedSubresource } from 'core-app/core/apiv3/endpoints/work_packages/api-v3-work-package-cached-subresource';
 import {
   ApiV3FilterBuilder,
   ApiV3FilterValueType,
-  buildApiV3Filter,
+  ApiV3Filter,
 } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
 
-export class APIV3WorkPackagesPaths extends CachableAPIV3Collection<WorkPackageResource, APIV3WorkPackagePaths, WorkPackageCache> {
+export class ApiV3WorkPackagesPaths extends ApiV3Collection<WorkPackageResource, ApiV3WorkPackagePaths, WorkPackageCache> {
   // Base path
   public readonly path:string;
 
-  constructor(readonly apiRoot:APIV3Service,
+  constructor(readonly apiRoot:ApiV3Service,
     protected basePath:string) {
-    super(apiRoot, basePath, 'work_packages', APIV3WorkPackagePaths);
+    super(apiRoot, basePath, 'work_packages', ApiV3WorkPackagePaths);
   }
 
   // Static paths
 
   // /api/v3/(projects/:projectIdentifier)/work_packages/form
-  public readonly form:APIv3WorkPackageForm = this.subResource('form', APIv3WorkPackageForm);
+  public readonly form:ApiV3WorkPackageForm = this.subResource('form', ApiV3WorkPackageForm);
 
   /**
    *
    * Load a collection of work packages and put them all into cache
    *
    * @param ids
+   * @param timestamps Baseline timestamps to load the work packages at, if any
    */
-  public requireAll(ids:string[]):Promise<unknown> {
+  public requireAll(ids:string[], timestamps?:string[]):Promise<unknown> {
+    if (ids.length === 0) {
+      return Promise.resolve();
+    }
+
+    const uniqueIds = Array.from(new Set(ids));
     return new Promise<undefined>((resolve, reject) => {
       this
-        .loadCollectionsFor(_.uniq(ids))
+        .loadCollectionsFor(uniqueIds, timestamps)
         .then((pagedResults:WorkPackageCollectionResource[]) => {
-          _.each(pagedResults, (results) => {
-            if (results.schemas) {
-              _.each(results.schemas.elements, (schema:SchemaResource) => {
-                this.states.schemas.get(schema.href as string).putValue(schema);
-              });
-            }
+          const loadedIds = this.cacheCollection(pagedResults);
 
-            if (results.elements) {
-              this.cache.updateWorkPackageList(results.elements);
-            }
-          });
+          // Load current state of WPs that didn't exist at any timestamp
+          if (timestamps?.length && uniqueIds.length !== loadedIds.size) {
+            const missingIds = uniqueIds.filter(id => !loadedIds.has(String(id)));
 
-          resolve(undefined);
+            if (missingIds.length > 0) {
+              this
+                .loadCollectionsFor(missingIds)
+                .then((fallbackResults:WorkPackageCollectionResource[]) => {
+                  this.cacheCollection(fallbackResults);
+                  resolve(undefined);
+                }, reject);
+            } else {
+              resolve(undefined);
+            }
+          } else {
+            resolve(undefined);
+          }
         }, reject);
     });
+  }
+
+  private cacheCollection(pagedResults:WorkPackageCollectionResource[]):Set<string> {
+    const loadedIds = new Set<string>;
+
+    pagedResults.forEach(results => {
+      if (results.schemas) {
+        results.schemas.elements.forEach((schema:SchemaResource) => {
+          this.states.schemas.get(schema.href!).putValue(schema);
+        });
+      }
+
+      if (results.elements) {
+        this.cache.updateWorkPackageList(results.elements);
+        results.elements.forEach(el => loadedIds.add(String(el.id)));
+      }
+    });
+
+    return loadedIds;
   }
 
   /**
@@ -91,7 +121,7 @@ export class APIV3WorkPackagesPaths extends CachableAPIV3Collection<WorkPackageR
    * @param payload
    * @return {Promise<WorkPackageResource>}
    */
-  public post(payload:Object):Observable<WorkPackageResource> {
+  public post(payload:object):Observable<WorkPackageResource> {
     return this
       .halResourceService
       .post<WorkPackageResource>(this.path, payload)
@@ -100,8 +130,8 @@ export class APIV3WorkPackagesPaths extends CachableAPIV3Collection<WorkPackageR
       );
   }
 
-  filtered<R = APIv3GettableResource<WorkPackageCollectionResource>>(filters:ApiV3FilterBuilder, params:{ [p:string]:string } = {}):R {
-    return super.filtered(filters, params, ApiV3WorkPackageCachedSubresource) as any;
+  filtered<R = ApiV3GettableResource<WorkPackageCollectionResource>>(filters:ApiV3FilterBuilder, params:Record<string, string> = {}):R {
+    return super.filtered(filters, params, ApiV3WorkPackageCachedSubresource) as unknown as R;
   }
 
   /**
@@ -110,7 +140,7 @@ export class APIV3WorkPackagesPaths extends CachableAPIV3Collection<WorkPackageR
    * @param idOnly
    * @param additionalParams Additional set of params to the API
    */
-  public filterByTypeaheadOrId(term:string, idOnly = false, additionalParams:{ [key:string]:string } = {}):ApiV3WorkPackageCachedSubresource {
+  public filterByTypeaheadOrId(term:string, idOnly = false, additionalParams:Record<string, string> = {}):ApiV3WorkPackageCachedSubresource {
     const filters:ApiV3FilterBuilder = new ApiV3FilterBuilder();
 
     if (idOnly) {
@@ -120,7 +150,7 @@ export class APIV3WorkPackagesPaths extends CachableAPIV3Collection<WorkPackageR
     }
 
     const params = {
-      sortBy: '[["updatedAt","desc"]]',
+      sortBy: '[["exactMatch","desc"],["updatedAt","desc"]]',
       offset: '1',
       pageSize: '10',
       ...additionalParams,
@@ -154,16 +184,18 @@ export class APIV3WorkPackagesPaths extends CachableAPIV3Collection<WorkPackageR
    * @param ids
    * @return {WorkPackageCollectionResource[]}
    */
-  protected loadCollectionsFor(ids:string[]):Promise<WorkPackageCollectionResource[]> {
+  protected loadCollectionsFor(ids:string[], timestamps?:string[]):Promise<WorkPackageCollectionResource[]> {
     return this
       .halResourceService
-      .getAllPaginated<WorkPackageCollectionResource>(
-      this.path,
-      ids.length,
-      {
-        filters: buildApiV3Filter('id', '=', ids).toJson(),
-      },
-    );
+      .getAllPaginated(
+        this.path,
+        {
+          filters: ApiV3Filter('id', '=', ids).toJson(),
+          valid_subset: true,
+          ...(timestamps?.length ? { timestamps: timestamps.join(',') } : {}),
+        },
+      )
+      .toPromise() as Promise<WorkPackageCollectionResource[]>;
   }
 
   protected createCache():WorkPackageCache {

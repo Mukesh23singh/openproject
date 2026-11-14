@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,16 +32,26 @@
 # You can still use AR methods to delete records however.
 module Sessions
   class UserSession < ::ApplicationRecord
-    self.table_name = 'sessions'
+    self.table_name = "sessions"
+
+    belongs_to :user
 
     scope :for_user, ->(user) do
       user_id = user.is_a?(User) ? user.id : user.to_i
 
-      where(user_id: user_id)
+      where(user_id:)
     end
 
     scope :non_user, -> do
       where(user_id: nil)
+    end
+
+    scope :autologged, -> do
+      where(id: ::Sessions::AutologinSessionLink.select(:session_id))
+    end
+
+    scope :not_autologged, -> do
+      where.not(id: ::Sessions::AutologinSessionLink.select(:session_id))
     end
 
     ##
@@ -50,6 +59,10 @@ module Sessions
     # modify the database
     def readonly?
       true
+    end
+
+    def current?(session_object)
+      session_object.id.private_id == session_id
     end
 
     def data

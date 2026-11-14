@@ -1,36 +1,65 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Work Package table hierarchy', js: true do
-  let(:user) { FactoryBot.create :admin }
-  let(:project) { FactoryBot.create(:project) }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Work Package table hierarchy", :js do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project) }
 
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
-  let(:hierarchy) { ::Components::WorkPackages::Hierarchies.new }
+  let(:hierarchy) { Components::WorkPackages::Hierarchies.new }
 
   before do
     login_as(user)
   end
 
-  describe 'hierarchies in same project' do
-    let(:category) { FactoryBot.create :category, project: project, name: 'Foo' }
+  describe "hierarchies in same project" do
+    let(:category) { create(:category, project:, name: "Foo") }
 
-    let!(:wp_root) { FactoryBot.create(:work_package, project: project) }
-    let!(:wp_inter) { FactoryBot.create(:work_package, project: project, parent: wp_root) }
-    let!(:wp_leaf) { FactoryBot.create(:work_package, project: project, category: category, parent: wp_inter) }
-    let!(:wp_other) { FactoryBot.create(:work_package, project: project) }
+    let!(:wp_root) { create(:work_package, project:) }
+    let!(:wp_inter) { create(:work_package, project:, parent: wp_root) }
+    let!(:wp_leaf) { create(:work_package, project:, category:, parent: wp_inter) }
+    let!(:wp_other) { create(:work_package, project:) }
 
     let!(:query) do
-      query              = FactoryBot.build(:query, user: user, project: project)
-      query.column_names = ['subject', 'category']
+      query              = build(:query, user:, project:)
+      query.column_names = ["subject", "category"]
       query.filters.clear
-      query.add_filter('category_id', '=', [category.id])
+      query.add_filter("category_id", "=", [category.id])
       query.show_hierarchies = true
 
       query.save!
       query
     end
 
-    it 'shows hierarchy correctly' do
+    it "shows hierarchy correctly" do
       wp_table.visit!
       wp_table.expect_work_package_listed(wp_root, wp_inter, wp_leaf, wp_other)
 
@@ -57,9 +86,9 @@ describe 'Work Package table hierarchy', js: true do
       # Editing is possible while retaining hierarchy
       hierarchy.enable_hierarchy
       subject = wp_table.edit_field wp_inter, :subject
-      subject.update 'New subject'
+      subject.update "New subject"
 
-      wp_table.expect_toast message: 'Successful update.'
+      wp_table.expect_toast message: "Successful update."
       wp_table.dismiss_toaster!
 
       hierarchy.expect_hierarchy_at(wp_root, wp_inter)
@@ -88,12 +117,13 @@ describe 'Work Package table hierarchy', js: true do
     end
   end
 
-  describe 'with a cross project hierarchy' do
-    let(:project2) { FactoryBot.create(:project) }
-    let!(:wp_root) { FactoryBot.create(:work_package, project: project) }
-    let!(:wp_inter) { FactoryBot.create(:work_package, project: project2, parent: wp_root) }
+  describe "with a cross project hierarchy" do
+    let(:project2) { create(:project) }
+    let!(:wp_root) { create(:work_package, project:) }
+    let!(:wp_inter) { create(:work_package, project: project2, parent: wp_root) }
     let(:global_table) { Pages::WorkPackagesTable.new }
-    it 'shows the hierarchy indicator only when the rows are both shown' do
+
+    it "shows the hierarchy indicator only when the rows are both shown" do
       wp_table.visit!
       wp_table.expect_work_package_listed(wp_root)
       wp_table.ensure_work_package_not_listed!(wp_inter)
@@ -107,23 +137,23 @@ describe 'Work Package table hierarchy', js: true do
     end
   end
 
-  describe 'flat table such that the parent appears below the child' do
-    let!(:wp_root) { FactoryBot.create(:work_package, project: project) }
-    let!(:wp_inter) { FactoryBot.create(:work_package, project: project, parent: wp_root) }
-    let!(:wp_leaf) { FactoryBot.create(:work_package, project: project, parent: wp_inter) }
+  describe "flat table such that the parent appears below the child" do
+    let!(:wp_root) { create(:work_package, project:) }
+    let!(:wp_inter) { create(:work_package, project:, parent: wp_root) }
+    let!(:wp_leaf) { create(:work_package, project:, parent: wp_inter) }
 
     let!(:query) do
-      query              = FactoryBot.build(:query, user: user, project: project)
-      query.column_names = ['subject', 'category']
+      query              = build(:query, user:, project:)
+      query.column_names = ["subject", "category"]
       query.filters.clear
       query.show_hierarchies = false
-      query.sort_criteria = [['id', 'asc']]
+      query.sort_criteria = [["id", "asc"]]
 
       query.save!
       query
     end
 
-    it 'removes the parent from the flow in hierarchy mode, moving it above' do
+    it "removes the parent from the flow in hierarchy mode, moving it above" do
       # Hierarchy disabled, expect wp_inter before wp_root
       wp_table.visit_query query
       wp_table.expect_work_package_listed(wp_inter, wp_root, wp_leaf)
@@ -135,7 +165,7 @@ describe 'Work Package table hierarchy', js: true do
       hierarchy.enable_hierarchy
 
       # Should not be marked as additional row (grey)
-      expect(page).to have_no_selector('.wp-table--hierarchy-aditional-row')
+      expect(page).to have_no_css(".wp-table--hierarchy-aditional-row")
 
       hierarchy.expect_hierarchy_at(wp_root, wp_inter)
       hierarchy.expect_leaf_at(wp_leaf)
@@ -153,41 +183,40 @@ describe 'Work Package table hierarchy', js: true do
     end
   end
 
-  describe 'sorting by assignee' do
-    include_context 'work package table helpers'
+  describe "sorting by assignee" do
+    include_context "work package table helpers"
     let(:root_assigned) do
-      FactoryBot.create(:work_package, subject: 'root_assigned', project: project, assigned_to: user)
+      create(:work_package, subject: "root_assigned", project:, assigned_to: user)
     end
     let(:inter_assigned) do
-      FactoryBot.create(:work_package, subject: 'inter_assigned', project: project, assigned_to: user, parent: root_assigned)
+      create(:work_package, subject: "inter_assigned", project:, assigned_to: user, parent: root_assigned)
     end
     let(:inter) do
-      FactoryBot.create(:work_package, subject: 'inter', project: project, parent: root_assigned)
+      create(:work_package, subject: "inter", project:, parent: root_assigned)
     end
     let(:leaf_assigned) do
-      FactoryBot.create(:work_package, subject: 'leaf_assigned', project: project, assigned_to: user, parent: inter)
+      create(:work_package, subject: "leaf_assigned", project:, assigned_to: user, parent: inter)
     end
     let(:leaf) do
-      FactoryBot.create(:work_package, subject: 'leaf', project: project, parent: inter)
+      create(:work_package, subject: "leaf", project:, parent: inter)
     end
     let(:root) do
-      FactoryBot.create(:work_package, subject: 'root', project: project)
+      create(:work_package, subject: "root", project:)
     end
 
     let(:user) do
-      FactoryBot.create :user,
-                        member_in_project: project,
-                        member_through_role: role
+      create(:user,
+             member_with_roles: { project => role })
     end
     let(:permissions) { %i(view_work_packages add_work_packages save_queries) }
-    let(:role) { FactoryBot.create :role, permissions: permissions }
-    let(:sort_by) { ::Components::WorkPackages::SortBy.new }
+    let(:role) { create(:project_role, permissions:) }
+    let(:sort_by) { Components::WorkPackages::SortBy.new }
 
     let!(:query) do
-      query              = FactoryBot.build(:query, user: user, project: project)
-      query.column_names = ['id', 'subject', 'assigned_to']
+      query              = build(:query, user:, project:)
+      query.column_names = ["id", "subject", "assigned_to"]
       query.filters.clear
-      query.sort_criteria = [['assigned_to', 'asc'], ['id', 'asc']]
+      query.sort_criteria = [["assigned_to", "asc"], ["id", "asc"]]
       query.show_hierarchies = false
 
       query.save!
@@ -205,7 +234,7 @@ describe 'Work Package table hierarchy', js: true do
       leaf_assigned
     end
 
-    it 'shows the respective order' do
+    it "shows the respective order" do
       wp_table.visit_query query
       wp_table.expect_work_package_listed(leaf, inter, root)
       wp_table.expect_work_package_listed(leaf_assigned, inter_assigned, root_assigned)
@@ -250,7 +279,7 @@ describe 'Work Package table hierarchy', js: true do
       hierarchy.toggle_row(root_assigned)
 
       # Sort descending
-      sort_by.update_criteria(['Assignee', { descending: true }])
+      sort_by.update_criteria(["Assignee", { descending: true }])
       loading_indicator_saveguard
       wp_table.expect_work_package_listed(root, root_assigned)
 

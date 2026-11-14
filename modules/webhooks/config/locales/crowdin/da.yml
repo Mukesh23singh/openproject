@@ -1,59 +1,80 @@
+---
 da:
   activerecord:
     attributes:
-      webhooks/webhook:
-        url: 'Payload URL'
-        secret: 'Signature secret'
-        events: 'Events'
-        projects: 'Enabled projects'
       webhooks/log:
-        event_name: 'Event name'
-        url: 'Payload URL'
-        response_code: 'Response code'
-        response_body: 'Response'
+        event_name: Hændelsens navn
+        response_body: Svar
+        response_code: Svarkode
+        url: Payload-URL
+      webhooks/webhook:
+        enabled: Aktiveret
+        events: Hændelser
+        projects: Aktiverede projekter
+        secret: Signaturhemmelighed
+        url: Payload-URL
     models:
-      webhooks/outgoing_webhook: "Outgoing webhook"
+      webhooks/log:
+        one: Webhook-log
+        other: Webhook-logge
+      webhooks/webhook:
+        one: Webhook
+        other: Webhooks
+  plugin_openproject_webhooks:
+    description: Leverer et plugin-API til webhooks i OpenProject for bedre integration med tredjeparter.
+    name: OpenProject Webhooks
   webhooks:
-    singular: Webhook
+    outgoing:
+      deliveries:
+        no_results_table: Der er ikke foretaget nogen leveringer for denne webhook de seneste dage.
+        time: Leveringstidspunkt
+        title: Seneste leveringer
+      events:
+        comment: Kommentar
+        created: Oprettet
+        internal_comment: Intern kommentar
+        updated: Opdateret
+      explanation_html: 'Når der sker en hændelse, fx at en arbejdspakke oprettes eller et projekt opdateres, sender OpenProject en POST-forespørgsel til de konfigurerede web-endepunkter. Ofte sendes hændelsen først, når den [konfigurerede sammenlægningsperiode](aggregation_path) er gået.
+
+        '
+      form:
+        apiv3_doc_url: Se API-dokumentationen for at få flere oplysninger
+        description:
+          placeholder: Valgfri beskrivelse af webhooken.
+        enabled:
+          description: 'Når feltet er markeret, udløses webhooken ved de valgte hændelser. Fjern markeringen for at slå webhooken fra.
+
+            '
+        events:
+          title: Aktiverede hændelser
+        introduction: 'Send en POST-forespørgsel til payload-URL''en nedenfor ved enhver hændelse i det projekt, som du abonnerer på. Payloaden svarer til APIv3-repræsentationen af det objekt, der ændres.
+
+          '
+        project_ids:
+          all: Alle projekter
+          description: Vælg, hvilke projekter webhooken skal udføres for.
+          selected: Kun valgte projekter
+          title: Aktiverede projekter
+        secret:
+          description: 'Hvis den er angivet, bruger OpenProject denne hemmelige værdi til at signere webhookens payload.
+
+            '
+        selected_project_ids:
+          title: Valgte projekter
+      label_add_new: Tilføj ny webhook
+      label_edit: Rediger webhook
+      label_x_events:
+        one: "%{count} hændelse"
+        other: "%{count} hændelser"
+        zero: Ingen hændelser
+      no_results_table: Der er endnu ikke defineret nogen webhooks.
+      status:
+        disabled: Webhooken er slået fra
+        disabled_text: Klik på knappen Rediger for at aktivere webhooken.
+        enabled: Webhooken er slået til
+        enabled_text: Webhooken sender payloads for hændelserne nedenfor.
     plural: Webhooks
     resources:
       time_entry:
-        name: "Time entry"
-    outgoing:
-      no_results_table: No webhooks have been defined yet.
-      label_add_new: Add new webhook
-      label_edit: Edit webhook
-      label_event_resources: Event resources
-      events:
-        created: "Oprettet"
-        updated: "Updated"
-      status:
-        enabled: 'Webhook is enabled'
-        disabled: 'Webhook is disabled'
-        enabled_text: 'The webhook will emit payloads for the defined events below.'
-        disabled_text: 'Click the edit button to activate the webhook.'
-      deliveries:
-        no_results_table: No deliveries have been made for this webhook.
-        title: 'Recent deliveries'
-        time: 'Delivery time'
-      form:
-        introduction: >
-          Send a POST request to the payload URL below for any event in the project you're subscribed to. Payload will correspond to the APIv3 representation of the object being modified.
-        apiv3_doc_url: For more information, visit the API documentation
-        description:
-          placeholder: 'Optional description for the webhook.'
-        enabled:
-          description: >
-            When checked, the webhook will trigger on the selected events. Uncheck to disable the webhook.
-        events:
-          title: 'Enabled events'
-        project_ids:
-          title: 'Enabled projects'
-          description: 'Select for which projects this webhook should be executed for.'
-          all: 'All projects'
-          selected: 'Selected projects only'
-        selected_project_ids:
-          title: 'Selected projects'
-        secret:
-          description: >
-            If set, this secret value is used by OpenProject to sign the webhook payload.
+        name: Tidsregistrering
+    singular: Webhook

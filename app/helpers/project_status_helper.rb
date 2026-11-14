@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +22,30 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module ProjectStatusHelper
-  def project_status_css_class(status)
-    code = project_status_ensure_default_code(status)
-    '-' + code.tr('_', '-')
+  NOT_SET = "not_set"
+  private_constant :NOT_SET
+
+  ##
+  # Returns the CSS class (BEM modifier) for the Project Status.
+  #
+  # @param status_code [String | Symbol | nil] Project Status code
+  # @return [String] the CSS class.
+  def project_status_css_class(status_code)
+    "-#{(status_code&.to_s || NOT_SET).dasherize}"
   end
 
-  def project_status_name(status)
-    code = project_status_ensure_default_code(status)
-    project_status_name_for_code(code)
-  end
-
-  def project_status_name_for_code(code)
-    code ||= 'not_set'
-    I18n.t('js.grid.widgets.project_status.' + code)
-  end
-
-  def project_status_ensure_default_code(status)
-    status.try(:code) || 'not_set'
+  ##
+  # Returns the localized Project Status name.
+  #
+  # @param status_code [String | Symbol | nil] Project Status code
+  # @return [String] the localized name.
+  def project_status_name(status_code)
+    I18n.t(status_code || NOT_SET, scope: "js.grid.widgets.project_status")
   end
 end

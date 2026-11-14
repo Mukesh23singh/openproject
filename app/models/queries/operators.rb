@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,47 +22,63 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Operators
-  operators = [
-    Queries::Operators::GreaterOrEqual,
-    Queries::Operators::LessOrEqual,
-    Queries::Operators::Equals,
-    Queries::Operators::NotEquals,
-    Queries::Operators::None,
+  OPERATORS = [
+    Queries::Operators::Ago,
     Queries::Operators::All,
+    Queries::Operators::BetweenDate,
+    Queries::Operators::Blocked,
+    Queries::Operators::Blocks,
+    Queries::Operators::Child,
+    Queries::Operators::Children,
+    Queries::Operators::ClosedWorkPackages,
     Queries::Operators::Contains,
-    Queries::Operators::NotContains,
+    Queries::Operators::DaysAgo,
+    Queries::Operators::Duplicated,
+    Queries::Operators::Duplicates,
+    Queries::Operators::Equals,
+    Queries::Operators::Everywhere,
+    Queries::Operators::Follows,
+    Queries::Operators::GreaterOrEqual,
+    Queries::Operators::GreaterOrEqualDate,
+    Queries::Operators::GreaterThan,
+    Queries::Operators::In,
+    Queries::Operators::Includes,
     Queries::Operators::InLessThan,
     Queries::Operators::InMoreThan,
-    Queries::Operators::In,
-    Queries::Operators::Today,
-    Queries::Operators::ThisWeek,
+    Queries::Operators::InProgressWorkPackages,
+    Queries::Operators::LessOrEqual,
+    Queries::Operators::LessOrEqualDate,
+    Queries::Operators::LessThan,
     Queries::Operators::LessThanAgo,
     Queries::Operators::MoreThanAgo,
-    Queries::Operators::Ago,
+    Queries::Operators::None,
+    Queries::Operators::NotContains,
+    Queries::Operators::NotEquals,
+    Queries::Operators::NotProjectWithSubprojects,
+    Queries::Operators::NotWorkPackageWithDescendants,
     Queries::Operators::OnDate,
-    Queries::Operators::BetweenDate,
-    Queries::Operators::Everywhere,
-    Queries::Operators::Relates,
-    Queries::Operators::Duplicates,
-    Queries::Operators::Duplicated,
-    Queries::Operators::Blocks,
-    Queries::Operators::Blocked,
-    Queries::Operators::Follows,
-    Queries::Operators::Precedes,
-    Queries::Operators::Includes,
-    Queries::Operators::PartOf,
-    Queries::Operators::Requires,
-    Queries::Operators::Required,
+    Queries::Operators::OpenWorkPackages,
     Queries::Operators::Parent,
-    Queries::Operators::Children
-  ]
-
-  OPERATORS = Hash[*(operators.map { |o| [o.symbol.to_s, o] }).flatten].freeze
+    Queries::Operators::PartOf,
+    Queries::Operators::Past,
+    Queries::Operators::Precedes,
+    Queries::Operators::ProjectWithSubprojects,
+    Queries::Operators::Relates,
+    Queries::Operators::Required,
+    Queries::Operators::Requires,
+    Queries::Operators::Set,
+    Queries::Operators::StartsWith,
+    Queries::Operators::ThisWeek,
+    Queries::Operators::Today,
+    Queries::Operators::ToDoWorkPackages,
+    Queries::Operators::Unset,
+    Queries::Operators::Upcoming,
+    Queries::Operators::WorkPackageWithDescendants
+  ].index_by { |o| o.symbol.to_s }.freeze
 end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -37,8 +36,8 @@ module StateMachineJob
   extend ActiveSupport::Concern
 
   included do
-    def perform(state, *args)
-      results = instance_exec(*args, &states[state][:block])
+    def perform(state, *)
+      results = instance_exec(*, &states[state][:block])
 
       to = states[state][:to]
 
@@ -60,7 +59,7 @@ module StateMachineJob
     # @param block<Proc> The code to execute as part of the step. The block will be executed in the context of the
     #                    job instance, not the class.
     def self.state(name, to: nil, wait: nil, &block)
-      states[name] = { to: to, wait: wait, block: block }
+      states[name] = { to:, wait:, block: }
     end
 
     private

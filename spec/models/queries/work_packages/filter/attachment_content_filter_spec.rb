@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,82 +22,125 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::AttachmentContentFilter, type: :model do
+RSpec.describe Queries::WorkPackages::Filter::AttachmentContentFilter do
   if OpenProject::Database.allows_tsv?
-    before do
-      allow(EnterpriseToken).to receive(:allows_to?).and_return(false)
-      allow(EnterpriseToken).to receive(:allows_to?).with(:attachment_filters).and_return(true)
-    end
-
-    context 'WP with attachment' do
+    context "when filtering work packages" do
       let(:context) { nil }
-      let(:value) { 'ipsum' }
-      let(:operator) { '~' }
       let(:instance) do
-        described_class.create!(name: :search, context: context, operator: operator, values: [value])
+        described_class.create!(name: :search, context:, operator:, values: [value])
       end
-
-      let(:work_package) { FactoryBot.create(:work_package) }
-      let(:text) { 'lorem ipsum' }
-      let(:attachment) { FactoryBot.create(:attachment, container: work_package) }
+      let(:work_package_a) { create(:work_package) }
+      let(:work_package_b) { create(:work_package) }
+      let!(:work_package_without_attachment) { create(:work_package) }
+      let(:attachment_a) { create(:attachment, container: work_package_a) }
+      let(:attachment_b) { create(:attachment, container: work_package_b) }
+      let(:plaintext_file_handler) do
+        Plaintext::Resolver.file_handlers.find { |h| h.accept? attachment_a.content_type }.tap do |plaintext_file_handler|
+          if plaintext_file_handler.nil?
+            fail "Plaintext::FileHandler not found for content type #{attachment_a.content_type}"
+          end
+        end
+      end
 
       before do
-        allow_any_instance_of(Plaintext::Resolver).to receive(:text).and_return(text)
-        allow(attachment).to receive(:readable?).and_return(true)
-        attachment.reload
+        allow(plaintext_file_handler).to receive(:text).and_return("I am the first text $1.99.")
+        Attachments::ExtractFulltextJob.perform_now(attachment_a.id)
+        allow(plaintext_file_handler).to receive(:text).and_return("I am the second text.")
+        Attachments::ExtractFulltextJob.perform_now(attachment_b.id)
       end
 
-      it 'finds WP through attachment content' do
-        perform_enqueued_jobs
+      subject(:results) { WorkPackage.where(instance.where) }
 
-        expect(WorkPackage.joins(instance.joins).where(instance.where))
-          .to match_array [work_package]
+      context "with a matching term" do
+        let(:operator) { "~" }
+        let(:value) { "text" }
+
+        it "finds every matching work package" do
+          expect(results).to contain_exactly(work_package_a, work_package_b)
+        end
+      end
+
+      context "with words and numbers" do
+        let(:operator) { "~" }
+        let(:value) { "first 1.99" }
+
+        it "finds the matching work package" do
+          expect(results).to contain_exactly(work_package_a)
+        end
+      end
+
+      context "with special search characters" do
+        let(:operator) { "~" }
+        let(:value) { "! first:* ')" }
+
+        it "ignores the special characters" do
+          expect(results).to contain_exactly(work_package_a)
+        end
+      end
+
+      context "with a negative match" do
+        let(:operator) { "!~" }
+        let(:value) { "first" }
+
+        it "finds non-matching work packages, including those without attachments" do
+          expect(results).to contain_exactly(work_package_b, work_package_without_attachment)
+        end
       end
     end
 
-    it_behaves_like 'basic query filter' do
+    context "without full text search support" do
+      before do
+        allow(OpenProject::Database).to receive(:allows_tsv?).and_return(false)
+      end
+
+      it "is unavailable" do
+        expect(described_class.create!(name: :search)).not_to be_available
+      end
+    end
+
+    it_behaves_like "basic query filter" do
       let(:type) { :text }
       let(:class_key) { :attachment_content }
+      let(:human_name) { "Attachment content" }
 
-      describe '#available?' do
-        it 'is available' do
+      describe "#available?" do
+        it "is available" do
           expect(instance).to be_available
         end
       end
 
-      describe '#allowed_values' do
-        it 'is nil' do
+      describe "#allowed_values" do
+        it "is nil" do
           expect(instance.allowed_values).to be_nil
         end
       end
 
-      describe '#valid_values!' do
-        it 'is a noop' do
-          instance.values = ['none', 'is', 'changed']
+      describe "#valid_values!" do
+        it "is a noop" do
+          instance.values = ["none", "is", "changed"]
 
           instance.valid_values!
 
           expect(instance.values)
-            .to match_array ['none', 'is', 'changed']
+            .to contain_exactly("none", "is", "changed")
         end
       end
 
-      describe '#available_operators' do
-        it 'supports ~ and !~' do
+      describe "#available_operators" do
+        it "supports ~ and !~" do
           expect(instance.available_operators)
             .to eql [Queries::Operators::Contains, Queries::Operators::NotContains]
         end
       end
 
-      it_behaves_like 'non ar filter'
+      it_behaves_like "non ar filter"
     end
   end
 end

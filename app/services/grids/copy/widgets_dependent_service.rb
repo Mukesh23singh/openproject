@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -65,7 +64,7 @@ module Grids::Copy
 
     # Provide a human readable name for the widget
     def widget_model_name(widget)
-      I18n.t('grids.label_widget_in_grid', grid_name: widget.grid.to_s)
+      I18n.t("grids.label_widget_in_grid", grid_name: widget.grid.to_s)
     end
 
     def map_references(widget, params)
@@ -80,7 +79,7 @@ module Grids::Copy
       if mapper
         mapper.call(value, params).map { |id| [option, id] }
       else
-        ServiceResult.new success: true, result: [option, value]
+        ServiceResult.success result: [option, value]
       end
     end
 
@@ -103,25 +102,25 @@ module Grids::Copy
       existing_query_id = state.query_id_lookup[query_id.to_i] if state.query_id_lookup
 
       if existing_query_id
-        ServiceResult.new(result: existing_query_id, success: true)
+        ServiceResult.success(result: existing_query_id)
       else
         duplicate_query(query_id, params).map(&:id)
       end
     end
 
     def map_query_filters(filters, _params)
-      ::Queries::Copy::FiltersMapper
-        .new(state, filters)
-        .map_filters!
+      result = ::Queries::Copy::FiltersMapper
+        .new(state)
+        .map_filters(filters)
 
-      ServiceResult.new success: true, result: filters
+      ServiceResult.success(result:)
     end
 
     def duplicate_query(query_id, params)
       query = Query.find query_id
 
       ::Queries::CopyService
-        .new(user: user, source: query)
+        .new(user:, source: query)
         .with_state(state)
         .call(params)
     end

@@ -1,69 +1,202 @@
 # Code review guidelines
 
-## Correctness
+This guide serves as a foundation on how to prepare your work for and perform code reviews for OpenProject.
 
-*As a reviewer, your job is not to make sure that the code is what you would have written – because it will not be. Your job as a reviewer of a piece of code is to make sure that the code as written by its author is correct.*
+## Preparing your pull request
 
-## Coding style
+### Coding style
 
-We try to adhere to the [Ruby community styleguide](https://github.com/bbatsov/ruby-style-guide). At some point we will have to make decisions about some rules that are not clear or defined within that styleguide. In that case, we should either fork it or note all decisions here.
+We try to adhere to the [Ruby community style guide](https://github.com/bbatsov/ruby-style-guide) for Ruby and the [frontend style guide](../style-guide/frontend/) for TypeScript and JavaScript. Rules we want to follow are expressed as either Rubocop definitions or eslint rules (`frontend/eslint.config.mjs`, built on typescript-eslint, angular-eslint, and `@stylistic`). Follow your linter to adhere to them. See also the [development style guide](../style-guide/), including how to write [code comments](../style-guide/#code-comments).
 
-Most of our code does not yet adhere to this styleguide, but we want all new code to adhere to it. You do not have to improve existing code when making changes, but we encourage it. If you do, please do all improvements in a separate commit from the actual change, so the improvements do not hide your actual code changes in a diff.
+Due to the age of our codebase, a lot of our code might not yet adhere to these style guides, but we want all new code to adhere to it. You do not have to improve existing code when making changes, but we encourage it. If you do, please do all improvements in a separate commit from the actual change, so the improvements do not hide your actual code changes in a diff.
 
-Before committing, please run your new code through [Rubocop](https://github.com/bbatsov/rubocop). It detects deviations from a lot of things in the style guide and things that are bad practice in general. You obviously do not have to fix issues with existing code. There is a [list of editor plugins](https://github.com/bbatsov/rubocop#editor-integration) in the Rubocop readme.
+Before committing, please run your new code through [Rubocop](https://github.com/bbatsov/rubocop). It detects deviations from a lot of things in the style guide and things that are bad practice in general. You obviously do not have to fix issues with existing code. There is a [list of editor plugins](https://docs.rubocop.org/rubocop/integration_with_other_tools.html#editor-integration) in the Rubocop docs. You can also use `bin/dirty-rubocop` to test them. Pull requests are being linted automatically through a GitHub action.
 
-When reviewing code and you think the author has not run the code through Rubocop, please ask them to.
+The same is true for eslint. Your editor will likely have support for eslint checks, and allows you to correct them before committing.
 
-## Commit messages
+For ERB templates, run `bundle exec erb_lint path/to/template.html.erb` and
+`npm run herb:lint -- path/to/template.html.erb`. ERB Lint checks Ruby style and
+template safety; Herb checks accessibility and HTML structure using `.herb.yml`.
+Both run in CI and through Lefthook.
 
-- First line: less than 72 characters, this is when GitHub shows ‘…’
-- Blank line
-- Detailed description of the change, wrapped to 72 characters so the text is readable in git log
+**Lefthook**
+
+For automatically linting your files on committing them, please have a look
+at [Lefthook](https://github.com/evilmartians/lefthook). You can install these rules by using `lefthook install`. There
+are several options on how to install `lefthook` on your system, including using `brew`, `apt`, `bundle`, or `npm`. For
+example, one can add a `Gemfile.local` and thus the `lefthook` to the bundle.
+
+For spelling checks, also install [typos](https://github.com/crate-ci/typos#install).
+The pre-commit hook checks the full contents of staged files using the same
+`typos.toml` dictionary and exclusions as CI. If `typos` is not installed, the
+hook prints a warning and skips the check.
+
+Run only the spelling check with `lefthook run pre-commit --command typos`.
+To apply spelling fixes explicitly, run `lefthook run fix --command typos`,
+then review and stage the changes. The check does not modify files, and the
+fix command does not stage changes automatically.
+
+> [!TIP]
+> For an intentional spelling or project acronym, add an entry mapping the term
+> to itself in the existing `[default.extend-words]` section of `typos.toml`.
+> For example, `lod = "lod"` accepts LOD (level of detail).
+>
+> To exclude a file or directory, append a pattern such as `"path/to/file.txt"`
+> or `"path/to/directory/**"` to the existing `extend-exclude` array under
+> `[files]`. Prefer a term exception over excluding a whole file when possible.
+> See [typos: false positives](https://github.com/crate-ci/typos#false-positives)
+> for more options. These exceptions apply to both Lefthook and CI.
+
+### Structure of commit messages
+
+- Subject line: at most 50 characters, in the imperative mood ("Remove foo", not "Removed foo").
+- Blank line.
+- Body: wrapped at 72 characters so the text is readable in `git log`. Explain why the change is made, not what it does; the diff shows what.
+- Work package reference: link the work package the commit is about. A link in the body is enough.
+- Optionally, also prefix the subject with the work package ID. Write semantic IDs without `#` (e.g. `[DREAM-863] Cover grouped collapse`) and numeric IDs with `#` (e.g. `[#12345] Remove foo`), and omit the prefix on follow-up commits that are not about that work package.
+
+```text
+[DREAM-863] Cover grouped collapse
+
+Collapsing a group hid its rows but kept them in the tab order, so
+keyboard users landed on invisible rows. Skip collapsed rows when
+computing focus targets.
+
+https://community.openproject.org/wp/DREAM-863
+```
 
 See the [Git Book](https://git-scm.com/book/en/v2/Distributed-Git-Contributing-to-a-Project#Commit-Guidelines).
 
-## Testing
+### Pull Request description
 
-- All tests must be green on continuous integration
-- Appropriate unit and integration tests, e.g. test application logic via rspec tests and its integration with the user interface via Cucumber tests
-- Test JavaScript code, e.g. via Jasmine or Selenium/Cucumber, but: Cucumber tests that do not test JavaScript must not have the @javascript tag, otherwise they run slower
-- Look for sufficient coverage of both Ruby and JavaScript code. CI will provide at least Ruby line coverage information at some point in the future
+Fill in the [pull request template](https://github.com/opf/openproject/blob/dev/.github/pull_request_template.md). In addition:
+
+- Provide a clear title.
+- Add steps necessary to review / reproduce / set up development data for testing.
+- Link the work package in the **Ticket** section. If no work package exists, double check if one is really optional.
+
+### Testing
+
+- All GitHub workflow actions must be green on continuous integration. Run the relevant tests [locally](../testing/running-tests-locally/) before creating your pull request, since the complete suite takes a while to run in CI. If you push to your branch in quick succession (especially force pushes), consider canceling the superseded CI runs.
+- Appropriate unit and integration tests, e.g. test application logic via rspec tests and its integration with the user interface via feature tests
+- Test frontend code with Vitest unit specs (Stimulus controller specs live next to their controllers, see [testing the frontend](https://github.com/opf/openproject/blob/dev/frontend/doc/TESTING.md)) and its integration with the backend with feature specs.
 - Forms: besides testing for success response, also test whether values are actually saved, e.g. read form or look into database
 - Bugfixes: must contain a test which detects the bug they fix to prevent regressions
 - Translations: Never use a specific translation string in a test. We might want to change them in the future and do not want to fix tests when we do.
+- We are aware that there are some flickering specs in our codebase, that might fail randomly. We are actively trying to fix those. If you encounter test failures in code that you have not touched, try re-running the specs.
 
-## Security
+### Security considerations
 
-Every developer and reviewer should read the Rails Security Guide.
+Every developer and reviewer should read the Rails Security Guide as well as the OWASP top ten.
 
 [Rails Security Guide](https://guides.rubyonrails.org/security.html)
 
-## Changelog
+[OWASP Top 10](https://owasp.org/www-project-top-ten/)
+
+### Changelog
 
 - All changes made to the OpenProject software are managed and documented via work packages in the [OpenProject project](https://community.openproject.org/projects/openproject/).
-- The [Roadmap view](https://community.openproject.com/projects/openproject/roadmap) gives a corresponding overview.
-- To prevent inconsistencies and avoid redundant work there is no additional change log in the source code.
+- The [Roadmap view](https://community.openproject.org/projects/openproject/roadmap) gives a corresponding overview.
+- For any nontrivial or pure maintenance changes (Gem bumps etc.), please ensure you have a corresponding work package and link it in the **Ticket** section of your pull request (e.g. `https://community.openproject.org/wp/OP-12345`).
+- To prevent inconsistencies and avoid redundant work there is no additional change log in the source code. Releases will contain a changelog of the publicly visible tickets in the GitHub releases pages, as well as [on our release notes](../../release-notes/).
+
+### Marking your code as reviewable
+
+Before requesting a review, double check your own changes:
+
+- Are they complete? Did you add that spec Did you take a look at the diff yourself?
+- Did you forget to remove any temporary code, debugging steps, or similar?
+
+Once your pull request is ready to be reviewed, convert it from a draft and add the label `needs review`. You can bookmark this query to always show all pull requests recently [marked as reviewable](https://github.com/opf/openproject/pulls?q=is%3Aopen+is%3Apr+label%3A%22needs+review%22)
+
+Do not explicitly request people or groups as reviewers unless you have collaborated with them already, or have a good reason to request specific feedback.
+
+Wait for a reviewer to start. If you get feedback or requested changes, do not take them personally. Code is highly personal, and everyone might have different thoughts or ideas.
+
+Try to respond to every feedback and resolve feedback that you addressed already. Re-request a review from the same person if you addressed all remarks.
+
+## Reviewing
+
+You've found a pull request you want to review. Here is how to do it:
+
+### Timeliness
+
+Reviewing code from your colleagues has higher priority than picking up more work. When you start your day, or in between working on other topics, please check the above link if there is any review requested.
+
+If a review is left untouched, feel free to request a review from a group or link the pull request in question in the developers element channel.
+
+### Taking a review
+
+If you're ready to perform a review for a pull request, do these things:
+
+- Remove the `needs review` label. This is a semaphore and ensures only one developer performs a review
+- If there is a linked ticket that has an appropriate status workflow, set it to `in review` and assign yourself
+- Optionally, request yourself as a reviewer
+
+### Correctness
+
+As a reviewer, your job is not to make sure that the code is what you would have written – _because it will not be_. Your job as a reviewer of a piece of code is to make sure that the code as written by its author is correct.
+
+Try to think of edge cases when testing or evaluating the code, double check the test coverage. But do not frown if you merged the pull request and something broke after all. This is the learning path to avoiding this mistake on the next attempt. Not doing a review in the first place will not move you forward either.
+
+### Language
+
+Keep in mind that we're all trying to do the correct thing. Be kind and honest to one another, especially since our reviews are public for everyone to see.
+
+- Prefer questions instead of demands
+- When in doubt, ask for a meeting to clarify things before assuming someone made a mistake.
+
+### Testing
+
+Verify that the appropriate tests have been added as documented above.
+
+When testing a feature or change, check out the code test at least the happy paths according to the specification of the ticket.
+
+### Documenting changes right away
+
+If possible, add smaller documentation changes right away.
+
+If there are breaking changes (e.g., to permissions, code relevant for developers), add them to the release notes draft for the release or create a new draft if none exists yet.
 
 ## Other
 
-- For external contributions: Check whether the author has signed a [Contributor License Agreement](../#openproject-contributor-license-agreement-cla) and kindly ask for it if not.
-- Copyright notice: When new files are added, make sure they contain the OpenProject copyright notice (copy from any file in OpenProject).
+- For external contributions: Check whether the author has signed a [Contributor License Agreement](../#openproject-contributor-license-agreement-cla) and kindly ask for it if not. There is a GitHub workflow ensuring the contributor signed the current CLA. If the action is green, consider this point done.
+
+- Copyright notice: When new files are added, follow the [copyright notice guide](../style-guide/#copyright-notices) for generators and the manual fallback when generation is unavailable.
+
 - Adding Gems: When adding gems, make sure not only the Gemfile is updated, but also the Gemfile.lock.
-- No trailing whitespace.
-- [Single newline at the end of a file](https://stackoverflow.com/questions/729692/why-should-text-files-end-with-a-newline).
 
 ## Readability
 
 The reviewer should understand the code without explanations outside the code.
 
-*There is never anything wrong with just saying “Yup, looks good”. If you constantly go hunting to try to find something to criticize, then all that you accomplish is to wreck your own credibility.*
+_There is never anything wrong with just saying “Yup, looks good”. If you constantly go hunting to try to find something to criticize, then all that you accomplish is to wreck your own credibility._
 
-*You should not rush through a code review – but also, you need to do it promptly. Your coworkers are waiting for you.*
+_You should not rush through a code review – but also, you need to do it promptly. Your coworkers are waiting for you._
+
+## Completing the review
+
+Once you've completed the review, you might have left feedback for the developer. In that case:
+
+- Publish the review
+- If any, assign the linked work package back to the developer and set to `in development`
+
+If there are no change requests, perform these steps:
+
+- approve the pull request
+- merge it using the `Merge pull request` button.
+- If there is a linked ticket, set it to merged (or closed for an Implementation ticket) and unassign yourself or the developer.
+
+**Why merge, not squashing?**
+
+We do not use squashing to retain any commit information of the original developer, which might contain valuable information. If there are a lot of bogus commits, we squash them on the PR first and then merge them. Having all information about a change is deemed more important than a strictly linear history.
+
+The only exception to this rule are single commit pull requests, which can be applied to dev using `Rebase and merge` instead.
 
 ## Citations
 
-http://scientopia.org/blogs/goodmath/2011/07/06/things-everyone-should-do-code-review/
+[Things everyone should do: code review](https://goodmath.scientopia.org/2011/07/06/things-everyone-should-do-code-review/)
 
-http://beust.com/weblog/2006/06/22/why-code-reviews-are-good-for-you/
+[Why code reviews are good for you](https://beust.com/weblog/2006/06/22/why-code-reviews-are-good-for-you/)
 
-https://developer.mozilla.org/en/Code_Review_FAQ
+[Code review FAQ](https://www-archive.mozilla.org/hacking/code-review-faq)

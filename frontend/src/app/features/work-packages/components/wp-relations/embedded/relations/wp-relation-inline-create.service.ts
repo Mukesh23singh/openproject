@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,29 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable, Injector, OnDestroy } from '@angular/core';
+import { Injectable, OnDestroy, inject } from '@angular/core';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { WorkPackageInlineCreateService } from 'core-app/features/work-packages/components/wp-inline-create/wp-inline-create.service';
 import { WpRelationInlineAddExistingComponent } from 'core-app/features/work-packages/components/wp-relations/embedded/inline/add-existing/wp-relation-inline-add-existing.component';
 import { WorkPackageRelationsService } from 'core-app/features/work-packages/components/wp-relations/wp-relations.service';
 import { WpRelationInlineCreateServiceInterface } from 'core-app/features/work-packages/components/wp-relations/embedded/wp-relation-inline-create.service.interface';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import {
+  Observable,
+  of,
+} from 'rxjs';
+import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import { HalEventsService } from 'core-app/features/hal/services/hal-events.service';
 
 @Injectable()
 export class WpRelationInlineCreateService extends WorkPackageInlineCreateService implements WpRelationInlineCreateServiceInterface, OnDestroy {
-  @InjectField() wpRelations:WorkPackageRelationsService;
+  readonly wpRelations = inject(WorkPackageRelationsService);
 
-  constructor(public injector:Injector) {
-    super(injector);
-  }
+  readonly halEvents = inject(HalEventsService);
 
   /**
    * A separate reference pane for the inline create component
@@ -67,7 +69,13 @@ export class WpRelationInlineCreateService extends WorkPackageInlineCreateServic
     const relation = this.wpRelations.find(to, from, this.relationType);
 
     if (relation !== undefined) {
-      return this.wpRelations.removeRelation(relation);
+      return this.wpRelations.removeRelation(relation).then(() => {
+        this.halEvents.push(from, {
+          eventType: 'association',
+          relatedWorkPackage: to.id,
+          relationType: relation.normalizedType(from),
+        });
+      });
     }
     return Promise.reject();
   }
@@ -77,12 +85,16 @@ export class WpRelationInlineCreateService extends WorkPackageInlineCreateServic
    */
   public referenceTarget:WorkPackageResource|null = null;
 
-  public get canAdd() {
-    return !!(this.referenceTarget && this.canCreateWorkPackages && this.referenceTarget.addRelation);
+  public get canAdd():Observable<boolean> {
+    if (!this.referenceTarget?.addRelation) {
+      return of(false);
+    }
+
+    return this.canCreateWorkPackages(idFromLink(this.referenceTarget.project.href));
   }
 
-  public get canReference() {
-    return !!this.canAdd;
+  public get canReference():Observable<boolean> {
+    return this.canAdd;
   }
 
   /**

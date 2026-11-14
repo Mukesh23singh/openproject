@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,61 +20,38 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef, Directive, ElementRef, Injector,
-} from '@angular/core';
+import { ChangeDetectorRef, Directive, Injector, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
 import { OpContextMenuTrigger } from 'core-app/shared/components/op-context-menu/handlers/op-context-menu-trigger.directive';
-import { OPContextMenuService } from 'core-app/shared/components/op-context-menu/op-context-menu.service';
 import { OpModalService } from 'core-app/shared/components/modal/modal.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { WorkPackageInlineCreateService } from 'core-app/features/work-packages/components/wp-inline-create/wp-inline-create.service';
 import { BoardListComponent } from 'core-app/features/boards/board/board-list/board-list.component';
 
 @Directive({
+  // eslint-disable-next-line @angular-eslint/directive-selector
   selector: '[op-addCardDropdown]',
+  standalone: false,
 })
 export class AddCardDropdownMenuDirective extends OpContextMenuTrigger {
-  constructor(readonly elementRef:ElementRef,
-    readonly opContextMenu:OPContextMenuService,
-    readonly opModalService:OpModalService,
-    readonly authorisationService:AuthorisationService,
-    readonly wpInlineCreate:WorkPackageInlineCreateService,
-    readonly boardList:BoardListComponent,
-    readonly injector:Injector,
-    readonly querySpace:IsolatedQuerySpace,
-    readonly cdRef:ChangeDetectorRef,
-    readonly I18n:I18nService) {
-    super(elementRef, opContextMenu);
-  }
+  readonly opModalService = inject(OpModalService);
+  readonly authorisationService = inject(AuthorisationService);
+  readonly wpInlineCreate = inject(WorkPackageInlineCreateService);
+  readonly boardList = inject(BoardListComponent);
+  readonly injector = inject(Injector);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly cdRef = inject(ChangeDetectorRef);
+  readonly I18n = inject(I18nService);
 
-  protected open(evt:JQuery.TriggeredEvent) {
+  protected open(evt:Event) {
     this.items = this.buildItems();
     this.opContextMenu.show(this, evt);
-  }
-
-  /**
-   * Positioning args for jquery-ui position.
-   *
-   * @param {Event} openerEvent
-   */
-  public positionArgs(evt:JQuery.TriggeredEvent) {
-    const additionalPositionArgs = {
-      my: 'left top',
-      at: 'left bottom',
-    };
-
-    const position = super.positionArgs(evt);
-    _.assign(position, additionalPositionArgs);
-
-    return position;
   }
 
   private buildItems() {

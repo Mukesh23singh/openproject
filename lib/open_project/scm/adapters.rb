@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,11 +20,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module OpenProject
   module SCM
     module Adapters
@@ -73,7 +71,7 @@ module OpenProject
 
         def initialize(attributes = {})
           %i[name path kind size].each do |attr|
-            send("#{attr}=", attributes[attr])
+            send(:"#{attr}=", attributes[attr])
           end
 
           self.size = size.to_i if size.present?
@@ -81,11 +79,11 @@ module OpenProject
         end
 
         def file?
-          'file' == kind
+          "file" == kind
         end
 
         def dir?
-          'dir' == kind
+          "dir" == kind
         end
       end
 
@@ -107,11 +105,11 @@ module OpenProject
 
         def initialize(attributes = {})
           %i[identifier scmid author time paths revision branch].each do |attr|
-            send("#{attr}=", attributes[attr])
+            send(:"#{attr}=", attributes[attr])
           end
 
           self.name = attributes[:name].presence || identifier
-          self.message = attributes[:message].presence || ''
+          self.message = attributes[:message].presence || ""
         end
 
         # Returns the identifier of this revision; see also Changeset model
@@ -142,9 +140,7 @@ module OpenProject
           lines.join("\n")
         end
 
-        def empty?
-          lines.empty?
-        end
+        delegate :empty?, to: :lines
       end
     end
   end

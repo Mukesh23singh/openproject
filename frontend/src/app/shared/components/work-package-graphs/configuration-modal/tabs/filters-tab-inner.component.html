@@ -1,3 +1,4 @@
-<query-filters *ngIf="!!filters"
-               (filtersChanged)="filters = $event"
-               [filters]="filters"></query-filters>
+@if (!!filters) {
+  <op-query-filters (filtersChanged)="filters = $event"
+  [filters]="filters" />
+}

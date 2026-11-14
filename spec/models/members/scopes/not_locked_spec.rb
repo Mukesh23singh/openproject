@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,58 +22,54 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Members::Scopes::NotLocked, type: :model do
-  let(:project) { FactoryBot.create(:project) }
-  let(:role) { FactoryBot.create(:role) }
+RSpec.describe Members::Scopes::NotLocked do
+  let(:project) { create(:project) }
+  let(:role) { create(:project_role) }
 
   let!(:invited_user_member) do
-    FactoryBot.create(:member,
-                      project: project,
-                      roles: [role],
-                      principal: FactoryBot.create(:user, status: Principal.statuses[:invited]))
+    create(:member,
+           project:,
+           roles: [role],
+           principal: create(:user, status: Principal.statuses[:invited]))
   end
   let!(:registered_user_member) do
-    FactoryBot.create(:member,
-                      project: project,
-                      roles: [role],
-                      principal: FactoryBot.create(:user, status: Principal.statuses[:registered]))
+    create(:member,
+           project:,
+           roles: [role],
+           principal: create(:user, status: Principal.statuses[:registered]))
   end
   let!(:locked_user_member) do
-    FactoryBot.create(:member,
-                      project: project,
-                      roles: [role],
-                      principal: FactoryBot.create(:user, status: Principal.statuses[:locked]))
+    create(:member,
+           project:,
+           roles: [role],
+           principal: create(:user, status: Principal.statuses[:locked]))
   end
   let!(:active_user_member) do
-    FactoryBot.create(:member,
-                      project: project,
-                      roles: [role],
-                      principal: FactoryBot.create(:user, status: Principal.statuses[:active]))
+    create(:member,
+           project:,
+           roles: [role],
+           principal: create(:user, status: Principal.statuses[:active]))
   end
   let!(:group_member) do
-    FactoryBot.create(:member,
-                      project: project,
-                      roles: [role],
-                      principal: FactoryBot.create(:group))
+    create(:member,
+           project:,
+           roles: [role],
+           principal: create(:group))
   end
 
-  describe '.fetch' do
+  describe ".fetch" do
     subject { Member.not_locked }
 
-    it 'returns only actual users and groups' do
+    it "returns only actual users and groups" do
       expect(subject)
-        .to match_array [active_user_member,
-                         invited_user_member,
-                         registered_user_member,
-                         group_member]
+        .to contain_exactly(active_user_member, invited_user_member, registered_user_member, group_member)
     end
   end
 end

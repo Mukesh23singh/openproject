@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,15 +30,16 @@ module API
     module TimeEntries
       class AvailableWorkPackagesOnCreateAPI < ::API::OpenProjectAPI
         after_validation do
-          authorize_any %i[log_time],
-                        global: true
+          authorize_in_any_work_package(:log_own_time) do
+            authorize_in_any_project(:log_time)
+          end
         end
 
         helpers AvailableWorkPackagesHelper
 
         helpers do
           def allowed_scope
-            WorkPackage.where(project_id: Project.allowed_to(User.current, :log_time))
+            WorkPackage.allowed_to_log_time(User.current)
           end
         end
 

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,58 +20,69 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% html_title(t(:label_my_account), t(:label_profile)) -%>
+<% html_title(t(:label_my_account), t(:label_account)) -%>
 
-<% breadcrumb_paths(t(:label_my_account), t(:label_profile)) %>
-<%= toolbar title: t(:label_profile) %>
-<%= error_messages_for 'user' %>
-
-<%= password_confirmation_form_for @user,
-                                   as: :user,
-                                   url: { action: 'update_account' },
-                                   builder: ::TabularFormBuilder,
-                                   lang: current_language,
-                                   html: { id: 'my_account_form', class: '-wide-labels' } do |f| %>
-  <section class="form--section">
-    <div class="form--field">
-      <label class="form--label" for="username">
-        <%= User.human_attribute_name(:login) %>
-      </label>
-      <div class="form--field-container">
-        <%= @user.login %>
-      </div>
-    </div>
-    <% login_via_provider = !!@user.identity_url %>
-    <div class="form--field -required">
-      <%= f.text_field :firstname, required: true, container_class: '-middle', disabled: login_via_provider %>
-      <% if login_via_provider %>
-        <span class="form--field-instructions"><%= t('user.text_change_disabled_for_provider_login') %></span>
-      <% end %>
-    </div>
-    <div class="form--field -required">
-      <%= f.text_field :lastname, required: true, container_class: '-middle', disabled: login_via_provider %>
-      <% if login_via_provider %>
-        <span class="form--field-instructions"><%= t('user.text_change_disabled_for_provider_login') %></span>
-      <% end %>
-    </div>
-    <div class="form--field -required"><%= f.text_field :mail, required: true, container_class: '-middle' %></div>
-
-    <%= fields_for :pref, @user.pref, builder: TabularFormBuilder, lang: current_language do |pref_fields| %>
-      <div class="form--field"><%= pref_fields.check_box :hide_mail %></div>
-    <% end %>
-
-    <%= call_hook(:view_my_account, user: @user, form: f) %>
-
-    <%= render partial: "customizable/form",
-               locals: { form: f, all_fields: true, only_required: false, input_size: '-middle' } %>
-  </section>
-
-  <%= styled_button_tag t(:button_save), class: '-highlight -with-icon icon-checkmark' %>
+<% content_for :header_tags do %>
+  <meta name="turbo-cache-control" content="no-cache">
 <% end %>
+
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { t(:label_account) }
+    header.with_breadcrumbs(
+      [{ href: my_account_path, text: t(:label_my_account), skip_for_mobile: true },
+       t(:label_account)]
+    )
+
+    if Users::DeleteContract.deletion_allowed?(@user, User.current)
+      header.with_action_button(
+        tag: :a,
+        scheme: :danger,
+        mobile_icon: :trash,
+        mobile_label: t("account.delete"),
+        size: :medium,
+        href: delete_my_account_info_path,
+        data: { controller: "async-dialog" },
+        aria: { label: I18n.t(:button_delete) },
+        title: I18n.t(:button_delete),
+        test_selector: "delete-my-account-button"
+      ) do |button|
+        button.with_leading_visual_icon(icon: :trash)
+        t(:button_delete)
+      end
+    end
+  end
+%>
+
+<%# Constrain hook content (the avatar section) to the same width as the form below,
+    and separate it from the form with the same gap as sits between the form sections (mb-3). %>
+<%= render(Primer::BaseComponent.new(tag: :div, classes: "op-admin-settings-form-wrapper", mb: 3)) do %>
+  <%= call_hook(:view_my_account_top, user: current_user) %>
+<% end %>
+
+<%= error_messages_for "user" %>
+
+<%=
+  settings_primer_form_with(
+    model: @user,
+    url: { action: "update_account" },
+    lang: current_language,
+    data: password_confirmation_data_attribute(
+      { turbo: false,
+        test_selector: "my-account-form" }
+    )
+  ) do |form|
+    render(
+      Primer::Forms::FormList.new(
+        My::AttributesForm.new(form, user: @user),
+        My::AccountSubmitForm.new(form)
+      )
+    )
+  end
+%>

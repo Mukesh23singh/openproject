@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe "/api/v3/queries/:id/order", type: :request do
-  let(:user) { FactoryBot.create :admin }
-  let(:query) { FactoryBot.create(:query, name: "A Query", user: user) }
+RSpec.describe "/api/v3/queries/:id/order" do
+  let(:project) { create(:project) }
+  let(:user) { create(:user, member_with_permissions: { project => [:view_work_packages] }) }
+  let(:query_owner) { create(:user) }
+  let(:query) { create(:query, name: "A Query", user: query_owner, project: project) }
   let(:path) { "/api/v3/queries/#{query.id}/order" }
 
   subject(:body) { JSON.parse(last_response.body) }
@@ -42,50 +44,113 @@ describe "/api/v3/queries/:id/order", type: :request do
     header "Content-Type", "application/json"
   end
 
-  describe 'with order present' do
-    let(:wp1) { FactoryBot.create :work_package }
-    let(:wp2) { FactoryBot.create :work_package }
+  describe "#get" do
+    describe "with order present" do
+      let(:wp1) { create(:work_package) }
+      let(:wp2) { create(:work_package) }
 
-    before do
-      query.ordered_work_packages.create(work_package_id: wp1.id, position: 0)
-      query.ordered_work_packages.create(work_package_id: wp2.id, position: 8192)
-    end
+      before do
+        query.ordered_work_packages.create!(work_package_id: wp1.id, position: 0)
+        query.ordered_work_packages.create!(work_package_id: wp2.id, position: 8192)
+      end
 
-    it 'returns the order' do
-      get path
+      context "when being allowed to view the query, because it is public" do
+        before do
+          query.update!(public: true)
+        end
 
-      expect(last_response.status).to eq 200
-      expect(body).to be_a Hash
-      expect(body).to eq({ wp1.id => 0, wp2.id => 8192 }.stringify_keys)
+        it "returns the order" do
+          get path
+
+          expect(last_response).to have_http_status :ok
+          expect(body).to be_a Hash
+          expect(body).to eq({ wp1.id => 0, wp2.id => 8192 }.stringify_keys)
+        end
+      end
+
+      context "when not being allowed to view the query" do
+        it "responds with 404 Not Found" do
+          get path
+
+          expect(last_response).to have_http_status :not_found
+        end
+      end
     end
   end
 
-  describe '#patch' do
-    let!(:wp1) { FactoryBot.create :work_package }
-    let!(:wp2) { FactoryBot.create :work_package }
+  describe "#patch" do
+    let!(:wp1) { create(:work_package) }
+    let!(:wp2) { create(:work_package) }
 
-    let(:timestamp) { ::API::V3::Utilities::DateTimeFormatter.format_datetime(query.updated_at) }
+    def timestamp
+      API::V3::Utilities::DateTimeFormatter.format_datetime(query.updated_at)
+    end
 
     before do
       query.ordered_work_packages.create(work_package_id: wp1.id, position: 0)
     end
 
-    it 'allows inserting a delta' do
-      patch path, { delta: { wp2.id.to_s => 1234 } }.to_json
-      expect(last_response.status).to eq 200
+    context "when the query is public" do
+      before do
+        query.update!(public: true)
+      end
 
-      query.reload
-      expect(body).to eq('t' => timestamp)
-      expect(query.ordered_work_packages.find_by(work_package: wp2).position).to eq 1234
-    end
+      context "and not being allowed to update public queries" do
+        it "responds with 404 Not Found" do
+          patch path, { delta: { wp2.id.to_s => 1234 } }.to_json
+          expect(last_response).to have_http_status :not_found
+        end
+      end
 
-    it 'allows removing an item' do
-      patch path, { delta: { wp1.id.to_s => -1 } }.to_json
-      expect(last_response.status).to eq 200
+      context "and being allowed to update public queries" do
+        before do
+          mock_permissions_for(user) do |mock|
+            mock.allow_in_project :view_work_packages, :manage_public_queries, project: query.project
+          end
+        end
 
-      query.reload
-      expect(body).to eq('t' => timestamp)
-      expect(query.ordered_work_packages.to_a).to be_empty
+        it "allows inserting a delta" do
+          previous = timestamp
+          patch path, { delta: { wp2.id.to_s => 1234 } }.to_json
+          expect(last_response).to have_http_status :ok
+
+          query.reload
+          expect(body).to eq("t" => timestamp, "previousUpdatedAt" => previous)
+          expect(query.ordered_work_packages.find_by(work_package: wp2).position).to eq 1234
+        end
+
+        it "distinguishes consecutive order writes within the same millisecond" do
+          freeze_time do
+            patch path, { delta: { wp1.id.to_s => 42 } }.to_json
+            first_revision = JSON.parse(last_response.body).fetch("t")
+
+            patch path, { delta: { wp2.id.to_s => 43 } }.to_json
+
+            expect(body.fetch("previousUpdatedAt")).to eq(first_revision)
+            expect(body.fetch("t")).to be > first_revision
+          end
+        end
+
+        it "initializes the timestamp for an older query with no revision" do
+          query.update_column(:updated_at, nil)
+
+          patch path, { delta: { wp1.id.to_s => 42 } }.to_json
+
+          expect(last_response).to have_http_status :ok
+          query.reload
+          expect(body).to eq("t" => timestamp, "previousUpdatedAt" => nil)
+        end
+
+        it "allows removing an item" do
+          previous = timestamp
+          patch path, { delta: { wp1.id.to_s => -1 } }.to_json
+          expect(last_response).to have_http_status :ok
+
+          query.reload
+          expect(body).to eq("t" => timestamp, "previousUpdatedAt" => previous)
+          expect(query.ordered_work_packages.to_a).to be_empty
+        end
+      end
     end
   end
 end

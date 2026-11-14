@@ -1,9 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
-
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -23,22 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
+
 module DemoData
   class GroupSeeder < Seeder
-    attr_accessor :user
-
     include ::DemoData::References
 
-    def initialize
-      self.user = User.admin.first
-    end
-
     def seed_data!
-      print_status '    ↳ Creating groups' do
+      print_status "    ↳ Creating groups" do
         seed_groups
       end
     end
@@ -47,36 +41,12 @@ module DemoData
       Group.count.zero?
     end
 
-    def add_projects_to_groups
-      groups = demo_data_for('groups')
-      if groups.present?
-        groups.each do |group_attr|
-          if group_attr[:projects].present?
-            group = Group.find_by(lastname: group_attr[:name])
-            group_attr[:projects].each do |project_attr|
-              project = Project.find(project_attr[:name])
-              role = Role.find_by(name: project_attr[:role])
-
-              Member.create!(
-                project: project,
-                principal: group,
-                roles: [role]
-              )
-            end
-          end
-        end
-      end
-    end
-
     private
 
     def seed_groups
-      groups = demo_data_for('groups')
-      if groups.present?
-        groups.each do |group_attr|
-          print_status '.'
-          create_group group_attr[:name]
-        end
+      seed_data.each("groups") do |group_data|
+        group = create_group group_data["name"]
+        seed_data.store_reference(group_data["reference"], group)
       end
     end
 

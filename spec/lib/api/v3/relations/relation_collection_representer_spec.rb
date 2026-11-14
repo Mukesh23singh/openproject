@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,47 +22,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Relations::RelationCollectionRepresenter do
+RSpec.describe API::V3::Relations::RelationCollectionRepresenter do
   let(:work_package) do
-    FactoryBot.build_stubbed(:work_package)
+    build_stubbed(:work_package)
   end
-
-  let(:relations) do
-    (1..3).map do
-      FactoryBot.build_stubbed(:relation,
-                               from: work_package,
-                               to: FactoryBot.build_stubbed(:work_package))
-    end
-  end
-
-  let(:user) do
-    FactoryBot.build_stubbed(:user)
-  end
-
-  def self_link
-    'a link that is provided'
-  end
-
   let(:representer) do
     described_class.new(relations,
-                        self_link: self_link,
+                        self_link:,
                         current_user: user)
   end
 
-  context 'generation' do
+  let(:relations) do
+    build_stubbed_list(:relation,
+                       3,
+                       from: work_package,
+                       to: build_stubbed(:work_package))
+  end
+
+  let(:user) do
+    build_stubbed(:user)
+  end
+
+  def self_link
+    "a link that is provided"
+  end
+
+  context "generation" do
     subject(:collection) { representer.to_json }
 
-    it_behaves_like 'unpaginated APIv3 collection',
+    it_behaves_like "unpaginated APIv3 collection",
                     3,
-                    'a link that is provided',
-                    'Relation'
+                    "a link that is provided",
+                    "Relation"
   end
 end

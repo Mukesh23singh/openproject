@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,25 +34,17 @@ module Tableless
     false
   end
 
+  def readonly?
+    true
+  end
+
   class_methods do
-    def attribute_names
-      @attribute_names ||= attribute_types.keys
+    def load_schema!
+      # noop
     end
 
-    def load_schema!
-      @columns_hash ||= Hash.new
-
-      # From active_record/attributes.rb
-      attributes_to_define_after_schema_loads.each do |name, (type, options)|
-        if type.is_a?(Symbol)
-          type = ActiveRecord::Type.lookup(type, **options.except(:default))
-        end
-
-        define_attribute(name, type, **options.slice(:default))
-
-        # Improve Model#inspect output
-        @columns_hash[name.to_s] = ActiveRecord::ConnectionAdapters::Column.new(name.to_s, options[:default])
-      end
+    def columns_hash
+      @columns_hash ||= {}
     end
   end
 end

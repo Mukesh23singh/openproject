@@ -1,15 +1,14 @@
 <widget-header
+    [headingId]="headingId"
     [name]="widgetName"
     (onRenamed)="renameWidget($event)">
 
   <widget-wp-graph-menu
       slot="menu"
       [resource]="resource"
-      (onConfigured)="updateGraph($event)">
-  </widget-wp-graph-menu>
+      (onConfigured)="updateGraph()" />
 </widget-header>
 
-<op-wp-embedded-graph class='grid--widget-content -no-overflow'
+<op-wp-embedded-graph class='op-widget-box--body -no-overflow'
                    [datasets]="datasets"
-                   [chartType]="chartType">
-</op-wp-embedded-graph>
+                   [chartType]="chartType" />

@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 ##
 # If OPENPROJECT_AUTH__SOURCE__SSO_HEADER and OPENPROJECT_AUTH__SOURCE__SSO_SECRET are
 # configured OpenProject will login the user given in the HTTP header with the given name
@@ -9,39 +38,47 @@ module AuthSourceSSO
     # Do nothing if sso disabled
     return user unless auth_source_sso_enabled?
     # Return super auth if SSO already in progress
-    return user if sso_in_progress!
+    return user if !api_key_authenticated? && sso_in_progress!
 
     # Get the header-provided login value
     login = read_sso_login
 
+    if login.present?
+      api_key_authenticated? ? user : perform_header_sso(login, user)
+    elsif header_optional?
+      user
+    else
+      handle_sso_failure!
+      nil
+    end
+  end
+
+  def perform_header_sso(login, user)
     # Log out the current user if the login does not match
     logged_user = match_sso_with_logged_user(login, user)
 
     # Return the logged in user if matches
-    return logged_user if logged_user.present?
+    # but remember it came from auth_source_sso
+    if logged_user.present?
+      session[:user_from_auth_header] = true
+      return logged_user
+    end
 
-    Rails.logger.debug { "Starting header-based auth source SSO for #{header_name}='#{op_auth_header_value}'" }
-    perform_header_sso login
+    Rails.logger.debug { "Starting header-based auth source SSO for #{header_name}=#{op_auth_header_value.inspect}" }
+
+    # Try to find an existing, or autocreate a new user for onthefly ldap connections
+    user = LdapAuthSource.find_user(login)
+    handle_sso_for! user, login
   end
 
   def match_sso_with_logged_user(login, user)
     return if user.nil?
     return user if user.login.casecmp?(login)
 
-    Rails.logger.warn { "Header-based auth source SSO user changed from #{user.login} to #{login}. Re-authenticating" }
-    ::Users::LogoutService.new(controller: self).call(user)
+    Rails.logger.warn { "Header-based auth source SSO user changed from #{user.login} to #{login.inspect}. Re-authenticating" }
+    ::Users::LogoutService.new(controller: self).call!(user)
 
     nil
-  end
-
-  def perform_header_sso(login)
-    if login
-      user = find_user_from_auth_source(login) || create_user_from_auth_source(login)
-
-      handle_sso_for! user, login
-    else
-      handle_sso_failure!
-    end
   end
 
   def read_sso_login
@@ -95,7 +132,7 @@ module AuthSourceSSO
   def extract_from_header(value)
     if header_secret.present?
       valid_secret = value.end_with?(":#{header_secret}")
-      login = value.gsub(/:#{Regexp.escape(header_secret)}\z/, '')
+      login = value.gsub(/:#{Regexp.escape(header_secret)}\z/, "")
 
       [login, valid_secret]
     else
@@ -106,35 +143,25 @@ module AuthSourceSSO
   def find_user_from_auth_source(login)
     User
       .by_login(login)
-      .where.not(auth_source_id: nil)
+      .where.not(ldap_auth_source_id: nil)
       .first
   end
 
-  def create_user_from_auth_source(login)
-    if attrs = AuthSource.find_user(login)
-      # login is both safe and protected in chilis core code
-      # in case it's intentional we keep it that way
-      user = User.new attrs.except(:login)
-      user.login = login
-      user.language = Setting.default_language
+  def build_user_from_auth_source(login)
+    attrs = LdapAuthSource.get_user_attributes(login)
+    return unless attrs
 
-      save_user! user
+    call = Users::SetAttributesService
+      .new(model: User.new, user: User.system, contract_class: Users::CreateContract)
+      .call(attrs.merge(login:))
 
-      user
+    user = call.result
+
+    call.on_failure do
+      logger.error "Tried to create user '#{login}' from external auth source but failed: #{call.message}"
     end
-  end
 
-  def save_user!(user)
-    if user.save
-      user.reload
-
-      if logger && user.auth_source
-        logger.info(
-          "User '#{user.login}' created from external auth source: " +
-            "#{user.auth_source.type} - #{user.auth_source.name}"
-        )
-      end
-    end
+    user
   end
 
   def sso_in_progress!
@@ -161,8 +188,9 @@ module AuthSourceSSO
 
   def handle_sso_for!(user, login)
     if sso_login_failed?(user)
-      handle_sso_failure!({ user: user, login: login })
-    else # valid user
+      handle_sso_failure!(login:)
+    else
+      # valid user
       # If a user is invited, ensure it gets activated
       activated = user.invited?
       activate_user_if_invited! user
@@ -173,6 +201,8 @@ module AuthSourceSSO
 
   def handle_sso_success(user, just_activated)
     session[:user_from_auth_header] = true
+    # remember the back_url so we can redirect to the original request
+    session[:back_url] = request.fullpath
     successful_authentication(user, reset_stages: true, just_registered: just_activated)
   end
 
@@ -184,19 +214,18 @@ module AuthSourceSSO
 
   def perform_post_logout(prev_session, previous_user)
     if prev_session[:user_from_auth_header] && header_slo_url.present?
-      redirect_to header_slo_url
+      redirect_to(header_slo_url, allow_other_host: true)
     else
       super
     end
   end
 
-  def handle_sso_failure!(session_args = {})
-    return if header_optional?
-
-    session[:auth_source_sso_failure] = session_args.merge(
+  def handle_sso_failure!(login: nil)
+    session[:auth_source_sso_failure] = {
+      login:,
       back_url: request.base_url + request.original_fullpath,
       ttl: 1
-    )
+    }
 
     redirect_to sso_failure_path
   end

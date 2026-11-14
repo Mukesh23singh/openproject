@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Notifications::WorkflowJob, type: :model do
+RSpec.describe Notifications::WorkflowJob, type: :model do
   subject(:perform_job) do
     described_class.new.perform(state, *arguments)
   end
@@ -38,20 +37,20 @@ describe Notifications::WorkflowJob, type: :model do
   let(:send_notification) { true }
 
   let(:notifications) do
-    [FactoryBot.build_stubbed(:notification, reason: :assigned),
+    [build_stubbed(:notification, reason: :assigned),
      mentioned_notification,
-     FactoryBot.build_stubbed(:notification, reason: :watched)]
+     build_stubbed(:notification, reason: :watched)]
   end
 
   let(:mentioned_notification) do
-    FactoryBot.build_stubbed(:notification, reason: :mentioned)
+    build_stubbed(:notification, reason: :mentioned)
   end
 
-  describe '#perform' do
-    context 'with the :create_notifications state' do
+  describe "#perform" do
+    context "with the :create_notifications state" do
       let(:state) { :create_notifications }
       let(:arguments) { [resource, send_notification] }
-      let(:resource) { FactoryBot.build_stubbed(:comment) }
+      let(:resource) { build_stubbed(:comment) }
 
       let!(:create_service) do
         service_instance = instance_double(Notifications::CreateFromModelService)
@@ -86,7 +85,7 @@ describe Notifications::WorkflowJob, type: :model do
         service_instance
       end
 
-      it 'calls the service to create notifications' do
+      it "calls the service to create notifications" do
         perform_job
 
         expect(create_service)
@@ -94,14 +93,14 @@ describe Notifications::WorkflowJob, type: :model do
                 .with(send_notification)
       end
 
-      it 'sends mails for all notifications that are marked to send mails and that have a mention reason' do
+      it "sends mails for all notifications that are marked to send mails and that have a mention reason" do
         perform_job
 
         expect(mail_service)
           .to have_received(:call)
       end
 
-      it 'schedules a delayed WorkflowJob for those notifications not to be sent directly' do
+      it "schedules a delayed WorkflowJob for those notifications not to be sent directly" do
         allow(Time)
           .to receive(:current)
                 .and_return(Time.current)
@@ -116,7 +115,7 @@ describe Notifications::WorkflowJob, type: :model do
       end
     end
 
-    context 'with the :send_mails state' do
+    context "with the :send_mails state" do
       let(:state) { :send_mails }
       let(:arguments) { notifications.map(&:id) }
 
@@ -141,7 +140,7 @@ describe Notifications::WorkflowJob, type: :model do
                 .and_return(scope)
       end
 
-      it 'sends mails for all notifications that are marked to send mails' do
+      it "sends mails for all notifications that are marked to send mails" do
         perform_job
 
         expect(mail_service)

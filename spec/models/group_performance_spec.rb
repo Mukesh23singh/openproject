@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,26 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative '../support/shared/become_member'
+require "spec_helper"
+require_relative "../support/shared/become_member"
 
-describe Group, type: :model do
+RSpec.describe Group do
   include BecomeMember
 
-  let(:user) { FactoryBot.build(:user) }
-  let(:status) { FactoryBot.create(:status) }
-  let(:role) { FactoryBot.create :role, permissions: [:view_work_packages] }
+  let(:user) { build(:user) }
+  let(:status) { create(:status) }
+  let(:role) { create(:project_role, permissions: [:view_work_packages]) }
 
   let(:projects) do
-    projects = FactoryBot.create_list :project_with_types, 20
+    projects = create_list(:project_with_types, 20)
 
     projects.each do |project|
-      add_user_to_project! user: group, project: project, role: role
+      add_user_to_project! user: group, project:, role:
     end
 
     projects
@@ -48,13 +49,13 @@ describe Group, type: :model do
 
   let!(:work_packages) do
     projects.flat_map do |project|
-      work_packages = FactoryBot.create_list(
+      work_packages = create_list(
         :work_package,
         1,
-        type: project.types.first,
+        type: project.enabled_types.first,
         author: user,
-        project: project,
-        status: status
+        project:,
+        status:
       )
 
       work_packages.first.tap do |wp|
@@ -64,15 +65,15 @@ describe Group, type: :model do
     end
   end
 
-  let(:users) { FactoryBot.create_list :user, 100 }
-  let(:group) { FactoryBot.build(:group, members: users) }
+  let(:users) { create_list(:user, 100) }
+  let(:group) { build(:group, members: users) }
 
-  describe '#destroy' do
-    describe 'work packages assigned to the group' do
+  describe "#destroy" do
+    describe "work packages assigned to the group" do
       let(:deleted_user) { DeletedUser.first }
 
       before do
-        allow(::OpenProject::Notifications)
+        allow(OpenProject::Notifications)
           .to receive(:send)
 
         start = Time.now.to_i
@@ -85,11 +86,11 @@ describe Group, type: :model do
 
         @seconds = Time.now.to_i - start
 
-        expect(@seconds < 10).to eq true
+        expect(@seconds < 10).to be true
       end
 
-      it 'reassigns the work package to nobody and cleans up the journals' do
-        expect(::OpenProject::Notifications)
+      it "reassigns the work package to nobody and cleans up the journals" do
+        expect(OpenProject::Notifications)
           .to have_received(:send)
           .with(OpenProject::Events::MEMBER_DESTROYED, any_args)
           .exactly(projects.size).times

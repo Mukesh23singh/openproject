@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,77 +22,74 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::CustomFieldFilter,
-         'with contains filter (Regression test #28348)',
-         type: :model do
-  let(:cf_accessor) { "cf_#{custom_field.id}" }
-  let(:query) { FactoryBot.build_stubbed(:query, project: project) }
+RSpec.describe Queries::WorkPackages::Filter::CustomFieldFilter,
+               "with contains filter (Regression test #28348)" do
+  let(:cf_accessor) { custom_field.column_name }
+  let(:query) { build_stubbed(:query, project:) }
   let(:instance) do
-    described_class.create!(name: cf_accessor, operator: operator, values: %w(foo), context: query)
+    described_class.create!(name: cf_accessor, operator:, values: %w(foo), context: query)
   end
 
   let(:project) do
-    FactoryBot.create :project,
-                      types: [type],
-                      work_package_custom_fields: [custom_field]
+    create(:project,
+           types: [type])
   end
   let(:custom_field) do
-    FactoryBot.create(:text_issue_custom_field, name: 'LongText')
+    create(:issue_custom_field, :text, name: "LongText")
   end
-  let(:type) { FactoryBot.create(:type_standard, custom_fields: [custom_field]) }
+  let(:type) { create(:type_task, custom_fields: [custom_field]) }
 
   let!(:wp_contains) do
-    FactoryBot.create :work_package,
-                      type: type,
-                      project: project,
-                      custom_values: { custom_field.id => 'foo' }
+    create(:work_package,
+           type:,
+           project:,
+           custom_values: { custom_field.id => "foo" })
   end
   let!(:wp_not_contains) do
-    FactoryBot.create :work_package,
-                      type: type,
-                      project: project,
-                      custom_values: { custom_field.id => 'bar' }
+    create(:work_package,
+           type:,
+           project:,
+           custom_values: { custom_field.id => "bar" })
   end
 
   let!(:wp_empty) do
-    FactoryBot.create :work_package,
-                      type: type,
-                      project: project,
-                      custom_values: { custom_field.id => '' }
+    create(:work_package,
+           type:,
+           project:,
+           custom_values: { custom_field.id => "" })
   end
 
   let!(:wp_nil) do
-    FactoryBot.create :work_package,
-                      type: type,
-                      project: project,
-                      custom_values: { custom_field.id => nil }
+    create(:work_package,
+           type:,
+           project:,
+           custom_values: { custom_field.id => nil })
   end
 
   subject { WorkPackage.where(instance.where) }
 
-  describe 'contains' do
-    let(:operator) { '~' }
+  describe "contains" do
+    let(:operator) { "~" }
 
-    it 'returns the one matching work package' do
-      is_expected
-        .to match_array [wp_contains]
+    it "returns the one matching work package" do
+      expect(subject)
+        .to contain_exactly(wp_contains)
     end
   end
 
-  describe 'not contains' do
-    let(:operator) { '!~' }
+  describe "not contains" do
+    let(:operator) { "!~" }
 
-    it 'returns the three non-matching work package' do
-      is_expected
-        .to match_array [wp_not_contains, wp_empty, wp_nil]
+    it "returns the three non-matching work package" do
+      expect(subject)
+        .to contain_exactly(wp_not_contains, wp_empty, wp_nil)
     end
   end
 end

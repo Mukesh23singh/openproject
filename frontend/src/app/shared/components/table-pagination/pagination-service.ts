@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
 
 export const DEFAULT_PAGINATION_OPTIONS = {
@@ -48,9 +47,11 @@ export interface PaginationObject {
 
 @Injectable()
 export class PaginationService {
+  private configuration = inject(ConfigurationService);
+
   private paginationOptions:IPaginationOptions;
 
-  constructor(private configuration:ConfigurationService) {
+  constructor() {
     this.loadPaginationOptions();
   }
 
@@ -82,20 +83,16 @@ export class PaginationService {
     return this.paginationOptions;
   }
 
-  public get isPerPageKnown() {
-    return !!(this.localStoragePerPage || this.paginationOptions);
-  }
-
   public getPerPage() {
     return this.localStoragePerPage || this.paginationOptions.perPage;
   }
 
   public getMaxVisiblePageOptions() {
-    return _.get(this.paginationOptions, 'maxVisiblePageOptions', DEFAULT_PAGINATION_OPTIONS.maxVisiblePageOptions);
+    return this.paginationOptions.maxVisiblePageOptions;
   }
 
   public getOptionsTruncationSize() {
-    return _.get(this.paginationOptions, 'optionsTruncationSize', DEFAULT_PAGINATION_OPTIONS.optionsTruncationSize);
+    return this.paginationOptions.optionsTruncationSize;
   }
 
   public setPerPage(perPage:number) {
@@ -111,16 +108,12 @@ export class PaginationService {
     this.paginationOptions.perPageOptions = perPageOptions;
   }
 
-  public loadPaginationOptions() {
-    return this.configuration.initialized.then(() => {
-      this.paginationOptions = {
-        perPage: this.getCachedPerPage(this.configuration.perPageOptions),
-        perPageOptions: this.configuration.perPageOptions,
-        maxVisiblePageOptions: DEFAULT_PAGINATION_OPTIONS.maxVisiblePageOptions,
-        optionsTruncationSize: DEFAULT_PAGINATION_OPTIONS.optionsTruncationSize,
-      };
-
-      return this.paginationOptions;
-    });
+  private loadPaginationOptions():void {
+    this.paginationOptions = {
+      perPage: this.getCachedPerPage(this.configuration.perPageOptions),
+      perPageOptions: this.configuration.perPageOptions,
+      maxVisiblePageOptions: DEFAULT_PAGINATION_OPTIONS.maxVisiblePageOptions,
+      optionsTruncationSize: DEFAULT_PAGINATION_OPTIONS.optionsTruncationSize,
+    };
   }
 }

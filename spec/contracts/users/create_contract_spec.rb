@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,20 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'contracts/shared/model_contract_shared_context'
-require_relative 'shared_contract_examples'
+require "spec_helper"
+require_relative "shared_contract_examples"
 
-describe Users::CreateContract do
-  include_context 'ModelContract shared context'
-
-  it_behaves_like 'user contract' do
+RSpec.describe Users::CreateContract do
+  it_behaves_like "user contract" do
     let(:user) { User.new(attributes) }
     let(:contract) { described_class.new(user, current_user) }
     let(:attributes) do
@@ -45,31 +41,40 @@ describe Users::CreateContract do
         login: user_login,
         mail: user_mail,
         password: user_password,
-        password_confirmation: user_password_confirmation
+        password_confirmation: user_password_confirmation,
+        notification_settings: [NotificationSetting.new]
       }
     end
 
-    context 'when admin' do
-      let(:current_user) { FactoryBot.build_stubbed(:admin) }
+    context "when admin" do
+      let(:current_user) { build_stubbed(:admin) }
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
 
-      describe 'requires a password set when active' do
+      describe "requires a password set when active" do
         before do
           user.password = nil
           user.password_confirmation = nil
           user.activate
         end
 
-        it_behaves_like 'contract is invalid', password: :blank
+        it_behaves_like "contract is invalid", password: :blank
 
-        context 'when password is set' do
+        context "when password is set" do
           before do
-            user.password = user.password_confirmation = 'password!password!'
+            user.password = user.password_confirmation = "password!password!"
           end
 
-          it_behaves_like 'contract is valid'
+          it_behaves_like "contract is valid"
         end
+      end
+
+      context "when user limit reached" do
+        before do
+          allow(OpenProject::Enterprise).to receive(:user_limit_reached?).and_return(true)
+        end
+
+        it_behaves_like "contract is invalid", base: :user_limit_reached
       end
     end
   end

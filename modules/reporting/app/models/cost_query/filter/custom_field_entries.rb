@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,28 +32,49 @@ class CostQuery::Filter::CustomFieldEntries < Report::Filter::Base
     applies_for :label_work_package_attributes
     # redmine internals just suck
     case custom_field.field_format
-    when 'string', 'text' then use :string_operators
-    when 'list'           then use :null_operators
-    when 'date'           then use :time_operators
-    when 'int', 'float'   then use :integer_operators
-    when 'bool'
-      @possible_values = [['true', 't'], ['false', 'f']]
+    when "string", "text" then use :string_operators
+    when "list"           then use :null_operators
+    when "date"           then use :time_operators
+    when "int", "float"   then use :integer_operators
+    when "bool"
+      @possible_values = [["true", "t"], ["false", "f"]]
       use :null_operators
     else
       fail "cannot handle #{custom_field.field_format.inspect}"
     end
   end
 
-  def self.available_values(*)
-    @possible_values || get_possible_values
+  def self.field
+    # There is a special treatment for how list custom values are retrieved as those
+    # are not taken directly from the custom_values but from the custom_options table.
+    # But the value still has to be the id of the option which is later on mapped to the
+    # human readable value.
+    # Mapping to the human readable value is done for all custom values (e.g. users, versions)
+    # following the same pattern of code, so simply making the exception here to use the value
+    # would complicated the code later on.
+    if custom_field.field_format == "list"
+      "#{db_field}.value"
+    else
+      super
+    end
   end
 
-  def self.get_possible_values
-    if custom_field.field_format == 'list'
+  def self.available_values(project: nil, **)
+    @possible_values || get_possible_values(project)
+  end
+
+  def self.get_possible_values(project)
+    if custom_field.field_format == "list"
       # Treat list CFs values as string options again, since
       # aggregation of groups are made by the values as well
       # and otherwise, it won't work as a filter.
-      custom_field.possible_values.map { |co| [co.value, co.value] }
+
+      # Hierarchies are not supported here yet, otherwise they would need the same treatment
+      custom_field
+        .visible_values_for(User.current, within: project&.self_and_descendants)
+        .map(&:value)
+        .uniq
+        .map { |value| [value, value] }
     else
       custom_field.possible_values
     end

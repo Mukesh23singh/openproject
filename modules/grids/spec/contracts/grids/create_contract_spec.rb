@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,52 +20,51 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './shared_examples'
+require "spec_helper"
+require_relative "shared_examples"
 
-describe Grids::CreateContract do
-  include_context 'grid contract'
-  include_context 'model contract'
+RSpec.describe Grids::CreateContract do
+  include_context "grid contract"
+  include_context "model contract"
 
-  it_behaves_like 'shared grid contract attributes'
+  it_behaves_like "shared grid contract attributes"
 
-  describe 'type' do
-    let(:grid) { FactoryBot.build_stubbed(:grid, default_values) }
+  describe "type" do
+    let(:grid) { build_stubbed(:grid, default_values) }
 
-    it_behaves_like 'is writable' do
+    it_behaves_like "is writable" do
       let(:attribute) { :type }
-      let(:value) { 'Grids::Grid' }
+      let(:value) { "Grids::Grid" }
     end
   end
 
-  describe 'user_id' do
-    let(:grid) { FactoryBot.build_stubbed(:grid, default_values) }
+  describe "user_id" do
+    let(:grid) { build_stubbed(:grid, default_values) }
 
-    it_behaves_like 'is not writable' do
+    it_behaves_like "is not writable" do
       let(:attribute) { :user_id }
       let(:value) { 5 }
     end
   end
 
-  describe 'project_id' do
-    let(:grid) { FactoryBot.build_stubbed(:grid, default_values) }
+  describe "project_id" do
+    let(:grid) { build_stubbed(:grid, default_values) }
 
-    it_behaves_like 'is not writable' do
+    it_behaves_like "is not writable" do
       let(:attribute) { :project_id }
       let(:value) { 5 }
     end
   end
 
-  describe '#assignable_values' do
-    context 'for scope' do
-      it 'calls the grid configuration for the available values' do
-        scopes = double('scopes')
+  describe "#assignable_values" do
+    context "for scope" do
+      it "calls the grid configuration for the available values" do
+        scopes = double("scopes")
 
         allow(Grids::Configuration)
           .to receive(:all_scopes)
@@ -78,8 +75,8 @@ describe Grids::CreateContract do
       end
     end
 
-    context 'for widgets' do
-      it 'calls the grid configuration for the available values but allows only those eligible' do
+    context "for widgets" do
+      it "calls the grid configuration for the available values but allows only those eligible" do
         widgets = %i[widget1 widget2]
 
         allow(Grids::Configuration)
@@ -97,12 +94,12 @@ describe Grids::CreateContract do
           .and_return(false)
 
         expect(instance.assignable_values(:widgets, user))
-          .to match_array [:widget1]
+          .to contain_exactly(:widget1)
       end
     end
 
-    context 'for something else' do
-      it 'returns nil' do
+    context "for something else" do
+      it "returns nil" do
         expect(instance.assignable_values(:something, user))
           .to be_nil
       end

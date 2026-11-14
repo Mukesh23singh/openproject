@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'json'
+require "json"
 
 module WebhookFixtureHelpers
-  FIXTURES_PATH = File.join(File.dirname(__FILE__), '../fixtures/github_webhooks')
+  FIXTURES_PATH = File.join(File.dirname(__FILE__), "../fixtures/github_webhooks")
 
   # Params:
   # * replacements: A `Hash` containing replacement values for placeholders in the fixture files,

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class OnboardingController < ApplicationController
+  include OpTurbo::ComponentStream
+
+  no_authorization_required! :user_settings, :onboarding_video_dialog
+
   def user_settings
     @user = User.current
 
@@ -43,8 +46,12 @@ class OnboardingController < ApplicationController
     # Remove all query params:
     # the first_time_user param so that the modal is not shown again after redirect,
     # the welcome param so that the analytics is not fired again
-    uri = Addressable::URI.parse(request.referrer.to_s)
+    uri = Addressable::URI.parse(request.referer.to_s)
     uri.query_values = {}
     redirect_to uri.to_s
+  end
+
+  def onboarding_video_dialog
+    respond_with_dialog Onboarding::VideoDialogComponent.new
   end
 end

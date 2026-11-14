@@ -1,4 +1,11 @@
+---
 da:
+  activerecord:
+    models:
+      grids/overview:
+        one: Oversigt
+        other: Oversigter
   overviews:
-    label: 'Overblik'
-  permission_manage_overview: 'Manage overview page'
+    label_dashboard: Oversigtspanel
+    label_home: "%{workspace_type}-forside"
+    label_overview: Overblik

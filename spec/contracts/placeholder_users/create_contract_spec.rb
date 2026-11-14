@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,38 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'contracts/shared/model_contract_shared_context'
-require_relative 'shared_contract_examples'
+require "spec_helper"
+require_relative "shared_contract_examples"
 
-describe PlaceholderUsers::CreateContract do
-  include_context 'ModelContract shared context'
+RSpec.describe PlaceholderUsers::CreateContract do
+  include_context "ModelContract shared context"
 
-  context 'without enterprise' do
-    let(:placeholder_user) { PlaceholderUser.new(name: 'foo') }
+  context "without enterprise" do
+    let(:placeholder_user) { PlaceholderUser.new(name: "foo") }
     let(:contract) { described_class.new(placeholder_user, current_user) }
 
-    context 'when user with global permission' do
-      let(:current_user) { FactoryBot.create(:user, global_permission: %i[manage_placeholder_user]) }
+    context "when user with global permission" do
+      let(:current_user) { create(:user, global_permissions: %i[manage_placeholder_user]) }
 
-      it_behaves_like 'contract is invalid', base: :error_enterprise_only
+      it_behaves_like "contract is invalid", base: :error_enterprise_only
     end
 
-    context 'when user with admin permission' do
-      let(:current_user) { FactoryBot.build_stubbed(:admin) }
+    context "when user with admin permission" do
+      let(:current_user) { build_stubbed(:admin) }
 
-      it_behaves_like 'contract is invalid', base: :error_enterprise_only
+      it_behaves_like "contract is invalid", base: :error_enterprise_only
     end
   end
 
-  context 'with enterprise', with_ee: %i[placeholder_users] do
-    it_behaves_like 'placeholder user contract' do
+  context "with enterprise", with_ee: %i[placeholder_users] do
+    it_behaves_like "placeholder user contract" do
       let(:placeholder_user) { PlaceholderUser.new(name: placeholder_user_name) }
       let(:contract) { described_class.new(placeholder_user, current_user) }
     end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +22,35 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Operators
   module DatetimeRangeClauses
+    include DateLimits
+
     def datetime_range_clause(table, field, from, to)
       s = []
+
       if from
-        s << ("#{table}.#{field} >= '%s'" % [connection.quoted_date(from)])
+        return "1 <> 1" if date_too_big?(from)
+
+        unless date_too_small?(from)
+          s << "#{table}.#{field} >= '#{connection.quoted_date(from)}'"
+        end
       end
+
       if to
-        s << ("#{table}.#{field} <= '%s'" % [connection.quoted_date(to)])
+        return "1 <> 1" if date_too_small?(to)
+
+        unless date_too_big?(to)
+          s << "#{table}.#{field} <= '#{connection.quoted_date(to)}'"
+        end
       end
-      s.join(' AND ')
+
+      s.join(" AND ").presence || "1 = 1"
     end
   end
 end

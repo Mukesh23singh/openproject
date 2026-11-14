@@ -1,4 +1,10 @@
+---
 zh-CN:
+  activerecord:
+    models:
+      grids/overview:
+        other: 概览
   overviews:
-    label: '概述'
-  permission_manage_overview: '管理概览页'
+    label_dashboard: 仪表板
+    label_home: "%{workspace_type} 首页"
+    label_overview: 概览

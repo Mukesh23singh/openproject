@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -75,13 +74,11 @@ class Authorization::QueryTransformationVisitor < Arel::Visitors::Visitor
   end
 
   def visit_Arel_Nodes_Or(ast)
-    ast.left = replace_if_equals(ast.left)
+    ast.children.each_with_index do |_, i|
+      ast.children[i] = replace_if_equals(ast.children[i])
 
-    visit ast.left
-
-    ast.right = replace_if_equals(ast.right)
-
-    visit ast.right
+      visit ast.children[i]
+    end
   end
 
   def visit_Arel_Nodes_And(ast)
@@ -92,8 +89,8 @@ class Authorization::QueryTransformationVisitor < Arel::Visitors::Visitor
     end
   end
 
-  def method_missing(name, *args, &block)
-    super unless name.to_s.start_with?('visit_')
+  def method_missing(name, *args, &)
+    super unless name.to_s.start_with?("visit_")
   end
 
   def replace_if_equals(ast, key = nil)

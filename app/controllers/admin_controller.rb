@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,27 +22,33 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'open3'
+
+require "open3"
 
 class AdminController < ApplicationController
-  layout 'admin'
+  layout "admin"
 
   before_action :require_admin, except: %i[index]
   before_action :authorize_global, only: %i[index]
+  before_action :validate_smtp_settings, only: %i[test_email]
 
   menu_item :plugins, only: [:plugins]
   menu_item :info, only: [:info]
   menu_item :admin_overview, only: [:index]
 
   def index
-    @menu_nodes = Redmine::MenuManager.items(:admin_menu).children
-    @menu_nodes.delete_if { |node| node.name === :admin_overview }
-    @menu_nodes.delete_if { |node| node.condition && !node.condition.call }
+    @menu_nodes = Redmine::MenuManager.items(:admin_menu).children.reject do |node|
+      name = node.name
+      condition = node.condition
+
+      name === :admin_overview ||
+        (condition && !condition.call(nil)) ||
+        hidden_admin_menu_items.include?(name.to_s)
+    end
 
     if @menu_nodes.count == 1
       redirect_to @menu_nodes.first.url
@@ -50,35 +56,32 @@ class AdminController < ApplicationController
   end
 
   def projects
-    redirect_to controller: 'projects', action: 'index'
+    redirect_to controller: "projects", action: "index"
   end
 
   def plugins
-    @plugins = Redmine::Plugin.all.sort
+    @plugins = Redmine::Plugin.not_bundled.sort
   end
 
-  def test_email
+  def test_email # rubocop:disable Metrics/AbcSize
     raise_delivery_errors = ActionMailer::Base.raise_delivery_errors
     # Force ActionMailer to raise delivery errors so we can catch it
     ActionMailer::Base.raise_delivery_errors = true
     begin
-      @test = UserMailer.test_mail(User.current).deliver_now
+      delivery_method_options = {}
+
+      if validated_smtp_settings?
+        delivery_method_options[:address] = @safe_ip.to_s
+        delivery_method_options[:tls_hostname] = @smtp_addr
+      end
+
+      @test = UserMailer.test_mail(User.current, delivery_method_options:).deliver_now
       flash[:notice] = I18n.t(:notice_email_sent, value: User.current.mail)
     rescue StandardError => e
       flash[:error] = I18n.t(:notice_email_error, value: Redmine::CodesetUtil.replace_invalid_utf8(e.message.dup))
     end
     ActionMailer::Base.raise_delivery_errors = raise_delivery_errors
-    redirect_to admin_settings_mail_notifications_path
-  end
-
-  def force_user_language
-    available_languages = Setting.find_by(name: 'available_languages').value
-    User.where(['language not in (?)', available_languages]).each do |u|
-      u.language = Setting.default_language
-      u.save
-    end
-
-    redirect_to :back
+    redirect_to admin_settings_mail_notifications_path, status: :see_other
   end
 
   def info
@@ -92,34 +95,52 @@ class AdminController < ApplicationController
     @checklist += plaintext_extraction_checks
     @checklist += admin_information_hook_checks
     @checklist += image_conversion_checks
+    @checklist += jemalloc_active_checks
 
     @storage_information = OpenProject::Storage.mount_information
   end
 
-  def default_breadcrumb
-    case params[:action]
-    when 'plugins'
-      t(:label_plugins)
-    when 'info'
-      t(:label_information)
+  private
+
+  ##
+  # When using SMTP, we make sure the used address is safe to use, preventing SSRF attacks.
+  # This does not apply when sendmail is used.
+  def validate_smtp_settings
+    return unless using_smtp?
+
+    @smtp_addr = ActionMailer::Base.smtp_settings[:address]
+    @safe_ip = OpenProject::SsrfProtection.safe_ip?(@smtp_addr)
+
+    unless @safe_ip
+      flash[:error] = I18n.t :notice_smtp_address_unsafe_env_hint,
+                             address: @smtp_addr,
+                             env_name: Settings::Definition[:ssrf_protection_ip_allowlist].env_name
+
+      redirect_to admin_settings_mail_notifications_path, status: :see_other
     end
   end
 
-  def show_local_breadcrumb
-    true
+  def validated_smtp_settings?
+    @smtp_addr.present? && @safe_ip.present?
   end
 
-  private
+  def using_smtp?
+    ActionMailer::Base.delivery_method == :smtp
+  end
+
+  def hidden_admin_menu_items
+    OpenProject::Configuration.hidden_menu_items[:admin_menu.to_s] || []
+  end
 
   def plaintext_extraction_checks
     if OpenProject::Database.allows_tsv?
       [
-        [:'extraction.available.pdftotext', Plaintext::PdfHandler.available?],
-        [:'extraction.available.unrtf',     Plaintext::RtfHandler.available?],
-        [:'extraction.available.catdoc',    Plaintext::DocHandler.available?],
-        [:'extraction.available.xls2csv',   Plaintext::XlsHandler.available?],
-        [:'extraction.available.catppt',    Plaintext::PptHandler.available?],
-        [:'extraction.available.tesseract', Plaintext::ImageHandler.available?]
+        [:"extraction.available.pdftotext", Plaintext::PdfHandler.available?],
+        [:"extraction.available.unrtf", Plaintext::RtfHandler.available?],
+        [:"extraction.available.catdoc", Plaintext::DocHandler.available?],
+        [:"extraction.available.xls2csv", Plaintext::XlsHandler.available?],
+        [:"extraction.available.catppt", Plaintext::PptHandler.available?],
+        [:"extraction.available.tesseract", Plaintext::ImageHandler.available?]
       ]
     else
       []
@@ -127,11 +148,21 @@ class AdminController < ApplicationController
   end
 
   def image_conversion_checks
-    [[:'image_conversion.imagemagick', image_conversion_libs_available?]]
+    [[:"image_conversion.imagemagick", image_conversion_libs_available?]]
+  end
+
+  def jemalloc_active_checks
+    [[:"admin.jemalloc_allocator", jemalloc_libs_active?]]
+  end
+
+  def jemalloc_libs_active?
+    Open3.capture2e({ "MALLOC_CONF" => "true" }, "ruby", "-e", "exit").first.include?("jemalloc")
+  rescue StandardError
+    false
   end
 
   def image_conversion_libs_available?
-    Open3.capture2e('convert', '-version').first.include?('ImageMagick')
+    Open3.capture2e("convert", "-version").first.include?("ImageMagick")
   rescue StandardError
     false
   end

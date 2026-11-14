@@ -1,5 +1,8 @@
 ---
 description: |-
+  The priorities endpoints return collections or single entities of type `Priority`. The following tables list the different properties
+  of `Priority` entities.
+
   ## Linked Properties
 
   |  Link     | Description                                 | Type          | Constraints           | Supported operations |

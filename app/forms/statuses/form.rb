@@ -1,0 +1,138 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Statuses
+  class Form < ApplicationForm
+    attr_reader :submit_label
+
+    def initialize(submit_label: nil)
+      super()
+
+      @submit_label = submit_label || I18n.t(:button_save)
+    end
+
+    form do |status_form|
+      status_form.text_field(
+        label: attribute_name(:name),
+        name: :name,
+        required: true,
+        input_width: :medium
+      )
+
+      status_form.text_field(
+        label: attribute_name(:default_done_ratio),
+        name: :default_done_ratio,
+        caption: percent_complete_field_caption,
+        required: true,
+        type: :number,
+        min: 0,
+        max: 100,
+        maxlength: 7,
+        autocomplete: "off",
+        input_width: :small
+      )
+
+      status_form.radio_button_group(name: :category) do |group|
+        Status.categories.each_key do |category|
+          group.radio_button(
+            value: category,
+            label: Status.human_attribute_name("category.#{category}"),
+            caption: I18n.t("statuses.edit.captions.category.#{category}")
+          )
+        end
+      end
+
+      status_form.check_box(
+        label: attribute_name(:is_default),
+        name: :is_default,
+        disabled: already_default_status?,
+        caption: I18n.t("statuses.edit.status_default_text"),
+        data: {
+          "admin--statuses-target": "isDefaultCheckbox",
+          action: "admin--statuses#updateReadonlyCheckboxDisabledState"
+        }
+      )
+
+      status_form.check_box(
+        label: attribute_name(:is_readonly),
+        name: :is_readonly,
+        disabled: readonly_disabled?,
+        caption: helpers.t("statuses.edit.status_readonly_html"),
+        data: {
+          "admin--statuses-target": "isReadonlyCheckbox",
+          restricted: readonly_work_packages_restricted?
+        }
+      )
+
+      status_form.html_content do
+        render(EnterpriseEdition::BannerComponent.new(:readonly_work_packages))
+      end
+
+      status_form.check_box(
+        label: attribute_name(:excluded_from_totals),
+        name: :excluded_from_totals,
+        caption: I18n.t("statuses.edit.status_excluded_from_totals_text")
+      )
+
+      status_form.color_select_list(
+        label: attribute_name(:color_id),
+        name: :color_id,
+        caption: I18n.t("statuses.edit.status_color_text"),
+        input_width: :medium
+      )
+
+      status_form.submit(
+        scheme: :primary,
+        name: :submit,
+        label: submit_label
+      )
+    end
+
+    def status
+      model
+    end
+
+    def percent_complete_field_caption
+      helpers.link_translate("statuses.edit.status_percent_complete_text_html",
+                             links: { setting_url: url_helpers.admin_settings_progress_tracking_path })
+    end
+
+    def already_default_status?
+      status.is_default_was == true
+    end
+
+    def readonly_disabled?
+      readonly_work_packages_restricted? || already_default_status?
+    end
+
+    def readonly_work_packages_restricted?
+      !status.can_readonly?
+    end
+  end
+end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,48 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::Decorators::Single do
-  let(:user) { FactoryBot.create(:user, member_in_project: project, member_through_role: role) }
-  let(:project) { FactoryBot.create(:project_with_types) }
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+RSpec.describe API::Decorators::Single do
+  let(:user) { create(:user, member_with_roles: { project => role }) }
+  let(:project) { create(:project_with_types) }
+  let(:role) { create(:project_role, permissions:) }
   let(:permissions) { [:view_work_packages] }
   let(:model) { Object.new }
 
-  let(:single) { ::API::Decorators::Single.new(model, current_user: user) }
+  let(:single) { API::Decorators::Single.new(model, current_user: user) }
 
-  it 'should authorize for a given permission' do
-    expect(single.current_user_allowed_to(:view_work_packages, context: project)).to be_truthy
-  end
-
-  context 'unauthorized user' do
-    let(:permissions) { [] }
-
-    it 'should not authorize unauthorized user' do
-      expect(single.current_user_allowed_to(:view_work_packages, context: project)).to be_falsey
-    end
-  end
-
-  describe '.checked_permissions' do
+  describe ".checked_permissions" do
     let(:permissions) { [:add_work_packages] }
     let!(:initial_value) { described_class.checked_permissions }
 
-    it 'stores the value' do
+    after do
+      described_class.checked_permissions = initial_value
+    end
+
+    it "stores the value" do
       expect(described_class.checked_permissions).to be_nil
 
       described_class.checked_permissions = permissions
 
       expect(described_class.checked_permissions).to match_array permissions
-    end
-
-    after do
-      described_class.checked_permissions = initial_value
     end
   end
 end

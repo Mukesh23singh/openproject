@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,29 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { QueryColumn } from 'core-app/features/work-packages/components/wp-query/query-column';
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { HalResource, HalResourceEmbedded } from 'core-app/features/hal/resources/hal-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 import { HighlightingMode } from 'core-app/features/work-packages/components/wp-fast-table/builders/highlighting/highlighting-mode.const';
 import { QueryOrder } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-order';
 import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
 import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
+import { UserResource } from 'core-app/features/hal/resources/user-resource';
 import { QuerySortByResource } from 'core-app/features/hal/resources/query-sort-by-resource';
 import { QueryGroupByResource } from 'core-app/features/hal/resources/query-group-by-resource';
 
-export interface QueryResourceEmbedded {
+export interface QueryResourceEmbedded extends HalResourceEmbedded {
   results:WorkPackageCollectionResource;
   columns:QueryColumn[];
   groupBy:QueryGroupByResource|undefined;
   project:ProjectResource;
+  user:UserResource;
   sortBy:QuerySortByResource[];
   filters:QueryFilterInstanceResource[];
 }
@@ -53,7 +55,14 @@ export interface TimelineLabels {
   farRight:string|null;
 }
 
-export class QueryResource extends HalResource {
+export interface QueryResourceLinks {
+  updateImmediately?:CallableHalLink<QueryResource>;
+  icalUrl:CallableHalLink<{ icalUrl:{ href:string } }>;
+  star?:CallableHalLink<QueryResource>;
+  unstar?:CallableHalLink<QueryResource>;
+}
+
+export class QueryResource extends HalResource implements QueryResourceLinks {
   public $embedded:QueryResourceEmbedded;
 
   public results:WorkPackageCollectionResource;
@@ -63,6 +72,10 @@ export class QueryResource extends HalResource {
   public groupBy:QueryGroupByResource|undefined;
 
   public sortBy:QuerySortByResource[];
+
+  public setSortBy(newSortBy:QuerySortByResource[]):void {
+    this.sortBy = newSortBy;
+  }
 
   public filters:QueryFilterInstanceResource[];
 
@@ -84,17 +97,33 @@ export class QueryResource extends HalResource {
 
   public timelineLabels:TimelineLabels;
 
+  public timestamps:string[];
+
   public showHierarchies:boolean;
 
   public public:boolean;
 
   public hidden:boolean;
 
+  public user:UserResource;
+
   public project:ProjectResource;
+
+  public includeSubprojects:boolean;
 
   public ordered_work_packages:QueryOrder;
 
-  public $initialize(source:any) {
+  public updatedAt:string;
+
+  public updateImmediately?:CallableHalLink<QueryResource>;
+
+  public icalUrl:CallableHalLink<{ icalUrl:{ href:string } }>;
+
+  public star?:CallableHalLink<QueryResource>;
+
+  public unstar?:CallableHalLink<QueryResource>;
+
+  public $initialize(source:unknown) {
     super.$initialize(source);
 
     this.filters = this
@@ -108,9 +137,3 @@ export class QueryResource extends HalResource {
       ));
   }
 }
-
-export interface QueryResourceLinks {
-  updateImmediately?(attributes:any):Promise<any>;
-}
-
-export interface QueryResource extends QueryResourceLinks {}

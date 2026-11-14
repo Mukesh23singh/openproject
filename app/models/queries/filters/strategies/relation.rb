@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,7 +32,8 @@ module Queries::Filters::Strategies
     delegate :allowed_values_subset,
              to: :filter
 
-    self.supported_operators = ::Relation::TYPES.keys + %w(parent children)
+    # 'children' used to be supported by the API although 'child' would be more fitting.
+    self.supported_operators = ::Relation::TYPES.keys + [::Relation::TYPE_PARENT, ::Relation::TYPE_CHILD, "children"]
     self.default_operator = ::Relation::TYPE_RELATES
 
     def validate
@@ -49,13 +49,13 @@ module Queries::Filters::Strategies
     end
 
     def valid_values!
-      filter.values &= allowed_values.map(&:last).map(&:to_s)
+      filter.values &= allowed_values.map { |_, v| v.to_s }
     end
 
     private
 
     def too_many_values
-      values.reject(&:blank?).length > 1
+      values.count(&:present?) > 1
     end
   end
 end

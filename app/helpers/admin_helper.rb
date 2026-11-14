@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module AdminHelper
+  extend self
+
+  def ai_landing_path
+    routes = Rails.application.routes.url_helpers
+
+    if OpenProject::FeatureDecisions.llm_connection_active?
+      routes.llm_connection_path
+    elsif OpenProject::FeatureDecisions.ai_text_actions_active?
+      routes.admin_text_actions_path
+    else
+      routes.mcp_configurations_path
+    end
+  end
+
   def project_status_options_for_select(selected)
-    options_for_select([[I18n.t(:label_all), ''],
+    options_for_select([[I18n.t(:label_all), ""],
                         [I18n.t(:status_active), 1]], selected)
+  end
+
+  def linked_sha_reference(sha, url)
+    if sha && url
+      link_to sha, url, target: "_blank", rel: "noopener"
+    else
+      sha
+    end
   end
 end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,43 +34,16 @@
 # In the long run, those two should probably be unified on the data layer as well.
 #
 # Attributes for both the page as well as for the content are accepted.
-class WikiPages::SetAttributesService < ::BaseServices::SetAttributes
+class WikiPages::SetAttributesService < BaseServices::SetAttributes
   include Attachments::SetReplacements
 
   private
 
-  def set_attributes(params)
-    content_params, page_params = split_page_and_content_params(params.with_indifferent_access)
-
-    set_page_attributes(page_params)
-
-    set_default_attributes(params) if model.new_record?
-
-    set_content_attributes(content_params)
-  end
-
-  def set_page_attributes(params)
-    model.attributes = params
-  end
-
   def set_default_attributes(_params)
-    model.build_content page: model
-    model.content.extend(OpenProject::ChangedBySystem)
+    model.extend(OpenProject::ChangedBySystem)
 
-    model.content.change_by_system do
-      model.content.author = user
+    model.change_by_system do
+      model.author = user
     end
-  end
-
-  def set_content_attributes(params)
-    model.content.attributes = params
-  end
-
-  def split_page_and_content_params(params)
-    params.partition { |p, _| content_attribute?(p) }.map(&:to_h)
-  end
-
-  def content_attribute?(name)
-    WikiContent.column_names.include?(name) || name.to_s == 'journal_notes'
   end
 end

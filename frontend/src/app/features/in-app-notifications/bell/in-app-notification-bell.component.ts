@@ -1,51 +1,106 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-} from '@angular/core';
-import { OpModalService } from 'core-app/shared/components/modal/modal.service';
-import {
-  combineLatest,
-  timer,
-} from 'rxjs';
-import {
-  filter,
-  map,
-  switchMap,
-} from 'rxjs/operators';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { ChangeDetectionStrategy, Component, ElementRef, Input, OnInit, HostListener, inject } from '@angular/core';
+import { combineLatest, merge, Observable, timer } from 'rxjs';
+import { filter, map, shareReplay, switchMap, throttleTime } from 'rxjs/operators';
 import { ActiveWindowService } from 'core-app/core/active-window/active-window.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { AppBadgeService } from 'core-app/features/in-app-notifications/bell/app-badge.service';
 import { IanBellService } from 'core-app/features/in-app-notifications/bell/state/ian-bell.service';
-
-export const opInAppNotificationBellSelector = 'op-in-app-notification-bell';
-const POLLING_INTERVAL = 10000;
+import { populateInputsFromDataset } from 'core-app/shared/components/dataset-inputs';
 
 @Component({
-  selector: opInAppNotificationBellSelector,
+  selector: 'opce-in-app-notification-bell',
   templateUrl: './in-app-notification-bell.component.html',
   styleUrls: ['./in-app-notification-bell.component.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
-export class InAppNotificationBellComponent {
-  polling$ = timer(10, POLLING_INTERVAL).pipe(
-    filter(() => this.activeWindow.isActive),
-    switchMap(() => this.storeService.fetchUnread()),
-  );
+export class InAppNotificationBellComponent implements OnInit {
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  readonly storeService = inject(IanBellService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly activeWindow = inject(ActiveWindowService);
+  readonly pathHelper = inject(PathHelperService);
+  readonly appBadge = inject(AppBadgeService);
 
-  unreadCount$ = combineLatest([
-    this.storeService.unread$,
-    this.polling$,
-  ]).pipe(map(([count]) => count));
+  @Input() interval = 50000;
 
-  constructor(
-    readonly storeService:IanBellService,
-    readonly apiV3Service:APIV3Service,
-    readonly activeWindow:ActiveWindowService,
-    readonly modalService:OpModalService,
-    readonly pathHelper:PathHelperService,
-  ) { }
+  polling$:Observable<number>;
 
-  notificationsPath():string {
-    return this.pathHelper.notificationsPath();
+  unreadCount$:Observable<number>;
+
+  unreadCountText$:Observable<number|string>;
+
+  public bellDisplayLimit = 99;
+
+  constructor() {
+    populateInputsFromDataset(this);
+  }
+
+  // enable other parts of the application to trigger an immediate update
+  // e.g. a stimulus controller
+  // currently used by the new activities tab which does its own polling
+  // and receives updates from the backend earlier than the polling in the bell component
+  @HostListener('document:ian-update-immediate')
+  triggerImmediateUpdate() {
+    this.storeService.fetchUnread().subscribe();
+  }
+
+  ngOnInit() {
+    this.polling$ = merge(
+      timer(10, this.interval).pipe(filter(() => this.activeWindow.isActive)),
+      timer(10, this.interval * this.appBadge.hiddenPollingFactor).pipe(filter(() => !this.activeWindow.isActive)),
+    )
+      .pipe(
+        throttleTime(this.interval),
+        switchMap(() => this.storeService.fetchUnread()),
+      );
+
+    this.unreadCount$ = combineLatest([
+      this.storeService.unread$,
+      this.polling$,
+    ]).pipe(
+      map(([count]) => count),
+      shareReplay(1),
+    );
+
+    this.unreadCountText$ = this
+      .unreadCount$
+      .pipe(
+        map((count) => {
+          if (count > this.bellDisplayLimit || count <= 0) {
+            return '';
+          }
+
+          return count;
+        }),
+      );
   }
 }

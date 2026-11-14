@@ -4,78 +4,94 @@
   "newProjectRoot": "projects",
   "projects": {
     "OpenProject": {
+      "projectType": "application",
+      "schematics": {
+        "@schematics/angular:component": {
+          "style": "sass"
+        }
+      },
       "root": "",
       "sourceRoot": "src",
-      "projectType": "application",
-      "prefix": "",
       "architect": {
         "build": {
-          "builder": "@angular-devkit/build-angular:browser",
+          "builder": "@angular-builders/custom-esbuild:application",
           "options": {
+            "plugins": ["./esbuild/plugins.ts"],
             "allowedCommonJsDependencies": [
-              "core-app/init-vendors",
-              "core-app/init-globals",
               "dom-plane",
               "pako",
               "moment-timezone",
               "observable-array",
               "dragula",
-              "jquery",
               "contra/emitter",
               "crossvent",
-              "chart.js",
               "create-point-cb",
               "core-vendor/enjoyhint",
-              "tablesorter",
-              "chartjs-plugin-datalabels"
+              "tablesorter"
             ],
             "preserveSymlinks": true,
-            "deployUrl": "/assets/frontend/",
-            "outputPath": "../public/assets/frontend/",
-            "index": "src/index2.html",
-            "main": "src/main.ts",
-            "tsConfig": "src/tsconfig.app.json",
-            "polyfills": "src/polyfills.ts",
+            "outputPath": {
+              "base": "../public/assets/frontend",
+              "browser": ""
+            },
+            "index": false,
+            "browser": "src/main.ts",
+            "polyfills": ["src/polyfills.ts"],
+            "tsConfig": "tsconfig.app.json",
+            "inlineStyleLanguage": "sass",
             "assets": [
               "src/assets"
             ],
             "styles": [
+              {
+                "input": "src/spot.scss",
+                "bundleName": "spot"
+              },
+              {
+                "input": "node_modules/@blocknote/mantine/src/style.css",
+                "bundleName": "blocknote"
+              },
               "src/styles.scss",
               "node_modules/codemirror/lib/codemirror.css",
-              "node_modules/jquery-ui/themes/base/core.css",
-              "node_modules/jquery-ui/themes/base/datepicker.css",
-              "node_modules/jquery-ui/themes/base/dialog.css",
-              "node_modules/@fullcalendar/common/main.css",
-              "node_modules/@fullcalendar/daygrid/main.css",
-              "node_modules/@fullcalendar/timegrid/main.css",
-              "node_modules/flatpickr/dist/flatpickr.min.css"
+              "node_modules/flatpickr/dist/flatpickr.min.css",
+              "src/vendor/ckeditor/ckeditor.css"
             ],
             "stylePreprocessorOptions": {
               "includePaths": [
-                "src/assets/sass/"
-              ]
+                "src/assets/sass"
+              ],
+              "sass": {
+                "silenceDeprecations": [
+                  "color-functions",
+                  "global-builtin",
+                  "import"
+                ]
+              }
             },
-            "scripts": [],
-            "vendorChunk": true,
-            "extractLicenses": false,
-            "buildOptimizer": false,
-            "sourceMap": true,
-            "optimization": false,
-            "namedChunks": true
+            "scripts": [
+              {
+                "input": "node_modules/openapi-explorer/dist/browser/openapi-explorer.min.js",
+                "inject": false,
+                "bundleName": "openapi-explorer"
+              }
+            ]
           },
           "configurations": {
             "production": {
               "budgets": [
                 {
                   "type": "anyComponentStyle",
-                  "maximumWarning": "6kb"
+                  "maximumWarning": "6kB"
                 }
               ],
               "preserveSymlinks": true,
-              "optimization": true,
+              "optimization": {
+                "scripts" : true,
+                "styles" : true,
+                "fonts" : true
+              },
               "outputHashing": "all",
               "sourceMap": false,
-              "extractCss": true,
               "namedChunks": false,
               "extractLicenses": true,
               "fileReplacements": [
@@ -83,43 +99,54 @@
                   "replace": "src/environments/environment.ts",
                   "with": "src/environments/environment.prod.ts"
                 }
-              ]
+              ],
+              "define": { "process.env.NODE_ENV": "'production'" }
+            },
+            "development": {
+              "optimization": false,
+              "extractLicenses": false,
+              "sourceMap": true,
+              "define": { "process.env.NODE_ENV": "'development'" }
             }
-          }
+          },
+          "defaultConfiguration": "production"
         },
         "serve": {
-          "builder": "@angular-devkit/build-angular:dev-server",
+          "builder": "@angular-builders/custom-esbuild:dev-server",
           "options": {
-            "browserTarget": "OpenProject:build",
-            "proxyConfig": "cli_to_rails_proxy.js"
+            "servePath": "/assets/frontend"
           },
           "configurations": {
             "production": {
-              "browserTarget": "OpenProject:build:production"
+              "buildTarget": "OpenProject:build:production"
+            },
+            "development": {
+              "buildTarget": "OpenProject:build:development",
+              "proxyConfig": "src/proxy.conf.mjs",
+              "headers": {
+                "Access-Control-Allow-Origin": "*"
+              }
             }
-          }
+          },
+          "defaultConfiguration": "development"
         },
         "extract-i18n": {
           "builder": "@angular-devkit/build-angular:extract-i18n",
           "options": {
-            "browserTarget": "OpenProject:build"
+            "buildTarget": "OpenProject:build"
           }
         },
         "test": {
-          "builder": "@angular-devkit/build-angular:karma",
+          "builder": "@angular-builders/custom-esbuild:unit-test",
           "options": {
-            "preserveSymlinks": true,
-            "main": "src/test.ts",
-            "karmaConfig": "./karma.conf.js",
-            "tsConfig": "src/tsconfig.spec.json",
-            "scripts": [],
-            "styles": [],
-            "stylePreprocessorOptions": {
-              "includePaths": [
-                "src/assets/sass/"
-              ]
-            },
-            "assets": []
+            "tsConfig": "tsconfig.spec.json",
+            "buildTarget": "OpenProject:build",
+            "runnerConfig": true,
+            "providersFile": "src/test-providers.ts",
+            "setupFiles": ["src/test-browser-polyfills.ts", "src/test-setup.ts"],
+            "browsers": ["chromium"],
+            "reporters": ["dot"],
+            "quiet": true
           }
         },
         "lint": {
@@ -128,28 +155,49 @@
             "lintFilePatterns": [
               "src/**/*.ts",
               "src/**/*.html"
-            ],
-            "preserveSymlinks": true
+            ]
           }
         }
       }
     }
   },
-  "defaultProject": "OpenProject",
   "schematics": {
     "@schematics/angular:component": {
       "prefix": "op",
       "style": "sass",
       "changeDetection": "OnPush",
       "skipTests": true,
-      "flat": true
+      "flat": true,
+      "type": "component"
     },
     "@schematics/angular:directive": {
       "prefix": "op",
-      "skipTests": true
+      "skipTests": true,
+      "type": "directive"
+    },
+    "@schematics/angular:service": {
+      "type": "service"
+    },
+    "@schematics/angular:guard": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:interceptor": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:module": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:pipe": {
+      "typeSeparator": "."
+    },
+    "@schematics/angular:resolver": {
+      "typeSeparator": "."
     }
   },
   "cli": {
-    "analytics": false
+    "analytics": false,
+    "cache": {
+      "environment": "all"
+    }
   }
 }

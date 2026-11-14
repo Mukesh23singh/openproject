@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,51 +22,124 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Lost password', type: :feature do
-  let!(:user) { FactoryBot.create :user }
+RSpec.describe "Lost password" do
+  let!(:user) { create(:user) }
   let(:new_password) { "new_PassW0rd!" }
 
-  it 'allows logging in after having lost the password' do
+  it "shows a validation error when no email is provided" do
+    visit account_lost_password_path
+
+    click_on "Submit"
+
+    expect(page).to have_text("Email can't be blank.")
+  end
+
+  it "allows logging in after having lost the password" do
     visit account_lost_password_path
 
     # shows same flash for invalid and existing users
-    fill_in 'mail', with: 'invalid mail'
-    click_on 'Submit'
+    fill_in "mail", with: "invalid mail"
+    click_on "Submit"
 
-    expect(page).to have_selector('.flash.notice', text: I18n.t(:notice_account_lost_email_sent))
-
-    perform_enqueued_jobs
-    expect(ActionMailer::Base.deliveries.size).to eql 0
-
-    fill_in 'mail', with: user.mail
-    click_on 'Submit'
-    expect(page).to have_selector('.flash.notice', text: I18n.t(:notice_account_lost_email_sent))
+    expect_flash(message: I18n.t(:notice_account_lost_email_sent))
 
     perform_enqueued_jobs
-    expect(ActionMailer::Base.deliveries.size).to eql 1
+    expect(ActionMailer::Base.deliveries.size).to be 0
+
+    fill_in "mail", with: user.mail
+    click_on "Submit"
+    expect_flash(message: I18n.t(:notice_account_lost_email_sent))
+
+    perform_enqueued_jobs
+    expect(ActionMailer::Base.deliveries.size).to be 1
+    mail = ActionMailer::Base.deliveries.first
+    expect(mail.subject).to eq I18n.t("mail_subject_lost_password", value: Setting.app_title)
 
     # mimic the user clicking on the link in the mail
     token = Token::Recovery.first
-    visit account_lost_password_path(token: token.value)
+    mail_body = mail.body.parts.find { |p| p.mime_type == "text/html" }.body.to_s
+    mail_document = Capybara::Node::Simple.new(mail_body)
+    visit mail_document.find("a")["href"]
 
-    fill_in 'New password', with: new_password
-    fill_in 'Confirmation', with: new_password
+    fill_in "New password", with: new_password
+    fill_in "Password confirmation", with: new_password
 
-    click_button 'Save'
+    click_button "Save"
 
-    expect(page).to have_selector('.flash.notice', text: I18n.t(:notice_account_password_updated))
+    expect_flash(type: :info, message: I18n.t(:notice_account_password_updated))
 
     login_with user.login, new_password
 
     expect(page)
-      .to have_current_path(my_page_path)
+      .to have_current_path(home_path)
+  end
+
+  context "when user has an auth source" do
+    let!(:ldap_auth_source) { create(:ldap_auth_source, name: "Foo") }
+    let!(:user) { create(:user, ldap_auth_source:) }
+
+    it "sends an email with external auth info" do
+      visit account_lost_password_path
+
+      # shows same flash for invalid and existing users
+      fill_in "mail", with: user.mail
+      click_on "Submit"
+
+      expect_flash(message: I18n.t(:notice_account_lost_email_sent))
+
+      perform_enqueued_jobs
+      expect(ActionMailer::Base.deliveries.size).to be 1
+      mail = ActionMailer::Base.deliveries.first
+      expect(mail.subject).to eq I18n.t("mail_password_change_not_possible.title")
+      expect(mail.body.parts.first.body.to_s).to include "Foo"
+    end
+  end
+
+  context "when user only authenticates via SSO" do
+    let!(:provider) { create(:saml_provider, slug: "saml", display_name: "The SAML provider") }
+    let!(:user) { create(:user, :passwordless, authentication_provider: provider) }
+
+    it "sends an email with external auth info" do
+      visit account_lost_password_path
+
+      # shows same flash for invalid and existing users
+      fill_in "mail", with: user.mail
+      click_on "Submit"
+
+      expect_flash(message: I18n.t(:notice_account_lost_email_sent))
+
+      perform_enqueued_jobs
+      expect(ActionMailer::Base.deliveries.size).to be 1
+      mail = ActionMailer::Base.deliveries.first
+      expect(mail.subject).to eq I18n.t("mail_password_change_not_possible.title")
+      expect(mail.body.parts.first.body.to_s).to include "(The SAML provider)"
+    end
+  end
+
+  context "when authenticates via password & SSO" do
+    let!(:provider) { create(:saml_provider, slug: "saml", display_name: "The SAML provider") }
+    let!(:user) { create(:user, authentication_provider: provider) }
+
+    it "sends an email with external auth info" do
+      visit account_lost_password_path
+
+      # shows same flash for invalid and existing users
+      fill_in "mail", with: user.mail
+      click_on "Submit"
+
+      expect_flash(message: I18n.t(:notice_account_lost_email_sent))
+
+      perform_enqueued_jobs
+      expect(ActionMailer::Base.deliveries.size).to be 1
+      mail = ActionMailer::Base.deliveries.first
+      expect(mail.subject).to eq I18n.t("mail_subject_lost_password", value: Setting.app_title)
+    end
   end
 end

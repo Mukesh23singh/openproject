@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,107 +22,37 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ApplicationHelper, type: :helper do
-  include ApplicationHelper
-  include WorkPackagesHelper
-
-  describe 'format_activity_description' do
-    it 'truncates given text' do
-      text = 'Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lore'
-      expect(format_activity_description(text).size).to eq(120)
-    end
-
-    it 'replaces escaped line breaks with html line breaks and should be html_safe' do
-      text = "Lorem ipsum dolor sit \namet, consetetur sadipscing elitr, sed diam nonumy eirmod\r tempor invidunt"
-      text_html = 'Lorem ipsum dolor sit <br />amet, consetetur sadipscing elitr, sed diam nonumy eirmod<br /> tempor invidunt'
-      expect(format_activity_description(text)).to be_html_eql(text_html)
-      expect(format_activity_description(text).html_safe?).to be_truthy
-    end
-
-    it 'escapes potentially harmful code' do
-      text = "Lorem ipsum dolor <script>alert('pwnd');</script> tempor invidunt"
-      expect(format_activity_description(text).include?('&lt;script&gt;alert(&#39;pwnd&#39;);&lt;/script&gt;')).to be_truthy
-    end
-  end
-
-  describe 'footer_content' do
-    context 'no additional footer content' do
-      before do
-        OpenProject::Footer.content = nil
-      end
-
-      it {
-        expect(footer_content).to eq(I18n.t(:text_powered_by, link: link_to(OpenProject::Info.app_name, OpenProject::Info.url)))
-      }
-    end
-
-    context 'string as additional footer content' do
-      before do
-        OpenProject::Footer.content = nil
-        OpenProject::Footer.add_content('openproject', 'footer')
-      end
-
-      it {
-        expect(footer_content.include?(I18n.t(:text_powered_by,
-                                              link: link_to(OpenProject::Info.app_name, OpenProject::Info.url)))).to be_truthy
-      }
-      it { expect(footer_content.include?("<span class=\"footer_openproject\">footer</span>")).to be_truthy }
-    end
-
-    context 'proc as additional footer content' do
-      before do
-        OpenProject::Footer.content = nil
-        OpenProject::Footer.add_content('openproject', Proc.new { Date.parse(Time.now.to_s) })
-      end
-
-      it {
-        expect(footer_content.include?("<span class=\"footer_openproject\">#{Date.parse(Time.now.to_s)}</span>")).to be_truthy
-      }
-    end
-
-    context 'proc which returns nothing' do
-      before do
-        OpenProject::Footer.content = nil
-        OpenProject::Footer.add_content('openproject', Proc.new { 'footer' if false })
-      end
-
-      it { expect(footer_content.include?("<span class=\"footer_openproject\">")).to be_falsey }
-    end
-  end
-
-  describe '.link_to_if_authorized' do
-    let(:project) { FactoryBot.create :valid_project }
+RSpec.describe ApplicationHelper do
+  describe ".link_to_if_authorized" do
+    let(:project) { create(:valid_project) }
     let(:project_member) do
-      FactoryBot.create :user,
-                        member_in_project: project,
-                        member_through_role: FactoryBot.create(:role,
-                                                               permissions: %i[view_work_packages edit_work_packages
-                                                                               browse_repository view_changesets view_wiki_pages])
+      create(:user,
+             member_with_permissions: { project => %i[view_work_packages edit_work_packages
+                                                      browse_repository view_changesets view_wiki_pages] })
     end
     let(:issue) do
-      FactoryBot.create :work_package,
-                        project: project,
-                        author: project_member,
-                        type: project.types.first
+      create(:work_package,
+             project:,
+             author: project_member,
+             type: project.enabled_types.first)
     end
 
-    context 'if user is authorized' do
+    context "if user is authorized" do
       before do
         expect(self).to receive(:authorize_for).and_return(true)
-        @response = link_to_if_authorized('link_content', {
-                                            controller: 'work_packages',
-                                            action: 'show',
+        @response = link_to_if_authorized("link_content", {
+                                            controller: "work_packages",
+                                            action: "show",
                                             id: issue
                                           },
-                                          class: 'fancy_css_class')
+                                          class: "fancy_css_class")
       end
 
       subject { @response }
@@ -130,15 +62,15 @@ describe ApplicationHelper, type: :helper do
       it { is_expected.to match /fancy_css_class/ }
     end
 
-    context 'if user is unauthorized' do
+    context "if user is unauthorized" do
       before do
         expect(self).to receive(:authorize_for).and_return(false)
-        @response = link_to_if_authorized('link_content', {
-                                            controller: 'work_packages',
-                                            action: 'show',
+        @response = link_to_if_authorized("link_content", {
+                                            controller: "work_packages",
+                                            action: "show",
                                             id: issue
                                           },
-                                          class: 'fancy_css_class')
+                                          class: "fancy_css_class")
       end
 
       subject { @response }
@@ -146,12 +78,12 @@ describe ApplicationHelper, type: :helper do
       it { is_expected.to be_nil }
     end
 
-    context 'allow using the :controller and :action for the target link' do
+    context "allow using the :controller and :action for the target link" do
       before do
         expect(self).to receive(:authorize_for).and_return(true)
-        @response = link_to_if_authorized('By controller/action',
-                                          controller: 'work_packages',
-                                          action: 'show',
+        @response = link_to_if_authorized("By controller/action",
+                                          controller: "work_packages",
+                                          action: "show",
                                           id: issue.id)
       end
 
@@ -161,38 +93,40 @@ describe ApplicationHelper, type: :helper do
     end
   end
 
-  describe 'other_formats_links' do
-    context 'link given' do
+  describe "other_formats_links" do
+    context "link given" do
       before do
-        @links = other_formats_links { |f| f.link_to 'Atom', url: { controller: :projects, action: :index } }
+        @links = other_formats_links { |f| f.link_to "Atom", url: { controller: :projects, action: :index } }
       end
+
       it {
         expect(@links).to be_html_eql("<p class=\"other-formats\">Also available in:<span><a class=\"icon icon-atom\" href=\"/projects.atom\" rel=\"nofollow\">Atom</a></span></p>")
       }
     end
 
-    context 'link given but disabled' do
+    context "link given but disabled" do
       before do
         allow(Setting).to receive(:feeds_enabled?).and_return(false)
-        @links = other_formats_links { |f| f.link_to 'Atom', url: { controller: :projects, action: :index } }
+        @links = other_formats_links { |f| f.link_to "Atom", url: { controller: :projects, action: :index } }
       end
+
       it { expect(@links).to be_nil }
     end
   end
 
-  describe 'time_tag' do
+  describe "time_tag" do
     around do |example|
       I18n.with_locale(:en) { example.run }
     end
 
     subject { time_tag(time) }
 
-    context 'with project' do
+    context "with project" do
       before do
-        @project = FactoryBot.build(:project)
+        @project = build(:project)
       end
 
-      context 'right now' do
+      context "right now" do
         let(:time) { Time.now }
 
         it { is_expected.to match /^<a/ }
@@ -200,7 +134,7 @@ describe ApplicationHelper, type: :helper do
         it { is_expected.to be_html_safe }
       end
 
-      context 'some time ago' do
+      context "some time ago" do
         let(:time) do
           Timecop.travel(2.weeks.ago) do
             Time.now
@@ -213,8 +147,8 @@ describe ApplicationHelper, type: :helper do
       end
     end
 
-    context 'without project' do
-      context 'right now' do
+    context "without project" do
+      context "right now" do
         let(:time) { Time.now }
 
         it { is_expected.to match /^<time/ }
@@ -223,7 +157,7 @@ describe ApplicationHelper, type: :helper do
         it { is_expected.to be_html_safe }
       end
 
-      context 'some time ago' do
+      context "some time ago" do
         let(:time) do
           Timecop.travel(1.week.ago) do
             Time.now
@@ -234,6 +168,167 @@ describe ApplicationHelper, type: :helper do
         it { is_expected.to match /datetime="#{Regexp.escape(time.xmlschema)}"/ }
         it { is_expected.to match /7 days/ }
         it { is_expected.to be_html_safe }
+      end
+    end
+  end
+
+  describe ".authoring_at" do
+    it "escapes html from author name" do
+      created = "2023-06-02"
+      author = build(:user, firstname: "<b>Hello</b>", lastname: "world")
+      author.save! validate: false
+
+      esc_name = "&lt;b&gt;Hello&lt;/b&gt; world"
+
+      exp_str = <<-HTML.squish
+        Added by
+        <a title="User #{esc_name}" data-hover-card-url="/users/#{author.id}/hover_card"
+           data-hover-card-trigger-target="trigger" href="/users/#{author.id}">#{esc_name}</a>
+        on 2023-06-02
+      HTML
+
+      expect(authoring_at(created, author))
+        .to eq(exp_str)
+    end
+  end
+
+  describe "#lang_options_for_select" do
+    before do
+      allow(Redmine::I18n)
+        .to receive(:all_languages)
+        .and_return %w[en de es ja zh-CN]
+    end
+
+    context "with all available languages" do
+      it "returns options for all languages" do
+        expect(lang_options_for_select).to eq [
+          ["(auto)", ""],
+          ["Deutsch", "de", { lang: "de" }],
+          ["English", "en", { lang: "en" }],
+          ["Español", "es", { lang: "es" }],
+          ["日本語", "ja", { lang: "ja" }],
+          ["简体中文", "zh-CN", { lang: "zh-CN" }]
+        ]
+      end
+    end
+
+    context "with some available languages", with_settings: { available_languages: %w[en es ja] } do
+      it "returns options for available languages" do
+        expect(lang_options_for_select).to eq [
+          ["English", "en", { lang: "en" }],
+          ["Español", "es", { lang: "es" }],
+          ["日本語", "ja", { lang: "ja" }]
+        ]
+      end
+    end
+
+    context "when blank is true (default)" do
+      it "returns auto option if all languages available" do
+        expect(lang_options_for_select).to start_with ["(auto)", ""]
+      end
+
+      it "does not return auto option if some languages available", with_settings: { available_languages: %w[en] } do
+        expect(lang_options_for_select).not_to start_with ["(auto)", ""]
+      end
+    end
+
+    context "when blank is false" do
+      it "does not return auto option" do
+        expect(lang_options_for_select(false)).not_to start_with ["(auto)", ""]
+      end
+    end
+  end
+
+  describe "#back_url_to_current_page" do
+    context "when back_url param is provided" do
+      it "returns the provided back_url" do
+        allow(helper).to receive(:params).and_return(ActionController::Parameters.new(back_url: "/work_packages"))
+
+        expect(helper.back_url_to_current_page).to eq("/work_packages")
+      end
+    end
+
+    context "when back_url param is missing" do
+      it "returns nil" do
+        allow(helper)
+          .to(
+            receive_messages(
+              params: ActionController::Parameters.new,
+              request: instance_double(ActionDispatch::Request, get?: true, url: "http://test.host/")
+            )
+          )
+
+        expect(helper.back_url_to_current_page).to be_nil
+      end
+    end
+  end
+
+  describe "#link_to_content_update" do
+    let(:options) { { controller: "work_packages", action: "show", id: 10 } }
+
+    subject { link_to_content_update("Пакет работ", options, html_options) }
+
+    context "without html_options" do
+      let(:html_options) { {} }
+
+      it "renders with 'target=\"_top\"'" do
+        expect(subject).to be_html_eql %{
+          <a target="_top" href="/work_packages/10">Пакет работ</a>
+        }
+      end
+    end
+
+    context "with html_options" do
+      let(:html_options) { { aria: { label: "Работайте усердно!", current: "page" } } }
+
+      it "renders with 'target=\"_top\"'" do
+        expect(subject).to be_html_eql %{
+          <a target="_top" aria-label="Работайте усердно!" aria-current="page" href="/work_packages/10">Пакет работ</a>
+        }
+      end
+    end
+  end
+
+  describe "#initial_main_menu_width" do
+    subject { helper.initial_main_menu_width }
+
+    {
+      nil => nil,
+      "" => nil,
+      "0" => 0,
+      "00" => nil,
+      "5" => nil,
+      "10" => nil,
+      "11" => 11,
+      "320" => 320,
+      "0320" => 320,
+      "-320" => nil,
+      "320.5" => nil,
+      "320px" => nil,
+      "wide" => nil,
+      "320\n" => nil
+    }.each do |cookie, expected|
+      it "returns #{expected.inspect} with the cookie #{cookie.inspect}" do
+        helper.request.cookies[described_class::MAIN_MENU_WIDTH_COOKIE] = cookie unless cookie.nil?
+        expect(subject).to eq(expected)
+      end
+    end
+  end
+
+  describe "#pwa_service_worker_attributes" do
+    context "with the progressive web app flag on", with_flag: { progressive_web_app: true } do
+      it "wires the registration controller to the worker url and the instance scope" do
+        expect(helper.pwa_service_worker_attributes).to eq(
+          controller: "pwa-service-worker",
+          pwa_service_worker_url_value: "/service-worker",
+          pwa_service_worker_scope_value: "/"
+        )
+      end
+    end
+
+    context "with the progressive web app flag off", with_flag: { progressive_web_app: false } do
+      it "wires nothing" do
+        expect(helper.pwa_service_worker_attributes).to eq({})
       end
     end
   end

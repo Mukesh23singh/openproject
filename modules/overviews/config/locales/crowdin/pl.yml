@@ -1,4 +1,13 @@
+---
 pl:
+  activerecord:
+    models:
+      grids/overview:
+        one: Przegląd
+        few: Przeglądy
+        many: Przeglądy
+        other: Przeglądy
   overviews:
-    label: 'Przegląd'
-  permission_manage_overview: 'Zarządzanie stroną przeglądową'
+    label_dashboard: Pulpit nawigacyjny
+    label_home: Strona główna %{workspace_type}
+    label_overview: Przegląd

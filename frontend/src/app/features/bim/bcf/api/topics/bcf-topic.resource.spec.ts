@@ -1,6 +1,33 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { TypedJSON } from 'typedjson';
 import { BcfTopicResource } from 'core-app/features/bim/bcf/api/topics/bcf-topic.resource';
-import * as moment from 'moment';
+import moment from 'moment';
 
 export const topic_object = {
   guid: '00efc0da-b4d5-4933-bcb6-e01513ee2bcc',
@@ -33,7 +60,9 @@ describe('BcfTopicResource', () => {
     expect(subject).toBeInstanceOf(BcfTopicResource);
     ['guid', 'topic_type', 'topic_status', 'priority', 'reference_links', 'title',
       'index', 'labels', 'creation_author', 'modified_author', 'assigned_to', 'stage',
-      'description'].forEach((item) => expect((subject as any)[item]).toEqual((topic_object as any)[item]));
+      'description'].forEach((item) =>
+
+      expect((subject as any)[item]).toEqual((topic_object as any)[item]));
 
     // Expect dates
     expect(subject.creation_date).toEqual(moment(topic_object.creation_date));

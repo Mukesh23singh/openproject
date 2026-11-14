@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Projects', 'work package type mgmt', type: :feature, js: true do
-  current_user { FactoryBot.create(:user, member_in_project: project, member_with_permissions: %i[edit_project manage_types]) }
+RSpec.describe "Projects", "work package type mgmt", :js do
+  current_user { create(:user, member_with_permissions: { project => %i[edit_project manage_types] }) }
 
-  let(:phase_type)     { FactoryBot.create(:type, name: 'Phase', is_default: true) }
-  let(:milestone_type) { FactoryBot.create(:type, name: 'Milestone', is_default: false) }
-  let!(:project) { FactoryBot.create(:project, name: 'Foo project', types: [phase_type, milestone_type]) }
+  let(:phase_type)     { create(:type, name: "Phase", default_variant_enabled_in_all_projects: true) }
+  let(:milestone_type) { create(:type, name: "Milestone") }
+  let!(:project) { create(:project, name: "Foo project", types: [phase_type, milestone_type]) }
 
-  it "have the correct types checked for the project's types" do
+  let(:settings_page) { Pages::Projects::Settings::WorkPackageTypes.new(project) }
+
+  it "lists the project's types and removes the one deactivated" do
     visit projects_path
-    click_on 'Foo project'
-    click_on 'Project settings'
-    click_on 'Work package types'
+    click_on "Foo project"
+    click_on "Project settings"
+    click_on "Work packages"
 
-    expect(find_field('Phase', visible: false)['checked'])
-      .to be_truthy
+    settings_page.expect_type_row(phase_type.default_variant)
+    settings_page.expect_type_row(milestone_type.default_variant)
 
-    expect(find_field('Milestone', visible: false)['checked'])
-      .to be_truthy
+    settings_page.remove_type(milestone_type.default_variant)
 
-    # Disable a type
-    find_field('Milestone', visible: false).click
-
-    click_button 'Save'
-
-    expect(find_field('Milestone', visible: false)['checked'])
-      .to be_falsey
+    settings_page.expect_no_type_row(milestone_type.default_variant)
+    expect(project.reload.enabled_types).to contain_exactly(phase_type)
   end
 end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -31,11 +30,18 @@ import { HttpErrorResponse } from '@angular/common/http';
 
 export const v3ErrorIdentifierQueryInvalid = 'urn:openproject-org:api:v3:errors:InvalidQuery';
 export const v3ErrorIdentifierMultipleErrors = 'urn:openproject-org:api:v3:errors:MultipleErrors';
+export const v3ErrorIdentifierOutboundRequestForbidden = 'urn:openproject-org:api:v3:errors:OutboundRequest:Forbidden';
+export const v3ErrorIdentifierMissingEnterpriseToken = 'urn:openproject-org:api:v3:errors:MissingEnterpriseToken';
 
 export interface IHalErrorBase {
   _type:string;
   message:string;
   errorIdentifier:string;
+}
+
+export function isHalError(err:unknown):err is IHalErrorBase {
+  const hasOwn = (key:string):boolean => Object.prototype.hasOwnProperty.call(err, key);
+  return !!err && hasOwn('_type') && hasOwn('message') && hasOwn('errorIdentifier');
 }
 
 export interface IHalSingleError extends IHalErrorBase {
@@ -53,11 +59,11 @@ export interface IHalMultipleError extends IHalErrorBase {
 }
 
 export class ErrorResource extends HalResource {
-  public errors:any[];
+  public errors:ErrorResource[];
 
   public message:string;
 
-  public details:any;
+  public details:{ attribute:string };
 
   public errorIdentifier:string;
 
@@ -70,7 +76,7 @@ export class ErrorResource extends HalResource {
    * Override toString to ensure the resource can
    * be printed nicely on console and in errors
    */
-  public toString() {
+  public toString():string {
     return `[ErrorResource ${this.message}]`;
   }
 
@@ -82,37 +88,37 @@ export class ErrorResource extends HalResource {
     return [this.message];
   }
 
-  public isMultiErrorMessage() {
+  public isMultiErrorMessage():boolean {
     return this.errorIdentifier === v3ErrorIdentifierMultipleErrors;
   }
 
   public getInvolvedAttributes():string[] {
-    let columns = [];
+    let columns:ErrorResource[] = [];
 
     if (this.details) {
-      columns = [{ details: this.details }];
+      columns = [{ details: this.details } as ErrorResource];
     } else if (this.errors) {
       columns = this.errors;
     }
 
-    return _.flatten(columns.map((resource:ErrorResource) => {
+    return columns.map((resource:ErrorResource):string => {
       if (resource.errorIdentifier === v3ErrorIdentifierMultipleErrors) {
         return this.extractMultiError(resource)[0];
       }
       return resource.details.attribute;
-    }));
+    }).flat();
   }
 
-  public getMessagesPerAttribute():{ [attribute:string]:string[] } {
-    const perAttribute:any = {};
+  public getMessagesPerAttribute():Record<string, string[]> {
+    const perAttribute:Record<string, string[]> = {};
 
     if (this.details) {
       perAttribute[this.details.attribute] = [this.message];
     } else {
-      _.forEach(this.errors, (error:any) => {
+      this.errors?.forEach((error:ErrorResource) => {
         if (error.errorIdentifier === v3ErrorIdentifierMultipleErrors) {
           const [attribute, messages] = this.extractMultiError(error);
-          const current = perAttribute[attribute] || [];
+          const current = perAttribute[attribute] ?? [];
           perAttribute[attribute] = current.concat(messages);
         } else if (perAttribute[error.details.attribute]) {
           perAttribute[error.details.attribute].push(error.message);

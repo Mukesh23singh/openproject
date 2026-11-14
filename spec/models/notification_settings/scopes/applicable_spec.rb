@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,73 +22,72 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe NotificationSettings::Scopes::Applicable, type: :model do
-  describe '.applicable' do
-    subject(:scope) { ::NotificationSetting.applicable(project) }
+RSpec.describe NotificationSettings::Scopes::Applicable do
+  describe ".applicable" do
+    subject(:scope) { NotificationSetting.applicable(project) }
 
     let!(:user) do
-      FactoryBot.create(:user,
-                        notification_settings: notification_settings)
+      create(:user,
+             notification_settings:)
     end
     let!(:project) do
-      FactoryBot.create(:project)
+      create(:project)
     end
 
-    context 'when only global settings exist' do
+    context "when only global settings exist" do
       let(:notification_settings) do
         [
-          FactoryBot.build(:notification_setting, project: nil)
+          build(:notification_setting, project: nil)
         ]
       end
 
-      it 'returns the global settings' do
+      it "returns the global settings" do
         expect(scope)
           .to match_array(notification_settings)
       end
     end
 
-    context 'when global and project settings exist' do
+    context "when global and project settings exist" do
       let(:project_notification_settings) do
         [
-          FactoryBot.build(:notification_setting, project: project)
+          build(:notification_setting, project:)
         ]
       end
       let(:global_notification_settings) do
         [
-          FactoryBot.build(:notification_setting)
+          build(:notification_setting)
         ]
       end
       let(:notification_settings) { project_notification_settings + global_notification_settings }
 
-      it 'returns the project settings' do
+      it "returns the project settings" do
         expect(scope)
           .to match_array(project_notification_settings)
       end
     end
 
-    context 'when global and project settings exist but for a different project' do
-      let(:other_project) { FactoryBot.create(:project) }
+    context "when global and project settings exist but for a different project" do
+      let(:other_project) { create(:project) }
       let(:project_notification_settings) do
         [
-          FactoryBot.build(:notification_setting, project: other_project)
+          build(:notification_setting, project: other_project)
         ]
       end
       let(:global_notification_settings) do
         [
-          FactoryBot.build(:notification_setting)
+          build(:notification_setting)
         ]
       end
       let(:notification_settings) { project_notification_settings + global_notification_settings }
 
-      it 'returns the project settings' do
+      it "returns the project settings" do
         expect(scope)
           .to match_array(global_notification_settings)
       end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class APIDocsController < ApplicationController
-  before_action :require_login
+  before_action :require_login,
+                :check_if_api_docs_enabled
+  no_authorization_required! :index
+
+  helper API::APIDocsHelper
 
   def index
-    render_404 unless Setting.apiv3_docs_enabled?
+    render locals: { turbo_opt_out: true }
+  end
 
-    render layout: 'angular/angular', inline: '' # rubocop:disable Rails/RenderInline
+  private
+
+  def check_if_api_docs_enabled
+    render_404 unless Setting.apiv3_docs_enabled?
   end
 end

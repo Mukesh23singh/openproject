@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -56,29 +55,89 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-require 'spec_helper'
+require "spec_helper"
 
-describe OpenProject::FileCommandContentTypeDetector do
-  it 'returns a content type based on the content of the file' do
-    tempfile = Tempfile.new('something')
-    tempfile.write('This is a file.')
+RSpec.describe OpenProject::FileCommandContentTypeDetector do
+  it "returns a [mime_type, charset] tuple for a text file" do
+    tempfile = Tempfile.new("something")
+    tempfile.write("This is a file.")
     tempfile.rewind
 
-    assert_equal 'text/plain', OpenProject::FileCommandContentTypeDetector.new(tempfile.path).detect
+    mime, charset = described_class.new(tempfile.path).detect
+    expect(mime).to eq("text/plain")
+    expect(charset).to be_a(String)
 
     tempfile.close
   end
 
-  it 'returns a sensible default when the file command is missing' do
-    allow(::Open3).to receive(:capture2).and_raise 'o noes!'
-    @filename = '/path/to/something'
-    assert_equal 'application/binary',
-                 OpenProject::FileCommandContentTypeDetector.new(@filename).detect
+  it "returns [sensible_default, nil] when the file command is missing" do
+    allow(Open3).to receive(:capture2).and_raise "o noes!"
+    expect(described_class.new("/path/to/something").detect).to eq(["application/binary", nil])
   end
 
-  it 'returns a sensible default on the odd chance that run returns nil' do
-    allow(::Open3).to receive(:capture2).and_return [nil, 0]
-    assert_equal 'application/binary',
-                 OpenProject::FileCommandContentTypeDetector.new('windows').detect
+  it "returns [sensible_default, nil] on the odd chance that run returns nil" do
+    allow(Open3).to receive(:capture2).and_return [nil, 0]
+    expect(described_class.new("windows").detect).to eq(["application/binary", nil])
+  end
+
+  it "returns [sensible_default, nil] when the file command returns an error code" do
+    allow(Open3).to receive(:capture2).and_return ["text/plain", 1]
+    expect(described_class.new("windows").detect).to eq(["application/binary", nil])
+  end
+
+  it "returns [sensible_default, nil] when the file command returns a type with parentheses" do
+    allow(Open3).to receive(:capture2).and_return ["text/plain (with something)", 0]
+    expect(described_class.new("windows").detect).to eq(["application/binary", nil])
+  end
+
+  it "uses end-of-input delimiter to prevent command injection" do
+    allow(Open3).to receive(:capture2)
+
+    described_class.new("--help").detect
+
+    expect(Open3).to have_received(:capture2).with("file", "-b", "--mime", "--", "--help")
+  end
+
+  describe "charset parsing edge cases" do
+    def detect(raw_output)
+      allow(Open3).to receive(:capture2).and_return [raw_output, 0]
+      described_class.new("any").detect
+    end
+
+    it "extracts charset when followed by an extra unknown parameter" do
+      expect(detect("text/plain; charset=utf-8; taste=banana")).to eq(["text/plain", "utf-8"])
+    end
+
+    it "only captures the charset token, not trailing content" do
+      expect(detect("text/plain; charset=utf-8;extra")).to eq(["text/plain", "utf-8"])
+    end
+
+    it "returns nil charset when charset= has no value" do
+      expect(detect("text/plain; charset=")).to eq(["text/plain", nil])
+    end
+
+    it "ignores unrecognized parameters before charset" do
+      expect(detect("text/plain; taste=banana; charset=iso-8859-1")).to eq(["text/plain", "iso-8859-1"])
+    end
+  end
+
+  describe "charset detection from real fixture files" do
+    let(:utf8_fixture)    { Rails.root.join("spec/fixtures/encoding/utf-8.txt").to_s }
+    let(:iso8859_fixture) { Rails.root.join("spec/fixtures/encoding/iso-8859-1.txt").to_s }
+    let(:png_fixture)     { Rails.root.join("spec/fixtures/files/image.png").to_s }
+
+    it "detects utf-8 charset for a UTF-8 encoded file" do
+      expect(described_class.new(utf8_fixture).detect).to eq(["text/plain", "utf-8"])
+    end
+
+    it "detects iso-8859-1 charset for an ISO-8859-1 encoded file" do
+      expect(described_class.new(iso8859_fixture).detect).to eq(["text/plain", "iso-8859-1"])
+    end
+
+    it "returns nil charset for non-text files" do
+      mime, charset = described_class.new(png_fixture).detect
+      expect(mime).to eq("image/png")
+      expect(charset).to be_nil
+    end
   end
 end

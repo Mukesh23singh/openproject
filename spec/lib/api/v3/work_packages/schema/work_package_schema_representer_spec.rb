@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +22,32 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
+RSpec.describe API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
   include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.build_stubbed(:project_with_types) }
-  let(:wp_type) { project.types.first }
-  let(:custom_field) { FactoryBot.build_stubbed(:custom_field) }
-  let(:work_package) do
-    FactoryBot.build_stubbed(:stubbed_work_package, project: project, type: wp_type) do |wp|
-      allow(wp)
-        .to receive(:available_custom_fields)
-        .and_return(available_custom_fields)
-    end
-  end
-  let(:current_user) do
-    FactoryBot.build_stubbed(:user).tap do |user|
-      allow(user)
-        .to receive(:allowed_to?) do |per, pro|
-        project == pro && permissions.include?(per)
-      end
-    end
-  end
+  let(:project) { build_stubbed(:project_with_types) }
   let(:permissions) { [:edit_work_packages] }
   let(:attribute_query) do
-    FactoryBot.build_stubbed(:query).tap do |query|
+    build_stubbed(:query).tap do |query|
       query.filters.clear
-      query.add_filter('parent', '=', ['{id}'])
+      query.add_filter("parent", "=", ["{id}"])
     end
   end
   let(:attribute_groups) do
-    [Type::AttributeGroup.new(wp_type, "People", %w(assignee responsible)),
-     Type::AttributeGroup.new(wp_type, "Estimates and time", %w(estimated_time spent_time)),
-     Type::QueryGroup.new(wp_type, "Children", attribute_query)]
+    [Type::AttributeGroup.new(type_variant, "People", %w(assignee responsible)),
+     Type::AttributeGroup.new(type_variant, "Estimates and time", %w(estimated_time spent_time)),
+     Type::QueryGroup.new(type_variant, "Children", attribute_query)]
   end
   let(:schema) do
-    ::API::V3::WorkPackages::Schema::SpecificWorkPackageSchema.new(work_package: work_package).tap do |schema|
-      allow(wp_type)
+    API::V3::WorkPackages::Schema::SpecificWorkPackageSchema.new(work_package:).tap do |schema|
+      allow(type_variant)
         .to receive(:attribute_groups)
         .and_return(attribute_groups)
       allow(schema)
@@ -73,22 +57,44 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
         .to receive(:assignable_values)
         .with(:version, current_user)
         .and_return([])
+      allow(schema)
+        .to receive(:assignable_project_phases)
+              .and_return(assignable_project_phases)
     end
   end
-  let(:self_link) { '/a/self/link' }
+  let(:self_link) { "/a/self/link" }
   let(:base_schema_link) { nil }
   let(:hide_self_link) { false }
   let(:embedded) { true }
   let(:representer) do
     described_class.create(schema,
-                           self_link: self_link,
+                           self_link:,
                            form_embedded: embedded,
-                           base_schema_link: base_schema_link,
-                           current_user: current_user)
+                           base_schema_link:,
+                           current_user:)
   end
   let(:available_custom_fields) { [] }
+  let(:assignable_project_phases) { [build_stubbed(:project_phase, project:)] }
+  let(:wp_type) { project.project_types.first.type }
+  let(:type_variant) do
+    build_stubbed(:type_variant, type: wp_type).tap do |variant|
+      allow(variant).to receive(:custom_fields).and_return([])
+    end
+  end
+  let(:custom_field) { build_stubbed(:custom_field) }
+  let(:work_package) do
+    build_stubbed(:work_package, project:, type: wp_type) do |wp|
+      allow(wp)
+        .to receive_messages(available_custom_fields:, type_variant:)
+    end
+  end
+  let(:current_user) { build_stubbed(:user) }
 
   before do
+    mock_permissions_for(current_user) do |mock|
+      mock.allow_in_project *permissions, project: schema.project
+    end
+
     login_as(current_user)
     allow(schema.project)
       .to receive(:module_enabled?)
@@ -97,84 +103,84 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
     allow(schema).to receive(:writable?).and_call_original
   end
 
-  context 'generation' do
+  context "for generation" do
     subject(:generated) { representer.to_json }
 
-    shared_examples_for 'has a collection of allowed values' do
+    shared_examples_for "has a collection of allowed values" do
       let(:embedded) { true }
 
       before do
         allow(schema).to receive(:assignable_values).and_return(nil)
       end
 
-      context 'when no values are allowed' do
+      context "when no values are allowed" do
         before do
           allow(schema).to receive(:assignable_values).with(factory, anything).and_return([])
         end
 
-        it_behaves_like 'links to and embeds allowed values directly' do
+        it_behaves_like "links to and embeds allowed values directly" do
           let(:path) { json_path }
           let(:hrefs) { [] }
         end
       end
 
-      context 'when values are allowed' do
-        let(:values) { FactoryBot.build_stubbed_list(factory, 3) }
+      context "when values are allowed" do
+        let(:values) { build_stubbed_list(factory, 3) }
 
         before do
           allow(schema).to receive(:assignable_values).with(factory, anything).and_return(values)
         end
 
-        it_behaves_like 'links to and embeds allowed values directly' do
+        it_behaves_like "links to and embeds allowed values directly" do
           let(:path) { json_path }
           let(:hrefs) { values.map { |value| "/api/v3/#{href_path}/#{value.id}" } }
         end
       end
 
-      context 'when not embedded' do
+      context "when not embedded" do
         before do
           allow(schema).to receive(:assignable_values).with(factory, anything).and_return(nil)
         end
 
-        it_behaves_like 'does not link to allowed values' do
+        it_behaves_like "does not link to allowed values" do
           let(:path) { json_path }
         end
       end
     end
 
-    describe 'self link' do
-      it_behaves_like 'has an untitled link' do
-        let(:link) { 'self' }
+    describe "self link" do
+      it_behaves_like "has an untitled link" do
+        let(:link) { "self" }
         let(:href) { self_link }
       end
 
-      it_behaves_like 'has no link' do
-        let(:link) { 'baseSchema' }
+      it_behaves_like "has no link" do
+        let(:link) { "baseSchema" }
       end
 
-      context 'embedded in a form' do
+      context "when embedded in a form" do
         let(:self_link) { nil }
-        let(:base_schema_link) { '/a/schema/link' }
+        let(:base_schema_link) { "/a/schema/link" }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'self' }
+        it_behaves_like "has no link" do
+          let(:link) { "self" }
         end
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'baseSchema' }
+        it_behaves_like "has an untitled link" do
+          let(:link) { "baseSchema" }
           let(:href) { base_schema_link }
         end
       end
     end
 
-    describe '_type' do
-      it 'is indicated as Schema' do
-        is_expected.to be_json_eql('Schema'.to_json).at_path('_type')
+    describe "_type" do
+      it "is indicated as Schema" do
+        expect(subject).to be_json_eql("Schema".to_json).at_path("_type")
       end
     end
 
-    describe '_attributeGroups' do
-      it 'renders form attribute group elements of the schema' do
+    describe "_attributeGroups" do
+      it "renders form attribute group elements of the schema" do
         expect(subject)
           .to be_json_eql(
             {
@@ -183,7 +189,7 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
               attributes: %w(assignee responsible)
             }.to_json
           )
-          .at_path('_attributeGroups/0')
+          .at_path("_attributeGroups/0")
 
         expect(subject)
           .to be_json_eql(
@@ -193,122 +199,201 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
               attributes: %w(estimatedTime spentTime)
             }.to_json
           )
-          .at_path('_attributeGroups/1')
+          .at_path("_attributeGroups/1")
       end
 
-      it 'renders form children query group elements of the schema' do
+      it "renders form children query group elements of the schema" do
         expect(subject)
           .to be_json_eql("WorkPackageFormChildrenQueryGroup".to_json)
-          .at_path('_attributeGroups/2/_type')
+          .at_path("_attributeGroups/2/_type")
 
         expect(subject)
           .to be_json_eql(api_v3_paths.query(attribute_query.id).to_json)
-          .at_path('_attributeGroups/2/_links/query/href')
+          .at_path("_attributeGroups/2/_links/query/href")
 
         expect(subject)
-          .to be_json_eql('Query'.to_json)
-          .at_path('_attributeGroups/2/_embedded/query/_type')
+          .to be_json_eql("Query".to_json)
+          .at_path("_attributeGroups/2/_embedded/query/_type")
       end
 
-      context 'with relation query group' do
+      context "with relation query group" do
         let(:attribute_query) do
-          FactoryBot.build_stubbed(:query).tap do |query|
+          build_stubbed(:query).tap do |query|
             query.filters.clear
-            query.add_filter('follows', '=', ['{id}'])
+            query.add_filter("follows", "=", ["{id}"])
           end
         end
 
-        it 'renders form relation query group elements of the schema' do
+        it "renders form relation query group elements of the schema" do
           expect(subject)
             .to be_json_eql("WorkPackageFormRelationQueryGroup".to_json)
-                  .at_path('_attributeGroups/2/_type')
+                  .at_path("_attributeGroups/2/_type")
 
           expect(subject)
             .to be_json_eql(api_v3_paths.query(attribute_query.id).to_json)
-                  .at_path('_attributeGroups/2/_links/query/href')
+                  .at_path("_attributeGroups/2/_links/query/href")
 
           expect(subject)
-            .to be_json_eql('Query'.to_json)
-                  .at_path('_attributeGroups/2/_embedded/query/_type')
+            .to be_json_eql("Query".to_json)
+                  .at_path("_attributeGroups/2/_embedded/query/_type")
         end
       end
     end
 
-    describe 'lock version' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'lockVersion' }
-        let(:type) { 'Integer' }
-        let(:name) { I18n.t('api_v3.attributes.lock_version') }
+    describe "lock version" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "lockVersion" }
+        let(:type) { "Integer" }
+        let(:name) { I18n.t("attributes.lock_version") }
         let(:required) { true }
         let(:writable) { true }
       end
 
-      context 'lockVersion disabled' do
+      context "when lockVersion disabled" do
         let(:representer) do
           described_class.create(schema,
                                  self_link: nil,
-                                 current_user: current_user,
+                                 current_user:,
                                  hide_lock_version: true)
         end
 
-        it 'is hidden' do
-          is_expected.to_not have_json_path('lockVersion')
+        it "is hidden" do
+          expect(subject).not_to have_json_path("lockVersion")
         end
       end
     end
 
-    describe 'id' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'id' }
-        let(:type) { 'Integer' }
-        let(:name) { I18n.t('attributes.id') }
+    describe "id" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "id" }
+        let(:type) { "Integer" }
+        let(:name) { I18n.t("attributes.id") }
         let(:required) { true }
         let(:writable) { false }
       end
     end
 
-    describe 'subject' do
-      let(:path) { 'subject' }
+    describe "subject" do
+      let(:path) { "subject" }
 
-      it_behaves_like 'has basic schema properties' do
-        let(:type) { 'String' }
-        let(:name) { I18n.t('attributes.subject') }
+      it_behaves_like "has basic schema properties" do
+        let(:type) { "String" }
+        let(:name) { I18n.t("attributes.subject") }
         let(:required) { true }
         let(:writable) { true }
       end
 
-      it_behaves_like 'indicates length requirements' do
+      it_behaves_like "indicates length requirements" do
         let(:min_length) { 1 }
         let(:max_length) { 255 }
       end
+
+      context "on a work package which's type has an auto-generated subject" do
+        before do
+          allow(type_variant)
+            .to receive(:enabled_patterns)
+                .and_return({ subject: double })
+        end
+
+        it_behaves_like "has basic schema properties" do
+          let(:type) { "String" }
+          let(:name) { I18n.t("attributes.subject") }
+          let(:required) { true }
+          let(:writable) { false }
+          let(:has_default) { true }
+        end
+
+        it_behaves_like "defines the placeholder to display" do
+          let(:placeholder) { I18n.t("placeholders.templated_hint", type: type_variant.name) }
+        end
+      end
     end
 
-    describe 'description' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'description' }
-        let(:type) { 'Formattable' }
-        let(:name) { I18n.t('attributes.description') }
+    describe "description" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "description" }
+        let(:type) { "Formattable" }
+        let(:name) { I18n.t("attributes.description") }
         let(:required) { false }
         let(:writable) { true }
       end
     end
 
-    describe 'scheduleManually' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'scheduleManually' }
-        let(:type) { 'Boolean' }
-        let(:name) { I18n.t('activerecord.attributes.work_package.schedule_manually') }
+    describe "duration" do
+      let(:milestone?) { false }
+
+      before do
+        allow(schema)
+          .to receive(:milestone?)
+          .and_return(milestone?)
+      end
+
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "duration" }
+        let(:type) { "Duration" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.duration") }
+        let(:required) { false }
+        let(:writable) { true }
+      end
+
+      context "when the work package is a milestone" do
+        let(:milestone?) { true }
+
+        it "has no duration attribute" do
+          expect(subject).not_to have_json_path("duration")
+        end
+      end
+    end
+
+    describe "scheduleManually" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "scheduleManually" }
+        let(:type) { "Boolean" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.schedule_manually") }
         let(:required) { false }
         let(:has_default) { true }
         let(:writable) { true }
       end
     end
 
-    describe 'date' do
+    describe "ignoreNonWorkingDays" do
       before do
         allow(schema)
           .to receive(:writable?)
-          .with(:date)
+                .with("ignore_non_working_days")
+                .and_return writable
+      end
+
+      context "when writable" do
+        let(:writable) { true }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "ignoreNonWorkingDays" }
+          let(:type) { "Boolean" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.ignore_non_working_days") }
+          let(:required) { false }
+          let(:writable) { true }
+        end
+      end
+
+      context "when not writable" do
+        let(:writable) { false }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "ignoreNonWorkingDays" }
+          let(:type) { "Boolean" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.ignore_non_working_days") }
+          let(:required) { false }
+          let(:writable) { false }
+        end
+      end
+    end
+
+    describe "date" do
+      before do
+        allow(schema)
+          .to receive(:writable?)
+          .with("date")
           .and_return true
 
         allow(schema)
@@ -316,49 +401,49 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
           .and_return(true)
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'date' }
-        let(:type) { 'Date' }
-        let(:name) { I18n.t('attributes.date') }
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "date" }
+        let(:type) { "Date" }
+        let(:name) { I18n.t("attributes.date") }
         let(:required) { false }
         let(:writable) { true }
       end
 
-      context 'not writable' do
+      context "when not writable" do
         before do
           allow(schema)
             .to receive(:writable?)
-            .with(:date)
+            .with("date")
             .and_return false
         end
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'date' }
-          let(:type) { 'Date' }
-          let(:name) { I18n.t('attributes.date') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "date" }
+          let(:type) { "Date" }
+          let(:name) { I18n.t("attributes.date") }
           let(:required) { false }
           let(:writable) { false }
         end
       end
 
-      context 'when the work package is no milestone' do
+      context "when the work package is no milestone" do
         before do
           allow(schema)
             .to receive(:milestone?)
             .and_return(false)
         end
 
-        it 'has no date attribute' do
-          is_expected.to_not have_json_path('date')
+        it "has no date attribute" do
+          expect(subject).not_to have_json_path("date")
         end
       end
     end
 
-    describe 'startDate' do
+    describe "startDate" do
       before do
         allow(schema)
           .to receive(:writable?)
-          .with(:start_date)
+          .with("start_date")
           .and_return true
 
         allow(schema)
@@ -366,49 +451,49 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
           .and_return(false)
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'startDate' }
-        let(:type) { 'Date' }
-        let(:name) { I18n.t('attributes.start_date') }
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "startDate" }
+        let(:type) { "Date" }
+        let(:name) { I18n.t("attributes.start_date") }
         let(:required) { false }
         let(:writable) { true }
       end
 
-      context 'not writable' do
+      context "when not writable" do
         before do
           allow(schema)
             .to receive(:writable?)
-            .with(:start_date)
+            .with("start_date")
             .and_return false
         end
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'startDate' }
-          let(:type) { 'Date' }
-          let(:name) { I18n.t('attributes.start_date') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "startDate" }
+          let(:type) { "Date" }
+          let(:name) { I18n.t("attributes.start_date") }
           let(:required) { false }
           let(:writable) { false }
         end
       end
 
-      context 'when the work package is a milestone' do
+      context "when the work package is a milestone" do
         before do
           allow(schema)
             .to receive(:milestone?)
             .and_return(true)
         end
 
-        it 'has no date attribute' do
-          is_expected.to_not have_json_path('startDate')
+        it "has no date attribute" do
+          expect(subject).not_to have_json_path("startDate")
         end
       end
     end
 
-    describe 'dueDate' do
+    describe "dueDate" do
       before do
         allow(schema)
           .to receive(:writable?)
-          .with(:due_date)
+          .with("due_date")
           .and_return true
 
         allow(schema)
@@ -416,42 +501,42 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
           .and_return(false)
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'dueDate' }
-        let(:type) { 'Date' }
-        let(:name) { I18n.t('attributes.due_date') }
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "dueDate" }
+        let(:type) { "Date" }
+        let(:name) { I18n.t("attributes.due_date") }
         let(:required) { false }
         let(:writable) { true }
       end
 
-      context 'not writable' do
+      context "when not writable" do
         before do
-          allow(schema).to receive(:writable?).with(:due_date).and_return false
+          allow(schema).to receive(:writable?).with("due_date").and_return false
         end
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'dueDate' }
-          let(:type) { 'Date' }
-          let(:name) { I18n.t('attributes.due_date') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "dueDate" }
+          let(:type) { "Date" }
+          let(:name) { I18n.t("attributes.due_date") }
           let(:required) { false }
           let(:writable) { false }
         end
       end
 
-      context 'when the work package is a milestone' do
+      context "when the work package is a milestone" do
         before do
           allow(schema)
             .to receive(:milestone?)
             .and_return(true)
         end
 
-        it 'has no date attribute' do
-          is_expected.to_not have_json_path('dueDate')
+        it "has no date attribute" do
+          expect(subject).not_to have_json_path("dueDate")
         end
       end
     end
 
-    describe 'derivedStartDate' do
+    describe "derivedStartDate" do
       let(:is_milestone) { false }
 
       before do
@@ -460,24 +545,24 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
           .and_return(is_milestone)
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'derivedStartDate' }
-        let(:type) { 'Date' }
-        let(:name) { I18n.t('attributes.derived_start_date') }
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "derivedStartDate" }
+        let(:type) { "Date" }
+        let(:name) { I18n.t("attributes.derived_start_date") }
         let(:required) { false }
         let(:writable) { false }
       end
 
-      context 'when the work package is a milestone' do
+      context "when the work package is a milestone" do
         let(:is_milestone) { true }
 
-        it 'has no date attribute' do
-          is_expected.to_not have_json_path('derivedStartDate')
+        it "has no date attribute" do
+          expect(subject).not_to have_json_path("derivedStartDate")
         end
       end
     end
 
-    describe 'derivedDueDate' do
+    describe "derivedDueDate" do
       let(:is_milestone) { false }
 
       before do
@@ -486,508 +571,758 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
           .and_return(is_milestone)
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'derivedDueDate' }
-        let(:type) { 'Date' }
-        let(:name) { I18n.t('attributes.derived_due_date') }
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "derivedDueDate" }
+        let(:type) { "Date" }
+        let(:name) { I18n.t("attributes.derived_due_date") }
         let(:required) { false }
         let(:writable) { false }
       end
 
-      context 'when the work package is a milestone' do
+      context "when the work package is a milestone" do
         let(:is_milestone) { true }
 
-        it 'has no date attribute' do
-          is_expected.to_not have_json_path('derivedDueDate')
+        it "has no date attribute" do
+          expect(subject).not_to have_json_path("derivedDueDate")
         end
       end
     end
 
-    describe 'estimatedTime' do
+    describe "estimatedTime" do
       before do
         allow(schema)
           .to receive(:writable?)
-          .with(:estimated_time)
+          .with("estimated_hours")
           .and_return true
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'estimatedTime' }
-        let(:type) { 'Duration' }
-        let(:name) { I18n.t('attributes.estimated_time') }
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "estimatedTime" }
+        let(:type) { "Duration" }
+        let(:name) { I18n.t("attributes.estimated_time") }
         let(:required) { false }
         let(:writable) { true }
       end
 
-      context 'not writable' do
+      context "when not writable" do
         before do
           allow(schema)
             .to receive(:writable?)
-            .with(:estimated_time)
+            .with("estimated_hours")
             .and_return false
         end
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'estimatedTime' }
-          let(:type) { 'Duration' }
-          let(:name) { I18n.t('attributes.estimated_time') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "estimatedTime" }
+          let(:type) { "Duration" }
+          let(:name) { I18n.t("attributes.estimated_time") }
           let(:required) { false }
           let(:writable) { false }
         end
       end
     end
 
-    describe 'derivedEstimatedTime' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'derivedEstimatedTime' }
-        let(:type) { 'Duration' }
-        let(:name) { I18n.t('attributes.derived_estimated_hours') }
+    describe "derivedEstimatedTime" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "derivedEstimatedTime" }
+        let(:type) { "Duration" }
+        let(:name) { I18n.t("attributes.derived_estimated_hours") }
         let(:required) { false }
         let(:writable) { false }
       end
     end
 
-    describe 'spentTime' do
-      context 'with the view_time_entries permission' do
-        let(:permissions) { %i[edit_work_packages view_time_entries] }
-
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'spentTime' }
-          let(:type) { 'Duration' }
-          let(:name) { I18n.t('activerecord.attributes.work_package.spent_time') }
-          let(:required) { false }
-          let(:writable) { false }
-        end
-      end
-
-      context 'with the view_own_time_entries permission' do
-        let(:permissions) { %i[edit_work_packages view_own_time_entries] }
-
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'spentTime' }
-          let(:type) { 'Duration' }
-          let(:name) { I18n.t('activerecord.attributes.work_package.spent_time') }
-          let(:required) { false }
-          let(:writable) { false }
-        end
-      end
-
-      context 'without any view time_entries permission' do
-        it 'has no spentTime attribute' do
-          is_expected.to_not have_json_path('spentTime')
-        end
-      end
-    end
-
-    describe 'percentageDone' do
-      before do
-        allow(schema).to receive(:writable?).with(:percentage_done).and_return true
-      end
-
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'percentageDone' }
-        let(:type) { 'Integer' }
-        let(:name) { I18n.t('activerecord.attributes.work_package.done_ratio') }
+    describe "remainingTime" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "remainingTime" }
+        let(:type) { "Duration" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.remaining_hours") }
         let(:required) { false }
         let(:writable) { true }
       end
 
-      context 'not writable' do
-        before do
-          allow(schema).to receive(:writable?).with(:percentage_done).and_return false
-        end
-
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'percentageDone' }
-          let(:type) { 'Integer' }
-          let(:name) { I18n.t('activerecord.attributes.work_package.done_ratio') }
+      context 'when on the "status-based" % complete mode',
+              with_settings: { work_package_done_ratio: "status" } do
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "remainingTime" }
+          let(:type) { "Duration" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.remaining_hours") }
           let(:required) { false }
           let(:writable) { false }
         end
       end
+    end
 
-      context 'is disabled' do
-        before do
-          allow(Setting).to receive(:work_package_done_ratio).and_return('disabled')
+    describe "derivedRemainingTime" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "derivedRemainingTime" }
+        let(:type) { "Duration" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.derived_remaining_hours") }
+        let(:required) { false }
+        let(:writable) { false }
+      end
+    end
+
+    describe "percentageDone" do
+      context "in work-based progress calculation mode",
+              with_settings: { work_package_done_ratio: "field" } do
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "percentageDone" }
+          let(:type) { "Integer" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.done_ratio") }
+          let(:required) { false }
+          let(:writable) { true }
         end
+      end
 
-        it 'is hidden' do
-          is_expected.to_not have_json_path('percentageDone')
+      context "in status-based progress calculation mode",
+              with_settings: { work_package_done_ratio: "status" } do
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "percentageDone" }
+          let(:type) { "Integer" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.done_ratio") }
+          let(:required) { false }
+          let(:writable) { false }
         end
       end
     end
 
-    describe 'createdAt' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'createdAt' }
-        let(:type) { 'DateTime' }
-        let(:name) { I18n.t('attributes.created_at') }
+    describe "derivedPercentageDone" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "derivedPercentageDone" }
+        let(:type) { "Integer" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.derived_done_ratio") }
+        let(:required) { false }
+        let(:writable) { false }
+      end
+    end
+
+    describe "readonly" do
+      context "with the enterprise add-on enabled", with_ee: %i[readonly_work_packages] do
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "readonly" }
+          let(:type) { "Boolean" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.readonly") }
+          let(:required) { false }
+          let(:has_default) { true }
+          let(:writable) { false }
+        end
+      end
+
+      context "without the enterprise add-on" do
+        it "has no such property" do
+          expect(subject).not_to have_json_path("readonly")
+        end
+      end
+    end
+
+    describe "createdAt" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "createdAt" }
+        let(:type) { "DateTime" }
+        let(:name) { I18n.t("attributes.created_at") }
         let(:required) { true }
         let(:writable) { false }
       end
     end
 
-    describe 'updatedAt' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'updatedAt' }
-        let(:type) { 'DateTime' }
-        let(:name) { I18n.t('attributes.updated_at') }
+    describe "updatedAt" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "updatedAt" }
+        let(:type) { "DateTime" }
+        let(:name) { I18n.t("attributes.updated_at") }
         let(:required) { true }
         let(:writable) { false }
       end
     end
 
-    describe 'author' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'author' }
-        let(:type) { 'User' }
-        let(:name) { I18n.t('attributes.author') }
+    describe "author" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "author" }
+        let(:type) { "User" }
+        let(:name) { I18n.t("attributes.author") }
         let(:required) { true }
         let(:writable) { false }
-        let(:location) { '_links' }
+        let(:location) { "_links" }
       end
     end
 
-    describe 'project' do
-      context 'if having the move_work_packages permission' do
+    describe "project" do
+      context "if having the move_work_packages permission" do
         let(:permissions) { [:move_work_packages] }
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'project' }
-          let(:type) { 'Project' }
-          let(:name) { I18n.t('attributes.project') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "project" }
+          let(:type) { "Project" }
+          let(:name) { I18n.t("attributes.project") }
           let(:required) { true }
           let(:writable) { true }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
         end
       end
 
-      context 'if having the edit_work_packages permission' do
+      context "if having the edit_work_packages permission" do
         let(:permissions) { [:edit_work_packages] }
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'project' }
-          let(:type) { 'Project' }
-          let(:name) { I18n.t('attributes.project') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "project" }
+          let(:type) { "Project" }
+          let(:name) { I18n.t("attributes.project") }
           let(:required) { true }
           let(:writable) { false }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
         end
       end
 
-      context 'when updating' do
-        it_behaves_like 'links to allowed values via collection link' do
-          let(:path) { 'project' }
+      context "when updating" do
+        it_behaves_like "links to allowed values via collection link" do
+          let(:path) { "project" }
           let(:href) { api_v3_paths.available_projects_on_edit(work_package.id) }
         end
       end
 
-      context 'when creating (new_record)' do
+      context "when creating (new_record)" do
         let(:work_package) do
-          FactoryBot.build(:stubbed_work_package, project: project, type: wp_type) do |wp|
+          build(:work_package, project:, type: wp_type) do |wp|
             allow(wp)
               .to receive(:available_custom_fields)
               .and_return(available_custom_fields)
           end
         end
 
-        it_behaves_like 'links to allowed values via collection link' do
-          let(:path) { 'project' }
-          let(:href) { api_v3_paths.available_projects_on_create(wp_type.id) }
+        it_behaves_like "links to allowed values via collection link" do
+          let(:path) { "project" }
+          let(:href) { api_v3_paths.available_projects_on_create }
         end
       end
 
-      context 'when creating (new_record with empty type)' do
+      context "when creating (new_record with empty type)" do
         let(:work_package) do
-          FactoryBot.build(:stubbed_work_package, project: project, type: nil) do |wp|
+          build(:work_package, project:, type: nil) do |wp|
             allow(wp)
               .to receive(:available_custom_fields)
                     .and_return(available_custom_fields)
           end
         end
 
-        it_behaves_like 'links to allowed values via collection link' do
-          let(:path) { 'project' }
-          let(:href) { api_v3_paths.available_projects_on_create(nil) }
+        it_behaves_like "links to allowed values via collection link" do
+          let(:path) { "project" }
+          let(:href) { api_v3_paths.available_projects_on_create }
         end
       end
 
-      context 'when not embedded' do
+      context "when not embedded" do
         let(:embedded) { false }
 
-        it_behaves_like 'does not link to allowed values' do
-          let(:path) { 'project' }
+        it_behaves_like "does not link to allowed values" do
+          let(:path) { "project" }
         end
       end
     end
 
-    describe 'parent' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'parent' }
-        let(:type) { 'WorkPackage' }
-        let(:name) { I18n.t('activerecord.attributes.work_package.parent') }
-        let(:required) { false }
-        let(:writable) { true }
-        let(:location) { '_links' }
+    describe "projectPhase" do
+      context "with the view_project_phases permission" do
+        let(:permissions) { %i[edit_work_packages view_project_phases] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "projectPhase" }
+          let(:type) { "ProjectPhase" }
+          let(:name) { I18n.t("attributes.project_phase") }
+          let(:required) { false }
+          let(:writable) { true }
+          let(:location) { "_links" }
+        end
+
+        it_behaves_like "has a collection of allowed values" do
+          let(:json_path) { "projectPhase" }
+          let(:href_path) { "project_phases" }
+          let(:factory) { :project_phase }
+        end
+      end
+
+      context "without any phases active in the project" do
+        let(:permissions) { %i[edit_work_packages view_project_phases] }
+        let(:assignable_project_phases) { [] }
+
+        it "has no projectPhase attribute" do
+          expect(subject).not_to have_json_path("projectPhase")
+        end
+      end
+
+      context "without the view_project_phases permission" do
+        it "has no projectPhase attribute" do
+          expect(subject).not_to have_json_path("projectPhase")
+        end
       end
     end
 
-    describe 'type' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'type' }
-        let(:type) { 'Type' }
-        let(:name) { I18n.t('activerecord.attributes.work_package.type') }
-        let(:required) { true }
+    describe "parent" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "parent" }
+        let(:type) { "WorkPackage" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.parent") }
+        let(:required) { false }
         let(:writable) { true }
-        let(:location) { '_links' }
+        let(:location) { "_links" }
       end
 
-      it_behaves_like 'has a collection of allowed values' do
-        let(:json_path) { 'type' }
-        let(:href_path) { 'types' }
+      it_behaves_like "links to allowed values via collection link" do
+        let(:path) { "parent" }
+        let(:href) { api_v3_paths.work_package_available_relation_candidates(work_package.id, type: :parent) }
+      end
+
+      context "when creating" do
+        let(:work_package) do
+          build(:work_package, project:) do |wp|
+            allow(wp)
+              .to receive(:available_custom_fields)
+                    .and_return(available_custom_fields)
+          end
+        end
+
+        it_behaves_like "does not link to allowed values" do
+          let(:path) { "parent" }
+        end
+      end
+    end
+
+    describe "type" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "type" }
+        let(:type) { "Type" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.type") }
+        let(:required) { true }
+        let(:writable) { true }
+        let(:location) { "_links" }
+      end
+
+      it_behaves_like "has a collection of allowed values" do
+        let(:json_path) { "type" }
+        let(:href_path) { "types" }
         let(:factory) { :type }
       end
     end
 
-    describe 'status' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'status' }
-        let(:type) { 'Status' }
-        let(:name) { I18n.t('attributes.status') }
-        let(:required) { true }
-        let(:writable) { true }
-        let(:has_default) { true }
-        let(:location) { '_links' }
+    describe "status" do
+      context "if having the change_work_package_status permission" do
+        let(:permissions) { [:change_work_package_status] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "status" }
+          let(:type) { "Status" }
+          let(:name) { I18n.t("attributes.status") }
+          let(:required) { true }
+          let(:writable) { true }
+          let(:has_default) { true }
+          let(:location) { "_links" }
+        end
+
+        it_behaves_like "has a collection of allowed values" do
+          let(:json_path) { "status" }
+          let(:href_path) { "statuses" }
+          let(:factory) { :status }
+        end
       end
 
-      it_behaves_like 'has a collection of allowed values' do
-        let(:json_path) { 'status' }
-        let(:href_path) { 'statuses' }
-        let(:factory) { :status }
+      # Just edit_work_packages without change_work_package_status still makes status writable:
+      context "if having the edit_work_packages permission" do
+        let(:permissions) { [:edit_work_packages] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "status" }
+          let(:type) { "Status" }
+          let(:name) { I18n.t("attributes.status") }
+          let(:required) { true }
+          let(:writable) { true }
+          let(:has_default) { true }
+          let(:location) { "_links" }
+        end
       end
     end
 
-    describe 'categories' do
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'category' }
-        let(:type) { 'Category' }
-        let(:name) { I18n.t('attributes.category') }
+    describe "categories" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "category" }
+        let(:type) { "Category" }
+        let(:name) { I18n.t("attributes.category") }
         let(:required) { false }
         let(:writable) { true }
-        let(:location) { '_links' }
+        let(:location) { "_links" }
       end
 
-      it_behaves_like 'has a collection of allowed values' do
-        let(:json_path) { 'category' }
-        let(:href_path) { 'categories' }
+      it_behaves_like "has a collection of allowed values" do
+        let(:json_path) { "category" }
+        let(:href_path) { "categories" }
         let(:factory) { :category }
       end
     end
 
-    describe 'versions' do
-      context 'if having the assign_versions permission' do
+    describe "versions", with_settings: { work_package_multiple_versions: false } do
+      context "if having the assign_versions permission" do
         let(:permissions) { [:assign_versions] }
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'version' }
-          let(:type) { 'Version' }
-          let(:name) { I18n.t('activerecord.attributes.work_package.version') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "version" }
+          let(:type) { "Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.version") }
           let(:required) { false }
           let(:writable) { true }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
+          let(:description) { I18n.t("api_v3.attributes.version.deprecated") }
         end
 
-        it_behaves_like 'has a collection of allowed values' do
-          let(:json_path) { 'version' }
-          let(:href_path) { 'versions' }
+        it_behaves_like "has a collection of allowed values" do
+          let(:json_path) { "version" }
+          let(:href_path) { "versions" }
           let(:factory) { :version }
         end
       end
 
-      context 'if having the edit_work_packages permission' do
+      context "if having the edit_work_packages permission" do
         let(:permissions) { [:edit_work_packages] }
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'version' }
-          let(:type) { 'Version' }
-          let(:name) { I18n.t('activerecord.attributes.work_package.version') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "version" }
+          let(:type) { "Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.version") }
           let(:required) { false }
           let(:writable) { false }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
+          let(:description) { I18n.t("api_v3.attributes.version.deprecated") }
+        end
+      end
+
+      it "marks the deprecated version field as deprecated" do
+        expect(subject).to be_json_eql(true.to_json).at_path("version/deprecated")
+        expect(subject)
+          .to be_json_eql(I18n.t("api_v3.attributes.version.deprecated").to_json)
+          .at_path("version/description/raw")
+      end
+
+      context "when multiple versions is active", with_settings: { work_package_multiple_versions: true } do
+        let(:permissions) { [:assign_versions] }
+
+        it "drops the deprecated version field from the schema" do
+          expect(subject).not_to have_json_path("version")
         end
       end
     end
 
-    describe 'priorities' do
-      before do
-        allow(schema).to receive(:writable?).with(:priority).and_return true
+    describe "targetVersions", with_settings: { work_package_multiple_versions: false } do
+      context "when has permission to assign versions" do
+        let(:permissions) { [:assign_versions] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "targetVersions" }
+          let(:type) { "[]Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.version") }
+          let(:required) { false }
+          let(:writable) { true }
+          let(:location) { "_links" }
+        end
+
+        it "announces the single value restriction while multiple versions is inactive" do
+          expect(subject).to be_json_eql(false.to_json).at_path("targetVersions/options/multiple")
+        end
       end
 
-      it_behaves_like 'has basic schema properties' do
-        let(:path) { 'priority' }
-        let(:type) { 'Priority' }
-        let(:name) { I18n.t('activerecord.attributes.work_package.priority') }
+      context "when does not have permission to assign versions" do
+        let(:permissions) { [:edit_work_packages] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "targetVersions" }
+          let(:type) { "[]Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.version") }
+          let(:required) { false }
+          let(:writable) { false }
+          let(:location) { "_links" }
+        end
+      end
+
+      context "when multiple versions is active",
+              with_settings: { work_package_multiple_versions: true } do
+        let(:permissions) { [:assign_versions] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "targetVersions" }
+          let(:type) { "[]Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.target_versions") }
+          let(:required) { false }
+          let(:writable) { true }
+          let(:location) { "_links" }
+        end
+
+        it "announces that multiple values are allowed" do
+          expect(subject).to be_json_eql(true.to_json).at_path("targetVersions/options/multiple")
+        end
+      end
+    end
+
+    describe "observedInVersions" do
+      context "when has permission to assign versions" do
+        let(:permissions) { [:assign_versions] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "observedInVersions" }
+          let(:type) { "[]Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.observed_in_versions") }
+          let(:required) { false }
+          let(:writable) { true }
+          let(:location) { "_links" }
+        end
+      end
+
+      context "when does not have permission to assign versions" do
+        let(:permissions) { [:edit_work_packages] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "observedInVersions" }
+          let(:type) { "[]Version" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.observed_in_versions") }
+          let(:required) { false }
+          let(:writable) { false }
+          let(:location) { "_links" }
+        end
+      end
+    end
+
+    describe "priorities" do
+      before do
+        allow(schema).to receive(:writable?).with("priority").and_return true
+      end
+
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "priority" }
+        let(:type) { "Priority" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.priority") }
         let(:required) { true }
         let(:writable) { true }
         let(:has_default) { true }
-        let(:location) { '_links' }
+        let(:location) { "_links" }
       end
 
-      it_behaves_like 'has a collection of allowed values' do
-        let(:json_path) { 'priority' }
-        let(:href_path) { 'priorities' }
+      it_behaves_like "has a collection of allowed values" do
+        let(:json_path) { "priority" }
+        let(:href_path) { "priorities" }
         let(:factory) { :priority }
       end
 
-      context 'not writable' do
+      context "when not writable" do
         before do
-          allow(schema).to receive(:writable?).with(:priority).and_return false
+          allow(schema).to receive(:writable?).with("priority").and_return false
         end
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'priority' }
-          let(:type) { 'Priority' }
-          let(:name) { I18n.t('activerecord.attributes.work_package.priority') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "priority" }
+          let(:type) { "Priority" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.priority") }
           let(:required) { true }
           let(:writable) { false }
           let(:has_default) { true }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
         end
       end
     end
 
-    describe 'responsible and assignee' do
-      let(:base_href) { "/api/v3/projects/#{work_package.project.id}" }
-
-      describe 'assignee' do
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'assignee' }
-          let(:type) { 'User' }
-          let(:name) { I18n.t('attributes.assigned_to') }
+    describe "responsible and assignee" do
+      describe "assignee" do
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "assignee" }
+          let(:type) { "User" }
+          let(:name) { I18n.t("attributes.assigned_to") }
           let(:required) { false }
           let(:writable) { true }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
         end
 
-        it_behaves_like 'links to allowed values via collection link' do
-          let(:path) { 'assignee' }
-          let(:href) { "#{base_href}/available_assignees" }
+        it_behaves_like "links to allowed values via collection link" do
+          let(:path) { "assignee" }
+          let(:href) { api_v3_paths.available_assignees_in_work_package(work_package.id) }
         end
 
-        context 'when not embedded' do
+        context "when not embedded" do
           let(:embedded) { false }
 
-          it_behaves_like 'does not link to allowed values' do
-            let(:path) { 'assignee' }
+          it_behaves_like "does not link to allowed values" do
+            let(:path) { "assignee" }
           end
         end
 
-        context 'when not having a project (yet)' do
+        context "when not having a project (yet) and not yet persisted" do
           before do
             work_package.project = nil
+
+            allow(work_package).to receive(:persisted?).and_return(false)
           end
 
-          it_behaves_like 'does not link to allowed values' do
-            let(:path) { 'assignee' }
+          it_behaves_like "does not link to allowed values" do
+            let(:path) { "assignee" }
           end
         end
       end
 
-      describe 'responsible' do
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'responsible' }
-          let(:type) { 'User' }
-          let(:name) { I18n.t('attributes.responsible') }
+      describe "responsible" do
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "responsible" }
+          let(:type) { "User" }
+          let(:name) { I18n.t("attributes.responsible") }
           let(:required) { false }
           let(:writable) { true }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
         end
 
-        it_behaves_like 'links to allowed values via collection link' do
-          let(:path) { 'responsible' }
-          let(:href) { "#{base_href}/available_responsibles" }
+        context "when the work package is persisted" do
+          it_behaves_like "links to allowed values via collection link" do
+            let(:path) { "responsible" }
+            let(:href) { api_v3_paths.available_assignees_in_work_package(work_package.id) }
+          end
         end
 
-        context 'when not embedded' do
+        context "when the work package is not persisted" do
+          let(:work_package) { build(:work_package, project:) }
+
+          it_behaves_like "links to allowed values via collection link" do
+            let(:path) { "responsible" }
+            let(:href) { api_v3_paths.available_assignees_in_workspace(work_package.project_id) }
+          end
+        end
+
+        context "when not embedded" do
           let(:embedded) { false }
 
-          it_behaves_like 'does not link to allowed values' do
-            let(:path) { 'responsible' }
+          it_behaves_like "does not link to allowed values" do
+            let(:path) { "responsible" }
           end
         end
 
-        context 'when not having a project (yet)' do
+        context "when not having a project (yet) and not yet persisted" do
           before do
             work_package.project = nil
+
+            allow(work_package).to receive(:persisted?).and_return(false)
           end
 
-          it_behaves_like 'does not link to allowed values' do
-            let(:path) { 'responsible' }
+          it_behaves_like "does not link to allowed values" do
+            let(:path) { "responsible" }
           end
         end
       end
     end
 
-    describe 'budget' do
-      context 'user allowed to view_budgets' do
+    describe "labels" do
+      it_behaves_like "has basic schema properties" do
+        let(:path) { "labels" }
+        let(:type) { "[]Label" }
+        let(:name) { I18n.t("activerecord.attributes.work_package.labels") }
+        let(:required) { false }
+        let(:writable) { true }
+        let(:location) { "_links" }
+      end
+
+      it_behaves_like "links to allowed values via collection link" do
+        let(:path) { "labels" }
+        let(:href) { api_v3_paths.labels_by_workspace(work_package.project_id) }
+      end
+
+      context "when not embedded" do
+        let(:embedded) { false }
+
+        it_behaves_like "does not link to allowed values" do
+          let(:path) { "labels" }
+        end
+      end
+
+      context "when not having a project (yet)" do
+        before { work_package.project = nil }
+
+        it_behaves_like "does not link to allowed values" do
+          let(:path) { "labels" }
+        end
+      end
+
+      context "when lacking the edit_work_packages permission" do
+        let(:permissions) { [] }
+
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "labels" }
+          let(:type) { "[]Label" }
+          let(:name) { I18n.t("activerecord.attributes.work_package.labels") }
+          let(:required) { false }
+          let(:writable) { false }
+          let(:location) { "_links" }
+        end
+      end
+    end
+
+    describe "budget" do
+      context "when user allowed to view_budgets" do
         let(:permissions) { %i[edit_work_packages view_budgets] }
 
-        it_behaves_like 'has basic schema properties' do
-          let(:path) { 'budget' }
-          let(:type) { 'Budget' }
-          let(:name) { I18n.t('attributes.budget') }
+        it_behaves_like "has basic schema properties" do
+          let(:path) { "budget" }
+          let(:type) { "Budget" }
+          let(:name) { I18n.t("attributes.budget") }
           let(:required) { false }
           let(:writable) { true }
-          let(:location) { '_links' }
+          let(:location) { "_links" }
         end
 
-        it_behaves_like 'has a collection of allowed values' do
-          let(:json_path) { 'budget' }
-          let(:href_path) { 'budgets' }
+        it_behaves_like "has a collection of allowed values" do
+          let(:json_path) { "budget" }
+          let(:href_path) { "budgets" }
           let(:factory) { :budget }
         end
       end
 
-      context 'user not allowed to view_budgets' do
-        it 'has no schema for budget' do
-          is_expected.not_to have_json_path('budget')
+      context "when user not allowed to view_budgets" do
+        it "has no schema for budget" do
+          expect(subject).not_to have_json_path("budget")
         end
       end
     end
 
-    describe 'custom fields' do
-      let(:available_custom_fields) { [FactoryBot.build_stubbed(:int_wp_custom_field)] }
-      it 'uses a CustomFieldInjector' do
-        expect(::API::V3::Utilities::CustomFieldInjector).to receive(:create_schema_representer)
+    describe "custom fields" do
+      let(:available_custom_fields) { [build_stubbed(:integer_wp_custom_field)] }
+
+      it "uses a CustomFieldInjector" do
+        allow(API::V3::Utilities::CustomFieldInjector).to receive(:create_schema_representer)
           .and_return(described_class)
         representer.to_json
+
+        expect(API::V3::Utilities::CustomFieldInjector).to have_received(:create_schema_representer)
       end
     end
   end
 
-  describe 'caching' do
-    context 'for a SpecificWorkPackageSchema' do
+  describe "caching" do
+    context "for a SpecificWorkPackageSchema" do
       # do not interfere with the representer cache fetching
       let(:attribute_groups) { [] }
 
-      it 'is disabled' do
-        expect(OpenProject::Cache)
-          .not_to receive(:fetch)
+      it "is disabled" do
+        allow(OpenProject::Cache).to receive(:fetch)
 
         representer.to_json
+
+        expect(OpenProject::Cache)
+          .not_to have_received(:fetch)
       end
     end
 
-    context 'for a TypedWorkPackageSchema' do
+    context "for a TypedWorkPackageSchema" do
       # do not interfere with the representer cache fetching
       let(:attribute_groups) { [] }
 
       let(:embedded) { false }
 
       let(:schema) do
-        ::API::V3::WorkPackages::Schema::TypedWorkPackageSchema
-          .new(type: work_package.type, project: project).tap do |schema|
-          allow(wp_type)
+        API::V3::WorkPackages::Schema::TypedWorkPackageSchema
+          .new(type: work_package.type, project:).tap do |schema|
+          allow(project)
+            .to receive(:type_variant)
+            .with(work_package.type)
+            .and_return(type_variant)
+          allow(type_variant)
             .to receive(:attribute_groups)
             .and_return(attribute_groups)
           allow(schema)
@@ -1000,36 +1335,39 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
         end
       end
 
-      it 'is based on the representer\'s cache_key' do
-        expect(OpenProject::Cache)
+      it "is based on the representer's cache_key" do
+        allow(OpenProject::Cache)
           .to receive(:fetch)
           .with(representer.json_cache_key)
           .and_call_original
 
         representer.to_json
+
+        expect(OpenProject::Cache)
+          .to have_received(:fetch)
+          .with(representer.json_cache_key)
       end
 
-      it 'does not cache the attribute_groups' do
-        representer.to_json
+      it "does not cache the attribute_groups" do
+        call_count = 0
+        allow(type_variant)
+          .to receive(:attribute_groups) do
+            call_count += 1
+            []
+          end
 
-        expect(work_package.type)
-          .to receive(:attribute_groups)
-          .and_return([])
-
         representer.to_json
+        expect { representer.to_json }
+          .to change { call_count }
       end
     end
 
-    describe '#json_cache_key' do
+    describe "#json_cache_key" do
       def joined_cache_key
-        representer.json_cache_key.join('/')
+        representer.json_cache_key.join("/")
       end
 
       before do
-        allow(work_package.project)
-          .to receive(:all_work_package_custom_fields)
-          .and_return []
-
         setup
 
         original_cache_key
@@ -1037,100 +1375,217 @@ describe ::API::V3::WorkPackages::Schema::WorkPackageSchemaRepresenter do
         change
       end
 
-      let(:setup) {}
+      let(:setup) { nil }
       let(:original_cache_key) { joined_cache_key }
 
-      shared_examples_for 'changes' do
+      shared_examples_for "changes" do
         before do
           change
         end
 
-        it 'the cache key' do
-          expect(joined_cache_key).to_not eql(original_cache_key)
+        it "the cache key" do
+          expect(joined_cache_key).not_to eql(original_cache_key)
         end
       end
 
-      context 'for a different type' do
-        it_behaves_like 'changes' do
-          let(:change) { work_package.project = FactoryBot.build_stubbed(:project) }
+      context "for a different project" do
+        it_behaves_like "changes" do
+          let(:change) { work_package.project = build_stubbed(:project) }
         end
       end
 
-      context 'if the project is updated' do
-        it_behaves_like 'changes' do
+      context "if the project is updated" do
+        it_behaves_like "changes" do
           let(:change) { work_package.project.updated_at += 1.hour }
         end
       end
 
-      context 'for a different type' do
-        it_behaves_like 'changes' do
-          let(:change) { work_package.type = FactoryBot.build_stubbed(:type) }
+      context "for a different type" do
+        it_behaves_like "changes" do
+          let(:change) { work_package.type = build_stubbed(:type) }
         end
       end
 
-      context 'if the type is updated' do
-        it_behaves_like 'changes' do
+      context "if the type is updated" do
+        it_behaves_like "changes" do
           let(:change) { work_package.type.updated_at += 1.hour }
         end
       end
 
-      context 'if the type is switches' do
-        it_behaves_like 'changes' do
+      context "if the locale is switched" do
+        it_behaves_like "changes" do
           let(:change) { allow(I18n).to receive(:locale).and_return(:de) }
         end
       end
 
-      context 'if the custom_fields change' do
-        it_behaves_like 'changes' do
+      context "if the custom_fields change" do
+        it_behaves_like "changes" do
           let(:change) do
             allow(work_package)
               .to receive(:available_custom_fields)
-              .and_return([FactoryBot.build_stubbed(:custom_field)])
+              .and_return([build_stubbed(:custom_field)])
           end
         end
       end
 
-      context 'if the work_package_done_ratio setting changes' do
-        it_behaves_like 'changes' do
+      context "if the work_package_done_ratio setting changes" do
+        it_behaves_like "changes" do
           let(:setup) do
             allow(Setting)
               .to receive(:work_package_done_ratio)
-              .and_return('something')
+              .and_return("something")
           end
 
           let(:change) do
             allow(Setting)
               .to receive(:work_package_done_ratio)
-              .and_return('else')
+              .and_return("else")
           end
         end
       end
 
-      context 'if the users permissions change' do
-        it_behaves_like 'changes' do
-          let(:role1) { FactoryBot.build_stubbed(:role, permissions: permissions1) }
-          let(:permissions1) { %i[blubs some more] }
-          let(:role2) { FactoryBot.build_stubbed(:role, permissions: permissions2) }
-          let(:permissions2) { %i[and other random permissions] }
-          let(:roles) { [role1, role2] }
-
+      context "if the users permissions change" do
+        it_behaves_like "changes" do
+          let(:cache_perms) { %i[view_work_packages edit_work_packages] }
           let(:setup) do
-            allow(Authorization)
-              .to receive(:roles)
-              .with(current_user, project)
-              .and_return(roles)
-
-            allow(roles)
-              .to receive(:eager_load)
-              .and_return(roles)
+            allow(representer).to receive(:all_permissions_granted_to_user_under_project).and_return(cache_perms)
           end
 
           let(:change) do
-            allow(role2)
-              .to receive(:permissions)
-              .and_return(%i[but now they are different])
+            cache_perms << :manage_versions
           end
         end
+      end
+    end
+  end
+
+  describe "when the project resolves the type to a variant" do
+    shared_let(:family_root) { create(:type, name: "Family root") }
+    shared_let(:base_variant) { family_root.default_variant }
+    shared_let(:variant) do
+      create(:type_variant, type: family_root, variant_name: "Variant").tap do |named|
+        [*TypeVariant::ASPECTS, TypeVariant::FORM_CONFIGURATION].each do |aspect|
+          link_configuration(named, aspect:)
+        end
+      end
+    end
+
+    let(:project) do
+      create(:project, types: [family_root]).tap do |p|
+        p.project_types.find_by!(type_id: family_root.id).update!(variant:)
+        p.reload
+      end
+    end
+    let(:wp_type) { family_root }
+    let(:work_package) do
+      build_stubbed(:work_package, project:, type: family_root) do |wp|
+        allow(wp).to receive(:type_variant).and_return(variant)
+      end
+    end
+    let(:schema) { API::V3::WorkPackages::Schema::SpecificWorkPackageSchema.new(work_package:) }
+    let(:embedded) { false }
+
+    def make_independent(aspect)
+      unlink_configuration(variant, aspect:)
+      variant.reload
+    end
+
+    describe "_attributeGroups" do
+      subject(:generated) { representer.to_json }
+
+      before do
+        base_variant.update!(attribute_groups: [["Root group", %w(assignee)]])
+        variant.reload
+      end
+
+      context "when the variant inherits its form configuration" do
+        it "renders the root's groups" do
+          expect(generated).to be_json_eql("Root group".to_json).at_path("_attributeGroups/0/name")
+        end
+      end
+
+      context "when the variant owns its form configuration" do
+        before do
+          make_independent(TypeVariant::FORM_CONFIGURATION)
+          variant.update!(attribute_groups: [["Variant group", %w(responsible)]])
+        end
+
+        it "renders the variant's groups" do
+          expect(generated).to be_json_eql("Variant group".to_json).at_path("_attributeGroups/0/name")
+          expect(generated).to be_json_eql(%w(responsible).to_json).at_path("_attributeGroups/0/attributes")
+        end
+
+        it "places each attribute in the variant's group" do
+          expect(generated).to be_json_eql("Variant group".to_json).at_path("responsible/attributeGroup")
+        end
+      end
+    end
+
+    describe "subject" do
+      subject(:generated) { representer.to_json }
+
+      let(:blueprint) { { subject: { blueprint: "{{type}}", enabled: true } } }
+
+      context "when the variant inherits its defaults" do
+        before do
+          base_variant.update!(patterns: blueprint)
+          variant.reload
+        end
+
+        it "auto-generates the subject from the root's pattern" do
+          expect(generated).to be_json_eql(true.to_json).at_path("subject/hasDefault")
+          expect(generated).to be_json_eql(false.to_json).at_path("subject/writable")
+        end
+      end
+
+      context "when the variant owns its defaults" do
+        before do
+          base_variant.update!(patterns: blueprint)
+          make_independent(TypeVariant::DEFAULTS)
+        end
+
+        it "does not auto-generate the subject, as the variant defines no pattern" do
+          expect(generated).to be_json_eql(false.to_json).at_path("subject/hasDefault")
+          expect(generated).to be_json_eql(true.to_json).at_path("subject/writable")
+        end
+      end
+    end
+
+    describe "caching" do
+      let(:schema) { API::V3::WorkPackages::Schema::TypedWorkPackageSchema.new(project:, type: family_root) }
+
+      def joined_cache_key
+        described_class.create(schema, self_link:, form_embedded: embedded, current_user:)
+                       .json_cache_key
+                       .join("/")
+      end
+
+      it "changes the cache key when the project resolves the family to another variant" do
+        original = joined_cache_key
+
+        other_variant = create(:type_variant, type: family_root, variant_name: "Other variant")
+        project.project_types.find_by(type_id: family_root.id).update!(variant: other_variant)
+        project.reload
+
+        expect(joined_cache_key).not_to eql(original)
+      end
+
+      it "changes the cache key when the variant in force is updated" do
+        original = joined_cache_key
+
+        variant.update!(updated_at: 1.hour.from_now)
+        project.reload
+
+        expect(joined_cache_key).not_to eql(original)
+      end
+
+      it "changes the cache key when the form configuration in force is edited" do
+        original = joined_cache_key
+
+        variant.update!(attribute_groups: [["Edited group", %w(assignee)]])
+        project.reload
+
+        expect(joined_cache_key).not_to eql(original)
       end
     end
   end

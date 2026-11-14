@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,51 +20,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class LaborBudgetItem < ApplicationRecord
+  extend DeprecatedAlias
+
   belongs_to :budget
-  belongs_to :user
-  belongs_to :principal, foreign_key: 'user_id'
+  belongs_to :principal, foreign_key: "user_id"
 
-  include ::Costs::DeletedUserFallback
-
-  validates_length_of :comments, maximum: 255, allow_nil: true
-  validates_presence_of :user
-  validates_presence_of :budget
-  validates_numericality_of :hours, allow_nil: false
+  validates :comments, length: { maximum: 255, allow_nil: true }
+  validates :principal, presence: true
+  validates :budget, presence: true
+  validates :hours, numericality: { allow_nil: false }
+  validate :user_is_member_of_budget_project
 
   include ActiveModel::ForbiddenAttributesProtection
   # user_id correctness is ensured in Budget#*_labor_budget_item_attributes=
 
-  def self.visible(user, project)
-    table = arel_table
+  include Scopes::Scoped
 
-    view_allowed = Project.allowed_to(user, :view_hourly_rates).select(:id)
-    view_own_allowed = Project.allowed_to(user, :view_own_hourly_rate).select(:id)
-
-    view_or_view_own = table[:project_id]
-                       .in(view_allowed.arel)
-                       .or(table[:project_id]
-                           .in(view_own_allowed.arel)
-                           .and(table[:user_id].eq(user.id)))
-
-    scope = includes([{ budget: :project }, :user])
-            .references(:projects)
-            .where(view_or_view_own)
-
-    if project
-      scope.where(budget: { projects_id: project.id })
-    end
-  end
+  scopes :visible
 
   scope :visible_costs, lambda { |*args|
-    visible((args.first || User.current), args[1])
+    visible(args.first || User.current)
   }
+
+  # The item outlives the principal it budgets, so a removed one still reads
+  # back the way a deleted user does.
+  def principal
+    super || (DeletedUser.first if user_id.present?)
+  end
+
+  deprecated_alias :user, :principal
+  deprecated_alias :user=, :principal=
 
   def costs
     amount || calculated_costs
@@ -75,15 +66,42 @@ class LaborBudgetItem < ApplicationRecord
   end
 
   def calculated_costs(fixed_date = budget.fixed_date, project_id = budget.project_id)
-    if user_id && hours && (rate = HourlyRate.at_date_for_user_in_project(fixed_date, user_id, project_id))
-      rate.rate * hours
-    else
-      0.0
+    rate = applicable_rate(fixed_date, project_id)
+    return 0.0 unless rate && hours
+
+    rate.rate * hours
+  end
+
+  def applicable_rate(fixed_date = budget.fixed_date, project_id = budget.project_id)
+    return if user_id.blank?
+
+    applicable_rates.fetch([fixed_date, project_id]) do |key|
+      applicable_rates[key] = HourlyRate.at_date_for_user_in_project(fixed_date, user_id, project_id)
     end
   end
 
+  # Groups are budgeted at 0.0 by design, so only principals that can hold a
+  # rate at all count as missing one.
+  def missing_rate?(fixed_date = budget.fixed_date, project_id = budget.project_id)
+    principal.is_a?(Costs::HasRates) && applicable_rate(fixed_date, project_id).nil?
+  end
+
   def costs_visible_by?(usr)
-    usr.allowed_to?(:view_hourly_rates, budget.project) ||
-      (usr.id == user_id && usr.allowed_to?(:view_own_hourly_rate, budget.project))
+    usr.allowed_in_project?(:view_hourly_rates, budget.project) ||
+      (usr.id == user_id && usr.allowed_in_project?(:view_own_hourly_rate, budget.project))
+  end
+
+  private
+
+  def applicable_rates
+    @applicable_rates ||= {}
+  end
+
+  def user_is_member_of_budget_project
+    return if principal.nil? || budget&.project.nil?
+
+    unless Member.of_project(budget.project).exists?(user_id: principal.id)
+      errors.add(:principal, :not_a_member_of_budget_project)
+    end
   end
 end

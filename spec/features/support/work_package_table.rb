@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-shared_context 'work package table helpers' do
+RSpec.shared_context "work package table helpers" do
   def expect_work_packages_to_be_in_order(order)
     within_wp_table do
-      preceeding_elements = order[0..-2]
-      following_elements = order[1..-1]
-
-      preceeding_elements.each_with_index do |wp_1, i|
-        wp_2 = following_elements[i]
-        expect(self).to have_selector(".wp-row-#{wp_1.id} + \
-                                       .wp-row-#{wp_2.id}")
+      order.each_cons(2) do |wp1, wp2|
+        expect(self).to have_css(".wp-row-#{wp1.id} + .wp-row-#{wp2.id}")
       end
     end
   end
 
-  def within_wp_table(&block)
-    within('.work-package-table--container', &block)
+  def within_wp_table(&)
+    within(".work-package-table--container", &)
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,7 +31,7 @@ module API
       class NotificationsAPI < ::API::OpenProjectAPI
         resources :notifications do
           after_validation do
-            authorize_by_with_raise current_user.logged?
+            authorize_by_with_raise(current_user.logged?)
           end
 
           helpers do
@@ -45,9 +44,9 @@ module API
             def notification_scope
               ::Notification
                 .visible(current_user)
-                .includes(NotificationRepresenter.to_eager_load)
                 .where
                 .not(read_ian: nil)
+                .order(id: :desc)
             end
 
             def bulk_update_status(attributes)
@@ -55,13 +54,15 @@ module API
                 notification_query.results.update_all({ updated_at: Time.zone.now }.merge(attributes))
                 status 204
               else
-                raise ::API::Errors::InvalidQuery.new(notification_query.errors.full_messages)
+                raise_query_errors(notification_query)
               end
             end
           end
 
-          get &::API::V3::Utilities::Endpoints::Index
-            .new(model: Notification, scope: -> { notification_scope })
+          # No need to reapply the visibility scope here as this will be done by the used
+          # NotificationQuery.
+          get &::API::V3::Utilities::Endpoints::SqlFallbackedIndex
+            .new(model: Notification, scope: -> { Notification.where.not(read_ian: nil) })
             .mount
 
           post :read_ian do
@@ -72,7 +73,7 @@ module API
             bulk_update_status(read_ian: false)
           end
 
-          route_param :id, type: Integer, desc: 'Notification ID' do
+          route_param :id, type: Integer, desc: "Notification ID" do
             after_validation do
               @notification = notification_scope.find(params[:id])
             end
@@ -92,6 +93,16 @@ module API
 
             post :unread_ian do
               update_status(read_ian: false)
+            end
+
+            namespace :details do
+              route_param :detail_id, type: Integer, desc: "Notification Detail ID" do
+                get do
+                  PropertyFactory.details_for(@notification).at(params[:detail_id]).tap do |detail|
+                    raise API::Errors::NotFound unless detail
+                  end
+                end
+              end
             end
           end
         end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,46 +20,45 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-desc 'Load Redmine default configuration data. Language is chosen interactively or by setting REDMINE_LANG environment variable.'
+desc "Load Redmine default configuration data. Language is chosen interactively or by setting REDMINE_LANG environment variable."
 
 namespace :redmine do
   task load_default_data: :environment do
     include Redmine::I18n
-    set_language_if_valid('en')
+    set_language_if_valid("en")
 
-    envlang = ENV['REDMINE_LANG']
+    envlang = ENV.fetch("REDMINE_LANG", nil)
     if !envlang || !set_language_if_valid(envlang)
       puts
       loop do
-        print 'Select language: '
-        print valid_languages.collect(&:to_s).sort.join(', ')
+        print "Select language: "
+        print valid_languages.collect(&:to_s).sort.join(", ")
         print " [#{current_language}] "
         STDOUT.flush
         lang = STDIN.gets.chomp!
         break if lang.empty?
         break if set_language_if_valid(lang)
 
-        puts 'Unknown language!'
+        puts "Unknown language!"
       end
       STDOUT.flush
-      puts '===================================='
+      puts "===================================="
     end
 
     begin
       Redmine::DefaultData::Loader.load(current_language)
-      puts 'Default configuration data loaded.'
+      puts "Default configuration data loaded."
     rescue Redmine::DefaultData::DataAlreadyLoaded => e
       puts e
     rescue StandardError => e
-      puts 'Error: ' + e.message
+      puts "Error: " + e.message
       puts e.backtrace.join("\n")
-      puts 'Default configuration data was not loaded.'
+      puts "Default configuration data was not loaded."
     end
   end
 end

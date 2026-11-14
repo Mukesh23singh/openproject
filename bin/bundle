@@ -17,10 +17,6 @@ m = Module.new do
     File.expand_path($0) == File.expand_path(__FILE__)
   end
 
-  def env_var_version
-    ENV["BUNDLER_VERSION"]
-  end
-
   def cli_arg_version
     return unless invoked_as_script? # don't want to hijack other binstubs
     return unless "update".start_with?(ARGV.first || " ") # must be running `bundle update`
@@ -66,8 +62,7 @@ m = Module.new do
 
   def bundler_version
     @bundler_version ||= begin
-      env_var_version || cli_arg_version ||
-        lockfile_version || "#{Gem::Requirement.default}.a"
+      cli_arg_version || lockfile_version || "#{Gem::Requirement.default}.a"
     end
   end
 

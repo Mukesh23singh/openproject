@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,14 +32,14 @@ module OpenProject
 
     def self.tsv_where(table_name, column_name, value, concatenation: :and, normalization: :text)
       if OpenProject::Database.allows_tsv?
-        column = "\"#{table_name.to_s}\".\"#{column_name.to_s}_tsv\""
+        column = "\"#{table_name}\".\"#{column_name}_tsv\""
         query = tokenize(value, concatenation, normalization)
+        return if query.blank?
+
         language = OpenProject::Configuration.main_content_language
 
-        ActiveRecord::Base.send(
-          :sanitize_sql_array, ["#{column} @@ to_tsquery(?, ?)",
-                                language,
-                                query]
+        OpenProject::SqlSanitization.sanitize(
+          "#{column} @@ to_tsquery(?, ?)", language, query
         )
       end
     end
@@ -53,7 +50,7 @@ module OpenProject
       case concatenation
       when :and
         # all terms need to hit
-        terms.join ' & '
+        terms.join " & "
       when :and_not
         # all terms must not hit.
         "! #{terms.join(' & ! ')}"
@@ -70,20 +67,20 @@ module OpenProject
     end
 
     def self.normalize_text(text)
-      I18n.with_locale(:en) { I18n.transliterate(text.to_s.downcase) }
+      I18n.with_locale(:en) { I18n.transliterate(text.to_s.downcase, replacement: "") }
     end
 
     def self.normalize_filename(filename)
       name_in_words = to_words filename.to_s.downcase
-      I18n.with_locale(:en) { I18n.transliterate(name_in_words) }
+      I18n.with_locale(:en) { I18n.transliterate(name_in_words, replacement: "") }
     end
 
     def self.to_words(text)
-      text.gsub /[^[:alnum:]]/, ' '
+      text.gsub /[^[:alnum:]]/, " "
     end
 
     def self.clean_terms(terms)
-      terms.gsub(DISALLOWED_CHARACTERS, ' ')
+      terms.gsub(DISALLOWED_CHARACTERS, " ")
     end
   end
 end

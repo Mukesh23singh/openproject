@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe OmniAuth::FlexibleStrategy do
+RSpec.describe OmniAuth::FlexibleStrategy do
   class MockStrategy
     include OmniAuth::Strategy
     include OmniAuth::FlexibleStrategy
@@ -40,14 +39,14 @@ describe OmniAuth::FlexibleStrategy do
 
   def env_for(url, opts = {})
     Rack::MockRequest.env_for(url, opts).tap do |env|
-      env['rack.session'] = {}
+      env["rack.session"] = {}
     end
   end
 
-  let(:app)        { ->(env) { [200, env, 'ok'] } }
+  let(:app)        { ->(env) { [200, env, "ok"] } }
   let(:middleware) { MockStrategy.new(app) }
-  let(:provider_a) { { name: 'provider_a', identifier: 'a' } }
-  let(:provider_b) { { name: 'provider_b', identifier: 'b' } }
+  let(:provider_a) { { name: "provider_a", identifier: "a" } }
+  let(:provider_b) { { name: "provider_b", identifier: "b" } }
 
   before do
     allow(OpenProject::Plugins::AuthPlugin).to receive(:providers_for).with(MockStrategy) {
@@ -55,49 +54,63 @@ describe OmniAuth::FlexibleStrategy do
     }
   end
 
-  describe 'request call' do
-    it 'should match the registered providers' do
-      [provider_a, provider_b].each do |pro|
-        code, env = middleware.call env_for("http://www.example.com/auth/#{pro[:name]}")
-        strategy = env['omniauth.strategy']
+  describe "request call" do
+    around do |example|
+      phase = OmniAuth.config.request_validation_phase
+      OmniAuth.config.request_validation_phase = nil
+      example.run
+    ensure
+      OmniAuth.config.request_validation_phase = phase
+    end
 
-        # check that the correct provider has been initialised
+    it "matches the registered providers" do
+      [provider_a, provider_b].each do |pro|
+        _code, env = middleware.call env_for("http://www.example.com/auth/#{pro[:name]}", method: "POST")
+        strategy = env["omniauth.strategy"]
+
         expect(strategy.options.identifier).to eq pro[:identifier]
       end
     end
 
-    it 'should not match other paths' do
-      code, env = middleware.call env_for('http://www.example.com/auth/other_provider')
+    it "does not start the request phase for GET" do
+      code, env = middleware.call env_for("http://www.example.com/auth/provider_a", method: "GET")
 
-      expect(env).not_to include 'omniauth.strategy' # no hit
+      expect(code).to eq 200
+      expect(env["rack.session"]).not_to include("omniauth.params")
+    end
+
+    it "does not match other paths" do
+      _code, env = middleware.call env_for("http://www.example.com/auth/other_provider", method: "POST")
+
+      expect(env).not_to include "omniauth.strategy" # no hit
     end
   end
 
-  describe 'callback call' do
+  describe "callback call" do
     before do
-      allow_any_instance_of(MockStrategy).to receive(:callback_phase).and_return(['hit'])
+      allow_any_instance_of(MockStrategy).to receive(:callback_phase).and_return(["hit"])
     end
 
-    it 'should match the registered providers' do
+    it "matches the registered providers" do
       [provider_a, provider_b].each do |pro|
         code, = middleware.call env_for("http://www.example.com/auth/#{pro[:name]}/callback")
 
-        expect(code).to eq 'hit'
+        expect(code).to eq "hit"
       end
     end
 
-    it 'should not match other paths' do
-      code, env = middleware.call env_for('http://www.example.com/auth/other_provider/callback')
+    it "does not match other paths" do
+      code, env = middleware.call env_for("http://www.example.com/auth/other_provider/callback")
 
       expect(code).to eq 200
-      expect(env).not_to include 'omniauth.strategy' # no hit
+      expect(env).not_to include "omniauth.strategy" # no hit
     end
   end
 
-  describe 'calling strategies' do
+  describe "calling strategies" do
     let(:provider_with_mapping) do
       {
-        name: 'provider_with_mapping',
+        name: "provider_with_mapping",
         openproject_attribute_map: Proc.new do |auth|
           { uid: auth[:info][:myUsername], mail: auth[:extra][:raw_info][:myMail] }
         end
@@ -105,8 +118,8 @@ describe OmniAuth::FlexibleStrategy do
     end
     let(:auth_hash) do
       {
-        info: { myUsername: 'foo', myFullName: 'Foo Bar' },
-        extra: { raw_info: { myMail: 'foo@example.com' } }
+        info: { myUsername: "foo", myFullName: "Foo Bar" },
+        extra: { raw_info: { myMail: "foo@example.com" } }
       }
     end
 
@@ -114,20 +127,20 @@ describe OmniAuth::FlexibleStrategy do
       middleware.providers = [provider_a, provider_with_mapping]
     end
 
-    context 'with a mapping set' do
-      it 'returns an attribute hash' do
-        _, env = middleware.call env_for('http://www.example.com/auth/provider_with_mapping')
+    context "with a mapping set" do
+      it "returns an attribute hash" do
+        _, env = middleware.call env_for("http://www.example.com/auth/provider_with_mapping")
 
-        strategy = env['omniauth.strategy']
-        expect(strategy.name).to eq('provider_with_mapping')
+        strategy = env["omniauth.strategy"]
+        expect(strategy.name).to eq("provider_with_mapping")
         attribute_map = strategy.omniauth_hash_to_user_attributes(auth_hash)
-        expect(attribute_map).to eq(uid: 'foo', mail: 'foo@example.com')
+        expect(attribute_map).to eq(uid: "foo", mail: "foo@example.com")
       end
     end
 
-    context 'without a mapping set' do
-      it 'returns an empty hash' do
-        middleware.call env_for('http://www.example.com/auth/provider_a')
+    context "without a mapping set" do
+      it "returns an empty hash" do
+        middleware.call env_for("http://www.example.com/auth/provider_a")
 
         attribute_map = middleware.omniauth_hash_to_user_attributes(auth_hash)
         expect(attribute_map).to eq({})

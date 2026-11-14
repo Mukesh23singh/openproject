@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,58 +31,75 @@ module Components
   module WorkPackages
     class GroupBy
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
+      include RSpec::Wait
 
       def enable_via_header(name)
         open_table_column_context_menu(name)
 
         within_column_context_menu do
-          click_button('Group by')
+          find(:role, "menuitemcheckbox", text: "Group by", aria: { checked: "false" }).click
         end
       end
 
-      def enable_via_menu(name)
-        modal = TableConfigurationModal.new
+      def enable
+        set_display_mode("grouped")
+      end
 
-        modal.open_and_set_display_mode 'grouped'
-        select name, from: 'selected_grouping'
-        modal.save
+      def enable_via_menu(name)
+        set_display_mode("grouped") do
+          select name, from: "selected_grouping"
+        end
       end
 
       def disable_via_menu
-        modal = TableConfigurationModal.new
-        modal.open_and_set_display_mode 'default'
-        modal.save
+        set_display_mode("default")
       end
 
       def expect_number_of_groups(count)
-        expect(page).to have_selector('[data-qa-selector="op-group--value"] .count', count: count)
+        wait(30).for { group_values.size }.to eq(count)
       end
 
       def expect_grouped_by_value(value_name, count)
-        expect(page).to have_selector('[data-qa-selector="op-group--value"]', text: "#{value_name} (#{count})")
+        wait(30).for { group_values }.to include("#{value_name} (#{count})")
       end
 
       def expect_no_groups
-        expect(page).to have_no_selector('[data-qa-selector="op-group--value"]')
+        expect(page).to have_no_css('[data-test-selector="op-group--value"]')
       end
 
       def expect_not_grouped_by(name)
         open_table_column_context_menu(name)
 
         within_column_context_menu do
-          expect(page).to have_content('Group by')
+          expect(page).to have_selector(:role, "menuitemcheckbox", text: "Group by", aria: { checked: "false" })
         end
       end
 
       private
 
-      def open_table_column_context_menu(name)
-        page.find(".generic-table--sort-header ##{name.downcase}").click
+      def group_values
+        page.evaluate_script(<<~JS)
+          Array.from(document.querySelectorAll('[data-test-selector="op-group--value"]'))
+            .map((element) => element.textContent.replace(/\\s+/g, ' ').trim())
+        JS
       end
 
-      def within_column_context_menu(&block)
-        page.within('#column-context-menu', &block)
+      def set_display_mode(mode)
+        modal = TableConfigurationModal.new
+
+        modal.open_and_set_display_mode mode
+        yield if block_given?
+        modal.save
+      end
+
+      def open_table_column_context_menu(name)
+        page.find(:columnheader, name).click_button(name)
+      end
+
+      def within_column_context_menu(&)
+        page.within(:menu, &)
       end
     end
   end

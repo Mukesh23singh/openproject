@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,25 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { merge } from 'lodash-es';
 import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { HalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { HalResource, HalResourceLinks } from 'core-app/features/hal/resources/hal-resource';
 import { QueryOperatorResource } from 'core-app/features/hal/resources/query-operator-resource';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
-import { SchemaAttributeObject, SchemaResource } from 'core-app/features/hal/resources/schema-resource';
+import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
 import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
 import { SchemaDependencyResource } from 'core-app/features/hal/resources/schema-dependency-resource';
+import { SchemaAttributeObject } from 'core-app/features/hal/resources/schema-attribute-object';
 
-export interface QueryFilterInstanceSchemaResourceLinks {
-  self:HalLink;
-  filter:QueryFilterResource;
+export interface QueryFilterInstanceSchemaResourceLinks extends HalResourceLinks {
+  self:CallableHalLink<QueryFilterInstanceSchemaResource>;
+  filter:CallableHalLink<QueryFilterResource>;
 }
 
 export class QueryFilterInstanceSchemaResource extends SchemaResource {
@@ -65,18 +66,19 @@ export class QueryFilterInstanceSchemaResource extends SchemaResource {
     return this.filter.allowedValues[0];
   }
 
-  public $initialize(source:any) {
+  public $initialize(source:unknown) {
     super.$initialize(source);
 
-    if (source._dependencies) {
-      this.dependency = new SchemaDependencyResource(this.injector, source._dependencies[0], true, this.halInitializer, 'SchemaDependency');
+    const { _dependencies } = source as { _dependencies?:unknown[] };
+    if (_dependencies) {
+      this.dependency = new SchemaDependencyResource(this.injector, _dependencies[0], true, this.halInitializer, 'SchemaDependency');
     }
   }
 
   public getFilter():QueryFilterInstanceResource {
     const operator = (this.operator.allowedValues as HalResource[])[0];
     const filter = (this.filter.allowedValues as HalResource[])[0];
-    const source:any = {
+    const source:{ name:string, values?:unknown[], _links:Record<string, unknown> } = {
       name: filter.name,
       _links: {
         filter: filter.$source._links.self,
@@ -99,7 +101,11 @@ export class QueryFilterInstanceSchemaResource extends SchemaResource {
   }
 
   public isResourceValue():boolean {
-    return !!(this.values && this.values.allowedValues);
+    return !!this.values?.allowedValues;
+  }
+
+  public loadedAllowedValues():boolean {
+    return Array.isArray(this.values?.allowedValues);
   }
 
   public resultingSchema(operator:QueryOperatorResource):QueryFilterInstanceSchemaResource {
@@ -107,13 +113,14 @@ export class QueryFilterInstanceSchemaResource extends SchemaResource {
     const dependentSchema = this.dependency.forValue(operator.href!.toString());
     const resultingSchema = {};
 
-    _.merge(resultingSchema, staticSchema, dependentSchema);
+    merge(resultingSchema, staticSchema, dependentSchema);
 
     return new QueryFilterInstanceSchemaResource(this.injector, resultingSchema, true, this.halInitializer, 'QueryFilterInstanceSchema');
   }
 
   private definesAllowedValues() {
-    return _.some(this._dependencies[0].dependencies,
-      (dependency:any) => dependency.values && dependency.values._links && dependency.values._links.allowedValues);
+    interface FilterDependency { values?:{ _links?:{ allowedValues?:unknown } } }
+    const dependencies = (this._dependencies as { dependencies:Record<string, FilterDependency> }[])[0].dependencies;
+    return Object.values(dependencies).some((dependency:FilterDependency) => !!dependency.values?._links?.allowedValues);
   }
 }

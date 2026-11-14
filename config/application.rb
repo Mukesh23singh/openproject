@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,43 +22,27 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'boot'
+require_relative "boot"
 
-require 'rails/all'
-require 'active_support'
-require 'active_support/dependencies'
-require 'core_extensions'
+require "rails/all"
+require "active_support"
+require "active_support/dependencies"
+require "core_extensions"
+require "sprockets/railtie"
+require "view_component"
+require "primer/view_components"
+require "primer/view_components/engine"
 
-# Silence deprecations early on for testing on CI and production
-ActiveSupport::Deprecation.silenced =
-  (Rails.env.production? && !ENV['OPENPROJECT_SHOW_DEPRECATIONS']) ||
-  (Rails.env.test? && ENV['CI'])
+# Require the gems listed in Gemfile, including any gems
+# you've limited to :test, :development, or :production.
+Bundler.require(*Rails.groups(:opf_plugins))
 
-if defined?(Bundler)
-  # lib directory has to be added to the load path so that
-  # the open_project/plugins files can be found (places under lib).
-  # Now it would be possible to remove that and use require with
-  # lib included but some plugins already use
-  #
-  # require 'open_project/plugins'
-  #
-  # to ensure the code to be loaded. So we provide a compatibility
-  # layer here. One might remove this later.
-  $LOAD_PATH.unshift File.dirname(__FILE__) + '/../lib'
-  require 'open_project/plugins'
-
-  # Require the gems listed in Gemfile, including any gems
-  # you've limited to :test, :development, or :production.
-  Bundler.require(*Rails.groups(:opf_plugins))
-end
-
-require_relative '../lib/open_project/configuration'
+require_relative "../lib_static/open_project/configuration"
 
 module OpenProject
   class Application < Rails::Application
@@ -66,17 +50,62 @@ module OpenProject
     # Application configuration should go into files in config/initializers
     # -- all .rb files in that directory are automatically loaded.
 
+    # Initialize configuration defaults for originally generated Rails version.
+    #
+    # This includes defaults for versions prior to the target version. See the
+    # configuration guide at
+    # https://guides.rubyonrails.org/configuring.html#versioned-default-values
+    # for the default values associated with a particular version.
+    #
+    # Goal is to reach 8.0 defaults. Overridden defaults should be stored in
+    # specific initializers files. See
+    # https://community.openproject.org/wp/45463 for details.
+    config.load_defaults 6.1
+
+    # Please, add to the `ignore` list any other `lib` subdirectories that do
+    # not contain `.rb` files, or that should not be reloaded or eager loaded.
+    # Common ones are `templates`, `generators`, or `middleware`, for example.
+    config.autoload_lib(ignore: %w(assets tasks))
+
+    # Configuration for the application, engines, and railties goes here.
+    # These settings can be overridden in specific environments using the files
+    # in config/environments, which are processed later.
+    # config.time_zone = "Central Time (US & Canada)"
+    # config.eager_load_paths << Rails.root.join("extras")
+
+    # Do not require `belongs_to` associations to be present by default.
+    # Rails 5.0+ default is true. Because of history, lots of tests fail when
+    # set to true.
+    config.active_record.belongs_to_required_by_default = false
+
+    ###
+    # Enable raising on assignment to attr_readonly attributes. The previous
+    # behavior would allow assignment but silently not persist changes to the
+    # database.
+    # This is a rails 7.1 behavior.
+    # Ideally this should be defined in the `config/initializers/new_framework_defaults_7_1.rb`
+    # file, but since there is a bug, that file is not loaded correctly in the production environment.
+    # Once [the issue](https://community.openproject.org/wp/59474) is solved, this configuration can
+    # be moved to the `config/initializers/new_framework_defaults_7_1.rb`.
+    #++
+    config.active_record.raise_on_assign_to_attr_readonly = true
+
     # Sets up logging for STDOUT and configures the default logger formatter
     # so that all environments receive level and timestamp information
     #
     # Use default logging formatter so that PID and timestamp are not suppressed.
     config.log_formatter = ::Logger::Formatter.new
 
+    # Set up the cache store based on our configuration
+    config.cache_store = OpenProject::Configuration.cache_store_configuration
+
     # Set up STDOUT logging if requested
     if ENV["RAILS_LOG_TO_STDOUT"].present?
-      logger           = ActiveSupport::Logger.new(STDOUT)
+      logger           = ActiveSupport::Logger.new($stdout)
       logger.formatter = config.log_formatter
-      config.logger    = ActiveSupport::TaggedLogging.new(logger)
+      # Prepend all log lines with the following tags.
+      config.log_tags = [:request_id]
+      config.logger = ActiveSupport::TaggedLogging.new(logger)
     end
 
     # Use Rack::Deflater to gzip/deflate all the responses if the
@@ -90,8 +119,8 @@ module OpenProject
                                     if: lambda { |_env, _code, headers, _body|
                                       # Firefox fails to properly decode gzip attachments
                                       # We thus avoid deflating if sending gzip already.
-                                      content_type = headers['Content-Type']
-                                      content_type != 'application/x-gzip'
+                                      content_type = headers["Content-Type"]
+                                      content_type != "application/x-gzip"
                                     }
 
     config.middleware.use Rack::Attack
@@ -99,11 +128,24 @@ module OpenProject
     # http://stackoverflow.com/questions/4590229
     config.middleware.use Rack::TempfileReaper
 
-    config.autoloader = :zeitwerk
-    # Custom directories with classes and modules you want to be autoloadable.
-    config.enable_dependency_loading = true
-    config.paths.add Rails.root.join('lib').to_s, eager_load: true
-    config.paths.add Rails.root.join('lib/constraints').to_s, eager_load: true
+    # Add lookbook preview paths when enabled
+    if OpenProject::Configuration.lookbook_enabled?
+      config.paths.add Primer::ViewComponents::Engine.root.join("app/components").to_s, eager_load: true
+      config.paths.add Rails.root.join("lookbook/previews").to_s, eager_load: true
+      config.paths.add Primer::ViewComponents::Engine.root.join("previews").to_s, eager_load: true
+    end
+
+    # Constants in lib_static should only be loaded once and never be unloaded.
+    # That directory contains configurations and patches to rails core functionality.
+    config.autoload_once_paths << Rails.root.join("lib_static").to_s
+
+    # Configure the relative url root to be whatever the configuration is set to.
+    # This allows for setting the root either via config file or via environment variable.
+    # It must be called early enough. In our case in should be called earlier
+    # than `config.exceptions_app = routes`. Otherwise Rails.application.routes.url_helpers
+    # will not have configured prefix.
+    # Read https://github.com/rails/rails/issues/42243 for some details.
+    config.relative_url_root = OpenProject::Configuration["rails_relative_url_root"]
 
     # Use our own error rendering for prettier error pages
     config.exceptions_app = routes
@@ -112,62 +154,35 @@ module OpenProject
     # :all can be used as a placeholder for all plugins not explicitly named.
     # config.plugins = [ :exception_notification, :ssl_requirement, :all ]
 
-    # Set Time.zone default to the specified zone and make Active Record auto-convert to this zone.
-    # Run "rake -D time" for a list of tasks for finding time zone names. Default is UTC.
-    # config.time_zone = 'Central Time (US & Canada)'
-
     # Add locales from crowdin translations to i18n
-    config.i18n.load_path += Dir[Rails.root.join('config', 'locales', 'crowdin', '*.{rb,yml}').to_s]
+    config.i18n.load_path += Dir[Rails.root.join("config/locales/crowdin/*.{rb,yml}").to_s]
     config.i18n.default_locale = :en
-
     # Fall back to default locale
     config.i18n.fallbacks = true
+
+    # Enable serialization of types [Symbol, Date, Time]
+    config.active_record.yaml_column_permitted_classes = [Symbol, Date, Time, ActiveSupport::HashWithIndifferentAccess]
+
+    # Include tstzrange columns in the list of time zone aware types
+    ActiveRecord::Base.time_zone_aware_types += [:tstzrange]
 
     # Activate being able to specify the format in which full_message works.
     # Doing this, it is e.g. possible to avoid having the format of '%{attribute} %{message}' which
     # will always prepend the attribute name to the error message.
     # The formats can then be specified using the `format:` key within the [local].yml file in every
-    # layer of activerecord.errors down to the individual leve of the message, e.g.
+    # layer of activerecord.errors down to the individual level of the message, e.g.
     # activerecord.errors.models.project.attributes.types.format
     config.active_model.i18n_customize_full_message = true
 
     # Enable cascade key lookup for i18n
     I18n.backend.class.send(:include, I18n::Backend::Cascade)
 
-    # Configure the default encoding used in templates for Ruby 1.9.
-    config.encoding = 'utf-8'
+    ActiveModel::Translation.raise_on_missing_translations = Rails.env.local?
 
-    # Enable escaping HTML in JSON.
-    config.active_support.escape_html_entities_in_json = true
-
-    # Make Active Record use stable #cache_key alongside new #cache_version method.
-    # This is needed for recyclable cache keys.
-    # We will want check https://blog.heroku.com/cache-invalidation-rails-5-2-dalli-store
-    # and test if we can enable this in the long run
-    # Rails.application.config.active_record.cache_versioning = true
-
-    # Use AES-256-GCM authenticated encryption for encrypted cookies.
-    # Also, embed cookie expiry in signed or encrypted cookies for increased security.
-    #
-    # This option is not backwards compatible with earlier Rails versions.
-    # It's best enabled when your entire app is migrated and stable on 5.2.
-    #
-    # Existing cookies will be converted on read then written with the new scheme.
-    Rails.application.config.action_dispatch.use_authenticated_cookie_encryption = true
-
-    # Use AES-256-GCM authenticated encryption as default cipher for encrypting messages
-    # instead of AES-256-CBC, when use_authenticated_message_encryption is set to true.
-    Rails.application.config.active_support.use_authenticated_message_encryption = true
-
-    # Use SHA-1 instead of MD5 to generate non-sensitive digests, such as the ETag header.
-    Rails.application.config.active_support.use_sha1_digests = true
-
-    # This option is not backwards compatible with earlier Rails versions.
-    # It's best enabled when your entire app is migrated and stable on 6.0.
-    Rails.application.config.action_dispatch.use_cookies_with_metadata = true
-
-    # Make `form_with` generate id attributes for any generated HTML tags.
-    # Rails.application.config.action_view.form_with_generates_ids = true
+    # Use SHA-256 instead of MD5 to generate non-sensitive digests, such as the ETag header.
+    # This will be the default with Rails 7.1. So when config.load_configs is set to 7.1 or above,
+    # this configuration can be removed.
+    Rails.application.config.active_support.hash_digest_class = OpenSSL::Digest::SHA256
 
     # Use SQL instead of Active Record's schema dumper when creating the database.
     # This is necessary if your schema can't be completely dumped by the schema dumper,
@@ -176,35 +191,49 @@ module OpenProject
 
     # Load any local configuration that is kept out of source control
     # (e.g. patches).
-    if File.exists?(File.join(File.dirname(__FILE__), 'additional_environment.rb'))
-      instance_eval File.read(File.join(File.dirname(__FILE__), 'additional_environment.rb'))
+    if File.exist?(File.join(File.dirname(__FILE__), "additional_environment.rb"))
+      instance_eval File.read(File.join(File.dirname(__FILE__), "additional_environment.rb"))
     end
 
     # initialize variable for register plugin tests
     config.plugins_to_test_paths = []
 
-    # Configure the relative url root to be whatever the configuration is set to.
-    # This allows for setting the root either via config file or via environment variable.
-    config.action_controller.relative_url_root = OpenProject::Configuration['rails_relative_url_root']
+    config.active_job.queue_adapter = :good_job
 
-    OpenProject::Configuration.configure_cache(config)
-
-    config.active_job.queue_adapter = :delayed_job
+    config.good_job.retry_on_unhandled_error = false
+    # It has been commented out because AppSignal gem modifies ActiveJob::Base to report exceptions already.
+    # config.good_job.on_thread_error = -> (exception) { OpenProject.logger.error(exception) }
+    config.good_job.execution_mode = :external
+    config.good_job.preserve_job_records = true
+    config.good_job.cleanup_preserved_jobs_before_seconds_ago = OpenProject::Configuration[:good_job_cleanup_preserved_jobs_before_seconds_ago]
+    config.good_job.queues = OpenProject::Configuration[:good_job_queues]
+    config.good_job.max_threads = OpenProject::Configuration[:good_job_max_threads]
+    config.good_job.max_cache = OpenProject::Configuration[:good_job_max_cache]
+    config.good_job.enable_cron = OpenProject::Configuration[:good_job_enable_cron]
+    config.good_job.shutdown_timeout = OpenProject::Configuration[:good_job_shutdown_timeout]
+    config.good_job.smaller_number_is_higher_priority = true
 
     config.action_controller.asset_host = OpenProject::Configuration::AssetHost.value
 
-    # Return false instead of self when enqueuing is aborted from a callback.
-    # Rails.application.config.active_job.return_false_on_aborted_enqueue = true
+    # Remove X-XSS-Protection header
+    config.action_dispatch.default_headers.delete "X-XSS-Protection"
 
-    config.log_level = OpenProject::Configuration['log_level'].to_sym
+    config.log_level = OpenProject::Configuration["log_level"].to_sym
 
-    def self.root_url
-      Setting.protocol + "://" + Setting.host_name
+    # Enable the Rails 7 cache format
+    config.active_support.cache_format_version = 7.1
+
+    config.after_initialize do
+      Settings::Definition.add_all
+    end
+
+    def root_url
+      "#{Setting.protocol}://#{Setting.host_name}"
     end
 
     ##
     # Load core and engine tasks we're interested in
-    def self.load_rake_tasks
+    def load_rake_tasks
       load_tasks
       Doorkeeper::Rake.load_tasks
     end

@@ -1,29 +1,43 @@
-import { Injectable, Injector } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, Injector, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { StateService } from '@uirouter/core';
 import { CreateBcfViewpointData } from 'core-app/features/bim/bcf/api/bcf-api.model';
 
 @Injectable()
 export abstract class ViewerBridgeService {
-  @InjectField() state:StateService;
+  readonly injector = inject(Injector);
 
   /**
-   * Determine whether a viewer should be shown,
-   * wether 'bim.partitioned.split' state/route should be activated
+   * Determine whether a viewer should be shown
    */
   abstract shouldShowViewer:boolean;
-
-  /**
-   * Check if we are on a router state where there is a place
-   * where the viewer could be shown
-   */
-  get routeWithViewer():boolean {
-    return this.state.includes('bim.partitioned.split');
-  }
-
-  constructor(readonly injector:Injector) {}
 
   /**
    * Get a viewpoint from the viewer
@@ -32,7 +46,6 @@ export abstract class ViewerBridgeService {
 
   /**
    * Show the given viewpoint JSON in the viewer
-   * @param viewpoint
    */
   abstract showViewpoint(workPackage:WorkPackageResource, index:number):void;
 

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,27 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, ElementRef, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, OnInit, inject } from '@angular/core';
+import { slideDown, slideUp } from 'es6-slide-up-down';
 
-export const persistentToggleSelector = 'persistent-toggle';
 
 @Component({
-  selector: persistentToggleSelector,
+  selector: 'opce-persistent-toggle',
   template: '',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class PersistentToggleComponent implements OnInit {
+  private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+
   /** Unique identifier of the toggle */
   private identifier:string;
 
@@ -42,53 +48,53 @@ export class PersistentToggleComponent implements OnInit {
   private isHidden = false;
 
   /** Element reference */
-  private $element:JQuery;
+  private element:HTMLElement;
 
-  private $targetNotification:JQuery;
-
-  constructor(private elementRef:ElementRef) {
-  }
+  private targetNotification:HTMLElement|null;
 
   ngOnInit():void {
-    this.$element = jQuery(this.elementRef.nativeElement);
-    this.$targetNotification = this.getTargetNotification();
+    this.element = this.elementRef.nativeElement;
+    this.targetNotification = this.getTargetNotification();
 
-    this.identifier = this.$element.data('identifier');
+    this.identifier = this.element.dataset.identifier!;
     this.isHidden = window.OpenProject.guardedLocalStorage(this.identifier) === 'true';
 
     // Set initial state
-    this.$targetNotification.prop('hidden', !!this.isHidden);
+    if (this.targetNotification) {
+      this.targetNotification.hidden = !!this.isHidden;
 
-    // Register click handler
-    this.$element
-      .parent()
-      .find('.persistent-toggle--click-handler')
-      .on('click', () => this.toggle(!this.isHidden));
+      // Register click handler
+      this.element
+        .parentElement
+        ?.querySelector('.persistent-toggle--click-handler')
+        ?.addEventListener('click', () => this.toggle(!this.isHidden));
 
-    // Register target toaster close icon
-    this.$targetNotification
-      .find('.op-toast--close')
-      .on('click', () => this.toggle(true));
+      // Register target toaster close icon
+      this.targetNotification
+        .querySelector('.op-toast--close')
+        ?.addEventListener('click', () => this.toggle(true));
+    }
   }
 
   private getTargetNotification() {
-    return this.$element
-      .parent()
-      .find('.persistent-toggle--toaster');
+    return this.element
+      .parentElement!
+      .querySelector<HTMLElement>('.persistent-toggle--toaster');
   }
 
   private toggle(isNowHidden:boolean) {
     this.isHidden = isNowHidden;
     window.OpenProject.guardedLocalStorage(this.identifier, (!!isNowHidden).toString());
 
+    const targetNotification = this.targetNotification;
+    if (!targetNotification) return;
+
     if (isNowHidden) {
-      this.$targetNotification.slideUp(400, () => {
-        // Set hidden only after animation completed
-        this.$targetNotification.prop('hidden', true);
-      });
+      slideUp(targetNotification, 400);
+      setTimeout(() => { targetNotification.hidden = true; }, 400);
     } else {
-      this.$targetNotification.slideDown(400);
-      this.$targetNotification.prop('hidden', false);
+      targetNotification.hidden = false;
+      slideDown(targetNotification, 400);
     }
   }
 }

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,20 +34,21 @@ class Users::ProjectRoleCache
     self.user = user
   end
 
-  def fetch(project)
-    cache[project] ||= roles(project)
+  def fetch(cacheable)
+    cache[cacheable] ||= roles(cacheable)
   end
 
   private
 
-  def roles(project)
-    # No role on archived projects
-    return [] unless !project || project&.active?
-
+  def roles(context)
     # Return all roles if user is admin
     return all_givable_roles if user.admin?
 
-    ::Authorization.roles(user, project).eager_load(:role_permissions)
+    # Project is nil if checking global role
+    # No roles on archived projects, unless the active state is being changed
+    return [] if context.is_a?(Project) && archived?(context)
+
+    ::Authorization.roles(user, context).eager_load(:role_permissions).to_a
   end
 
   def cache
@@ -57,5 +57,12 @@ class Users::ProjectRoleCache
 
   def all_givable_roles
     @all_givable_roles ||= Role.givable.to_a
+  end
+
+  def archived?(project)
+    # project for which activity is being changed is still considered active
+    return false if project.being_archived?
+
+    project.archived?
   end
 end

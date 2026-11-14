@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,25 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module AccessibilityHelper
   def you_are_here_info(condition = true, disabled = nil)
-    if condition && !disabled
-      "<span style = 'display: block' class = 'position-label hidden-for-sighted'>#{I18n.t(:description_current_position)}</span>".html_safe
-    elsif condition && disabled
-      "<span style = 'display: none' class = 'position-label hidden-for-sighted'>#{I18n.t(:description_current_position)}</span>".html_safe
-    else
-      ''
-    end
+    return "" unless condition
+
+    content_tag(:span,
+                I18n.t(:description_current_position),
+                style: disabled ? "display: none" : "display: block",
+                class: "position-label sr-only")
   end
 
   def empty_element_tag
-    @empty_element_tag ||= ApplicationController.new.render_to_string(partial: 'accessibility/empty_element_tag').html_safe
+    @empty_element_tag ||= ApplicationController.new.render_to_string(partial: "accessibility/empty_element_tag")
   end
 
   # Returns the locale :en for the given menu item if the user locale is
@@ -61,7 +59,7 @@ module AccessibilityHelper
   private
 
   def locale_exists?(key, locale = I18n.locale)
-    I18n.t(key, locale: locale, raise: true)
+    I18n.t(key, locale:, raise: true)
   rescue StandardError
     false
   end

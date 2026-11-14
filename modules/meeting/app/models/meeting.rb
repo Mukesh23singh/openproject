@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,142 +22,265 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Meeting < ApplicationRecord
-  include VirtualAttribute
+  include VirtualStartTime
+  include MeetingUid
+  include ChronicDuration
+  include OpenProject::Journal::AttachmentHelper
 
-  self.table_name = 'meetings'
+  self.table_name = "meetings"
 
   belongs_to :project
-  belongs_to :author, class_name: 'User', foreign_key: 'author_id'
-  has_one :agenda, dependent: :destroy, class_name: 'MeetingAgenda'
-  has_one :minutes, dependent: :destroy, class_name: 'MeetingMinutes'
-  has_many :contents, -> { readonly }, class_name: 'MeetingContent'
-  has_many :participants, dependent: :destroy, class_name: 'MeetingParticipant'
+  belongs_to :author, class_name: "User"
 
-  default_scope do
-    order("#{Meeting.table_name}.start_time DESC")
-  end
-  scope :from_tomorrow, -> { where(['start_time >= ?', Date.tomorrow.beginning_of_day]) }
+  belongs_to :recurring_meeting, optional: true
+
+  has_many :time_entries, dependent: :delete_all, inverse_of: :entity, as: :entity
+
+  has_many :participants,
+           dependent: :destroy,
+           class_name: "MeetingParticipant"
+
+  has_many :agenda_items, dependent: :destroy, class_name: "MeetingAgendaItem", inverse_of: :meeting
+  has_many :sections, -> { where(backlog: false) }, dependent: :delete_all, class_name: "MeetingSection"
+  has_one :own_backlog, -> { where(backlog: true) }, dependent: :destroy, class_name: "MeetingSection"
+
+  accepts_nested_attributes_for :agenda_items
+
+  scope :templated, -> { where(template: true) }
+  scope :not_templated, -> { where(template: false) }
+  scope :onetime_templates, -> { where(template: true, recurring_meeting_id: nil) }
+  scope :series_templates, -> { where(template: true).where.not(recurring_meeting_id: nil) }
+
+  scope :not_cancelled, -> { where.not.cancelled }
+
+  scope :not_recurring, -> { where(recurring_meeting_id: nil) }
+  scope :recurring, -> { where.not(recurring_meeting_id: nil) }
+
+  # Meetings that represent an occurrence of a recurring series
+  scope :recurring_occurrence, -> { not_templated.recurring }
+
+  scope :from_tomorrow, -> { where(start_time: Date.tomorrow.beginning_of_day..) }
+  scope :from_today, -> { where(start_time: Time.zone.today.beginning_of_day..) }
+  scope :started, -> { where(state: [states[:in_progress], states[:closed]]) }
+  scope :from_today_or_recently_started, -> {
+    from_today.or(started.where(start_time: Setting.ical_feed_keep_closed_meetings_days.days.ago..))
+  }
+
+  scope :upcoming, -> { where("start_time + (interval '1 hour' * duration) >= ?", Time.current) }
+  scope :past, -> { where("start_time + (interval '1 hour' * duration) < ?", Time.current) }
+
   scope :with_users_by_date, -> {
     order("#{Meeting.table_name}.title ASC")
       .includes({ participants: :user }, :author)
   }
 
-  acts_as_watchable
+  scope :visible, ->(*args) {
+    not_cancelled
+      .includes(:project)
+      .references(:projects)
+      .merge(Project.allowed_to(args.first || User.current, :view_meetings))
+  }
 
-  acts_as_searchable columns: ["#{table_name}.title", "#{MeetingContent.table_name}.text"],
-                     include: %i[contents project],
-                     references: :meeting_contents,
+  scope :allowed_to, ->(user, permission) {
+    includes(:project)
+      .references(:projects)
+      .merge(Project.allowed_to(user, permission))
+  }
+
+  scope :participated_by, ->(user) {
+    joins(:participants).where(meeting_participants: { user_id: user.id })
+  }
+
+  scope :available_onetime_templates, -> {
+    onetime_templates.where(project_id: Project.active.select(:id))
+  }
+
+  acts_as_attachable(
+    after_remove: :attachments_changed,
+    order: "#{Attachment.table_name}.file",
+    add_on_new_permission: :create_meetings,
+    add_on_persisted_permission: :edit_meetings,
+    view_permission: :view_meetings,
+    delete_permission: :edit_meetings,
+    modification_blocked: ->(*) { false }
+  )
+
+  acts_as_watchable permission: :view_meetings
+
+  acts_as_searchable columns: [
+                       "#{table_name}.title",
+                       "#{MeetingSection.table_name}.title",
+                       "#{MeetingAgendaItem.table_name}.title",
+                       "#{MeetingAgendaItem.table_name}.notes",
+                       "#{MeetingOutcome.table_name}.notes"
+                     ],
+                     include: [:project, :sections, { agenda_items: :outcomes }],
+                     references: %i[sections agenda_items outcomes],
                      date_column: "#{table_name}.created_at"
 
-  acts_as_journalized
-  acts_as_event title: Proc.new { |o|
-                         "#{I18n.t(:label_meeting)}: #{o.title} \
-        #{format_date o.start_time} \
-        #{format_time o.start_time, false}-#{format_time o.end_time, false})"
-                       },
-                url: Proc.new { |o| { controller: '/meetings', action: 'show', id: o } },
-                author: Proc.new(&:user),
-                description: ''
-
-  register_on_journal_formatter(:plaintext, 'title')
-  register_on_journal_formatter(:fraction, 'duration')
-  register_on_journal_formatter(:datetime, 'start_time')
-  register_on_journal_formatter(:plaintext, 'location')
+  include Meeting::Journalized
 
   accepts_nested_attributes_for :participants, allow_destroy: true
 
-  validates_presence_of :title, :duration
+  validates :title, :project_id, presence: true
+  validates :sharing, absence: true, unless: :onetime_template?
+  validates :recurrence_start_time, absence: true, if: :template?
+  validates :recurrence_start_time, presence: true, if: -> { recurring? && !template? }
 
-  # We only save start_time as an aggregated value of start_date and hour,
-  # but still need start_date and _hour for validation purposes
-  virtual_attribute :start_date do
-    @start_date
-  end
-  virtual_attribute :start_time_hour do
-    @start_time_hour
-  end
-
-  validate :validate_date_and_time
-  before_save :update_start_time!
+  validates :duration, numericality: { greater_than: 0 }
 
   before_save :add_new_participants_as_watcher
 
-  after_initialize :set_initial_values
+  after_commit :send_updated_mail, on: :update, if: -> {
+    !template? &&
+      (saved_change_to_start_time? || saved_change_to_duration? || saved_change_to_location? || saved_change_to_title?)
+  }
+
+  enum :state, {
+    open: 0, # 0 -> default, leave values for future states between open and closed
+    draft: 1,
+    in_progress: 3,
+    cancelled: 4,
+    closed: 5
+  }
+
+  enum :sharing, {
+    none: "none",
+    descendants: "descendants",
+    system: "system"
+  }, prefix: :sharing, validate: { allow_nil: true }
+
+  enum :agenda_sorting_mode, {
+    manual: "manual",
+    vote_based: "vote_based"
+  }, prefix: :agenda_sorting, validate: true
+
+  # Debounce meeting emails by one minute
+  # this is currently hard coded
+  def self.journal_aggregation_time_minutes
+    1
+  end
+
+  def self.templates_visible_in_project(project, user = User.current)
+    accessible_ids = Project.allowed_to(user, :view_meetings).select(:id)
+
+    available_onetime_templates
+      .where(project_id: project.id).where(project_id: accessible_ids)
+      .or(available_onetime_templates.where(sharing: :descendants, project_id: project.ancestors.select(:id)))
+      .or(available_onetime_templates.where(sharing: :system))
+  end
+
+  def self.templates_visible_globally(user = User.current)
+    accessible = Project.allowed_to(user, :view_meetings).to_a
+    return none if accessible.empty?
+
+    ancestor_ids = accessible.map(&:ancestors).reduce(:or).select(:id)
+
+    available_onetime_templates
+      .where(project_id: accessible.map(&:id))
+      .or(available_onetime_templates.where(sharing: :descendants, project_id: ancestor_ids))
+      .or(available_onetime_templates.where(sharing: :system))
+  end
+
+  def recurring?
+    recurring_meeting_id.present?
+  end
 
   ##
-  # Return the computed start_time when changed
-  def start_time
-    if parse_start_time?
-      parsed_start_time
-    else
-      super
-    end
+  # Cache key for detecting changes to be shown to the user
+  def changed_hash
+    parts = Meeting
+              .unscoped
+              .where(id:)
+              .left_joins(sections: { agenda_items: :outcomes })
+              .pick(*changed_hash_aggregates)
+
+    parts.map! { |part| part.is_a?(Time) ? part.utc.iso8601(6) : part }
+    parts << lock_version
+
+    OpenProject::Cache::CacheKey.expand(parts)
+  end
+
+  def ordered_agenda_items
+    items = agenda_items.joins(:meeting_section).where(meeting_sections: { backlog: false })
+    items = items.with_vote_score if agenda_sorting_vote_based?
+
+    ordering = ["meeting_sections.position ASC"]
+    ordering << "vote_score DESC" if agenda_sorting_vote_based?
+    ordering.push("meeting_agenda_items.position ASC", "meeting_agenda_items.id ASC")
+
+    items.reorder(Arel.sql(ordering.join(", ")))
   end
 
   def start_month
-    start_time.month
+    start_time&.month
   end
 
   def start_year
-    start_time.year
+    start_time&.year
   end
 
   def end_time
+    return nil if start_time.nil?
+
     start_time + duration.hours
+  end
+
+  def past?
+    end_time < Time.current
   end
 
   def to_s
     title
   end
 
-  def text
-    agenda.text if agenda.present?
+  def templated?
+    !!template
   end
 
-  def author=(user)
-    super
-    # Don't add the author as participant if we already have some through nested attributes
-    participants.build(user: user, invited: true) if new_record? && participants.empty? && user
+  def series_template?
+    template? && recurring_meeting_id.present?
   end
 
-  # Returns true if usr or current user is allowed to view the meeting
-  def visible?(user = nil)
-    (user || User.current).allowed_to?(:view_meetings, project)
+  def onetime_template?
+    template? && recurring_meeting_id.nil?
   end
 
-  def all_changeable_participants
-    changeable_participants = participants.select(&:invited).collect(&:user)
-    changeable_participants = changeable_participants + participants.select(&:attended).collect(&:user)
-    changeable_participants = changeable_participants + \
-                              User.allowed_members(:view_meetings, project)
-
-    changeable_participants
-      .compact
-      .uniq(&:id)
+  # The series event in the ICS renders the template: its location, its duration and its attendees.
+  # A change to any of them is a new revision of that event.
+  def bump_series_ical_sequence!
+    recurring_meeting.bump_ical_sequence! if series_template?
   end
 
-  def copy(attrs)
-    copy = dup
+  # One-time meeting time zone
+  # is always in the user's time zone
+  def time_zone
+    User.current.time_zone
+  end
 
-    # Called simply to initialize the value
-    copy.start_date
-    copy.start_time_hour
+  # Returns true if user or current user is allowed to view the meeting
+  def visible?(user = User.current)
+    user.allowed_in_project?(:view_meetings, project)
+  end
 
-    copy.author = attrs.delete(:author)
-    copy.attributes = attrs
-    copy.set_initial_values
+  def editable?(user = User.current)
+    !closed? && user.allowed_in_project?(:edit_meetings, project)
+  end
 
-    copy.participants.clear
-    copy.participants_attributes = participants.collect(&:copy_attributes)
+  def notify?
+    return false if onetime_template?
 
-    copy
+    if recurring?
+      recurring_meeting.template.notify
+    else
+      notify
+    end
   end
 
   def self.group_by_time(meetings)
@@ -176,113 +301,98 @@ class Meeting < ApplicationRecord
     by_start_year_month_date
   end
 
-  def close_agenda_and_copy_to_minutes!
-    Meeting.transaction do
-      agenda.lock!
-
-      attachments = agenda.attachments.map { |a| [a, a.copy] }
-      original_text = String(agenda.text)
-      minutes = create_minutes(text: original_text,
-                               journal_notes: I18n.t('events.meeting_minutes_created'),
-                               attachments: attachments.map(&:last))
-
-      # substitute attachment references in text to use the respective copied attachments
-      updated_text = original_text.gsub(/(?<=\(\/api\/v3\/attachments\/)\d+(?=\/content\))/) do |id|
-        old_id = id.to_i
-        new_id = attachments.select { |a, _| a.id == old_id }.map { |_, a| a.id }.first
-
-        new_id || -1
-      end
-
-      minutes.update text: updated_text if updated_text != original_text
-    end
-  end
-
   alias :original_participants_attributes= :participants_attributes=
+
   def participants_attributes=(attrs)
     attrs.each do |participant|
-      participant['_destroy'] = true if !(participant['attended'] || participant['invited'])
+      participant["_destroy"] = true if !(participant[:attended] || participant[:invited])
     end
     self.original_participants_attributes = attrs
   end
 
-  protected
+  # Participants of older meetings
+  # might contain users no longer in the project
+  #
+  # This returns the set currently allowed to view the meeting
+  def allowed_participants
+    available_members = User.allowed_members(:view_meetings, project).select(:id)
 
+    participants
+      .where(user_id: available_members)
+  end
+
+  def agenda_items_sum_duration_in_minutes
+    agenda_items.sum(:duration_in_minutes)
+  end
+
+  def duration_exceeded_by_agenda_items?
+    agenda_items_sum_duration_in_minutes > (duration * 60)
+  end
+
+  def duration_exceeded_by_agenda_items_in_minutes
+    agenda_items_sum_duration_in_minutes - (duration * 60)
+  end
+
+  def backlog
+    if recurring? && !templated?
+      recurring_meeting.template.backlog
+    else
+      own_backlog
+    end
+  end
+
+  def send_emails?
+    return false if onetime_template?
+    return false if template? && recurring_meeting.meetings.not_templated.not_cancelled.none?
+    return false if closed? || cancelled?
+
+    persisted? && notify?
+  end
+
+  # Override virtual_start_time methods for onetime templates
   def set_initial_values
-    # set defaults
-    write_attribute(:start_time, Date.tomorrow + 10.hours) if start_time.nil?
-    self.duration ||= 1
+    return if onetime_template?
 
-    @start_date = start_time.to_date.iso8601
-    @start_time_hour = start_time.strftime('%H:%M')
+    super
+  end
+
+  def validate_date_and_time
+    return if onetime_template?
+
+    super
   end
 
   private
 
-  ##
-  # Validate date and time setters.
-  # If start_time has been changed, check that value.
-  # Otherwise start_{date, time_hour} was used, then validate those
-  def validate_date_and_time
-    if parse_start_time?
-      errors.add :start_date, :not_an_iso_date if parsed_start_date.nil?
-      errors.add :start_time_hour, :invalid_time_format if parsed_start_time_hour.nil?
-    elsif start_time.nil?
-      errors.add :start_time, :invalid
-    end
-  end
+  def changed_hash_aggregates
+    tables = [MeetingAgendaItem, MeetingSection, MeetingOutcome].map(&:arel_table)
 
-  ##
-  # Actually sets the aggregated start_time attribute.
-  def update_start_time!
-    write_attribute(:start_time, start_time)
-  end
-
-  ##
-  # Determines whether new raw values werde provided.
-  def parse_start_time?
-    !(changed & %w(start_date start_time_hour)).empty?
-  end
-
-  ##
-  # Returns the parse result of both start_date and start_time_hour
-  def parsed_start_time
-    date = parsed_start_date
-    time = parsed_start_time_hour
-
-    if date.nil? || time.nil?
-      raise ArgumentError, 'Provided composite start_time is invalid.'
-    end
-
-    Time.zone.local(
-      date.year,
-      date.month,
-      date.day,
-      time.hour,
-      time.min
-    )
-  end
-
-  ##
-  # Enforce ISO 8601 date parsing for the given input string
-  # This avoids weird parsing of dates due to malformed input.
-  def parsed_start_date
-    Date.iso8601(@start_date)
-  rescue ArgumentError
-    nil
-  end
-
-  ##
-  # Enforce HH::MM time parsing for the given input string
-  def parsed_start_time_hour
-    Time.strptime(@start_time_hour, '%H:%M')
-  rescue ArgumentError
-    nil
+    tables.map { it[:updated_at].maximum } +
+      tables.map { it[:id].count(true) } +
+      [MeetingAgendaItem.arel_table[:reactions_changed_at].maximum]
   end
 
   def add_new_participants_as_watcher
     participants.select(&:new_record?).each do |p|
       add_watcher(p.user)
+    end
+  end
+
+  def send_updated_mail
+    return unless send_emails?
+
+    Meetings::NotificationDebounceJob.debounce(
+      self,
+      since_journal_id: last_journal&.predecessor&.id,
+      since_invited_ids: participants.invited.pluck(:user_id),
+      since_attributes: updated_mail_since_attributes
+    )
+  end
+
+  def updated_mail_since_attributes
+    %w[title location start_time duration].index_with do |attribute|
+      value = saved_change_to_attribute(attribute)&.first || public_send(attribute)
+      value.respond_to?(:iso8601) ? value.iso8601 : value
     end
   end
 end

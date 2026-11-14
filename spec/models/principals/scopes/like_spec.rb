@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,59 +22,63 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Principals::Scopes::Like, type: :model do
-  describe '.like' do
+RSpec.describe Principals::Scopes::Like do
+  describe ".like" do
     let!(:login) do
-      FactoryBot.create(:principal, login: 'login')
+      create(:principal, login: "login")
     end
     let!(:login2) do
-      FactoryBot.create(:principal, login: 'login2')
+      create(:principal, login: "login2")
     end
     let!(:firstname) do
-      FactoryBot.create(:principal, firstname: 'firstname')
+      create(:principal, firstname: "firstname")
     end
     let!(:firstname2) do
-      FactoryBot.create(:principal, firstname: 'firstname2')
+      create(:principal, firstname: "firstname2")
     end
     let!(:lastname) do
-      FactoryBot.create(:principal, lastname: 'lastname')
+      create(:principal, lastname: "lastname")
     end
     let!(:lastname2) do
-      FactoryBot.create(:principal, lastname: 'lastname2')
+      create(:principal, lastname: "lastname2")
     end
     let!(:mail) do
-      FactoryBot.create(:principal, mail: 'mail@example.com')
+      create(:principal, mail: "mail@example.com")
     end
     let!(:mail2) do
-      FactoryBot.create(:principal, mail: 'mail2@example.com')
+      create(:principal, mail: "mail2@example.com")
     end
 
-    it 'finds by login' do
-      expect(Principal.like('login'))
-        .to match_array [login, login2]
+    it "finds by login" do
+      expect(Principal.like("login"))
+        .to contain_exactly(login, login2)
     end
 
-    it 'finds by firstname' do
-      expect(Principal.like('firstname'))
-        .to match_array [firstname, firstname2]
+    it "finds by firstname" do
+      expect(Principal.like("firstname"))
+        .to contain_exactly(firstname, firstname2)
     end
 
-    it 'finds by lastname' do
-      expect(Principal.like('lastname'))
-        .to match_array [lastname, lastname2]
+    it "finds by lastname" do
+      expect(Principal.like("lastname"))
+        .to contain_exactly(lastname, lastname2)
     end
 
-    it 'finds by mail' do
-      expect(Principal.like('mail'))
-        .to match_array [mail, mail2]
+    it "finds by mail" do
+      expect(Principal.like("mail"))
+        .to contain_exactly(mail, mail2)
+    end
+
+    it "does not finds by mail when mail disabled" do
+      expect(Principal.like("mail", email: false))
+        .to be_empty
     end
   end
 end

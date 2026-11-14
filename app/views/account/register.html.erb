@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,41 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<section data-augmented-model-wrapper
-         data-modal-initialize-now="true"
-         data-modal-class-name="registration-modal -highlight">
-  <% @user ||= User.new %>
-  <%= render partial: '/account/register' %>
-</section>
+<% html_title t(:label_register) %>
+<% @user ||= User.new %>
+
+<%= render(Primer::Box.new(classes: "op-account-registration")) do %>
+  <%= render(Primer::Beta::Heading.new(tag: :h1, font_size: 4, font_weight: :bold, text_align: :center, mb: 3)) do %>
+    <%= t("account.signup_title", app_title: Setting.app_title) %>
+  <% end %>
+
+  <%# Field errors render inline in the form. Errors not tied to a specific
+      field (e.g. user limit reached) are shown in a banner above the form. %>
+  <% if @user.errors[:base].present? %>
+    <%= render(Primer::Alpha::Banner.new(mb: 3, icon: :stop, scheme: :danger)) do %>
+      <%= safe_join(@user.errors[:base], tag.br) %>
+    <% end %>
+  <% end %>
+
+  <%= primer_form_with(
+        model: @user,
+        url: account_register_path,
+        id: "new_user",
+        data: { turbo: false, test_selector: "registration-form" }
+      ) do |form| %>
+    <%= back_url_hidden_field_tag use_referer: false %>
+    <%= render(RegistrationForm.new(form)) %>
+  <% end %>
+
+  <% unless @user.uses_external_authentication? %>
+    <%= render("account/auth_providers", omniauth_title: I18n.t("account.signup_with_external_account")) %>
+  <% end %>
+
+  <%= render partial: "account/signin_prompt" %>
+<% end %>

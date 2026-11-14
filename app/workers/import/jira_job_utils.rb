@@ -1,0 +1,65 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Import
+  module JiraJobUtils
+    extend ActiveSupport::Concern
+
+    included do
+      include GoodJob::ActiveJobExtensions::Batches
+    end
+
+    def prepare_jira_import_ivars(jira_import_id)
+      @jira_import = Import::JiraImport.find(jira_import_id)
+      jira = @jira_import.jira
+      @jira_id = jira.id
+      @updated_at = Time.zone.now
+      @created_at = @updated_at
+      @jira_client = jira.client
+    end
+
+    def jira_project(jira_project_id)
+      @jira_project ||= Import::JiraProject.find(jira_project_id)
+    end
+
+    # The Jira project key (e.g. "DPPP") is what users recognize, unlike the internal
+    # Import::JiraProject id these jobs are otherwise passed around and tag their logs with.
+    def jira_project_key(jira_project_id)
+      jira_project(jira_project_id).payload["key"]
+    end
+
+    def batch_id_tag
+      batch&.id ? "batch_id:#{batch.id}" : nil
+    end
+
+    def tagged_log(*tags, &)
+      Rails.logger.tagged(*[batch_id_tag, *tags].compact, &)
+    end
+  end
+end

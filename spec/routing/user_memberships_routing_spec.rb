@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,34 +22,33 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Users::MembershipsController, type: :routing do
-  describe 'routing' do
-    it 'connects DELETE users/:user_id/memberships/:id' do
-      expect(delete('/users/1/memberships/2')).to route_to(controller: 'users/memberships',
-                                                           action: 'destroy',
-                                                           user_id: '1',
-                                                           id: '2')
+RSpec.describe Users::MembershipsController do
+  describe "routing" do
+    it "connects DELETE users/:user_id/memberships/:id" do
+      expect(delete("/users/1/memberships/2")).to route_to(controller: "users/memberships",
+                                                           action: "destroy",
+                                                           user_id: "1",
+                                                           id: "2")
     end
 
-    it 'connects PATCH users/:user_id/memberships/:id' do
-      expect(patch('/users/1/memberships/2')).to route_to(controller: 'users/memberships',
-                                                          action: 'update',
-                                                          user_id: '1',
-                                                          id: '2')
+    it "connects PATCH users/:user_id/memberships/:id" do
+      expect(patch("/users/1/memberships/2")).to route_to(controller: "users/memberships",
+                                                          action: "update",
+                                                          user_id: "1",
+                                                          id: "2")
     end
 
-    it 'connects POST users/:user_id/memberships' do
-      expect(post('/users/1/memberships')).to route_to(controller: 'users/memberships',
-                                                       action: 'create',
-                                                       user_id: '1')
+    it "connects POST users/:user_id/memberships" do
+      expect(post("/users/1/memberships")).to route_to(controller: "users/memberships",
+                                                       action: "create",
+                                                       user_id: "1")
     end
   end
 end

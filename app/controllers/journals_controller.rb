@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,25 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class JournalsController < ApplicationController
-  before_action :find_journal, except: [:index]
-  before_action :find_optional_project, only: [:index]
-  before_action :authorize, only: [:diff]
-  accept_key_auth :index
+  before_action :load_and_authorize_in_optional_project, only: [:index]
+  before_action :find_journal,
+                :ensure_permitted,
+                :ensure_valid_for_diffing,
+                only: [:diff]
+  authorization_checked! :diff
+
+  accept_rss_key_auth :index
   menu_item :issues
 
   include QueriesHelper
   include SortHelper
 
   def index
-    retrieve_query
-    sort_init 'id', 'desc'
+    @query = retrieve_query(@project)
+    sort_init "id", "desc"
     sort_update(@query.sortable_key_by_column_name)
 
     if @query.valid?
@@ -51,35 +54,26 @@ class JournalsController < ApplicationController
     respond_to do |format|
       format.atom do
         render layout: false,
-               content_type: 'application/atom+xml',
+               content_type: "application/atom+xml",
                locals: { title: journals_index_title,
                          journals: @journals }
       end
     end
-  rescue ActiveRecord::RecordNotFound
-    render_404
   end
 
   def diff
-    field = params[:field].parameterize.underscore.to_sym
-
-    unless valid_diff?
-      return render_404
+    from, to = diff_values
+    unless from || to
+      return render_400 message: I18n.t(:error_journal_attribute_not_present, attribute: field_param)
     end
 
-    unless @journal.details[field].is_a?(Array)
-      return render_400 message: I18n.t(:error_journal_attribute_not_present, attribute: field)
-    end
-
-    from = @journal.details[field][0]
-    to = @journal.details[field][1]
-
+    @activity_page = params["activity_page"]
     @diff = Redmine::Helpers::Diff.new(to, from)
-    @journable = @journal.journable
+
     respond_to do |format|
       format.html
       format.js do
-        render partial: 'diff', locals: { diff: @diff }
+        render partial: "diff", locals: { diff: @diff }
       end
     end
   end
@@ -88,22 +82,84 @@ class JournalsController < ApplicationController
 
   def find_journal
     @journal = Journal.find(params[:id])
-    @project = @journal.journable.project
-  rescue ActiveRecord::RecordNotFound
-    render_404
+    @journable = @journal.journable
+    @project = @journable.project
   end
 
-  # Is this a valid field for diff'ing?
-  def valid_field?(field)
-    field.to_s.strip == 'description'
+  def ensure_permitted
+    deny_access unless @journal.visible?(User.current)
   end
 
-  def valid_diff?
-    valid_field?(params[:field]) &&
-      @journal.journable.instance_of?(WorkPackage)
+  def diff_values
+    if @journal.details[field_param] in [from, to]
+      [from, to]
+    elsif @journal.cause_type == "import"
+      imported_cause_diff_values
+    end
+  end
+
+  def imported_cause_diff_values
+    entries = @journal.cause_import_history
+    return unless entries.is_a?(Array)
+
+    item = entries.flat_map { |e| e["items"] || [] }
+                  .find { |i| i["field"]&.parameterize&.underscore == field_param }
+    return unless item
+
+    [item["fromString"], item["toString"]]
+  end
+
+  def field_param
+    @field_param ||= params[:field].parameterize.underscore
+  end
+
+  def ensure_valid_for_diffing
+    case field_param
+    when "description",
+         "status_explanation",
+         /\Aagenda_items_\d+_notes\z/
+      # no additional checks
+    when /\Acustom_fields_(?<cf_id>\d+)\z/
+      ensure_custom_value_valid_for_diffing(Regexp.last_match(:cf_id))
+    when /\Acustom_comment_(?<cf_id>\d+)\z/
+      ensure_custom_comment_valid_for_diffing(Regexp.last_match(:cf_id))
+    else
+      render_404
+    end
+  end
+
+  def ensure_custom_value_valid_for_diffing(cf_id)
+    custom_field = CustomField.find_by(id: cf_id)
+    # Even if the custom field is deleted
+    # we will need to return 403 if the custom field class allows admin-only fields
+    return render_403 if deleted_cf_forbidden?(custom_field)
+
+    # If no admin-only field, we can allow deleted custom fields to be rendered now
+    return if custom_field.nil?
+    return render_403 unless custom_field.visible?(User.current, project: @journable.project)
+
+    render_404 if custom_field.field_format != "text"
+  end
+
+  def ensure_custom_comment_valid_for_diffing(cf_id)
+    custom_field = CustomField.find_by(id: cf_id)
+    return render_403 if deleted_cf_forbidden?(custom_field)
+    return if custom_field.nil?
+
+    render_403 unless custom_field.visible?(User.current, project: @journable.project)
+  end
+
+  # When a CF is deleted we can no longer call visible? on it. For journables that support
+  # admin-only CFs (e.g. Project), block non-admins because the deleted CF could have been admin-only.
+  def deleted_cf_forbidden?(custom_field)
+    custom_field.nil? &&
+      @journable.admin_only_custom_fields_allowed? &&
+      !User.current.admin?
   end
 
   def journals_index_title
-    (@project ? @project.name : Setting.app_title) + ': ' + (@query.new_record? ? I18n.t(:label_changes_details) : @query.name)
+    subject = @project ? @project.name : Setting.app_title
+    query_name = @query.new_record? ? I18n.t(:label_changes_details) : @query.name
+    "#{subject}: #{query_name}"
   end
 end

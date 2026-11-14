@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/messages/base'
+require "support/pages/messages/base"
 
 module Pages::Messages
   class Create < ::Pages::Messages::Base
@@ -37,17 +38,15 @@ module Pages::Messages
     end
 
     def set_subject(subject)
-      fill_in 'Subject', with: subject
+      fill_in "Subject", with: subject
     end
 
     def add_text(text)
-      find('.ck-content').base.send_keys text
+      find(".ck-content").base.send_keys text
     end
 
     def click_save
-      click_button 'Create'
-
-      Pages::Messages::Show.new(Message.last)
+      click_button "Create"
     end
 
     def created_message
@@ -55,7 +54,7 @@ module Pages::Messages
     end
 
     def path
-      new_forum_topic_path(forum)
+      new_project_forum_topic_path(forum.project, forum)
     end
   end
 end

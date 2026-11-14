@@ -1,29 +1,59 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Cost report showing my own times', type: :feature, js: true do
-  let(:project) { FactoryBot.create :project }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Cost report showing my own times", :js do
+  include Components::Autocompleter::NgSelectAutocompleteHelpers
+
   let(:user) do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:role) { create(:project_role, permissions:) }
   let(:permissions) { %i[view_work_packages view_own_cost_entries] }
 
   let(:budget) do
-    FactoryBot.create(:budget, project: project)
+    create(:budget, project:)
   end
-  let(:cost_type) { FactoryBot.create(:cost_type, name: 'Foobar', unit: 'Foobar', unit_plural: 'Foobars') }
-  let(:work_package) { FactoryBot.create :work_package, project: project, budget: budget }
+  let(:cost_type) { create(:cost_type, name: "Foobar", unit: "Foobar", unit_plural: "Foobars") }
+  let(:work_package) { create(:work_package, project:, budget:) }
   let(:wp_page) { Pages::FullWorkPackage.new work_package, project }
 
   let(:cost_entry) do
-    FactoryBot.build(:cost_entry,
-                     cost_type: cost_type,
-                     project: project,
-                     work_package: work_package,
-                     spent_on: Date.today,
-                     units: '10',
-                     user: user,
-                     comments: 'foobar')
+    build(:cost_entry,
+          cost_type:,
+          project:,
+          entity: work_package,
+          spent_on: Date.current,
+          units: "10",
+          user:,
+          comments: "foobar")
   end
 
   before do
@@ -32,15 +62,32 @@ describe 'Cost report showing my own times', type: :feature, js: true do
     wp_page.visit!
   end
 
-  it 'allows visiting the costs which redirects to cost reports' do
-    new_window = window_opened_by do
-      page.find('.costsByType a', text: '10 Foobar').click
-    end
+  shared_examples "redirects to cost reports with the work package filter pre-populated" do
+    it "allows visiting the costs which redirects to cost reports" do
+      costs_link = page.find(".costsByType a", text: "10 Foobar", wait: 20)
+      expect(costs_link["target"]).to eq("_blank")
+      visit costs_link["href"]
 
-    within_window new_window do
-      expect(page).to have_selector('#query_saved_name', text: 'New cost report')
-      expect(page).to have_field('values[work_package_id][]', with: work_package.id)
-      expect(page).to have_selector('td.units', text: '10.0 Foobars')
+      expect(page).to have_css("#query_saved_name", text: "New cost report")
+      wp_autocompleter = find("opce-autocompleter#work_package_id_select_1")
+      expect_current_autocompleter_value(wp_autocompleter, expected_autocompleter_label)
+      expect(page).to have_css("td.units", text: "10.0 Foobars")
     end
+  end
+
+  context "in classic mode",
+          with_settings: { work_packages_identifier: "classic" } do
+    let(:project) { create(:project) }
+    let(:expected_autocompleter_label) { "##{work_package.id} #{work_package.subject}" }
+
+    include_examples "redirects to cost reports with the work package filter pre-populated"
+  end
+
+  context "in semantic mode",
+          with_settings: { work_packages_identifier: "semantic" } do
+    let(:project) { create(:project, identifier: "MYPROJ") }
+    let(:expected_autocompleter_label) { "MYPROJ-1 #{work_package.subject}" }
+
+    include_examples "redirects to cost reports with the work package filter pre-populated"
   end
 end

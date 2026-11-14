@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,14 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% input_size = local_assigns[:input_size] || '-wide' %>
-<% wide_labels = local_assigns[:wide_labels] ? '-wide-labels' : '' %>
+<% input_size = local_assigns[:input_size] || "-wide" %>
+<% wide_labels = local_assigns[:wide_labels] ? "-wide-labels" : "" %>
 <% help_text = local_assigns[:help_text] %>
 
 <% form
@@ -38,25 +37,33 @@ See COPYRIGHT and LICENSE files for more details.
      .each do |custom_field| %>
   <%
     form_options = {
-      custom_value: form.object.custom_value_for(custom_field.id),
+      custom_value: form.object.custom_value_for(custom_field),
       custom_field: custom_field
-    } %>
+    }
+  %>
   <%= form.fields_for_custom_fields :custom_field_values, form.object, form_options do |cf_form| %>
     <% show_required = custom_field.is_required? && !custom_field.boolean? %>
     <%= content_tag :div,
-                    class: ['form--field',
-                            "custom_field_#{custom_field.id}",
-                            (show_required ? '-required' : ''),
+                    class: ["form--field",
+                            custom_field.attribute_name,
+                            (show_required ? "-required" : ""),
                             wide_labels] do
-      options = {
-        container_class: custom_field.field_format == 'text' ? '-xxwide' : input_size,
-      }
+          container_class = case custom_field.field_format
+                            when "text"
+                              "-xxwide"
+                            when "date"
+                              "-xslim"
+                            else
+                              input_size
+                            end
 
-      if help_text
-        options[:help_text] = help_text.merge(attribute: "customField#{custom_field.id}")
-      end
+          options = { container_class: }
 
-      cf_form.cf_form_field(options)
-    end %>
+          if help_text
+            options[:help_text] = help_text.merge(attribute: custom_field.attribute_name(:camel_case))
+          end
+
+          cf_form.cf_form_field(options)
+        end %>
   <% end %>
 <% end %>

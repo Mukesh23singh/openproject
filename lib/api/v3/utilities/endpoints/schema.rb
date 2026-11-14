@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,11 +38,13 @@ module API
 
           def initialize(model:,
                          api_name: model.name.demodulize,
+                         self_path: "#{api_name.underscore}_schema",
                          render_representer: nil,
                          contract: nil,
                          instance_generator: default_instance_generator(model))
             self.model = model
             self.api_name = api_name
+            self.self_path = self_path
             self.instance_generator = instance_generator
             self.representer = render_representer || deduce_representer
             self.contract = contract || deduce_contract
@@ -66,12 +67,9 @@ module API
                       current_user: request.current_user)
           end
 
-          def self_path
-            "#{api_name.underscore}_schema"
-          end
-
           attr_accessor :model,
                         :api_name,
+                        :self_path,
                         :representer,
                         :contract,
                         :instance_generator

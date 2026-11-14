@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,11 +34,45 @@
 # and the creation is rolled back in an after_all hook.
 #
 # Caveats: Set +reload: true+ if you plan to modify this value, otherwise Rails may still
-# have cached the local value. This will perform a database update, but is much faster
+# have cached the local value. This will perform a database select, but is much faster
 # than creating new records (especially, work packages).
 #
 # Since test-prof added `let_it_be` this is only a wrapper for it
 # before_all / let_it_be fixture
-def shared_let(key, reload: true, refind: false, &block)
-  let_it_be(key, reload: reload, refind: refind, &block)
+def shared_let(key, reload: nil, refind: nil, &)
+  # unless specified, reload the value if it is not refind
+  reload = !refind if reload.nil?
+  # unless specified, do not refind the value
+  refind = false if refind.nil?
+  let_it_be(key, reload:, refind:, &)
+end
+
+# Defines an object to be used by default for all FactoryBot association
+# matching they key name.
+#
+# The object is created only once in the example group, and reused for each
+# example. Under the hood, it uses +let_it_be+ and +FactoryDefault+ from the
+# test_prof gem.
+#
+# For instance, when creating work packages with +create(:work_package)+, a new
+# user gets created for each create work package. To reuse the same user for all
+# created work packages, in your example group add:
+#
+#   shared_association_default(:user) { create(:user) }
+#
+def shared_association_default(key, factory_name: key, &)
+  # unique let identifier to prevent clashes
+  let_it_be(key, reload: true, &)
+
+  before_all do
+    set_factory_default(factory_name, send(key))
+  end
+end
+
+# Use this to boost performance in tests creating lots of work packages.
+def create_shared_association_defaults_for_work_package_factory
+  shared_association_default(:priority) { create(:priority) }
+  shared_association_default(:project_with_types) { create(:project_with_types) }
+  shared_association_default(:status) { create(:status) }
+  shared_association_default(:user) { create(:user) }
 end

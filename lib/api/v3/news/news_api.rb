@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,37 +29,28 @@ module API
   module V3
     module News
       class NewsAPI < ::API::OpenProjectAPI
-        helpers ::API::Utilities::PageSizeHelper
-
         resources :news do
-          get do
-            query = ParamsToQueryService
-                    .new(::News, current_user)
-                    .call(params)
+          get &::API::V3::Utilities::Endpoints::Index
+                 .new(model: ::News,
+                      self_path: :newses)
+                 .mount
 
-            if query.valid?
-              NewsCollectionRepresenter.new(query.results,
-                                            self_link: api_v3_paths.newses,
-                                            page: to_i_or_nil(params[:offset]),
-                                            per_page: resolve_page_size(params[:pageSize]),
-                                            current_user: current_user)
-            else
-              raise ::API::Errors::InvalidQuery.new(query.errors.full_messages)
-            end
-          end
+          post &::API::V3::Utilities::Endpoints::Create
+            .new(model: News)
+            .mount
 
-          route_param :id, type: Integer, desc: 'News ID' do
+          route_param :id, type: Integer, desc: "News ID" do
             after_validation do
               @news = ::News
                       .visible
                       .find(params[:id])
             end
 
-            get do
-              NewsRepresenter.create(@news,
-                                     current_user: current_user,
-                                     embed_links: true)
-            end
+            get &::API::V3::Utilities::Endpoints::Show
+                   .new(model: ::News)
+                   .mount
+            patch &::API::V3::Utilities::Endpoints::Update.new(model: ::News).mount
+            delete &::API::V3::Utilities::Endpoints::Delete.new(model: ::News, success_status: 204).mount
           end
         end
       end

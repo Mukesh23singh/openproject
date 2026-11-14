@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,25 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module FrontendAssetHelper
-  CLI_DEFAULT_PROXY = 'http://localhost:4200'.freeze
+  CLI_DEFAULT_PROXY = begin
+    host = ENV.fetch("FE_HOST", "localhost")
+    port = ENV.fetch("FE_PORT", 4200)
+    "http://#{host}:#{port}"
+  end
+  CLI_PROXY = ENV.fetch("OPENPROJECT_CLI_PROXY", CLI_DEFAULT_PROXY)
 
   def self.assets_proxied?
-    !ENV['OPENPROJECT_DISABLE_DEV_ASSET_PROXY'].present? && !Rails.env.production? && cli_proxy?
+    ENV["OPENPROJECT_DISABLE_DEV_ASSET_PROXY"].blank? && !Rails.env.production? && cli_proxy.present?
   end
 
   def self.cli_proxy
-    ENV.fetch('OPENPROJECT_CLI_PROXY', CLI_DEFAULT_PROXY)
-  end
-
-  def self.cli_proxy?
-    cli_proxy.present?
+    CLI_PROXY
   end
 
   ##
@@ -48,31 +48,67 @@ module FrontendAssetHelper
   # or referencing the running CLI proxy that hosts the assets in memory.
   def include_frontend_assets
     capture do
-      %w(vendor.js polyfills.js runtime.js main.js).each do |file|
-        concat javascript_include_tag variable_asset_path(file)
+      %w(polyfills.js main.js).each do |file|
+        concat nonced_javascript_include_tag variable_asset_path(file), skip_pipeline: true, type: "module"
       end
 
-      concat stylesheet_link_tag variable_asset_path("styles.css"), media: :all
+      concat frontend_stylesheet_link_tag("styles.css")
     end
   end
 
-  private
-
-  def angular_cli_asset(path)
-    URI.join(FrontendAssetHelper.cli_proxy, "assets/frontend/#{path}")
+  def include_spot_assets
+    capture do
+      concat frontend_stylesheet_link_tag("spot.css")
+    end
   end
 
-  def frontend_asset_path(unhashed, options = {})
-    file_name = ::OpenProject::Assets.lookup_asset unhashed
+  def frontend_stylesheet_link_tag(path)
+    stylesheet_link_tag variable_asset_path(path), media: :all, skip_pipeline: true
+  end
 
-    asset_path "assets/frontend/#{file_name}", options.merge(skip_pipeline: true)
+  def nonced_javascript_include_tag(path, **)
+    javascript_include_tag(path, nonce: content_security_policy_nonce, **)
   end
 
   def variable_asset_path(path)
     if FrontendAssetHelper.assets_proxied?
-      angular_cli_asset(path)
+      File.join(
+        FrontendAssetHelper.cli_proxy,
+        Rails.application.config.relative_url_root,
+        frontend_asset_path(path)
+      )
     else
-      frontend_asset_path(path)
+      # we do not need to take care about Rails.application.config.relative_url_root
+      # because in this case javascript|stylesheet_include_tag will add it automatically.
+      lookup_frontend_asset(path)
     end
+  end
+
+  ##
+  # Like variable_asset_path, but for callers that use the resulting URL directly
+  # (e.g. as a raw <link href> inside a shadow DOM, as BlockNote does) instead of
+  # passing it through stylesheet_link_tag/javascript_include_tag. Those tag helpers
+  # add relative_url_root automatically; direct consumers don't go through them, so
+  # it must be prepended here instead. Do NOT use variable_asset_path itself for this:
+  # it's shared with the tag-helper call sites, and prepending relative_url_root there
+  # too would cause it to be applied twice for those (Rails' own idempotency guard in
+  # compute_asset_path only catches an exact-prefix match, not one where relative_url_root
+  # has a trailing slash).
+  def raw_variable_asset_path(path)
+    base_path = variable_asset_path(path)
+    return base_path if FrontendAssetHelper.assets_proxied?
+
+    File.join(Rails.application.config.relative_url_root.to_s, base_path)
+  end
+
+  private
+
+  def lookup_frontend_asset(unhashed_file_name)
+    hashed_file_name = ::OpenProject::Assets.lookup_asset(unhashed_file_name)
+    frontend_asset_path(hashed_file_name)
+  end
+
+  def frontend_asset_path(file_name)
+    "/assets/frontend/#{file_name}"
   end
 end

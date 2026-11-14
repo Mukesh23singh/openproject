@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,20 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Versions
-  register = ::Queries::Register
-  filters = ::Queries::Versions::Filters
-  orders = ::Queries::Versions::Orders
-  query = ::Queries::Versions::VersionQuery
+  ::Queries::Register.register(VersionQuery) do
+    filter Filters::SharingFilter
+    filter Filters::NameFilter
+    filter Filters::StatusFilter
 
-  register.filter query, filters::SharingFilter
-
-  register.order query, orders::NameOrder
-  register.order query, orders::SemverNameOrder
+    order Orders::DefaultOrder
+  end
 end

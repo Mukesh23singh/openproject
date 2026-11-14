@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +20,41 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<h2><%= link_to h(@forum.name), controller: '/forums', action: 'show', project_id: @project, id: @forum %> &#187; <%=h @message.subject %></h2>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { @message.subject }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       { href: project_forums_path(@project), text: t(:label_forum_plural) },
+       { href: project_forum_path(@project, @forum), text: @forum.name },
+       @message.subject]
+    )
+  end
+%>
 
-<%= labelled_tabular_form_for @message,
-                              url: topic_path(@message),
-                              method: :put,
-                              html: { multipart: true,
-                                      id: 'message-form',
-                                      class: 'form' } do |f| %>
-  <%= render partial: 'form', locals: { f: f, replying: !@message.parent.nil? } %>
+<%= render(Messages::FormErrorsComponent.new(message: @message)) %>
 
-  <hr class="form--separator" />
-
-  <%= f.button t(:button_save), class: 'button -highlight -with-icon icon-checkmark' %>
-  <%= link_to t(:button_cancel), topic_path(@message), class: 'button -with-icon icon-cancel' %>
-<% end %>
-<div id="preview"></div>
+<%=
+  primer_form_with(
+    model: @message,
+    url: project_forum_topic_path(@project, @forum, @message),
+    method: :put,
+    multipart: true,
+    data: { turbo: false }
+  ) do |f|
+    render(
+      Messages::Form.new(
+        f,
+        submit_label: t(:button_save),
+        replying: @message.parent.present?,
+        cancel_href: @message.parent ? message_anchor_path(@message) : project_forum_topic_path(@project, @forum, @message)
+      )
+    )
+  end
+%>

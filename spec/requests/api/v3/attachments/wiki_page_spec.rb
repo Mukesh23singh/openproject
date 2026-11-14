@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +22,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './attachment_resource_shared_examples'
+require "spec_helper"
+require_relative "attachment_resource_shared_examples"
 
-describe "wiki page attachments" do
+RSpec.describe "wiki page attachments" do
   it_behaves_like "an APIv3 attachment resource" do
     let(:attachment_type) { :wiki_page }
 
@@ -37,7 +38,7 @@ describe "wiki page attachments" do
     let(:read_permission) { :view_wiki_pages }
     let(:update_permission) { %i(delete_wiki_pages_attachments edit_wiki_pages) }
 
-    let(:wiki) { FactoryBot.create(:wiki, project: project) }
-    let(:wiki_page) { FactoryBot.create(:wiki_page, wiki: wiki) }
+    let(:wiki) { create(:wiki, project:) }
+    let(:wiki_page) { create(:wiki_page, wiki:) }
   end
 end

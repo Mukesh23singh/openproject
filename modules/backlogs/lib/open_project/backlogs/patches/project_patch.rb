@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,35 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_dependency 'project'
-
 module OpenProject::Backlogs::Patches::ProjectPatch
-  def self.included(base)
-    base.class_eval do
-      has_and_belongs_to_many :done_statuses, join_table: :done_statuses_for_project, class_name: '::Status'
+  extend ActiveSupport::Concern
+  include Projects::SprintSettings
 
-      include InstanceMethods
-    end
+  included do
+    has_and_belongs_to_many :done_statuses, join_table: "done_statuses_for_project", class_name: "::Status"
+    has_and_belongs_to_many :backlog_excluded_types,
+                            join_table: "backlog_excluded_types",
+                            class_name: "::Type"
+    has_many :sprints, dependent: :destroy
+    has_many :backlog_buckets, dependent: :destroy
   end
 
-  module InstanceMethods
-    def rebuild_positions
-      return unless backlogs_enabled?
+  def backlogs_enabled?
+    module_enabled? "backlogs"
+  end
 
-      shared_versions.each { |v| v.rebuild_positions(self) }
-      nil
-    end
+  def many_active_sprints?
+    sprints.active.many?
+  end
 
-    def backlogs_enabled?
-      module_enabled? 'backlogs'
-    end
+  # Globally closed statuses always count as done, so that an empty or corrupt project
+  # configuration still treats finished work as finished.
+  def statuses_considered_closed
+    ::Status.where(id: done_statuses.reorder(nil)).or(::Status.closed)
+  end
+
+  def statuses_considered_open
+    ::Status.where.not(id: statuses_considered_closed)
   end
 end
-
-Project.include OpenProject::Backlogs::Patches::ProjectPatch

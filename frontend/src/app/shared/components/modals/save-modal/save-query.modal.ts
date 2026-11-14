@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,16 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef, Component, ElementRef, Inject, ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, ElementRef, ViewChild, inject } from '@angular/core';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { OpModalComponent } from 'core-app/shared/components/modal/modal.component';
-import { OpModalLocalsToken } from 'core-app/shared/components/modal/modal.service';
-import { OpModalLocalsMap } from 'core-app/shared/components/modal/modal.types';
 import { QuerySharingChange } from 'core-app/shared/components/modals/share-modal/query-sharing-form.component';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
@@ -43,8 +38,20 @@ import { States } from 'core-app/core/states/states.service';
 
 @Component({
   templateUrl: './save-query.modal.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class SaveQueryModalComponent extends OpModalComponent {
+  readonly I18n = inject(I18nService);
+  readonly states = inject(States);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly wpListService = inject(WorkPackagesListService);
+  readonly halNotification = inject(HalResourceNotificationService);
+  readonly toastService = inject(ToastService);
+
   public queryName = '';
 
   public isStarred = false;
@@ -53,7 +60,7 @@ export class SaveQueryModalComponent extends OpModalComponent {
 
   public isBusy = false;
 
-  @ViewChild('queryNameField', { static: true }) queryNameField:ElementRef;
+  @ViewChild('queryNameField', { static: true }) queryNameField:ElementRef<HTMLInputElement>;
 
   public text = {
     title: this.I18n.t('js.modals.form_submit.title'),
@@ -66,51 +73,44 @@ export class SaveQueryModalComponent extends OpModalComponent {
     close_popup: this.I18n.t('js.close_popup_title'),
   };
 
-  constructor(readonly elementRef:ElementRef,
-    @Inject(OpModalLocalsToken) public locals:OpModalLocalsMap,
-    readonly I18n:I18nService,
-    readonly states:States,
-    readonly querySpace:IsolatedQuerySpace,
-    readonly wpListService:WorkPackagesListService,
-    readonly halNotification:HalResourceNotificationService,
-    readonly cdRef:ChangeDetectorRef,
-    readonly toastService:ToastService) {
-    super(locals, cdRef, elementRef);
-  }
-
-  public setValues(change:QuerySharingChange) {
+  public setValues(change:QuerySharingChange):void {
     this.isStarred = change.isStarred;
     this.isPublic = change.isPublic;
   }
 
-  public onOpen() {
+  public onOpen():void {
     this.queryNameField.nativeElement.focus();
   }
 
-  public get afterFocusOn() {
-    return jQuery('#work-packages-settings-button');
+  public get afterFocusOn():HTMLElement {
+    return document.getElementById('work-packages-settings-button')!;
   }
 
-  public saveQueryAs($event:JQuery.TriggeredEvent) {
+  public async saveQueryAs($event:Event):Promise<void> {
+    $event.preventDefault();
+
     if (this.isBusy || !this.queryName) {
       return;
     }
 
     this.isBusy = true;
+    this.cdRef.markForCheck();
     const query = this.querySpace.query.value!;
     query.public = this.isPublic;
 
-    this.wpListService
-      .create(query, this.queryName)
-      .then((savedQuery:QueryResource):Promise<any> => {
-        if (this.isStarred && !savedQuery.starred) {
-          return this.wpListService.toggleStarred(savedQuery).then(() => this.closeMe($event));
-        }
+    try {
+      const savedQuery:QueryResource = await this.wpListService.create(query, this.queryName);
 
-        this.closeMe($event);
-        return Promise.resolve(true);
-      })
-      .catch((error:any) => this.halNotification.handleRawError(error))
-      .then(() => this.isBusy = false); // Same as .finally()
+      if (this.isStarred && !savedQuery.starred) {
+        await this.wpListService.toggleStarred(savedQuery);
+      }
+
+      this.closeMe($event);
+    } catch (error:unknown) {
+      this.halNotification.handleRawError(error);
+    } finally {
+      this.isBusy = false;
+      this.cdRef.markForCheck();
+    }
   }
 }

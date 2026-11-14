@@ -25,9 +25,10 @@ To stop the servers from being accessed on the old installation, stop the servic
 
 ## Install new package
 
-Follow the first step (**Installation**) of our packaged installation guides at https://www.openproject.org/download-and-installation/.
+Follow the first step (**Installation**) of our [packaged installation guides](../../installation/packaged/) up until _but excluding_ the [Step 0: Start the wizard](../../installation/packaged/#step-0-start-the-wizard) step.
 
-After this step, you should have an installed version of `openproject`.
+With this done, you should have an installed version of OpenProject with the `openproject` command existing. Do not yet run `openproject configure`, because you will first take over the configuration
+from your previous installation.
 
 ### Moving Configuration
 
@@ -44,7 +45,7 @@ You can simply look through the installer.dat and change those values you need.
 
 **The conf.d folder**
 
-Additional environment, either generated from the wizard or entered by you through `openproject config:set` is written to  `/etc/openproject/conf.d/{server,database,other}`. Also look through those and check which contain relevant values for your new installation. 
+Additional environment, either generated from the wizard or entered by you through `openproject config:set` is written to  `/etc/openproject/conf.d/{server,database,other}`. Also look through those and check which contain relevant values for your new installation.
 
 ### PostgreSQL database
 
@@ -53,39 +54,45 @@ On your new host or cluster, ensure you have created a database user and databas
 In the following, the values `<dbuser>`, `<dbhost>` and `<dbname>` variables have to be replaced with your database user and database above.
 To read the values from the old installation, you can execute the following command:
 
-```bash
+```shell
 openproject config:get DATABASE_URL
 #=> e.g.: postgres://dbusername:dbpassword@dbhost:dbport/dbname
 ```
 
 First the dump has to be extracted (unzipped) and then restored. The command used should look very similar to the following. The `--clean` option is used to drop any database object within `<dbname>` so ensure this is the correct database you want to restore, as you will lose all data within it!
 
-```
+```shell
 # Restore the PostgreSQL dump
-pg_restore -h <dbhost> -u <dbuser> -W <dbname> --clean postgresql-dump-20180408095521.pgdump
+pg_restore -h <dbhost> -u <dbuser> -W --dbname <dbname> --clean postgresql-dump-20180408095521.pgdump
 ```
-
 
 ### Attachments
 
-Your storage path can be shown on the old installation can be shown using the following command:
+Your storage path on the old installation can be shown using the following command:
 
+```shell
+openproject config:get OPENPROJECT_ATTACHMENTS__STORAGE__PATH
+#=> e.g., /var/db/openproject/files
 ```
+
+On versions prior to 12.5, the environment variable was named differently. Use
+the following command to show the storage path:
+
+```shell
 openproject config:get ATTACHMENTS_STORAGE_PATH
 #=> e.g., /var/db/openproject/files
 ```
 
-Simply extract your attachments dump into that folder with `tar -vxfz <dump>.tar.gz`, creating it beforehand if needed.
-
-
+Simply extract your attachments dump into that folder with `tar -xvzf <dump>.tar.gz`,
+creating it beforehand if needed. Ensure that this is writable by the `openproject` user.
 
 ### Repositories
 
 For repositories, the same approach applies as for the attachments:
 
-Your SVN and Git storage paths can be shown on the old installation can be shown using the following command:
+Your SVN and Git storage paths on the old installation can be shown using the following command:
 
-```
+```shell
 # Subversion
 openproject config:get SVN_REPOSITORIES
 #=> e.g., /var/db/openproject/svn
@@ -97,16 +104,14 @@ openproject config:get GIT_REPOSITORIES
 
 Simply extract your respective repository dumps into ech folder, creating it beforehand if needed. The dumps will only be created if you use that feature in your old installation.
 
-
-
 ## Running openproject configure
 
 After you restored all data and updated your installer.dat, all you need to do is run through the configuration process of the packaged installation:
 
-```bash
+```shell
 openproject configure
 ```
 
-It will take all values from your previous installation. *It may ask you additional wizard questions*  for new features that did not exist on the old installations, or the ones you removed/left empty in the `installer.dat` file.
+It will take all values from your previous installation. _It may ask you additional wizard questions_  for new features that did not exist on the old installations, or the ones you removed/left empty in the `installer.dat` file.
 
 This step will also perform database migrations, install and configure all necessary dependencies and start the server.

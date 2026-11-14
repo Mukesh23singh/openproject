@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module V3
@@ -55,9 +52,20 @@ module API
           }
         end
 
-        property :hide_mail
         property :time_zone,
                  render_nil: true
+
+        property :date_format,
+                 getter: ->(*) { date_format.presence },
+                 render_nil: true
+
+        property :time_format,
+                 getter: ->(*) { time_format.presence },
+                 render_nil: true
+
+        property :disable_keyboard_shortcuts
+
+        property :require_double_click_for_inline_edit
 
         property :warn_on_leaving_unsaved
         property :comments_in_reverse_order,
@@ -69,16 +77,22 @@ module API
         property :daily_reminders,
                  getter: ->(*) do
                    reminders = daily_reminders.dup
-                   reminders['times'].map! { |time| time.gsub(/\A(\d{2}:\d{2}).*\z/, '\1') } if reminders
+                   reminders["times"].map! { |time| time.gsub(/\A(\d{2}:\d{2}).*\z/, '\1') } if reminders
                    reminders
                  end,
                  setter: ->(fragment:, **) do
                    self.daily_reminders = fragment
 
-                   daily_reminders['times'].map! { |time| time.gsub(/\A(\d{2}:\d{2})\z/, '\1:00+00:00') }
+                   daily_reminders["times"].map! { |time| time.gsub(/\A(\d{2}:\d{2})\z/, '\1:00+00:00') }
                  end
 
-        property :immediate_reminders
+        property :immediate_reminders,
+                 getter: ->(*) do
+                   immediate_reminders.transform_keys { |k| k.camelize(:lower) }
+                 end,
+                 setter: ->(fragment:, **) do
+                   self.immediate_reminders = fragment.transform_keys(&:underscore)
+                 end
 
         property :pause_reminders,
                  getter: ->(*) do
@@ -87,8 +101,8 @@ module API
                  setter: ->(fragment:, **) do
                    self.pause_reminders = fragment.transform_keys(&:underscore)
 
-                   if pause_reminders['last_day'].blank? && pause_reminders['first_day']
-                     pause_reminders['last_day'] = pause_reminders['first_day']
+                   if pause_reminders["last_day"].blank? && pause_reminders["first_day"]
+                     pause_reminders["last_day"] = pause_reminders["first_day"]
                    end
                  end
 
@@ -99,20 +113,20 @@ module API
                  exec_context: :decorator,
                  getter: ->(*) do
                    represented.notification_settings.map do |setting|
-                     NotificationSettingRepresenter.new(setting, current_user: current_user)
+                     NotificationSettingRepresenter.new(setting, current_user:)
                    end
                  end,
                  setter: ->(fragment:, **) do
                    represented.notification_settings = fragment.map do |setting_fragment|
                      NotificationSettingRepresenter
-                       .new(OpenStruct.new, current_user: current_user)
+                       .new(OpenStruct.new, current_user:)
                        .from_hash(setting_fragment.with_indifferent_access)
                        .to_h
                    end
                  end
 
         def _type
-          'UserPreferences'
+          "UserPreferences"
         end
       end
     end

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,68 +20,47 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
-<%= toolbar title: t(:label_general) %>
 
-<%= styled_form_tag(admin_settings_update_general_path, method: :patch) do %>
-  <section class="form--section">
-    <div class="form--field"><%= setting_text_field :app_title, size: 30, container_class: '-middle' %></div>
-    <div class="form--field">
-      <%= setting_text_field :per_page_options, size: 20, container_class: '-slim' %>
-      <span class="form--field-instructions">
-        <%= t(:text_comma_separated) %><br/>
-        <%= t(:text_notice_too_many_values_are_inperformant) %>
-      </span>
-    </div>
-    <div class="form--field">
-      <%= setting_number_field :activity_days_default, size: 6, unit: t(:label_day_plural), container_class: '-xslim' %>
-    </div>
-    <div class="form--field">
-      <%= setting_text_field :host_name, size: 60, container_class: '-middle' %>
-      <span class="form--field-instructions">
-        <%= t(:label_example) %>: <%= @guessed_host %>
-      </span>
-    </div>
-    <div class="form--field"><%= setting_select :protocol, [['HTTP', 'http'], ['HTTPS', 'https']], container_class: '-xslim' %></div>
-    <div class="form--field"><%= setting_check_box :cache_formatted_text %></div>
-    <div class="form--field"><%= setting_check_box :feeds_enabled, size: 6 %></div>
-    <div class="form--field"><%= setting_text_field :feeds_limit, size: 6, container_class: '-xslim' %></div>
-    <div class="form--field">
-      <%= setting_text_field :file_max_size_displayed, size: 6, unit: t(:"number.human.storage_units.units.kb"), container_class: '-xslim' %>
-    </div>
-    <div class="form--field"><%= setting_text_field :diff_max_lines_displayed, size: 6, container_class: '-xslim' %></div>
+<% html_title t(:label_administration), t(:label_general) %>
 
-    <% if OpenProject::Configuration.security_badge_displayed? %>
-    <div class="form--field">
-      <%= setting_check_box :security_badge_displayed %>
-      <span class="form--field-instructions">
-        <%= t(:text_notice_security_badge_displayed_html,
-              information_panel_label: t(:label_information),
-              more_info_url: ::OpenProject::Static::Links[:security_badge_documentation][:href],
-              information_panel_path: info_admin_index_path) %>
-      </span>
-    </div>
-    <% end %>
-    <%= call_hook(:view_settings_general_form) %>
-    <fieldset class="form--fieldset">
-      <legend class="form--fieldset-legend"><%= t(:setting_welcome_text) %></legend>
-      <div class="form--field"><%= setting_text_field :welcome_title, size: 30, container_class: '-wide' %></div>
-      <div class="form--field -visible-overflow">
-        <%= setting_text_area :welcome_text,
-                              cols: 60,
-                              rows: 5,
-                              class: 'wiki-edit',
-                              id: 'settings_welcome_text',
-                              with_text_formatting: true,
-                              container_class: '-xxwide' %>
-      </div>
-      <div class="form--field"><%= setting_check_box :welcome_on_homescreen %></div>
-    </fieldset>
-  </section>
-  <%= styled_button_tag t(:button_save), class: '-highlight -with-icon icon-checkmark' %>
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { t(:label_general) }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: admin_settings_general_path, text: t(:label_system_settings), skip_for_mobile: true },
+       t(:label_general)]
+    )
+  end
+%>
+
+<%=
+  settings_primer_form_with(
+    url: admin_settings_general_path,
+    scope: :settings,
+    method: :patch
+  ) do |f|
+%>
+  <%= render(Admin::Settings::GeneralSettingsForm.new(f, guessed_host: @guessed_host)) %>
+
+  <%= call_hook(:view_settings_general_form) %>
+
+  <%=
+    render(Primer::Beta::Subhead.new(mt: 3)) do |component|
+      component.with_heading(tag: :h3, size: :medium) { t(:setting_welcome_text) }
+    end
+  %>
+  <%=
+    render(
+      Primer::Forms::FormList.new(
+        Admin::Settings::GeneralSettings::WelcomeBlockForm.new(f),
+        Admin::Settings::Save.new(f)
+      )
+    )
+  %>
 <% end %>

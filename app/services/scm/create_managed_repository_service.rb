@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -57,11 +56,11 @@ class SCM::CreateManagedRepositoryService < SCM::BaseRepositoryService
 
     false
   rescue Errno::EACCES
-    @rejected = I18n.t('repositories.errors.path_permission_failed',
+    @rejected = I18n.t("repositories.errors.path_permission_failed",
                        path: repository.root_url)
     false
   rescue SystemCallError => e
-    @rejected = I18n.t('repositories.errors.filesystem_access_failed',
+    @rejected = I18n.t("repositories.errors.filesystem_access_failed",
                        message: e.message)
     false
   rescue OpenProject::SCM::Exceptions::SCMError => e
@@ -72,6 +71,6 @@ class SCM::CreateManagedRepositoryService < SCM::BaseRepositoryService
   ##
   # Returns the error symbol
   def localized_rejected_reason
-    @rejected ||= I18n.t('repositories.errors.not_manageable')
+    @rejected ||= I18n.t("repositories.errors.not_manageable")
   end
 end

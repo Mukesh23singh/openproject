@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,21 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-shared_examples 'represents the placeholder' do
+RSpec.shared_examples "represents the placeholder" do
   it do
-    expect(last_response.status).to eq(200)
+    expect(last_response).to have_http_status(:ok)
     expect(last_response.body)
-      .to(be_json_eql('PlaceholderUser'.to_json).at_path('_type'))
+      .to(be_json_eql("PlaceholderUser".to_json).at_path("_type"))
 
     expect(last_response.body)
-      .to(be_json_eql(placeholder.name.to_json).at_path('name'))
+      .to(be_json_eql(placeholder.name.to_json).at_path("name"))
 
     expect(last_response.body)
-      .to(be_json_eql(placeholder.id.to_json).at_path('id'))
+      .to(be_json_eql(placeholder.id.to_json).at_path("id"))
   end
 end

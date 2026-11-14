@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,66 +22,66 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-describe GroupsController, type: :controller do
-  let(:group) { FactoryBot.create :group, members: group_members }
+require "spec_helper"
+
+RSpec.describe GroupsController do
+  let(:group) { create(:group, members: group_members) }
   let(:group_members) { [] }
 
   before do
     login_as current_user
   end
 
-  context 'as admin' do
-    shared_let(:admin) { FactoryBot.create :admin }
+  context "as admin" do
+    shared_let(:admin) { create(:admin) }
     let(:current_user) { admin }
 
-    it 'should index' do
+    it "indexes" do
       get :index
       expect(response).to be_successful
-      expect(response).to render_template 'index'
+      expect(response).to render_template "index"
     end
 
-    it 'should show' do
+    it "shows" do
       get :show, params: { id: group.id }
       expect(response).to be_successful
-      expect(response).to render_template 'show'
+      expect(response).to render_template "show"
     end
 
-    it 'should new' do
+    it "shows new" do
       get :new
       expect(response).to be_successful
-      expect(response).to render_template 'new'
+      expect(response).to render_template "new"
     end
 
-    it 'should create' do
+    it "creates" do
       expect do
-        post :create, params: { group: { lastname: 'New group' } }
-      end.to change { Group.count }.by(1)
+        post :create, params: { group: { lastname: "New group" } }
+      end.to change(Group, :count).by(1)
       expect(response).to redirect_to groups_path
     end
 
-    it 'should edit' do
+    it "edits" do
       get :edit, params: { id: group.id }
 
       expect(response).to be_successful
-      expect(response).to render_template 'edit'
+      expect(response).to render_template "edit"
     end
 
-    it 'should update' do
+    it "updates" do
       expect do
-        put :update, params: { id: group.id, group: { lastname: 'new name' } }
-      end.to change { group.reload.name }.to('new name')
+        put :update, params: { id: group.id, group: { lastname: "new name" } }
+      end.to change { group.reload.name }.to("new name")
 
       expect(response).to redirect_to groups_path
     end
 
-    it 'should destroy' do
+    it "destroys" do
       perform_enqueued_jobs do
         delete :destroy, params: { id: group.id }
       end
@@ -91,49 +91,66 @@ describe GroupsController, type: :controller do
       expect(response).to redirect_to groups_path
     end
 
-    context 'with two existing users' do
-      let(:user1) { FactoryBot.create :user }
-      let(:user2) { FactoryBot.create :user }
+    context "with two existing users" do
+      let(:user1) { create(:user) }
+      let(:user2) { create(:user) }
 
-      it 'should add users' do
+      it "adds users" do
         post :add_users, params: { id: group.id, user_ids: [user1.id, user2.id] }
         expect(group.reload.users.count).to eq 2
       end
     end
 
-    context 'with a group member' do
-      let(:user1) { FactoryBot.create :user }
-      let(:user2) { FactoryBot.create :user }
+    context "with a group member" do
+      let(:user1) { create(:user) }
+      let(:user2) { create(:user) }
       let(:group_members) { [user1] }
 
-      it 'should add users' do
+      it "adds users" do
         post :add_users, params: { id: group.id, user_ids: [user2.id] }
         expect(group.reload.users.count).to eq 2
       end
     end
 
-    context 'with project and role' do
-      let(:project) { FactoryBot.create :project }
-      let(:role1) { FactoryBot.create :role }
-      let(:role2) { FactoryBot.create :role }
+    context "with a global role membership" do
+      render_views
 
-      it 'should create membership' do
+      let!(:member_group) do
+        create(:global_member,
+               principal: group,
+               roles: [create(:global_role)])
+      end
+
+      it "displays edit memberships" do
+        get :edit, params: { id: group.id, tab: "memberships" }
+
+        expect(response).to be_successful
+        expect(response).to render_template "edit"
+      end
+    end
+
+    context "with project and role" do
+      let(:project) { create(:project) }
+      let(:role1) { create(:project_role) }
+      let(:role2) { create(:project_role) }
+
+      it "creates membership" do
         post :create_memberships,
-             params: { id: group.id, new_membership: { project_id: project.id, role_ids: [role1.id, role2.id] } }
+             params: { id: group.id, membership: { project_id: project.id, role_ids: [role1.id, role2.id] } }
 
         expect(group.reload.members.count).to eq 1
         expect(group.members.first.roles.count).to eq 2
       end
 
-      context 'with an existing membership' do
+      context "with an existing membership" do
         let!(:member_group) do
-          FactoryBot.create(:member,
-                            project: project,
-                            principal: group,
-                            roles: [role1])
+          create(:member,
+                 project:,
+                 principal: group,
+                 roles: [role1])
         end
 
-        it 'should edit a membership' do
+        it "edits a membership" do
           expect(group.members.count).to eq 1
           expect(group.members.first.roles.count).to eq 1
 
@@ -149,7 +166,7 @@ describe GroupsController, type: :controller do
           expect(group.members.first.roles.count).to eq 2
         end
 
-        it 'can destroy the membership' do
+        it "can destroy the membership" do
           delete :destroy_membership, params: { id: group.id, membership_id: group.members.first.id }
           expect(group.reload.members.count).to eq 0
         end
@@ -157,42 +174,80 @@ describe GroupsController, type: :controller do
     end
   end
 
-  context 'as regular user' do
-    let(:user) { FactoryBot.create :user }
+  context "as regular user" do
+    let(:user) { create(:user) }
     let(:current_user) { user }
 
-    it 'should forbid index' do
+    it "forbids index" do
       get :index
       expect(response).not_to be_successful
-      expect(response.status).to eq 403
+      expect(response).to have_http_status :forbidden
     end
 
-    it 'should show' do
+    it "shows" do
       get :show, params: { id: group.id }
-      expect(response).to be_successful
-      expect(response).to render_template 'show'
+      expect(response).not_to be_successful
+      expect(response).to have_http_status :not_found
     end
 
-    it 'should forbid new' do
+    context "when having view_members permission in a project the group belongs to" do
+      let(:project) { create(:project) }
+      let(:user) { create(:user, member_with_permissions: { project => [:view_members] }) }
+      let(:group_members) { create_list(:user, 2) }
+
+      before do
+        create(:member, project:, principal: group, roles: [create(:project_role)])
+      end
+
+      it "shows" do
+        get :show, params: { id: group.id }
+        expect(response).to be_successful
+      end
+
+      it "shows members" do
+        get :show, params: { id: group.id }
+        expect(assigns(:group_users)).to match_array(group_members)
+      end
+    end
+
+    context "when having view_members permission in a project the group does not belong to" do
+      let(:project) { create(:project) }
+      let(:other_project) { create(:project) }
+      let(:user) { create(:user, member_with_permissions: { other_project => [:view_members] }) }
+      let(:group_members) { create_list(:user, 2) }
+
+      before do
+        create(:member, project:, principal: group, roles: [create(:project_role)])
+      end
+
+      it "does not show members" do
+        get :show, params: { id: group.id }
+
+        expect(response).to have_http_status :not_found
+        expect(assigns(:group_users)).to be_blank
+      end
+    end
+
+    it "forbids new" do
       get :new
       expect(response).not_to be_successful
-      expect(response.status).to eq 403
+      expect(response).to have_http_status :forbidden
     end
 
-    it 'should forbid create' do
+    it "forbids create" do
       expect do
-        post :create, params: { group: { lastname: 'New group' } }
-      end.not_to change { Group.count }
+        post :create, params: { group: { lastname: "New group" } }
+      end.not_to(change(Group, :count))
 
       expect(response).not_to be_successful
-      expect(response.status).to eq 403
+      expect(response).to have_http_status :forbidden
     end
 
-    it 'should forbid edit' do
+    it "forbids edit" do
       get :edit, params: { id: group.id }
 
       expect(response).not_to be_successful
-      expect(response.status).to eq 403
+      expect(response).to have_http_status :forbidden
     end
   end
 end

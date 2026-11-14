@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,28 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { WorkPackageRelationsHierarchyService } from 'core-app/features/work-packages/components/wp-relations/wp-relations-hierarchy/wp-relations-hierarchy.service';
 import { WorkPackageInlineCreateService } from 'core-app/features/work-packages/components/wp-inline-create/wp-inline-create.service';
 import { WpRelationInlineCreateServiceInterface } from 'core-app/features/work-packages/components/wp-relations/embedded/wp-relation-inline-create.service.interface';
 import { WpRelationInlineAddExistingComponent } from 'core-app/features/work-packages/components/wp-relations/embedded/inline/add-existing/wp-relation-inline-add-existing.component';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
+import {
+  Observable,
+  of,
+} from 'rxjs';
+import idFromLink from 'core-app/features/hal/helpers/id-from-link';
 
 @Injectable()
 export class WpChildrenInlineCreateService extends WorkPackageInlineCreateService implements WpRelationInlineCreateServiceInterface {
-  constructor(readonly injector:Injector,
-    protected readonly wpRelationsHierarchyService:WorkPackageRelationsHierarchyService,
-    protected readonly schemaCache:SchemaCacheService) {
-    super(injector);
-  }
+  protected readonly wpRelationsHierarchyService = inject(WorkPackageRelationsHierarchyService);
+  protected readonly schemaCache = inject(SchemaCacheService);
 
   /**
    * A separate reference pane for the inline create component
@@ -71,16 +72,20 @@ export class WpChildrenInlineCreateService extends WorkPackageInlineCreateServic
    */
   public referenceTarget:WorkPackageResource|null = null;
 
-  public get canAdd() {
-    return !!(this.referenceTarget && this.canCreateWorkPackages && this.canAddChild);
+  public get canAdd():Observable<boolean> {
+    if (!(this.referenceTarget && this.canAddChild)) {
+      return of(false);
+    }
+
+    return this.canCreateWorkPackages(idFromLink(this.referenceTarget.project.href));
   }
 
-  public get canReference() {
-    return !!(this.referenceTarget && this.canAddChild);
+  public get canReference():Observable<boolean> {
+    return of(!!this.referenceTarget && this.canAddChild);
   }
 
-  public get canAddChild() {
-    return this.schema && !this.schema.isMilestone && this.referenceTarget!.changeParent;
+  public get canAddChild():boolean {
+    return !!(this.schema && !this.schema.isMilestone && this.referenceTarget?.changeParent);
   }
 
   /**

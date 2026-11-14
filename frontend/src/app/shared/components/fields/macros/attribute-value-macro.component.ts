@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,17 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
-// ++    Ng1FieldControlsWrapper,
+//++
 
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  HostBinding,
-  Injector,
-  ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Injector, OnInit, ViewChild, inject } from '@angular/core';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
-import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
+import {
+  HalResourceEditingService,
+} from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { DisplayFieldService } from 'core-app/shared/components/fields/display/display-field.service';
 import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
@@ -45,64 +38,89 @@ import {
   AttributeModelLoaderService,
   SupportedAttributeModels,
 } from 'core-app/shared/components/fields/macros/attribute-model-loader.service';
+import { snakeCase } from 'lodash-es';
+import { firstValueFrom } from 'rxjs';
+import { ISchemaProxy } from 'core-app/features/hal/schemas/schema-proxy';
 
-export const attributeValueMacro = 'macro.macro--attribute-value';
+export const ATTRIBUTE_MACRO_CLASS = 'op-attribute-value-macro';
+
+// An undefined layout means the author did not choose one; the display field
+// service then falls through to the attribute type's regular rendering.
+export type MacroLayout = 'singleline'|'multiline';
 
 @Component({
-  selector: attributeValueMacro,
   templateUrl: './attribute-value-macro.html',
   styleUrls: ['./attribute-macro.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     HalResourceEditingService,
   ],
+  standalone: false,
 })
-export class AttributeValueMacroComponent {
+export class AttributeValueMacroComponent implements OnInit {
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  readonly injector = inject(Injector);
+  readonly resourceLoader = inject(AttributeModelLoaderService);
+  readonly schemaCache = inject(SchemaCacheService);
+  readonly displayField = inject(DisplayFieldService);
+  readonly I18n = inject(I18nService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   @ViewChild('displayContainer') private displayContainer:ElementRef<HTMLSpanElement>;
 
   // Whether the value could not be loaded
   error:string|null = null;
 
   text = {
-    help: this.I18n.t('js.editor.macro.attribute_reference.macro_help_tooltip'),
+    aria_label: (model:SupportedAttributeModels) => this.I18n.t(
+      `js.editor.macro.attribute_reference.aria_label_${snakeCase(model)}_attribute`,
+    ),
     placeholder: this.I18n.t('js.placeholders.default'),
     not_found: this.I18n.t('js.editor.macro.attribute_reference.not_found'),
     invalid_attribute: (attr:string) => this.I18n.t('js.editor.macro.attribute_reference.invalid_attribute', { name: attr }),
   };
 
-  @HostBinding('title') hostTitle = this.text.help;
+  ariaContext = '';
 
   resource:HalResource;
 
   fieldName:string;
 
-  constructor(readonly elementRef:ElementRef,
-    readonly injector:Injector,
-    readonly resourceLoader:AttributeModelLoaderService,
-    readonly schemaCache:SchemaCacheService,
-    readonly displayField:DisplayFieldService,
-    readonly I18n:I18nService,
-    readonly cdRef:ChangeDetectorRef) {
+  layout?:MacroLayout;
 
+  ngOnInit():void {
+    const element = this.elementRef.nativeElement;
+    const model = element.dataset.model as SupportedAttributeModels;
+    const id = element.dataset.id!;
+    const attributeName = element.dataset.attribute!;
+    this.layout = element.dataset.layout as MacroLayout|undefined;
+    element.classList.add(ATTRIBUTE_MACRO_CLASS);
+    this.ariaContext = this.text.aria_label(model);
+
+    if (this.isNestedMacro(model, id, attributeName)) {
+      const error = this.I18n.t('js.editor.macro.attribute_reference.nested_macro', { model, id });
+      this.markError(error);
+    } else {
+      void this.loadAndRender(model, id, attributeName);
+    }
   }
 
-  ngOnInit() {
-    const element = this.elementRef.nativeElement as HTMLElement;
-    const model:SupportedAttributeModels = element.dataset.model as any;
-    const id:string = element.dataset.id!;
-    const attributeName:string = element.dataset.attribute!;
-
-    this.loadAndRender(model, id, attributeName);
+  private isNestedMacro(model:SupportedAttributeModels, id:string, attributeName:string):boolean {
+    const element = this.elementRef.nativeElement;
+    const parent = element.parentElement;
+    return !!parent?.closest(`.${ATTRIBUTE_MACRO_CLASS}[data-model="${model}"][data-id="${id}"][data-attribute="${attributeName}"]`);
   }
 
-  private async loadAndRender(model:SupportedAttributeModels, id:string, attributeName:string) {
+  private async loadAndRender(model:SupportedAttributeModels, id:string, attributeName:string):Promise<void> {
     let resource:HalResource|null;
 
     try {
-      resource = await this.resourceLoader.require(model, id);
+      resource = await firstValueFrom(this.resourceLoader.require(model, id));
     } catch (e) {
+      // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
       console.error(`Failed to render macro ${e}`);
-      return this.markError(this.text.not_found);
+      this.markError(this.text.not_found);
+      return;
     }
 
     if (!resource) {
@@ -111,8 +129,17 @@ export class AttributeValueMacroComponent {
     }
 
     const schema = await this.schemaCache.ensureLoaded(resource);
-    const attribute = schema.attributeFromLocalizedName(attributeName) || attributeName;
-    const fieldSchema = schema[attribute] as IFieldSchema|undefined;
+    const proxied = this.schemaCache.proxied(resource, schema);
+    let attribute = schema.attributeFromLocalizedName(attributeName) ?? this.dateAttribute(resource, proxied, attributeName);
+
+    // The deprecated version attribute renders the work package's target
+    // versions, single-line by default so legacy macros keep their inline shape.
+    if (resource._type === 'WorkPackage' && attribute === 'version') {
+      attribute = 'targetVersions';
+      this.layout = this.layout ?? 'singleline';
+    }
+
+    const fieldSchema = proxied.ofProperty(attribute) as IFieldSchema|undefined;
 
     if (fieldSchema) {
       this.resource = resource;
@@ -127,5 +154,13 @@ export class AttributeValueMacroComponent {
   markError(message:string) {
     this.error = this.I18n.t('js.editor.macro.error', { message });
     this.cdRef.detectChanges();
+  }
+
+  dateAttribute(resource:HalResource, proxied:ISchemaProxy, attributeName:string):string {
+    if (resource._type === 'WorkPackage' && !proxied.isMilestone && attributeName === 'date') {
+      return 'combinedDate';
+    }
+
+    return proxied.mappedName(attributeName);
   }
 }

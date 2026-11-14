@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Queries::Notifications::Filters::ReasonFilter < Queries::Notifications::Filters::NotificationFilter
+  REASONS = Notification
+              .reasons
+              .except(:date_alert_start_date, :date_alert_due_date)
+              .merge(dateAlert: [Notification::REASONS[:date_alert_start_date],
+                                 Notification::REASONS[:date_alert_due_date]])
+              .freeze
+
   def allowed_values
-    Notification.reasons.keys.map { |reason| [reason, reason] }
+    REASONS.keys.map { |reason| [reason, reason] }
   end
 
   def type
@@ -38,7 +44,7 @@ class Queries::Notifications::Filters::ReasonFilter < Queries::Notifications::Fi
   end
 
   def where
-    id_values = values.map { |value| Notification.reasons[value] }
+    id_values = values.flat_map { |value| REASONS[value] }
     operator_strategy.sql_for_field(id_values, self.class.model.table_name, :reason)
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,49 +22,48 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe UserPassword, type: :model do
-  let(:old_password) { FactoryBot.create(:old_user_password) }
-  let(:user) { FactoryBot.create(:user) }
-  let(:password) { FactoryBot.create(:user_password, user: user, plain_password: 'adminAdmin!') }
+RSpec.describe UserPassword do
+  let(:old_password) { create(:old_user_password) }
+  let(:user) { create(:user) }
+  let(:password) { create(:user_password, user:, plain_password: "adminAdmin!") }
 
-  describe '#expired?' do
-    context 'with expiry value set',
+  describe "#expired?" do
+    context "with expiration value set",
             with_settings: { password_days_valid: 30 } do
-      it 'should be true for an old password when password expiry is activated' do
+      it "is true for an old password when password expiration is activated" do
         expect(old_password.expired?).to be_truthy
       end
 
-      it 'should be false when password expiry is enabled and the password was changed recently' do
+      it "is false when password expiration is enabled and the password was changed recently" do
         expect(password.expired?).to be_falsey
       end
     end
 
-    context 'with expiry value disabled',
+    context "with expiration value disabled",
             with_settings: { password_days_valid: 0 } do
-      it 'should be false for an old password when password expiry is disabled' do
+      it "is false for an old password when password expiration is disabled" do
         expect(old_password.expired?).to be_falsey
       end
     end
   end
 
-  describe '#matches_plaintext?' do
-    it 'still matches the password' do
+  describe "#matches_plaintext?" do
+    it "still matches the password" do
       expect(password).to be_a(UserPassword.active_type)
-      expect(password.matches_plaintext?('adminAdmin!')).to be_truthy
+      expect(password.matches_plaintext?("adminAdmin!")).to be_truthy
     end
   end
 
-  describe '#rehash_as_active' do
+  describe "#rehash_as_active" do
     let(:password) do
-      pass = FactoryBot.build(:legacy_sha1_password, user: user, plain_password: 'adminAdmin!')
+      pass = build(:legacy_sha1_password, user:, plain_password: "adminAdmin!")
       expect(pass).to receive(:salt_and_hash_password!).and_return nil
 
       pass.save!
@@ -74,31 +75,31 @@ describe UserPassword, type: :model do
       user.reload
     end
 
-    it 'rehashed the password when correct' do
+    it "rehashed the password when correct" do
       expect(user.current_password).to be_a(UserPassword::SHA1)
       expect do
-        password.matches_plaintext?('adminAdmin!')
-      end.to_not change { user.passwords.count }
+        password.matches_plaintext?("adminAdmin!")
+      end.not_to change { user.passwords.count }
 
       expect(user.current_password).to be_a(UserPassword::Bcrypt)
-      expect(user.current_password.hashed_password).to start_with '$2a$'
+      expect(user.current_password.hashed_password).to start_with "$2a$"
     end
 
-    it 'does not alter the password when invalid' do
-      expect(password.matches_plaintext?('wat')).to be false
+    it "does not alter the password when invalid" do
+      expect(password.matches_plaintext?("wat")).to be false
       expect(password).to be_a(UserPassword::SHA1)
     end
 
-    it 'does not alter the password when disabled' do
-      expect(password.matches_plaintext?('adminAdmin!', update_legacy: false)).to be true
+    it "does not alter the password when disabled" do
+      expect(password.matches_plaintext?("adminAdmin!", update_legacy: false)).to be true
       expect(user.current_password).to be_a(UserPassword::SHA1)
     end
   end
 
-  describe '#save' do
-    let(:password) { FactoryBot.build(:user_password) }
+  describe "#save" do
+    let(:password) { build(:user_password) }
 
-    it 'saves correctly' do
+    it "saves correctly" do
       expect(password).to receive(:salt_and_hash_password!).and_call_original
       expect { password.save! }.not_to raise_error
       expect(password).not_to be_expired

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,10 +30,10 @@
 module AttachmentsHelper
   def to_utf8_for_attachments(str)
     forced_str = str.dup
-    forced_str.force_encoding('UTF-8')
+    forced_str.force_encoding("UTF-8")
     return forced_str if forced_str.valid_encoding?
 
-    str.encode('UTF-8', invalid: :replace, undef: :replace, replace: '') # better replace: '?'
+    str.encode("UTF-8", invalid: :replace, undef: :replace, replace: "") # better replace: '?'
   end
 
   ##
@@ -43,11 +42,10 @@ module AttachmentsHelper
   #
   # Within ckeditor-augmented-textarea-form, this attachment list is added automatically
   # when a resource is added.
-  def list_attachments(resource)
-    content_tag 'attachments',
-                '',
-                'data-resource': resource.to_json,
-                'data-allow-uploading': false,
-                'data-destroy-immediately': true
+  def list_attachments(resource, options = {})
+    options[:inputs] = (options[:inputs] || {})
+      .reverse_merge(resource:, allowUploading: false, destroyImmediately: true)
+
+    angular_component_tag("opce-attachments", **options)
   end
 end

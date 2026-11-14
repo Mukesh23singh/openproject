@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,38 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { WorkPackageCreateComponent } from 'core-app/features/work-packages/components/wp-new/wp-create.component';
 import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { BreadcrumbItem } from 'core-app/shared/components/breadcrumbs/op-breadcrumbs.component';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-new-full-view',
   host: { class: 'work-packages-page--ui-view' },
   templateUrl: './wp-new-full-view.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class WorkPackageNewFullViewComponent extends WorkPackageCreateComponent {
-  public successState = this.$state.current.data.successState as string;
+  breadcrumbItems():BreadcrumbItem[] {
+    const items:BreadcrumbItem[] = [];
+    if (this.currentProjectService?.identifier) {
+      items.push({
+        href: this.pathHelper.projectPath(this.currentProjectService.identifier),
+        text: this.currentProjectService.name ?? '',
+      });
+    }
+    items.push({
+      href: this.pathHelper.workPackagesPath(this.currentProjectService.identifier),
+      text: this.I18n.t('js.label_work_package_plural'),
+    });
+    items.push(I18n.t('js.label_create_work_package'));
+
+    return items;
+  }
 }

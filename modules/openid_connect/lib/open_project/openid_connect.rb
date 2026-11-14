@@ -1,28 +1,80 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "omniauth/openid_connect"
+require "omniauth/openid_connect/providers"
+require "open_project/openid_connect/engine"
+
 module OpenProject
   module OpenIDConnect
-    require 'omniauth/openid_connect/providers'
-    require 'open_project/openid_connect/engine'
+    def self.configuration
+      providers = ::OpenIDConnect::Provider.where(available: true)
 
-    def providers
+      OpenProject::ConfidentialCache.fetch(providers.cache_key_with_version) do
+        providers.each_with_object({}) do |provider, hash|
+          hash[provider.slug.to_sym] = provider.to_h
+        end
+      end
+    end
+
+    def self.providers
       # update base redirect URI in case settings changed
       ::OmniAuth::OpenIDConnect::Providers.configure(
         base_redirect_uri: "#{Setting.protocol}://#{Setting.host_name}#{OpenProject::Configuration['rails_relative_url_root']}"
       )
-      ::OmniAuth::OpenIDConnect::Providers.load(configuration).map do |omniauth_provider|
-        ::OpenIDConnect::Provider.new(omniauth_provider)
+
+      configuration.map do |slug, configuration|
+        provider = configuration.delete(:oidc_provider)
+        clazz =
+          case provider
+          when "google"
+            ::OmniAuth::OpenIDConnect::Google
+          when "microsoft_entra"
+            ::OmniAuth::OpenIDConnect::Azure
+          else
+            ::OmniAuth::OpenIDConnect::Provider
+          end
+
+        clazz.new(slug, configuration)
       end
     end
-    module_function :providers
 
-    def configuration
-      from_settings = if Setting.plugin_openproject_openid_connect.is_a? Hash
-                        Hash(Setting.plugin_openproject_openid_connect["providers"])
-                      else
-                        {}
-                      end
-      # Settings override configuration.yml
-      Hash(OpenProject::Configuration["openid_connect"]).deep_merge(from_settings)
+    def self.authorization_url(client_options)
+      options = ::OmniAuth::Strategies::OpenIDConnect.default_options.client_options.merge(client_options)
+
+      uri = URI.parse(options[:authorization_endpoint])
+      uri.scheme ||= options[:scheme]
+      uri.host ||= options[:host]
+      uri.port ||= options[:port]
+      URI.parse(uri.to_s).to_s
+    rescue URI::Error
+      nil
     end
-    module_function :configuration
   end
 end

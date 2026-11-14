@@ -1,0 +1,306 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe Projects::SprintSettings do
+  let(:sprint_sharing) { "no_sharing" }
+  let(:active) { true }
+  let!(:project) { create(:project, sprint_sharing:, active:) }
+
+  describe "SPRINT_SHARING_MODES" do
+    it "defines all supported sprint sharing options" do
+      expect(described_class::SPRINT_SHARING_MODES).to match_array(
+        %w[share_all_projects share_subprojects no_sharing receive_shared]
+      )
+    end
+
+    it "is exposed on Project" do
+      expect(Project::SPRINT_SHARING_MODES).to eq(described_class::SPRINT_SHARING_MODES)
+    end
+  end
+
+  describe "#sprint_sharing" do
+    let(:sprint_sharing) { nil }
+
+    it "defaults to no_sharing" do
+      expect(project.sprint_sharing).to eq("no_sharing")
+    end
+
+    it "persists configured values" do
+      project.update!(sprint_sharing: "share_subprojects")
+
+      expect(project.reload.sprint_sharing).to eq("share_subprojects")
+    end
+  end
+
+  describe "predicate methods" do
+    it "#share_sprints_with_all_projects? returns true when sharing with all projects" do
+      project.sprint_sharing = "share_all_projects"
+      expect(project).to be_share_sprints_with_all_projects
+    end
+
+    it "#share_sprints_with_subprojects? returns true when sharing with subprojects" do
+      project.sprint_sharing = "share_subprojects"
+      expect(project).to be_share_sprints_with_subprojects
+    end
+
+    it "#receive_shared_sprints? returns true when receiving shared sprints" do
+      project.sprint_sharing = "receive_shared"
+      expect(project).to be_receive_shared_sprints
+    end
+
+    it "#not_sharing_sprints? returns true when not sharing (default)" do
+      expect(project).to be_not_sharing_sprints
+    end
+
+    it "predicates return false for non-matching values" do
+      project.sprint_sharing = "share_subprojects"
+
+      expect(project).not_to be_share_sprints_with_all_projects
+      expect(project).not_to be_receive_shared_sprints
+      expect(project).not_to be_not_sharing_sprints
+    end
+  end
+
+  describe "#not_sharing_sprints!" do
+    context "when the project is already set to no_sharing" do
+      let(:sprint_sharing) { "no_sharing" }
+
+      it "does not update the database" do
+        allow(project).to receive(:update_column)
+
+        subject
+
+        expect(project).not_to have_received(:update_column)
+      end
+    end
+
+    context "when the project has an active sharing mode" do
+      let(:sprint_sharing) { "share_all_projects" }
+
+      it "resets sprint_sharing to no_sharing" do
+        project.not_sharing_sprints!
+
+        expect(project.reload.sprint_sharing).to eq("no_sharing")
+      end
+    end
+  end
+
+  describe ".global_sprint_sharer" do
+    context "when no project shares with all projects" do
+      let(:sprint_sharing) { "no_sharing" }
+
+      it "returns nil" do
+        expect(Project.global_sprint_sharer).to be_nil
+      end
+    end
+
+    context "when a project shares with all projects" do
+      let(:sprint_sharing) { "share_all_projects" }
+
+      it "returns that project" do
+        expect(Project.global_sprint_sharer).to eq(project)
+      end
+    end
+
+    context "when the sharing project is archived" do
+      let(:sprint_sharing) { "share_all_projects" }
+      let(:active) { false }
+
+      it "returns nil" do
+        expect(Project.global_sprint_sharer).to be_nil
+      end
+    end
+  end
+
+  describe "#sprint_source" do
+    let(:global_sprint_sharing) { "share_all_projects" }
+    let(:root_sprint_sharing) { "share_subprojects" }
+    let(:parent_sprint_sharing) { "share_subprojects" }
+    let(:project_sprint_sharing) { "receive_shared" }
+
+    let!(:global_sharer) { create(:project, sprint_sharing: global_sprint_sharing) }
+    let!(:root_project) { create(:project, sprint_sharing: root_sprint_sharing) }
+    let!(:parent_project) { create(:project, parent: root_project, sprint_sharing: parent_sprint_sharing) }
+    let!(:project) { create(:project, parent: parent_project, sprint_sharing: project_sprint_sharing) }
+
+    # Projects that should not be returned
+    shared_let(:other_project) { create(:project, sprint_sharing: "share_subprojects") }
+    shared_let(:archived_global_sharer) { create(:project, :archived, sprint_sharing: "share_all_projects") }
+
+    shared_examples "returns the project itself" do
+      it "returns only itself" do
+        expect(project.sprint_source).to contain_exactly(project)
+      end
+    end
+
+    shared_examples "executes a single SQL query" do
+      it "resolves sprint_source in a single query" do
+        expect { project.sprint_source.load }.to have_a_query_limit(1)
+      end
+    end
+
+    context "when sprint_sharing is no_sharing (default)" do
+      let(:project_sprint_sharing) { "no_sharing" }
+
+      it_behaves_like "returns the project itself"
+      it_behaves_like "executes a single SQL query"
+    end
+
+    context "when sprint_sharing is share_subprojects" do
+      let(:project_sprint_sharing) { "share_subprojects" }
+
+      it_behaves_like "returns the project itself"
+      it_behaves_like "executes a single SQL query"
+    end
+
+    context "when sprint_sharing is share_all_projects" do
+      let(:global_sprint_sharing) { "no_sharing" }
+      let(:root_sprint_sharing) { "share_subprojects" }
+      let(:parent_sprint_sharing) { "share_subprojects" }
+      let(:project_sprint_sharing) { "share_all_projects" }
+
+      it_behaves_like "returns the project itself"
+      it_behaves_like "executes a single SQL query"
+    end
+
+    context "when sprint_sharing is receive_shared" do
+      let(:project_sprint_sharing) { "receive_shared" }
+
+      context "with only a global sharer" do
+        let(:global_sprint_sharing) { "share_all_projects" }
+        let(:root_sprint_sharing) { "no_sharing" }
+        let(:parent_sprint_sharing) { "no_sharing" }
+
+        it "returns only the global sharer" do
+          expect(project.sprint_source).to contain_exactly(global_sharer)
+        end
+
+        it_behaves_like "executes a single SQL query"
+      end
+
+      context "with a global sharer and both ancestors sharing subprojects" do
+        let(:global_sprint_sharing) { "share_all_projects" }
+        let(:root_sprint_sharing) { "share_subprojects" }
+        let(:parent_sprint_sharing) { "share_subprojects" }
+
+        it "returns only the closest sharing ancestor" do
+          expect(project.sprint_source).to contain_exactly(parent_project)
+        end
+
+        it_behaves_like "executes a single SQL query"
+      end
+
+      context "with no sharing sources" do
+        let(:global_sprint_sharing) { "no_sharing" }
+        let(:root_sprint_sharing) { "no_sharing" }
+        let(:parent_sprint_sharing) { "no_sharing" }
+
+        it "returns an empty scope" do
+          expect(project.sprint_source).to be_empty
+        end
+
+        it_behaves_like "executes a single SQL query"
+      end
+    end
+  end
+
+  describe "ESTIMATION_UNITS" do
+    it "defines all supported unit options" do
+      expect(described_class::ESTIMATION_UNITS).to match_array(%w[story_points time none])
+    end
+
+    it "is exposed on Project" do
+      expect(Project::ESTIMATION_UNITS).to eq(described_class::ESTIMATION_UNITS)
+    end
+  end
+
+  describe "#estimation_unit" do
+    let(:estimation_unit) { nil }
+
+    it "defaults to story_points" do
+      expect(project.estimation_unit).to eq("story_points")
+    end
+
+    context "with feature flag enabled", with_flag: :project_settings_estimation_unit do
+      it "persists configured values" do
+        project.update!(estimation_unit: "none")
+
+        expect(project.reload.estimation_unit).to eq("none")
+      end
+    end
+
+    context "without feature flag enabled" do
+      it "always returns story_points" do
+        project.update!(estimation_unit: "none")
+
+        expect(project.reload.estimation_unit).to eq("story_points")
+      end
+    end
+
+    describe "predicate methods" do
+      context "with feature flag enabled", with_flag: :project_settings_estimation_unit do
+        it "#estimation_unit_none? returns true if none is selected" do
+          project.estimation_unit = "none"
+          expect(project).to be_estimation_unit_none
+        end
+
+        it "#estimation_unit_time? returns true if time is selected" do
+          project.estimation_unit = "time"
+          expect(project).to be_estimation_unit_time
+        end
+
+        it "#estimation_unit_story_points? returns true if story_points is selected" do
+          project.estimation_unit = "story_points"
+          expect(project).to be_estimation_unit_story_points
+        end
+      end
+
+      context "without feature flag enabled" do
+        it "#estimation_unit_none? returns false if none is selected" do
+          project.estimation_unit = "none"
+          expect(project).not_to be_estimation_unit_none
+          expect(project).to be_estimation_unit_story_points
+        end
+
+        it "#estimation_unit_time? returns false if time is selected" do
+          project.estimation_unit = "time"
+          expect(project).not_to be_estimation_unit_time
+          expect(project).to be_estimation_unit_story_points
+        end
+
+        it "#estimation_unit_story_points? returns true if story_points is selected" do
+          project.estimation_unit = "story_points"
+          expect(project).to be_estimation_unit_story_points
+        end
+      end
+    end
+  end
+end

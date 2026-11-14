@@ -1,40 +1,49 @@
-#English strings go here
+---
 pl:
-  label_avatar: "Awatar"
-  label_avatar_plural: "Awatary"
-  label_current_avatar: "Bieżący awatar"
-  label_choose_avatar: "Wybierz awatar z pliku"
-  message_avatar_uploaded: "Awatar został zmieniony."
-  error_image_upload: "Błąd podczas zapisywania obrazu."
-  error_image_size: "Obraz jest za duży."
-  button_change_avatar: "Zmień awatar"
-  are_you_sure_delete_avatar: "Czy na pewno chcesz usunąć ten awatar?"
-  avatar_deleted: "Awatar został usunięty."
-  unable_to_delete_avatar: "Nie można usunąć awatara."
-  wrong_file_format: "Dozwolone są formaty jpg, png, gif"
-  empty_file_error: "Prześlij prawidłowy obraz (jpg, png, gif)"
+  are_you_sure_delete_avatar: Czy na pewno chcesz usunąć ten awatar?
+  avatar_deleted: Awatar został usunięty.
   avatars:
-    label_avatar: "Awatar"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Bieżący awatar'
-    label_local_avatar: 'Awatar niestandardowy'
-    text_current_avatar: |
-      Poniższy obraz przedstawia aktualny awatar.
-    text_upload_instructions: |
-      Prześlij swój własny awatar 128 na 128 pikseli. Rozmiar większych plików zostanie zmieniony i zostaną one odpowiednio przycięte.
-      Podgląd awatara zostanie wyświetlony przed przesłaniem, po wybraniu obrazu.
-    text_change_gravatar_html: 'Aby zmienić lub dodać Gravatar dla tego adresu e-mail, przejdź na stronę %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject umożliwia przesłanie własnego, niestandardowego awatara.
-    text_local_avatar_over_gravatar: |
-      Jeśli go ustawisz, ten niestandardowy awatar będzie używany w pierwszej kolejności przed powyższym Gravatarem.
-    text_your_current_gravatar: |
-      OpenProject używa Gravatara, jeśli użytkownik go zarejestrował albo domyślnego obrazu lub ikony, jeśli taka istnieje.
-      Bieżący Gravatar jest następujący:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Awatar niestandardowy
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Awatar został zmieniony.
+    preview: Podgląd
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Włącz Gravatary użytkownika'
-      gravatar_default: "Domyślny obraz Gravatar"
-      enable_local_avatars: 'Włącz niestandardowe awatary użytkownika'
-
-
-
+      enable_gravatars: Włącz Gravatary użytkownika
+      enable_local_avatars: Włącz niestandardowe awatary użytkownika
+      gravatar_default: Domyślny obraz Gravatar
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Obraz
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Prześlij prawidłowy obraz (jpg, png, gif)
+  error_image_size: Obraz jest za duży.
+  error_image_upload: Błąd podczas zapisywania obrazu.
+  label_avatar: Awatar
+  label_avatar_plural: Awatary
+  label_choose_avatar: Wybierz awatar z pliku
+  label_current_avatar: Bieżący awatar
+  message_avatar_uploaded: Awatar został zmieniony.
+  plugin_openproject_avatars:
+    description: Ta wtyczka pozwala użytkownikom OpenProject na przesyłanie obrazu jako awatar lub używanie zarejestrowanych obrazów z Gravatar.
+    name: Awatary
+  unable_to_delete_avatar: Nie można usunąć awatara.
+  wrong_file_format: Dozwolone są formaty jpg, png, gif

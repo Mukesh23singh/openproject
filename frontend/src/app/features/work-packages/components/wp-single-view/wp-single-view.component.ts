@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,47 +20,48 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  Injector,
-  Input,
-  OnInit,
-} from '@angular/core';
+import { isEqual } from 'lodash-es';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Injector, Input, OnInit, inject } from '@angular/core';
+import { BehaviorSubject, combineLatest } from 'rxjs';
+import { distinctUntilChanged, first, map } from 'rxjs/operators';
+
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { distinctUntilChanged, map } from 'rxjs/operators';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
+import {
+  HalResourceEditingService,
+} from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { DisplayFieldService } from 'core-app/shared/components/fields/display/display-field.service';
 import { DisplayField } from 'core-app/shared/components/fields/display/display-field.module';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { HookService } from 'core-app/features/plugins/hook-service';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
-import { Subject } from 'rxjs';
 import { randomString } from 'core-app/shared/helpers/random-string';
-import { BrowserDetector } from 'core-app/core/browser/browser-detector.service';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import idFromLink from 'core-app/features/hal/helpers/id-from-link';
-import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
 import { States } from 'core-app/core/states/states.service';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
+import { ProjectsResourceService } from 'core-app/core/state/projects/projects.service';
+import { CurrentUserService } from 'core-app/core/current-user/current-user.service';
+import { ProjectStoragesResourceService } from 'core-app/core/state/project-storages/project-storages.service';
+import { IProjectStorage } from 'core-app/core/state/project-storages/project-storage.model';
+import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { isSemanticWorkPackageId } from 'core-app/shared/helpers/work-package-id-pattern';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { HalSource } from 'core-app/features/hal/interfaces';
 
 export interface FieldDescriptor {
   name:string;
   label:string;
-  field?:DisplayField;
+  field:DisplayField;
   fields?:DisplayField[];
   spanAll:boolean;
   multiple:boolean;
@@ -76,6 +77,21 @@ export interface GroupDescriptor {
   type:string;
 }
 
+interface WorkPackageFormAttributeGroup {
+  _type:'WorkPackageFormAttributeGroup';
+  name:string;
+  attributes:string[];
+}
+
+interface WorkPackageFormQueryGroup {
+  _type:'WorkPackageFormChildrenQueryGroup'|'WorkPackageFormRelationQueryGroup';
+  name:string;
+  relationType?:string;
+  _embedded:{ query:HalSource };
+}
+
+type FormAttributeGroup = WorkPackageFormAttributeGroup|WorkPackageFormQueryGroup;
+
 export interface ResourceContextChange {
   isNew:boolean;
   schema:string|null;
@@ -85,11 +101,29 @@ export interface ResourceContextChange {
 export const overflowingContainerAttribute = 'overflowingIdentifier';
 
 @Component({
-  templateUrl: './wp-single-view.html',
+  templateUrl: './wp-single-view.component.html',
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-single-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implements OnInit {
+  protected readonly injector = inject(Injector);
+  private readonly states = inject(States);
+  private readonly I18n = inject(I18nService);
+  private readonly hook = inject(HookService);
+  private readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly cdRef = inject(ChangeDetectorRef);
+  private readonly PathHelper = inject(PathHelperService);
+  private readonly schemaCache = inject(SchemaCacheService);
+  private readonly currentProject = inject(CurrentProjectService);
+  private readonly halEditing = inject(HalResourceEditingService);
+  private readonly halResourceService = inject(HalResourceService);
+  private readonly currentUserService = inject(CurrentUserService);
+  private readonly displayFieldService = inject(DisplayFieldService);
+  private readonly projectsResourceService = inject(ProjectsResourceService);
+  private readonly projectStoragesService = inject(ProjectStoragesResourceService);
+
   @Input() public workPackage:WorkPackageResource;
 
   /** Should we show the project field */
@@ -98,26 +132,25 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
   // Grouped fields returned from API
   public groupedFields:GroupDescriptor[] = [];
 
-  // State updated when structural changes to the single view may occur.
-  // (e.g., when changing the type or project context).
-  public resourceContextChange = new Subject<ResourceContextChange>();
-
   // Project context as an indicator
   // when editing the work package in a different project
   public projectContext:{
     matches:boolean,
+    id:string|null,
     href:string|null,
     field?:FieldDescriptor[]
   };
 
   public text = {
+    linkProject: (name:string) => this.I18n.t('js.project.click_to_switch_to_project', { projectname: name }),
     attachments: {
       label: this.I18n.t('js.label_attachments'),
     },
+    files: {
+      label: this.I18n.t('js.work_packages.tabs.files'),
+    },
     project: {
       required: this.I18n.t('js.project.required_outside_context'),
-      context: this.I18n.t('js.project.context'),
-      switchTo: this.I18n.t('js.project.click_to_switch_context'),
     },
 
     fields: {
@@ -127,88 +160,111 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
       createdBy: this.I18n.t('js.label_created_by'),
       lastUpdatedOn: this.I18n.t('js.label_last_updated_on'),
     },
+    origin: {
+      label: this.I18n.t('js.label_origin'),
+      source: this.I18n.t('js.label_origin_source'),
+      id: this.I18n.t('js.label_origin_id'),
+      jiraDataCenter: this.I18n.t('js.label_origin_jira_data_center'),
+    },
   };
 
-  protected firstTimeFocused = false;
+  public isNewResource:boolean;
 
-  $element:JQuery;
+  element:HTMLElement;
 
-  isNewResource = isNewResource;
+  projectStorages = new BehaviorSubject<IProjectStorage[]>([]);
 
-  constructor(readonly I18n:I18nService,
-    protected currentProject:CurrentProjectService,
-    protected PathHelper:PathHelperService,
-    protected states:States,
-    protected halEditing:HalResourceEditingService,
-    protected halResourceService:HalResourceService,
-    protected displayFieldService:DisplayFieldService,
-    protected schemaCache:SchemaCacheService,
-    protected hook:HookService,
-    protected injector:Injector,
-    protected cdRef:ChangeDetectorRef,
-    readonly elementRef:ElementRef,
-    readonly browserDetector:BrowserDetector) {
-    super();
-  }
+  public ngOnInit():void {
+    this.element = this.elementRef.nativeElement;
 
-  public ngOnInit() {
-    this.$element = jQuery(this.elementRef.nativeElement);
+    this.isNewResource = isNewResource(this.workPackage);
 
     const change = this.halEditing.changeFor<WorkPackageResource, WorkPackageChangeset>(this.workPackage);
-    this.resourceContextChange.next(this.contextFrom(change.projectedResource));
     this.refresh(change);
 
-    // Whenever the resource context changes in any way,
+    // Whenever the temporary resource changes in any way,
     // update the visible fields.
-    this.resourceContextChange
-      .pipe(
-        this.untilDestroyed(),
-        distinctUntilChanged<ResourceContextChange>((a, b) => _.isEqual(a, b)),
-        map(() => this.halEditing.changeFor(this.workPackage)),
-      )
-      .subscribe((change:WorkPackageChangeset) => this.refresh(change));
-
-    // Update the resource context on every update to the temporary resource.
-    // This allows detecting a changed type value in a new work package.
     this.halEditing
       .temporaryEditResource(this.workPackage)
       .values$()
       .pipe(
         this.untilDestroyed(),
+        map((resource) => this.contextFrom(resource)),
+        distinctUntilChanged<ResourceContextChange>((a, b) => isEqual(a, b)),
+        map(() => this.halEditing.changeFor(this.workPackage)),
       )
-      .subscribe((resource) => {
-        this.resourceContextChange.next(this.contextFrom(resource));
-      });
+      .subscribe((changeset:WorkPackageChangeset) => this.refresh(changeset));
   }
 
   private refresh(change:WorkPackageChangeset) {
     // Prepare the fields that are required always
-    const isNew = isNewResource(this.workPackage);
     const resource = change.projectedResource;
 
     if (!resource.project) {
-      this.projectContext = { matches: false, href: null };
+      this.projectContext = { matches: false, href: null, id: null };
     } else {
+      const project = resource.project as { href:string, id:string };
+      const workPackageId = this.workPackage.id;
+      if (!workPackageId) {
+        throw new Error('work package id is invalid');
+      }
+
       this.projectContext = {
-        href: this.PathHelper.projectWorkPackagePath(idFromLink(resource.project.href), this.workPackage.id!),
-        matches: resource.project.href === this.currentProject.apiv3Path,
+        id: project.id,
+        href: this.PathHelper.projectWorkPackagePath(project.id, this.workPackage.displayId),
+        matches: project.href === this.currentProject.apiv3Path,
       };
     }
 
-    if (isNew && !this.currentProject.inProjectContext) {
-      this.projectContext.field = this.getFields(change, ['project']);
+    if (isNewResource(resource)) {
+      this.updateWorkPackageCreationState(change);
     }
 
-    const attributeGroups = this.schema(resource)._attributeGroups;
-    this.groupedFields = this.rebuildGroupedFields(change, attributeGroups);
+    this.groupedFields = this.rebuildGroupedFields(
+      change,
+      // eslint-disable-next-line no-underscore-dangle
+      this.schema(resource)._attributeGroups as FormAttributeGroup[]|undefined,
+    ) as GroupDescriptor[];
     this.cdRef.detectChanges();
+  }
+
+  private updateWorkPackageCreationState(change:WorkPackageChangeset) {
+    const resource = change.projectedResource;
+    if (!this.currentProject.inProjectContext) {
+      this.projectContext.field = this.getFields(change, ['project']);
+      this.workPackage.project = resource.project;
+    }
+
+    if (resource.project === null) {
+      this.projectStorages.next([]);
+    } else {
+      const project = resource.project as { href:string, id:string };
+      combineLatest([
+        this.projectsResourceService.requireEntity(project.href),
+        this.projectStoragesService.requireCollection({ filters: [['projectId', '=', [project.id]]] }),
+        this.currentUserService.hasCapabilities$('file_links/manage', project.id),
+      ])
+        .pipe(
+          map(([p, projectStorages, manageFileLinks]) => {
+            if (!p._links.storages || !manageFileLinks) {
+              return [];
+            }
+
+            return projectStorages;
+          }),
+          first(),
+        )
+        .subscribe((ps) => {
+          this.projectStorages.next(ps);
+        });
+    }
   }
 
   /**
    * Returns whether a group should be hidden due to being empty
    * (e.g., consists only of CFs and none of them are active in this project.
    */
-  public shouldHideGroup(group:GroupDescriptor) {
+  public shouldHideGroup(group:GroupDescriptor):boolean {
     // Hide if the group is empty
     const isEmpty = group.members.length === 0;
 
@@ -216,16 +272,6 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
     const queryInNew = isNewResource(this.workPackage) && !!group.query;
 
     return isEmpty || queryInNew;
-  }
-
-  /**
-   * angular 2 doesn't support track by property any more but requires a custom function
-   * https://github.com/angular/angular/issues/12969
-   * @param index
-   * @param elem
-   */
-  public trackByName(_index:number, elem:{ name:string }) {
-    return elem.name;
   }
 
   /**
@@ -256,27 +302,45 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
   /*
    * Returns the work package label
    */
-  public get idLabel() {
-    return `#${this.workPackage.id}`;
+  public get idLabel():string {
+    return this.workPackage.formattedId;
   }
 
-  public get projectContextText():string {
+  public get selectEntireId():boolean {
+    return isSemanticWorkPackageId(this.idLabel);
+  }
+
+  public showSwitchToProjectBanner():boolean {
+    return !this.isNewResource && this.projectContext && !this.projectContext.matches;
+  }
+
+  public hasOrigin():boolean {
+    return !this.isNewResource && !!this.workPackage.originSource;
+  }
+
+  public get originSourceLabel():string {
+    const source = this.workPackage.originSource as string | undefined;
+    if (source === 'jira_data_center') {
+      return this.text.origin.jiraDataCenter;
+    }
+    return source ?? '';
+  }
+
+  public get switchToProjectPath():string {
     const id = idFromLink(this.workPackage.project.href);
-    const projectPath = this.PathHelper.projectPath(id);
-    const project = `<a href="${projectPath}">${this.workPackage.project.name}<a>`;
-    return this.I18n.t('js.project.work_package_belongs_to', { projectname: project });
+    return this.PathHelper.projectPath(id);
   }
 
   showTwoColumnLayout():boolean {
-    return this.$element[0].getBoundingClientRect().width > 750;
+    return this.element.getBoundingClientRect().width > 750;
   }
 
-  private rebuildGroupedFields(change:WorkPackageChangeset, attributeGroups:any) {
+  private rebuildGroupedFields(change:WorkPackageChangeset, attributeGroups:FormAttributeGroup[]|undefined) {
     if (!attributeGroups) {
       return [];
     }
 
-    return attributeGroups.map((group:any) => {
+    return attributeGroups.map((group) => {
       const groupId = this.getAttributesGroupId(group);
 
       if (group._type === 'WorkPackageFormAttributeGroup') {
@@ -337,20 +401,13 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
    * combined 'start' and 'due' date field.
    */
   private getDateField(change:WorkPackageChangeset):FieldDescriptor {
-    const object:any = {
+    return {
+      name: 'date',
       label: this.I18n.t('js.work_packages.properties.date'),
+      spanAll: false,
       multiple: false,
+      field: this.displayField(change, change.schema.ofProperty('date') ? 'date' : 'combinedDate'),
     };
-
-    if (change.schema.ofProperty('date')) {
-      object.field = this.displayField(change, 'date');
-      object.name = 'date';
-    } else {
-      object.field = this.displayField(change, 'combinedDate');
-      object.name = 'combinedDate';
-    }
-
-    return object;
   }
 
   /**
@@ -359,22 +416,22 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
    * to the single view.
    *
    * @param {WorkPackage} workPackage
-   * @returns {SchemaContext}
+   * @returns {ResourceContextChange}
    */
   private contextFrom(workPackage:WorkPackageResource):ResourceContextChange {
     const schema = this.schema(workPackage);
 
-    let schemaHref:string|null = null;
-    const projectHref:string|null = workPackage.project && workPackage.project.href;
+    let schemaHref:string|null;
+    const projectHref:string|null = workPackage.project?.href;
 
     if (schema.baseSchema) {
-      schemaHref = schema.baseSchema.href;
+      schemaHref = (schema.baseSchema as HalResource).href;
     } else {
       schemaHref = schema.href;
     }
 
     return {
-      isNew: workPackage.isNew,
+      isNew: workPackage.isNew as boolean,
       schema: schemaHref,
       project: projectHref,
     };
@@ -389,10 +446,10 @@ export class WorkPackageSingleViewComponent extends UntilDestroyedMixin implemen
     );
   }
 
-  private getAttributesGroupId(group:any):string {
-    const overflowingIdentifier = this.$element
-      .find(`[data-group-name=\'${group.name}\']`)
-      .data(overflowingContainerAttribute);
+  private getAttributesGroupId(group:{ name:string }):string {
+    const overflowingIdentifier = this.element
+      .querySelector<HTMLElement>(`[data-group-name='${group.name}']`)
+      ?.dataset[overflowingContainerAttribute];
 
     if (overflowingIdentifier) {
       return overflowingIdentifier.replace('.__overflowing_', '');

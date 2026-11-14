@@ -1,20 +1,52 @@
-import { Injectable } from '@angular/core';
-import { IanBellStore } from './ian-bell.store';
-import { InAppNotificationsResourceService } from 'core-app/core/state/in-app-notifications/in-app-notifications.service';
-import { IAN_FACET_FILTERS } from 'core-app/features/in-app-notifications/center/state/ian-center.store';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, inject } from '@angular/core';
 import {
+  catchError,
   map,
-  tap,
   skip,
+  tap,
 } from 'rxjs/operators';
-import { Observable } from 'rxjs';
-import { IanBellQuery } from 'core-app/features/in-app-notifications/bell/state/ian-bell.query';
+import { EMPTY, Observable } from 'rxjs';
+
 import {
-  EffectCallback,
-  EffectHandler,
-} from 'core-app/core/state/effects/effect-handler.decorator';
-import { notificationsMarkedRead, notificationCountIncreased } from 'core-app/core/state/in-app-notifications/in-app-notifications.actions';
+  InAppNotificationsResourceService,
+} from 'core-app/core/state/in-app-notifications/in-app-notifications.service';
+import { IAN_FACET_FILTERS } from 'core-app/features/in-app-notifications/center/state/ian-center.store';
+import { IanBellQuery } from 'core-app/features/in-app-notifications/bell/state/ian-bell.query';
+import { EffectCallback, EffectHandler } from 'core-app/core/state/effects/effect-handler.decorator';
+import {
+  notificationCountIncreased,
+  notificationCountChanged,
+  notificationsMarkedRead,
+} from 'core-app/core/state/in-app-notifications/in-app-notifications.actions';
 import { ActionsService } from 'core-app/core/state/actions/actions.service';
+import { IanBellStore } from 'core-app/features/in-app-notifications/bell/state/ian-bell.store';
 
 /**
  * The BellService is injected into root here (and the store is thus made global),
@@ -24,6 +56,9 @@ import { ActionsService } from 'core-app/core/state/actions/actions.service';
 @Injectable({ providedIn: 'root' })
 @EffectHandler
 export class IanBellService {
+  readonly actions$ = inject(ActionsService);
+  readonly resourceService = inject(InAppNotificationsResourceService);
+
   readonly id = 'ian-bell';
 
   readonly store = new IanBellStore();
@@ -32,28 +67,47 @@ export class IanBellService {
 
   unread$ = this.query.unread$;
 
-  constructor(
-    readonly actions$:ActionsService,
-    readonly resourceService:InAppNotificationsResourceService,
-  ) {
+  loadedUnread$ = this.query.loadedUnread$;
+
+  constructor() {
+    this.query.unreadCountChanged$.subscribe((count) => {
+      this.actions$.dispatch(notificationCountChanged({ origin: this.id, count }));
+    });
     this.query.unreadCountIncreased$.pipe(skip(1)).subscribe((count) => {
       this.actions$.dispatch(notificationCountIncreased({ origin: this.id, count }));
     });
   }
 
   fetchUnread():Observable<number> {
-    return this.resourceService
-      .fetchNotifications({ filters: IAN_FACET_FILTERS.unread, pageSize: 0 })
+    return this
+      .resourceService
+      .fetchCollection(
+        { filters: IAN_FACET_FILTERS.unread, pageSize: 0 },
+        { handleErrors: false },
+      )
       .pipe(
         map((result) => result.total),
-        tap((count) => {
-          this.store.update({ totalUnread: count });
+        tap({
+          next: (count) => {
+            this.store.update({ totalUnread: count, loaded: true });
+          },
+          error: (error) => {
+            console.error('Failed to load notifications: %O', error);
+            this.store.update({ totalUnread: -1 });
+          },
         }),
+        catchError(() => EMPTY),
       );
   }
 
   @EffectCallback(notificationsMarkedRead)
   private reloadOnNotificationRead(action:ReturnType<typeof notificationsMarkedRead>) {
-    this.store.update(({ totalUnread }) => ({ totalUnread: totalUnread - action.notifications.length }));
+    if (action.all) {
+      this.fetchUnread().subscribe();
+    } else {
+      this.store.update(({ totalUnread }) => ({
+        totalUnread: totalUnread < 0 ? totalUnread : Math.max(0, totalUnread - action.notifications.length),
+      }));
+    }
   }
 }

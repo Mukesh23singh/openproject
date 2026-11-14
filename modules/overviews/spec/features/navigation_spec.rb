@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +20,136 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Navigate to overview', type: :feature, js: true do
-  let(:project) { FactoryBot.create(:project) }
+RSpec.describe "Navigate to overview", :js do
+  let(:project) { create(:project) }
   let(:permissions) { [] }
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: permissions)
+    create(:user,
+           member_with_permissions: { project => permissions })
   end
+
+  let(:query_menu) { Components::Submenu.new }
 
   before do
     login_as user
   end
 
-  it 'can visit the overview page' do
+  it "can visit the overview page" do
     visit project_path(project)
 
-    within '#menu-sidebar' do
-      click_link "Overview"
+    wait_for_turbo do
+      within "#menu-sidebar" do
+        click_link "Project home"
+      end
     end
 
-    within '#content' do
-      expect(page)
-        .to have_content('Overview')
+    within "#content" do
+      expect(page).to have_heading project.name
+    end
+  end
+
+  context "as user with permissions" do
+    let(:project) { create(:project, enabled_module_names: %i[work_package_tracking]) }
+    let(:user) { create(:admin) }
+    let(:query) do
+      create(:query_with_view_work_packages_table,
+             project:,
+             user:,
+             name: "My important Query")
+    end
+
+    before do
+      query
+      login_as user
+    end
+
+    it "can navigate to other modules (regression #55024)" do
+      visit project_overview_path(project.id)
+
+      # Expect page to be loaded
+      within "#content" do
+        expect(page).to have_heading project.name
+      end
+
+      # Navigate to the WP module
+      page.find_test_selector("main-menu-toggler--work_packages").click
+
+      # Click on a saved query
+      query_menu.click_item "My important Query"
+
+      loading_indicator_saveguard
+
+      within "#content" do
+        # Expect the query content to be shown
+        expect(page).to have_field("editable-toolbar-title", with: query.name)
+
+        # Expect no page header of the Overview to be shown any more
+        expect(page).to have_no_heading project.name
+      end
+
+      # Navigate back to the Overview page
+      page.execute_script("window.history.back()")
+
+      # Expect page to be loaded
+      within "#content" do
+        expect(page).to have_heading project.name
+      end
+    end
+
+    context "as user with permissions" do
+      let(:project) { create(:project, enabled_module_names: %i[work_package_tracking]) }
+      let(:user) { create(:admin) }
+      let(:query) do
+        create(:query_with_view_work_packages_table,
+               project:,
+               user:,
+               name: "My important Query")
+      end
+
+      before do
+        query
+        login_as user
+      end
+
+      it "can navigate to other modules (regression #55024)" do
+        visit project_overview_path(project.id)
+
+        # Expect page to be loaded
+        within "#content" do
+          expect(page).to have_heading project.name
+        end
+
+        # Navigate to the WP module
+        page.find_test_selector("main-menu-toggler--work_packages").click
+
+        # Click on a saved query
+        query_menu.click_item "My important Query"
+
+        loading_indicator_saveguard
+
+        within "#content" do
+          # Expect the query content to be shown
+          expect(page).to have_field("editable-toolbar-title", with: query.name)
+
+          # Expect no page header of the Overview to be shown any more
+          expect(page).to have_no_heading "Project home"
+        end
+
+        # Navigate back to the Overview page
+        page.execute_script("window.history.back()")
+
+        # Expect page to be loaded
+        within "#content" do
+          expect(page).to have_heading project.name
+        end
+      end
     end
   end
 end

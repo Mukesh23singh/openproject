@@ -1,32 +1,54 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
-import { StateService } from '@uirouter/core';
 import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
 import { States } from 'core-app/core/states/states.service';
 import { isClickedWithModifier } from 'core-app/shared/helpers/link-handling/link-handling';
-import { WorkPackageViewSelectionService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
-import { displayClassName } from 'core-app/shared/components/fields/display/display-field-renderer';
+import { displayClassName, editableClassName } from 'core-app/shared/components/fields/display/display-field-renderer';
 import { activeFieldClassName } from 'core-app/shared/components/fields/edit/edit-form/edit-form';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { TableEventComponent, TableEventHandler } from '../table-handler-registry';
 import { tableRowClassName } from '../../builders/rows/single-row-builder';
 import { tdClassName } from '../../builders/cell-builder';
+import { EventType } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/event-handler-registry';
 
 export class RowDoubleClickHandler implements TableEventHandler {
   // Injections
-  @InjectField() public $state:StateService;
+  @LazyInject() public states:States;
 
-  @InjectField() public states:States;
-
-  @InjectField() public wpTableSelection:WorkPackageViewSelectionService;
-
-  @InjectField() public wpTableFocus:WorkPackageViewFocusService;
+  @LazyInject() public wpTableFocus:WorkPackageViewFocusService;
 
   constructor(public readonly injector:Injector) {
   }
 
-  public get EVENT() {
-    return 'dblclick.table.row';
+  public get EVENT():EventType {
+    return 'dblclick';
   }
 
   public get SELECTOR() {
@@ -34,11 +56,15 @@ export class RowDoubleClickHandler implements TableEventHandler {
   }
 
   public eventScope(view:TableEventComponent) {
-    return jQuery(view.workPackageTable.tbody);
+    return view.workPackageTable.tbody;
   }
 
-  public handleEvent(view:TableEventComponent, evt:JQuery.TriggeredEvent) {
-    const target = jQuery(evt.target);
+  public handleEvent(view:TableEventComponent, evt:MouseEvent) {
+    const target = evt.target as HTMLElement;
+
+    if (!view.workPackageTable.configuration.selectionEnabled) {
+      return true;
+    }
 
     // Skip clicks with modifiers
     if (isClickedWithModifier(evt)) {
@@ -47,17 +73,17 @@ export class RowDoubleClickHandler implements TableEventHandler {
 
     // Shortcut to any clicks within a cell
     // We don't want to handle these.
-    if (target.hasClass(`${displayClassName}`) || target.hasClass(`${activeFieldClassName}`)) {
+    if (this.clickActivatesCell(view, target) || target.closest(`.${activeFieldClassName}`)) {
       debugLog('Skipping click on inner cell');
       return true;
     }
 
     // Locate the row from event
-    const element = target.closest(this.SELECTOR).closest(`.${tableRowClassName}`);
-    const wpId = element.data('workPackageId');
+    const element = target.closest<HTMLElement>(this.SELECTOR)!.closest<HTMLTableRowElement>(`.${tableRowClassName}`)!;
+    const wpId = element.dataset.workPackageId!;
 
     // Ignore links
-    if (target.is('a') || target.parent().is('a')) {
+    if (target instanceof HTMLAnchorElement || target.parentElement instanceof HTMLAnchorElement) {
       return true;
     }
 
@@ -67,5 +93,10 @@ export class RowDoubleClickHandler implements TableEventHandler {
     view.itemClicked.emit({ workPackageId: wpId, double: true });
 
     return false;
+  }
+
+  private clickActivatesCell(view:TableEventComponent, target:HTMLElement):boolean {
+    return view.workPackageTable.configuration.inlineEditEnabled
+      && (target.classList.contains(displayClassName) || !!target.closest(`.${displayClassName}.${editableClassName}`));
   }
 }

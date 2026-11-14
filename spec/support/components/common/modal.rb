@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +22,38 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
+require_relative "../../flash/expectations"
 
 module Components
   module Common
     class Modal
       include Capybara::DSL
+      include Capybara::RSpecMatchers
+      include Flash::Expectations
       include RSpec::Matchers
+      include WaitHelpers
 
-      def initialize; end
+      def expect_modal(title, wait: Capybara.default_max_wait_time)
+        expect_title(title, wait:)
+        modal = find(:modal, title, wait:)
+        wait_for_size_animation_completion(modal)
+      end
 
-      def expect_title(text)
-        within_modal do
-          expect(page).to have_selector('.op-modal--title' ,text: text)
-        end
+      def expect_title(text, wait: Capybara.default_max_wait_time)
+        expect(page).to have_modal(text, wait:)
       end
 
       def expect_open
-        expect(page).to have_selector(selector, wait: 40)
+        expect(page).to have_modal(wait: 40)
       end
 
       def expect_closed
-        expect(page).to have_no_selector(selector)
+        expect(page).not_to have_modal
       end
 
       def expect_text(text)
@@ -60,16 +68,12 @@ module Components
         end
       end
 
-      def within_modal(&block)
-        page.within(selector, &block)
+      def within_modal(name = nil, **, &)
+        super
       end
 
       def modal_element
-        page.find(selector)
-      end
-
-      def selector
-        '.op-modal'
+        find(:modal)
       end
     end
   end

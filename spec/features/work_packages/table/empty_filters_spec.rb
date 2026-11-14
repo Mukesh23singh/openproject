@@ -1,10 +1,41 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Empty query filters', js: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:work_package) { FactoryBot.create(:work_package) }
-  let(:wp_table) { ::Pages::WorkPackagesTable.new }
-  let(:filters) { ::Components::WorkPackages::Filters.new }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Empty query filters", :js do
+  include_context "with axe on Cuprite"
+
+  let(:user) { create(:admin) }
+  let(:work_package) { create(:work_package) }
+  let(:wp_table) { Pages::WorkPackagesTable.new }
+  let(:filters) { Components::WorkPackages::Filters.new }
 
   before do
     login_as(user)
@@ -14,10 +45,11 @@ describe 'Empty query filters', js: true do
   end
 
   # Tests for regression #23739
-  it 'allows to delete the last query filter' do
+  it "allows to delete the last query filter" do
     # Open filter menu
     filters.expect_filter_count(1)
     filters.open
+    expect(page).to be_axe_clean.within("#filter_status")
 
     # Remove only filter
     filters.remove_filter(:status)

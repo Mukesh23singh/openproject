@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -42,32 +41,22 @@ module API
         # which contains a reference to the columns array as columns[].
         # This will match the Rails +to_query+ output
         def to_json(*_args)
-          to_h(column_key: 'columns[]'.to_sym).to_json
+          to_h(column_key: :"columns[]", highlighted_attributes_key: :"highlightedAttributes[]").to_json
         end
 
-        ##
-        # Output as query params used for directly using in URL queries.
-        # Outputs columns[]=A,columns[]=B due to Rails query output.
-        def to_url_query(merge_params: {})
-          to_h
-            .merge(merge_params.symbolize_keys)
-            .to_query
-        end
-
-        def to_h(column_key: :columns)
-          p = super
-
-          p[:showHierarchies] = query.show_hierarchies
-          p[:showSums] = query.display_sums?
+        def to_h(column_key: :columns, highlighted_attributes_key: :highlightedAttributes)
+          p = super.merge(display_options)
           p[:groupBy] = query.group_by if query.group_by?
           p[column_key] = columns_to_v3 unless query.has_default_columns?
+          highlighted_attributes = highlighted_attributes_to_v3
+          p[highlighted_attributes_key] = highlighted_attributes if highlighted_attributes
 
           p
         end
 
         def self_link
           if query.project
-            api_v3_paths.work_packages_by_project(query.project.id)
+            api_v3_paths.work_packages_by_workspace(query.project.id)
           else
             api_v3_paths.work_packages
           end
@@ -75,10 +64,30 @@ module API
 
         private
 
+        def display_options
+          options = {
+            includeSubprojects: query.include_subprojects,
+            showHierarchies: query.show_hierarchies,
+            showSums: query.display_sums?
+          }
+          stored_highlighting_mode = query.read_attribute(:highlighting_mode).presence
+          options[:highlightingMode] = stored_highlighting_mode if stored_highlighting_mode
+          options[:timestamps] = query.timestamps.join(",") if query.historic?
+          options
+        end
+
         def orders_to_v3
           converted = query.sort_criteria.map { |first, last| [convert_to_v3(first), last] }
 
           JSON::dump(converted)
+        end
+
+        def highlighted_attributes_to_v3
+          return unless query.highlighting_mode == :inline
+
+          query.read_attribute(:highlighted_attributes).presence&.map do |name|
+            API::V3::Utilities::PathHelper::ApiV3Path.query_column(convert_to_v3(name))
+          end
         end
 
         def columns_to_v3

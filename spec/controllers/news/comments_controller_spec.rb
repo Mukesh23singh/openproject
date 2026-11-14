@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,53 +22,54 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe News::CommentsController, type: :controller do
+RSpec.describe News::CommentsController do
   render_views
 
-  let(:user) { FactoryBot.create(:admin)   }
-  let(:news) { FactoryBot.create(:news)    }
+  let(:user) { create(:admin) }
+
+  let(:project) { create(:project) }
+  let(:news) { create(:news, project: project) }
 
   before do
-    allow(User).to receive(:current).and_return user
+    login_as(user)
   end
 
-  describe '#create' do
-    it 'assigns a comment to the news item and redirects to the news page' do
-      post :create, params: { news_id: news.id, comment: { comments: 'This is a test comment' } }
+  describe "#create" do
+    it "assigns a comment to the news item and redirects to the news page" do
+      post :create, params: { project_id: project.id, news_id: news.id, comment: { comments: "This is a test comment" } }
 
-      expect(response).to redirect_to news_path(news)
+      expect(response).to redirect_to project_news_path(news.project, news)
 
       latest_comment = news.comments.reorder(created_at: :desc).first
       expect(latest_comment).not_to be_nil
-      expect(latest_comment.comments).to eq 'This is a test comment'
+      expect(latest_comment.comments).to eq "This is a test comment"
       expect(latest_comment.author).to eq user
     end
 
     it "doesn't create a comment when it is invalid" do
       expect do
-        post :create, params: { news_id: news.id, comment: { comments: '' } }
-        expect(response).to redirect_to news_path(news)
-      end.not_to change { Comment.count }
+        post :create, params: { project_id: project.id, news_id: news.id, comment: { comments: "" } }
+        expect(response).to redirect_to project_news_path(news.project, news)
+      end.not_to change(Comment, :count)
     end
   end
 
-  describe '#destroy' do
-    it 'deletes the comment and redirects to the news page' do
-      comment = FactoryBot.create :comment, commented: news
+  describe "#destroy" do
+    it "deletes the comment and redirects to the news page" do
+      comment = create(:comment, commented: news)
 
       expect do
-        delete :destroy, params: { id: comment.id }
-      end.to change { Comment.count }.by -1
+        delete :destroy, params: { project_id: project.id, news_id: news.id, id: comment.id }
+      end.to change(Comment, :count).by(-1)
 
-      expect(response).to redirect_to news_path(news)
+      expect(response).to redirect_to project_news_path(project, news)
       expect { comment.reload }.to raise_error ActiveRecord::RecordNotFound
     end
   end

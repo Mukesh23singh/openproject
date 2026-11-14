@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,25 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackage, type: :model do
-  let(:type) { FactoryBot.create :type }
-  let(:project) { FactoryBot.create :project, types: [type] }
+RSpec.describe WorkPackage do
+  let(:type) { create(:type) }
+  let(:project) { create(:project, types: [type]) }
 
   let(:custom_field) do
-    FactoryBot.create(
+    create(
       :list_wp_custom_field,
       name: "Ingredients",
       multi_value: true,
       types: [type],
-      projects: [project],
       possible_values: ["ham", "onions", "pineapple", "mushrooms"]
     )
   end
@@ -52,7 +52,7 @@ describe WorkPackage, type: :model do
   end
 
   let(:work_package) do
-    wp = FactoryBot.create :work_package, project: project, type: type
+    wp = create(:work_package, project:, type:)
     wp.reload
     wp.custom_field_values = {
       custom_field.id => custom_values
@@ -62,62 +62,62 @@ describe WorkPackage, type: :model do
   end
 
   let(:values) { work_package.custom_value_for(custom_field) }
-  let(:typed_values) { work_package.typed_custom_value_for(custom_field.id) }
+  let(:typed_values) { work_package.typed_custom_value_for(custom_field) }
 
-  it 'returns the properly typed values' do
-    expect(values.map { |cv| cv.value }).to eq(custom_values)
+  it "returns the properly typed values" do
+    expect(values.map(&:value)).to eq(custom_values)
     expect(typed_values).to eq(%w(ham onions pineapple))
   end
 
-  context 'when value not present' do
-    let(:work_package) { FactoryBot.create :work_package, project: project, type: type }
+  context "when value not present" do
+    let(:work_package) { create(:work_package, project:, type:) }
 
-    it 'returns nil properly' do
-      expect(values).to eq(nil)
-      expect(typed_values).to eq(nil)
+    it "returns nil properly" do
+      expect(values.map(&:value)).to eq([nil])
+      expect(typed_values).to eq([nil])
     end
   end
 
-  describe 'setting and reading values' do
-    shared_examples_for 'custom field values updates' do
+  describe "setting and reading values" do
+    shared_examples_for "custom field values updates" do
       before do
         # Reload to reset i.e. the saved_changes filter on custom_values
         work_package.reload
       end
 
-      it 'touches the work_package' do
+      it "touches the work_package" do
         expect do
           work_package.custom_field_values = { custom_field.id => ids }
           work_package.save
         end
-          .to(change { work_package.lock_version })
+          .to(change(work_package, :lock_version))
       end
 
-      it 'sets the values' do
+      it "sets the values" do
         work_package.custom_field_values = { custom_field.id => ids }
         work_package.save
 
-        expect(work_package.send("custom_field_#{custom_field.id}"))
+        expect(work_package.send(custom_field.attribute_getter))
           .to eql values
       end
     end
 
-    context 'when removing some custom values' do
-      it_behaves_like 'custom field values updates' do
+    context "when removing some custom values" do
+      it_behaves_like "custom field values updates" do
         let(:ids) { [custom_values.first.to_s] }
-        let(:values) { ['ham'] }
+        let(:values) { ["ham"] }
       end
     end
 
-    context 'when removing all custom values' do
-      it_behaves_like 'custom field values updates' do
+    context "when removing all custom values" do
+      it_behaves_like "custom field values updates" do
         let(:ids) { [] }
         let(:values) { [nil] }
       end
     end
 
-    context 'when adding values' do
-      it_behaves_like 'custom field values updates' do
+    context "when adding values" do
+      it_behaves_like "custom field values updates" do
         let(:ids) do
           CustomOption.where(value: ["ham", "onions", "pineapple", "mushrooms"]).pluck(:id).map(&:to_s)
         end
@@ -125,10 +125,10 @@ describe WorkPackage, type: :model do
       end
     end
 
-    context 'when first having no values and then adding some' do
+    context "when first having no values and then adding some" do
       let(:custom_values) { [] }
 
-      it_behaves_like 'custom field values updates' do
+      it_behaves_like "custom field values updates" do
         let(:ids) do
           CustomOption.where(value: ["ham", "mushrooms"]).pluck(:id).map(&:to_s)
         end

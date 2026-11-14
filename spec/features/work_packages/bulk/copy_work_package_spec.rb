@@ -1,98 +1,124 @@
-require 'spec_helper'
-require 'features/page_objects/notification'
+# frozen_string_literal: true
 
-describe 'Copy work packages through Rails view', js: true do
-  let(:dev_role) do
-    FactoryBot.create :role,
-                      permissions: %i[view_work_packages]
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+require "features/page_objects/notification"
+require "support/components/autocompleter/ng_select_autocomplete_helpers"
+
+RSpec.describe "Duplicate work packages through Rails view", :js do
+  include Components::Autocompleter::NgSelectAutocompleteHelpers
+
+  shared_let(:type) { create(:type, name: "Bug") }
+  shared_let(:type2) { create(:type, name: "Risk") }
+
+  shared_let(:project) { create(:project, name: "Source", types: [type, type2]) }
+  shared_let(:project2) { create(:project, name: "Target", types: [type, type2]) }
+
+  shared_let(:dev) do
+    create(:user,
+           firstname: "Dev",
+           lastname: "Guy",
+           member_with_permissions: { project => %i[view_work_packages work_package_assigned] })
   end
-  let(:mover_role) do
-    FactoryBot.create :role,
-                      permissions: %i[view_work_packages copy_work_packages move_work_packages manage_subtasks assign_versions
-                                      add_work_packages]
-  end
-  let(:dev) do
-    FactoryBot.create :user,
-                      firstname: 'Dev',
-                      lastname: 'Guy',
-                      member_in_project: project,
-                      member_through_role: dev_role
-  end
-  let(:mover) do
-    FactoryBot.create :admin,
-                      firstname: 'Manager',
-                      lastname: 'Guy',
-                      member_in_project: project,
-                      member_through_role: mover_role
+  shared_let(:mover) do
+    create(:user,
+           firstname: "Manager",
+           lastname: "Guy",
+           member_with_permissions: {
+             project => %i[view_work_packages copy_work_packages move_work_packages manage_subtasks assign_versions
+                           add_work_packages],
+             project2 => %i[view_work_packages copy_work_packages move_work_packages manage_subtasks assign_versions
+                            add_work_packages]
+           })
   end
 
-  let(:type) { FactoryBot.create :type, name: 'Bug' }
-  let(:type2) { FactoryBot.create :type, name: 'Risk' }
-
-  let!(:project) { FactoryBot.create(:project, name: 'Source', types: [type, type2]) }
-  let!(:project2) { FactoryBot.create(:project, name: 'Target', types: [type, type2]) }
-
-  let!(:work_package) do
-    FactoryBot.create(:work_package,
-                      author: dev,
-                      project: project,
-                      type: type)
+  shared_let(:work_package) do
+    create(:work_package,
+           subject: "work_package",
+           author: dev,
+           project:,
+           type:)
   end
-  let!(:work_package2) do
-    FactoryBot.create(:work_package,
-                      author: dev,
-                      project: project,
-                      type: type)
+  shared_let(:work_package2) do
+    create(:work_package,
+           subject: "work_package2",
+           author: dev,
+           project:,
+           type:)
   end
+  shared_let(:version) { create(:version, project: project2) }
 
-  let(:status) { work_package.status }
-  let!(:version) { FactoryBot.create :version, project: project2 }
-  let!(:status2) { FactoryBot.create :default_status }
-  let!(:workflow) do
-    FactoryBot.create :workflow,
-                      type_id: type2.id,
-                      old_status: work_package.status,
-                      new_status: status2,
-                      role: mover_role
-  end
-
-  let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
+  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
   let(:context_menu) { Components::WorkPackages::ContextMenu.new }
-  let(:display_representation) { ::Components::WorkPackages::DisplayRepresentation.new }
+  let(:notes) { Components::WysiwygEditor.new }
 
   before do
     login_as current_user
     wp_table.visit!
     expect_angular_frontend_initialized
     wp_table.expect_work_package_listed work_package, work_package2
-
-    # Select all work packages
-    find('body').send_keys [:control, 'a']
   end
 
-  describe 'copying work packages' do
-    context 'with permission' do
+  describe "copying work packages" do
+    before do
+      # Select all work packages
+      wp_table.select_all_work_packages
+    end
+
+    context "with permission" do
       let(:current_user) { mover }
+      let(:wp_table_target) { Pages::WorkPackagesTable.new(project2) }
 
       before do
-        wp_table.expect_work_package_count 2
         context_menu.open_for work_package
-        context_menu.choose 'Bulk copy'
+        context_menu.choose "Bulk duplicate"
 
-        expect(page).to have_selector('#new_project_id')
-        select 'Target', from: 'new_project_id'
+        expect(page).to have_css("#new_project_id") # rubocop:disable RSpec/ExpectInHook
 
-        sleep 1
+        wait_for_network_idle
 
-        expect(page).to have_select('Project', selected: 'Target')
+        wait_for_turbo_stream do
+          select_autocomplete page.find_test_selector("new_project_id"),
+                              query: project2.name,
+                              select_text: project2.name,
+                              results_selector: "body"
+        end
       end
 
-      it 'sets the version on copy' do
-        select version.name, from: 'version_id'
-        click_on 'Copy and follow'
+      it "sets the version on duplicate and leaves a note" do
+        select version.name, from: "target_version_ids"
+        notes.set_markdown "A note on duplicate"
+        click_on "Duplicate and follow"
 
-        wp_table.expect_work_package_count 2
-        expect(page).to have_selector('#projects-menu', text: 'Target')
+        wp_table_target.expect_current_path
+        wp_table_target.expect_work_package_count 2
+        expect(page).to have_css("#projects-menu", text: "Target")
 
         # Should not move the sources
         work_package2.reload
@@ -101,72 +127,279 @@ describe 'Copy work packages through Rails view', js: true do
         # Check project of last two created wps
         copied_wps = WorkPackage.last(2)
         expect(copied_wps.map(&:project_id).uniq).to eq([project2.id])
-        expect(copied_wps.map(&:version_id).uniq).to eq([version.id])
+        expect(copied_wps.map { |wp| wp.target_versions.pluck(:id) }.uniq).to eq([[version.id]])
+        expect(copied_wps.map { |wp| wp.journals.last.notes }.uniq).to eq(["A note on duplicate"])
       end
 
-      describe 'copy and follow' do
-        before do
-          click_on 'Copy and follow'
+      it "sets the observed-in version on duplicate" do
+        select version.name, from: "observed_in_version_ids"
+        click_on "Duplicate and follow"
+
+        wp_table_target.expect_current_path
+        wp_table_target.expect_work_package_count 2
+
+        copied_wps = WorkPackage.last(2)
+        expect(copied_wps.map { |wp| wp.observed_in_versions.pluck(:id) }.uniq).to eq([[version.id]])
+      end
+
+      context "when the limit to move in the frontend is reached",
+              with_settings: { work_packages_bulk_request_limit: 1 } do
+        it "copies them in the background and shows a status page" do
+          select version.name, from: "target_version_ids"
+          notes.set_markdown "A note on duplicate"
+          click_on "Duplicate and follow"
+
+          expect(page).to have_text("The job has been queued and will be processed shortly.", wait: 10)
+
+          perform_enqueued_jobs
+
+          wp_table_target.expect_current_path
+          wp_table_target.expect_work_package_count 2
+        end
+      end
+
+      context "with hierarchies and relations" do
+        shared_let(:child) do
+          create(:work_package,
+                 subject: "child",
+                 author: dev,
+                 project:,
+                 type:,
+                 parent: work_package)
+        end
+        shared_let(:child2) do
+          create(:work_package,
+                 subject: "child2",
+                 author: dev,
+                 project:,
+                 type:,
+                 parent: work_package2)
+        end
+        let!(:relation) do
+          create(:relation,
+                 from: child,
+                 to: child2,
+                 relation_type: Relation::TYPE_RELATES)
         end
 
-        it 'moves parent and child wp to a new project' do
-          expect_angular_frontend_initialized
-          wp_table.expect_work_package_count 2
-          expect(page).to have_selector('#projects-menu', text: 'Target')
+        before do
+          # make work_package and child be parent/child with automatically scheduled parent
+          work_package.update(
+            subject: "work_package parent",
+            start_date: "2025-05-22", due_date: "2025-05-23", duration: 2,
+            schedule_manually: false
+          )
+          child.update(
+            start_date: "2025-05-22", due_date: "2025-05-23", duration: 2,
+            schedule_manually: true
+          )
+
+          # make work_package2 and child2 be parent/child with manually scheduled parent
+          work_package2.update(
+            subject: "work_package2 parent",
+            start_date: "2025-05-21", due_date: "2025-05-26", duration: 6,
+            schedule_manually: true
+          )
+          child2.update(
+            start_date: "2025-05-23", due_date: "2025-05-23", duration: 1,
+            schedule_manually: true
+          )
+        end
+
+        it "copies WPs with parent/child hierarchy and relations maintained, " \
+           "as well as dates and scheduling modes" do
+          click_on "Duplicate and follow"
+
+          wp_table_target.expect_current_path
+          expect(page).to have_css("#projects-menu", text: "Target")
 
           # Should not move the sources
-          work_package2.reload
-          work_package.reload
-          expect(work_package.project_id).to eq(project.id)
-          expect(work_package2.project_id).to eq(project.id)
+          expect(work_package.reload.project_id).to eq(project.id)
+          expect(work_package2.reload.project_id).to eq(project.id)
+          expect(child.reload.project_id).to eq(project.id)
+          expect(child2.reload.project_id).to eq(project.id)
 
-          # Check project of last two created wps
-          copied_wps = WorkPackage.last(2)
-          expect(copied_wps.map(&:project_id)).to eq([project2.id, project2.id])
+          # Check target project contains the copied work packages
+          expect_work_packages(project2.reload.work_packages, <<~TABLE)
+            | hierarchy            | start date | due date   | duration | scheduling mode |
+            | work_package parent  | 2025-05-22 | 2025-05-23 |        2 | automatic       |
+            |   child              | 2025-05-22 | 2025-05-23 |        2 | manual          |
+            | work_package2 parent | 2025-05-21 | 2025-05-26 |        6 | manual          |
+            |   child2             | 2025-05-23 | 2025-05-23 |        1 | manual          |
+          TABLE
+
+          new_child = project2.work_packages.find_by(subject: child.subject)
+          new_child2 = project2.work_packages.find_by(subject: child2.subject)
+
+          expect(new_child.relations.count).to eq 1
+          expect(new_child.relations.first).to have_attributes(
+            relation_type: relation.relation_type,
+            to_id: new_child2.id
+          )
+        end
+      end
+
+      context "with predecessor-successor relations" do
+        shared_let(:work_package3) do
+          create(:work_package,
+                 author: dev,
+                 project:,
+                 type:)
+        end
+        let!(:relation_to_successor_automatic) do
+          create(:follows_relation,
+                 predecessor: work_package,
+                 successor: work_package2)
+        end
+        let!(:relation_to_successor_manual) do
+          create(:follows_relation,
+                 predecessor: work_package,
+                 successor: work_package3)
         end
 
-        context 'when the target project does not have the type' do
-          let!(:project2) { FactoryBot.create(:project, name: 'Target', types: [type2]) }
+        before do
+          work_package.update(
+            subject: "predecessor",
+            start_date: "2025-05-20", due_date: "2025-05-21", duration: 2,
+            schedule_manually: true
+          )
+          work_package2.update(
+            subject: "successor automatic",
+            start_date: "2025-05-22", due_date: "2025-05-23", duration: 2,
+            schedule_manually: false
+          )
+          work_package3.update(
+            subject: "successor manual",
+            start_date: "2025-05-28", due_date: "2025-05-28", duration: 1,
+            schedule_manually: true
+          )
+        end
 
-          it 'does moves the work package and changes the type' do
-            expect(page).to have_selector('.flash.error', text: "Failed to save 2 work package(s) on 2 selected:")
+        it "copies WPs with relations maintained, " \
+           "as well as dates and scheduling modes" do
+          click_on "Duplicate and follow"
+
+          wp_table_target.expect_current_path
+          expect(page).to have_css("#projects-menu", text: "Target")
+
+          # Check target project contains the copied work packages
+          expect_work_packages(project2.reload.work_packages, <<~TABLE)
+            | subject             | start date | due date   | duration | scheduling mode |
+            | predecessor         | 2025-05-20 | 2025-05-21 |        2 | manual          |
+            | successor automatic | 2025-05-22 | 2025-05-23 |        2 | automatic       |
+            | successor manual    | 2025-05-28 | 2025-05-28 |        1 | manual          |
+          TABLE
+
+          new_predecessor = project2.work_packages.find_by(subject: work_package.subject)
+
+          expect(new_predecessor.relations.count).to eq 2
+          expect(new_predecessor.relations)
+            .to all(have_attributes(
+                      relation_type: Relation::TYPE_FOLLOWS,
+                      to_id: new_predecessor.id
+                    ))
+        end
+      end
+
+      context "when the target project does not have the type" do
+        let!(:child) do
+          create(:work_package,
+                 author: dev,
+                 project:,
+                 type:,
+                 parent: work_package)
+        end
+
+        before do
+          project2.project_types = [ProjectType.new(type: type2)]
+        end
+
+        it "fails, informing of the reasons" do
+          click_on "Duplicate and follow"
+
+          expect_flash(type: :error, message: I18n.t("work_packages.bulk.none_could_be_saved", total: 3))
+          expect_flash(type: :error,
+                       message: I18n.t(
+                         "work_packages.bulk.selected_because_descendants", total: 3, selected: 2
+                       ))
+          expect_flash(type: :error,
+                       message: "#{work_package.id}: Type #{I18n.t('activerecord.errors.messages.inclusion')}")
+          expect_flash(type: :error,
+                       message: "#{work_package2.id}: Type #{I18n.t('activerecord.errors.messages.inclusion')}")
+          expect_flash(type: :error, message:
+            "#{child.id} (descendant of selected): Type #{I18n.t('activerecord.errors.messages.inclusion')}")
+        end
+
+        context "when the limit to move in the frontend is 0",
+                with_settings: { work_packages_bulk_request_limit: 0 } do
+          it "shows the errors properly in the frontend" do
+            click_on "Duplicate and follow"
+
+            expect(page).to have_text "The job has been queued and will be processed shortly."
+
+            perform_enqueued_jobs
+
+            expect(page).to have_text "The work packages could not be copied.", wait: 10
+
+            expect(page).to have_text I18n.t("work_packages.bulk.none_could_be_saved", total: 3)
+
+            expect(page)
+              .to have_text I18n.t("work_packages.bulk.selected_because_descendants", total: 3, selected: 2)
+
+            expect(page)
+              .to have_text "#{work_package.id}: Type #{I18n.t('activerecord.errors.messages.inclusion')}"
+
+            expect(page)
+              .to have_text "#{work_package2.id}: Type #{I18n.t('activerecord.errors.messages.inclusion')}"
+
+            expect(page)
+              .to have_text "#{child.id} (descendant of selected): Type #{I18n.t('activerecord.errors.messages.inclusion')}"
           end
         end
       end
     end
 
-    context 'without permission' do
+    context "without permission" do
       let(:current_user) { dev }
 
-      it 'does not allow to copy' do
-        context_menu.open_for work_package
-        context_menu.expect_no_options 'Bulk copy'
+      it "does not allow to duplicate work packages" do
+        context_menu.open_for work_package, check_if_open: false
+        context_menu.expect_closed
       end
     end
   end
 
-  describe 'accessing the bulk copy from the card view' do
+  describe "unsetting the assignee as the current assignee is not a member in the project" do
+    let(:work_packages) { [work_package] }
+    let(:current_user) { mover }
+    let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+
     before do
-      display_representation.switch_to_card_layout
-      loading_indicator_saveguard
+      work_package.assigned_to = dev
+      work_package.save
     end
 
-    context 'with permissions' do
-      let(:current_user) { mover }
+    it "duplicates the work package" do
+      context_menu.open_for work_package
+      context_menu.choose "Duplicate in another project"
 
-      it 'does allow to copy' do
-        context_menu.open_for work_package
-        context_menu.expect_options ['Bulk copy']
+      # On work packages move page
+      wait_for_turbo_stream do
+        select_autocomplete page.find_test_selector("new_project_id"),
+                            query: project2.name,
+                            select_text: project2.name,
+                            results_selector: "body"
       end
-    end
 
-    context 'without permission' do
-      let(:current_user) { dev }
+      select "nobody", from: "Assignee"
 
-      it 'does not allow to copy' do
-        context_menu.open_for work_package
-        context_menu.expect_no_options ['Bulk copy']
-      end
+      click_on "Duplicate and follow"
+
+      expect_flash(message: I18n.t(:notice_successful_create))
+
+      wp_page = Pages::FullWorkPackage.new(WorkPackage.last)
+
+      wp_page.expect_attributes assignee: "-"
     end
   end
 end

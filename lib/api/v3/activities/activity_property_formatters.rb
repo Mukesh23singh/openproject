@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,22 +36,26 @@ module API
         end
 
         def formatted_details(journal)
-          details = render_details(journal, no_html: true)
-          html_details = render_details(journal)
-          formattables = details.zip(html_details)
+          activity_page = "work_packages/#{journal.journable.id}"
+          details = render_details(journal, html: false)
+          html_details = render_details(journal, activity_page:)
 
-          formattables.map { |d| { format: 'custom', raw: d[0], html: d[1] } }
+          details
+            .zip(html_details)
+            .map { |d| { format: "custom", raw: d[0], html: d[1] } }
         end
 
         private
 
-        def render_details(journal, no_html: false)
-          journal.details.map { |d| journal.render_detail(d, no_html: no_html) }
+        def render_details(journal, html: true, activity_page: nil)
+          journal
+            .details
+            .filter_map { |d| journal.render_detail(d, html:, activity_page:) }
         end
 
         def journal_note(journal)
           if journal.noop?
-            "_#{I18n.t(:'journals.changes_retracted')}_"
+            "_#{I18n.t(:"journals.changes_retracted")}_"
           else
             journal.notes
           end

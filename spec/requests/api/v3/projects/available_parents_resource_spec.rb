@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,52 +22,51 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Project available parents resource', type: :request, content_type: :json do
+RSpec.describe "API v3 Project available parents resource", content_type: :json do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
   current_user do
-    FactoryBot.create(:user, member_in_project: project, member_with_permissions: permissions).tap do |u|
-      FactoryBot.create(:global_member,
-                        principal: u,
-                        roles: [FactoryBot.create(:global_role, permissions: global_permissions)])
+    create(:user, member_with_permissions: { project => permissions }).tap do |u|
+      create(:global_member,
+             principal: u,
+             roles: [create(:global_role, permissions: global_permissions)])
     end
   end
   let(:project_with_add_subproject_permission) do
-    FactoryBot.create(:project).tap do |p|
-      FactoryBot.create(:member,
-                        user: current_user,
-                        project: p,
-                        roles: [FactoryBot.create(:role, permissions: [:add_subprojects])])
+    create(:project).tap do |p|
+      create(:member,
+             user: current_user,
+             project: p,
+             roles: [create(:project_role, permissions: [:add_subprojects])])
     end
   end
   let(:child_project_with_add_subproject_permission) do
-    FactoryBot.create(:project, parent: project).tap do |p|
-      FactoryBot.create(:member,
-                        user: current_user,
-                        project: p,
-                        roles: [FactoryBot.create(:role, permissions: [:add_subprojects])])
+    create(:project, parent: project).tap do |p|
+      create(:member,
+             user: current_user,
+             project: p,
+             roles: [create(:project_role, permissions: [:add_subprojects])])
     end
   end
   let(:project_without_add_subproject_permission) do
-    FactoryBot.create(:project).tap do |p|
-      FactoryBot.create(:member,
-                        user: current_user,
-                        project: p,
-                        roles: [FactoryBot.create(:role, permissions: [])])
+    create(:project).tap do |p|
+      create(:member,
+             user: current_user,
+             project: p,
+             roles: [create(:project_role, permissions: [])])
     end
   end
   let!(:project) do
-    FactoryBot.create(:project, public: false)
+    create(:project, public: false)
   end
   let(:permissions) { %i[edit_project add_subprojects] }
   let(:global_permissions) { %i[add_project] }
@@ -76,7 +77,7 @@ describe 'API v3 Project available parents resource', type: :request, content_ty
      project_without_add_subproject_permission]
   end
 
-  describe 'GET /api/v3/projects/available_parent_projects' do
+  describe "GET /api/v3/projects/available_parent_projects" do
     subject(:response) do
       other_projects
 
@@ -85,91 +86,102 @@ describe 'API v3 Project available parents resource', type: :request, content_ty
       last_response
     end
 
-    context 'without a project candidate' do
-      it 'returns 200 OK' do
-        expect(subject.status)
-          .to eql 200
+    context "without a project candidate" do
+      before do
+        response
       end
 
-      it 'returns projects for which the user has the add_subprojects permission' do
-        expect(subject.body)
-          .to have_json_size(3)
-          .at_path('_embedded/elements')
-
-        expect(subject.body)
-          .to be_json_eql(project.id.to_json)
-          .at_path('_embedded/elements/0/id')
-
-        expect(subject.body)
-          .to be_json_eql(project_with_add_subproject_permission.id.to_json)
-          .at_path('_embedded/elements/1/id')
-
-        expect(subject.body)
-          .to be_json_eql(child_project_with_add_subproject_permission.id.to_json)
-          .at_path('_embedded/elements/2/id')
+      it_behaves_like "API V3 collection response", 3, 3, "Project", "Collection" do
+        let(:elements) { [project, project_with_add_subproject_permission, child_project_with_add_subproject_permission] }
       end
     end
 
-    context 'with a project candidate' do
-      let(:path) { api_v3_paths.projects_available_parents + "?of=#{project.id}" }
+    context "with a project candidate" do
+      let(:path) { api_v3_paths.projects_available_parents(of: project.id) }
 
-      it 'returns 200 OK' do
-        expect(subject.status)
-          .to eql 200
+      before do
+        response
       end
 
-      it 'returns projects for which the user has the add_subprojects permission but' +
-         ' excludes the queried for project and it`s descendants' do
-        expect(subject.body)
-          .to have_json_size(1)
-                .at_path('_embedded/elements')
+      it "returns 200 OK" do
+        expect(subject.status)
+          .to be 200
+      end
 
-        expect(subject.body)
-          .to be_json_eql(project_with_add_subproject_permission.id.to_json)
-          .at_path('_embedded/elements/0/id')
+      # Returns projects for which the user has the add_subprojects permission but
+      # excludes the queried for project and its descendants
+      it_behaves_like "API V3 collection response", 1, 1, "Project", "Collection" do
+        let(:elements) { [project_with_add_subproject_permission] }
       end
     end
 
-    context 'when lacking edit and add permission' do
+    context "when signaling the properties to include" do
+      let(:other_projects) { [] }
+      let(:select) { "elements/id,elements/name,elements/ancestors,total" }
+      let(:path) { api_v3_paths.path_for(:projects_available_parents, select:) }
+      let(:expected) do
+        {
+          total: 1,
+          _embedded: {
+            elements: [
+              {
+                id: project.id,
+                name: project.name,
+                _links: {
+                  ancestors: []
+                }
+              }
+            ]
+          }
+        }
+      end
+
+      it "is the reduced set of properties of the embedded elements" do
+        expect(response.body)
+          .to be_json_eql(expected.to_json)
+      end
+    end
+
+    context "when lacking edit and add permission" do
       let(:permissions) { %i[] }
       let(:global_permissions) { %i[] }
       let(:other_projects) do
         [project_without_add_subproject_permission]
       end
 
-      it 'returns 403' do
+      it "returns 403" do
         expect(subject.status)
-          .to eql 403
+          .to be 403
       end
     end
 
-    context 'when having only add_subprojects permission' do
+    context "when having only add_subprojects permission" do
       let(:permissions) { %i[add_subprojects] }
       let(:global_permissions) { %i[] }
 
-      it 'returns 200' do
+      it "returns 200" do
         expect(subject.status)
-          .to eql 200
+          .to be 200
       end
     end
 
-    context 'when having only edit permission' do
+    context "when having only edit permission" do
       let(:permissions) { %i[edit_project] }
       let(:global_permissions) { %i[] }
 
-      it 'returns 200' do
+      it "returns 200" do
         expect(subject.status)
-          .to eql 200
+          .to be 200
       end
     end
 
-    context 'when having only add_project permission' do
+    context "when having only add_project permission" do
       let(:permissions) { %i[] }
       let(:global_permissions) { %i[add_project] }
 
-      it 'returns 200' do
+      it "returns 200" do
         expect(subject.status)
-          .to eql 200
+          .to be 200
       end
     end
   end

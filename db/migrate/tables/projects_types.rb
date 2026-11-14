@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'base'
+require_relative "base"
 
 class Tables::ProjectsTypes < Tables::Base
-  def self.id_options
-    { id: false }
-  end
-
   def self.table(migration)
-    create_table migration do |t|
-      t.integer :project_id, default: 0, null: false
-      t.integer :type_id, default: 0, null: false
+    create_table migration, id: false do |t|
+      t.references :project,
+                   null: false,
+                   index: { name: "projects_types_project_id" },
+                   foreign_key: { on_delete: :cascade, on_update: :cascade }
+      t.references :type, null: false, index: false, foreign_key: { on_delete: :cascade, on_update: :cascade }
 
-      t.index :project_id,
-              name: :projects_types_project_id
       t.index %i[project_id type_id],
               name: :projects_types_unique, unique: true
     end

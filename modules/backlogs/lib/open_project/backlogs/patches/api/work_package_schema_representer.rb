@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,29 +37,53 @@ module OpenProject::Backlogs
         def extension
           ->(*) do
             schema :position,
-                   type: 'Integer',
+                   type: "Integer",
                    required: false,
-                   writable: false,
                    show_if: ->(*) {
                      backlogs_constraint_passed?(:position)
                    }
 
             schema :story_points,
-                   type: 'Integer',
+                   type: "Integer",
                    required: false,
                    show_if: ->(*) {
                      backlogs_constraint_passed?(:story_points)
                    }
 
-            schema :remaining_time,
-                   type: 'Duration',
-                   name_source: :remaining_hours,
-                   required: false,
-                   show_if: ->(*) { represented.project && represented.project.backlogs_enabled? }
+            schema_with_allowed_link :sprint,
+                                     has_default: false,
+                                     required: false,
+                                     show_if: ->(*) {
+                                       current_user.allowed_in_project?(:view_sprints, represented.project) &&
+                                         backlogs_constraint_passed?(:sprint)
+                                     },
+                                     href_callback: ->(*) {
+                                       filters = CGI.escape(JSON.dump(
+                                                              [{ status: { operator: "!",
+                                                                           values: [Sprint.statuses["completed"]] } }]
+                                                            ))
+                                       query = "filters=#{filters}&pageSize=-1"
+
+                                       "#{api_v3_paths.project_sprints(represented.project_id)}?#{query}"
+                                     }
+
+            schema_with_allowed_link :backlog_bucket,
+                                     has_default: false,
+                                     required: false,
+                                     show_if: ->(*) {
+                                       current_user.allowed_in_project?(:view_sprints, represented.project) &&
+                                         backlogs_constraint_passed?(:backlog_bucket)
+                                     },
+                                     href_callback: ->(*) {
+                                       filters = CGI.escape(JSON.dump([]))
+                                       query = "filters=#{filters}&pageSize=-1"
+
+                                       "#{api_v3_paths.project_backlog_buckets(represented.project_id)}?#{query}"
+                                     }
 
             define_method :backlogs_constraint_passed? do |attribute|
-              represented.project&.backlogs_enabled? &&
-                (!represented.type || represented.type.passes_attribute_constraint?(attribute))
+              !represented.type_variant ||
+                represented.type_variant.passes_attribute_constraint?(attribute, project: represented.project)
             end
           end
         end

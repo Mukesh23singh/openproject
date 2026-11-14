@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,6 +32,11 @@ module API
         extend ::ActiveSupport::Concern
 
         included do
+          # There is no common representer class for all elements, we thus override the default behavior
+          # of forwarding eager_loading preferences to the element representer
+          self.to_eager_load = []
+          self.to_preload = []
+
           collection :elements,
                      getter: ->(*) {
                        represented.map do |model|
@@ -49,7 +51,7 @@ module API
                                                raise "unsupported type"
                                              end
 
-                         representer_class.new(model, current_user: current_user)
+                         representer_class.create(model, current_user:)
                        end
                      },
                      exec_context: :decorator,

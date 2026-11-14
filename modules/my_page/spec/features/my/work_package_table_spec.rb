@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,146 +22,187 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-require_relative '../../support/pages/my/page'
+require_relative "../../support/pages/my/page"
 
-describe 'Arbitrary WorkPackage query table widget on my page', type: :feature, js: true, with_mail: false do
-  let!(:type) { FactoryBot.create :type }
-  let!(:other_type) { FactoryBot.create :type }
-  let!(:priority) { FactoryBot.create :default_priority }
-  let!(:project) { FactoryBot.create :project, types: [type] }
-  let!(:other_project) { FactoryBot.create :project, types: [type] }
-  let!(:open_status) { FactoryBot.create :default_status }
+RSpec.describe "Arbitrary WorkPackage query table widget on my page",
+               :js,
+               :with_cuprite do
+  let!(:type) { create(:type) }
+  let!(:other_type) { create(:type) }
+  let!(:priority) { create(:default_priority) }
+  let!(:project) { create(:project, types: [type]) }
+  let!(:other_project) { create(:project, types: [type]) }
+  let!(:open_status) { create(:default_status) }
   let!(:type_work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      author: user,
-                      responsible: user
+    create(:work_package,
+           project:,
+           type:,
+           author: user,
+           responsible: user)
   end
   let!(:other_type_work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: other_type,
-                      author: user,
-                      responsible: user
+    create(:work_package,
+           project:,
+           type: other_type,
+           author: user,
+           assigned_to: user)
   end
 
   let(:permissions) { %i[view_work_packages add_work_packages save_queries] }
 
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: permissions)
+    create(:user,
+           member_with_permissions: { project => permissions })
   end
   let(:my_page) do
     Pages::My::Page.new
   end
 
-  let(:modal) { ::Components::WorkPackages::TableConfigurationModal.new }
-  let(:filters) { ::Components::WorkPackages::TableConfiguration::Filters.new }
-  let(:columns) { ::Components::WorkPackages::Columns.new }
+  let(:modal) { Components::WorkPackages::TableConfigurationModal.new }
+  let(:filters) { Components::WorkPackages::TableConfiguration::Filters.new }
+  let(:columns) { Components::WorkPackages::Columns.new }
 
   before do
     login_as user
 
     my_page.visit!
+    wait_for_network_idle
   end
 
-  context 'with the permission to save queries' do
-    it 'can add the widget and see the work packages of the filtered for types' do
-      sleep(0.5)
+  context "with the permission to save queries" do
+    it "can add the widget and see the work packages of the filtered for types" do
+      # This one always exists by default.
+      # Using it here as a safeguard to govern speed.
+      created_by_me_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(2)")
+      expect(created_by_me_area.area)
+        .to have_css(".subject", text: type_work_package.subject)
+      assigned_to_me_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(1)")
+      expect(assigned_to_me_area.area)
+        .to have_css(".subject", text: other_type_work_package.subject)
+      my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
-      my_page.add_widget(1, 2, :column, "Work packages table")
+      my_page.add_widget(1, 3, :column, "Work packages table")
+      my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
-      # Actually there are two success messages displayed currently. One for the grid getting updated and one
-      # for the query assigned to the new widget being created. A user will not notice it but the automated
-      # browser can get confused. Therefore we wait.
-      sleep(1)
+      created_by_me_area.remove
+      my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
+      assigned_to_me_area.remove
+      my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
-      my_page.expect_and_dismiss_toaster message: I18n.t('js.notice_successful_update')
-
-      filter_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(3)')
-      filter_area.expect_to_span(1, 2, 2, 3)
+      filter_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(1)")
+      filter_area.expect_to_span(1, 1, 2, 2)
 
       # At the beginning, the default query is displayed
       expect(filter_area.area)
-        .to have_selector('.subject', text: type_work_package.subject)
+        .to have_css(".subject", text: type_work_package.subject)
 
       expect(filter_area.area)
-        .to have_selector('.subject', text: other_type_work_package.subject)
+        .to have_css(".subject", text: other_type_work_package.subject)
 
       # User has the ability to modify the query
 
       filter_area.configure_wp_table
-      modal.switch_to('Filters')
+      modal.switch_to("Filters")
       filters.expect_filter_count(2)
-      filters.add_filter_by('Type', 'is', type.name)
+      filters.add_filter_by("Type", "is (OR)", type.name)
       modal.save
 
+      # Wait for the filter save to complete before opening the column configuration,
+      # otherwise the two saves can race and only one change gets persisted.
+      # The first wait_for_network_idle catches the query-form GET; the sleep gives
+      # JavaScript time to process the form response and start the filter PATCH,
+      # and the second wait_for_network_idle catches that PATCH completing.
+      wait_for_network_idle
+      sleep(0.2)
+      wait_for_network_idle
+
       filter_area.configure_wp_table
-      modal.switch_to('Columns')
+      modal.switch_to("Columns")
       columns.assume_opened
-      columns.remove 'Subject'
+      columns.remove "Subject"
 
-      expect(filter_area.area)
-        .to have_selector('.id', text: type_work_package.id)
+      retry_block do
+        expect(filter_area.area)
+          .to have_css(".id", text: type_work_package.id)
 
-      # as the Subject column is disabled
-      expect(filter_area.area)
-        .to have_no_selector('.subject', text: type_work_package.subject)
+        # as the Subject column is disabled
+        expect(filter_area.area)
+          .to have_no_css(".subject", text: type_work_package.subject)
 
-      # As other_type is filtered out
-      expect(filter_area.area)
-        .to have_no_selector('.id', text: other_type_work_package.id)
+        # As other_type is filtered out
+        expect(filter_area.area)
+          .to have_no_css(".id", text: other_type_work_package.id)
+      end
+
+      # Wait for the column save PATCH to complete after the DOM has confirmed the
+      # Angular state update. The sleep allows Angular's debounced save to queue the
+      # PATCH before wait_for_network_idle checks for network activity; without it,
+      # wait_for_network_idle can fire in the gap before the PATCH is initiated, causing
+      # the column change to race with the subsequent title-rename PATCH.
+      sleep(0.5)
+      wait_for_network_idle
 
       scroll_to_element(filter_area.area)
       within filter_area.area do
-        input = find('.editable-toolbar-title--input')
-        input.set('My WP Filter')
+        input = find(".editable-toolbar-title--input")
+        input.set("My WP Filter")
         input.native.send_keys(:return)
       end
 
-      my_page.expect_and_dismiss_toaster message: I18n.t('js.notice_successful_update')
+      retry_block do
+        my_page.expect_and_dismiss_toaster message: I18n.t("js.notice_successful_update")
+      end
 
-      sleep(1)
+      wait_for_network_idle
 
       # The whole of the configuration survives a reload
       # as it is persisted in the grid
 
       visit root_path
       my_page.visit!
+      wait_for_network_idle
 
-      filter_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(3)')
-      expect(filter_area.area)
-        .to have_selector('.id', text: type_work_package.id)
+      filter_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(1)")
 
-      # as the Subject column is disabled
-      expect(filter_area.area)
-        .to have_no_selector('.subject', text: type_work_package.subject)
+      retry_block do
+        # Wait for the widget to load from its persisted state before asserting.
+        # The title comes from the grid API; once visible, the widget is initialized.
+        # A second wait_for_network_idle then catches the subsequent query + results fetches.
+        within filter_area.area do
+          expect(page).to have_field("editable-toolbar-title", with: "My WP Filter", wait: 10)
+        end
 
-      # As other_type is filtered out
-      expect(filter_area.area)
-        .to have_no_selector('.id', text: other_type_work_package.id)
+        wait_for_network_idle
 
-      within filter_area.area do
-        expect(page).to have_field('editable-toolbar-title', with: 'My WP Filter', wait: 10)
+        expect(filter_area.area)
+          .to have_css(".id", text: type_work_package.id)
+
+        # As other_type is filtered out — check this before the subject column check
+        # so that Capybara waits here until the saved type filter is actually applied.
+        # Without this ordering, have_no_css(".subject") can run while the widget is
+        # still in its initial unfiltered state and fail.
+        expect(filter_area.area)
+          .to have_no_css(".id", text: other_type_work_package.id)
+
+        # as the Subject column is disabled
+        expect(filter_area.area)
+          .to have_no_css(".subject", text: type_work_package.subject)
       end
     end
   end
 
-  context 'without the permission to save queries' do
+  context "without the permission to save queries" do
     let(:permissions) { %i[view_work_packages add_work_packages] }
 
-    it 'cannot add the widget' do
-      my_page.expect_unable_to_add_widget(1, 1, :within, "Work packages table")
+    it "cannot add the widget" do
+      my_page.expect_unable_to_add_widget(1, 2, :column, "Work packages table")
     end
   end
 end

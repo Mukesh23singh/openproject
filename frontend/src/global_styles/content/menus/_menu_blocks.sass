@@ -8,10 +8,13 @@
   .menu-block
     border-radius: 3px
     display: grid
-    grid-template: 110px 1fr / 1fr
-    grid-row-gap: 5px
+    grid-template: 80px 1fr / 1fr
+    grid-row-gap: 1rem
+    padding: 1rem
     justify-items: center
+    text-align: center
     background: #cccccc30
+    border: 1px solid var(--borderColor-default)
 
     &:hover
       outline: 1px solid grey
@@ -23,7 +26,7 @@
     &:before
       padding-left: 10px
 
-@include breakpoint(680px down)
+@media screen and (max-width: $breakpoint-sm)
   .menu-blocks--container
     grid-template: unset
     grid-gap: 15px

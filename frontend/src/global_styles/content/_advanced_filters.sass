@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -32,6 +31,11 @@ $advanced-filters--values-size: 25%
 $advanced-filters--values-and-operator-size: 45%
 $advanced-filters--close-icon-size: 50px
 $advanced-filters--grid-gap: 10px
+// Primer exposes its form control widths only as classes capping the inner field wrap, so these
+// have to be literals. The operator column fits the widest operator label ("more than days ago"
+// needs 158px including the select's arrow reserve); Primer's scale jumps 144px -> 256px.
+$advanced-filters--operator-column-width: 160px
+$advanced-filters--value-min-width: 256px
 
 .advanced-filters--container
   @extend %filters--container
@@ -40,20 +44,20 @@ $advanced-filters--grid-gap: 10px
   overflow-y: auto
   position: relative
   margin: 0 0 10px 0
+  border-radius: var(--borderRadius-medium)
 
   &.collapsed
     display: none
 
   .advanced-filters--close
     position: absolute
-    top: 0.75rem
-    right: 0.75rem
-    width: 1rem
+    top: var(--stack-padding-condensed)
+    right: var(--stack-padding-condensed)
     z-index: 2
 
 .advanced-filters--filters
   list-style-type: none
-  margin: 20px 0 0 0
+  margin: var(--base-size-32) 0 0 0
 
   > .advanced-filters--filter
     display: grid
@@ -96,6 +100,9 @@ $advanced-filters--grid-gap: 10px
 .advanced-filters--select
   @extend .form--select
 
+.advanced-filters--ng-select
+  width: 100%
+
 .advanced-filters--affix
   @extend .form--field-affix
   @include form--field-affix-mixin--transparent
@@ -103,6 +110,9 @@ $advanced-filters--grid-gap: 10px
 
 .advanced-filters--tooltip-trigger[data-tooltip]
   @extend .advanced-filters--affix, .tooltip--right
+
+.advanced-filters--filter-value:has(.advanced-filters--tooltip-trigger)
+  overflow: visible
 
 .advanced-filters--remove-filter
   text-align: right
@@ -122,21 +132,80 @@ $advanced-filters--grid-gap: 10px
 .advanced-filters--add-filter-info
   @include grid-content()
   @include grid-visible-overflow
+  padding: 1rem 0 0 0
 
 .advanced-filters--spacer
   border-top: 1px solid $filters--border-color
   height: 1px
   margin: 0.75rem 0
 
-.advanced-filters--spacer,
-.advanced-filters--filter
-  &.hidden
-    display: none !important
+
+.op-filters-form
+  // Caps the inputs so they stay readable when the box spans a full width page region. The
+  // box itself always follows its container; only the inputs inside it are capped.
+  --op-filters-form-content-max-width: 752px
+  display: none
+  margin-top: 1rem
+  position: relative
+
+  &.-expanded
+    display: block
+
+  &--with-footer
+    padding-top: 0
+
+  &--full-width
+    --op-filters-form-content-max-width: none
+
+  .advanced-filters--actions
+    display: flex
+    justify-content: flex-end
+    align-items: center
+    gap: var(--base-size-8)
+    margin-top: var(--base-size-16)
+
+  .FormControl-horizontalGroup.advanced-filters--filter
+    align-items: center
+    flex-wrap: wrap
+    gap: $advanced-filters--grid-gap
+    max-width: var(--op-filters-form-content-max-width)
+
+    > .advanced-filters--filter-name
+      flex: 0 0 100%
+      text-align: left
+      overflow: hidden
+      text-overflow: ellipsis
+      white-space: nowrap
+
+    > .FormControl
+      flex: 1 1 $advanced-filters--value-min-width
+      min-width: 0
+
+    > .FormControl:has([data-filter--filters-form-target="operator"])
+      flex: 0 0 $advanced-filters--operator-column-width
+
+    > .advanced-filters--remove-filter
+      margin-left: auto
+      flex-shrink: 0
+
+  .FormControl:has([data-filter--filters-form-target="addFilterSelect"])
+    border-top: 1px solid var(--borderColor-muted)
+    margin-top: var(--base-size-8)
+    padding-top: var(--base-size-16)
+    max-width: var(--op-filters-form-content-max-width)
+
+  .advanced-filters--filter-value .FormControl-select-wrap
+    display: flex
+    align-items: center
+    gap: var(--base-size-4)
+
+    .FormControl-select
+      flex: 1 1 auto
 
 .work-packages-embedded-view--container .advanced-filters--container
   margin: 0 0 1rem 0
 
-@include breakpoint(680px down)
+@media screen and (max-width: $breakpoint-sm)
   .advanced-filters--filters
     .advanced-filters--filter
       grid-gap: 0 10px

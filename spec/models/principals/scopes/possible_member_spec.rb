@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,50 +22,92 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Principals::Scopes::PossibleMember, type: :model do
-  let(:project) { FactoryBot.create(:project) }
-  let(:role) { FactoryBot.create(:role) }
-  let!(:active_user) { FactoryBot.create(:user) }
-  let!(:locked_user) { FactoryBot.create(:user, status: :locked) }
-  let!(:registered_user) { FactoryBot.create(:user, status: :registered) }
-  let!(:invited_user) { FactoryBot.create(:user, status: :invited) }
-  let!(:anonymous_user) { FactoryBot.create(:anonymous) }
-  let!(:placeholder_user) { FactoryBot.create(:placeholder_user) }
-  let!(:group) { FactoryBot.create(:group) }
+RSpec.describe Principals::Scopes::PossibleMember do
+  let(:project) { create(:project) }
+  let(:public_project) { create(:project, public: true) }
+  let(:role) { create(:project_role) }
+  # Non-member role is needed to see public projects
+  let!(:non_member_role) { create(:non_member) }
+  let!(:active_user) { create(:user) }
+  let!(:admin_user) { create(:admin) }
+  let!(:global_manager) { create(:user, global_permissions: %i[view_all_principals manage_user]) }
+  let!(:locked_user) { create(:user, status: :locked) }
+  let!(:registered_user) { create(:user, status: :registered) }
+  let!(:invited_user) { create(:user, status: :invited) }
+  let!(:anonymous_user) { create(:anonymous) }
+  let!(:placeholder_user) { create(:placeholder_user) }
+  let!(:group) { create(:group) }
   let!(:member_user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
+  end
+  let!(:member_in_public_project) do
+    create(:user, member_with_roles: { public_project => role })
   end
   let!(:member_placeholder_user) do
-    FactoryBot.create(:placeholder_user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:placeholder_user, member_with_roles: { project => role })
   end
   let!(:member_group) do
-    FactoryBot.create(:group,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:group, member_with_roles: { project => role })
+  end
+  let(:view_work_package_role) { create(:view_work_package_role) }
+  let(:work_package) { create(:work_package, project:, author: active_user) }
+  let!(:shared_work_package_with_user) do
+    create(:user) do |user|
+      create(:work_package_member,
+             project:,
+             entity: work_package,
+             user:,
+             roles: [view_work_package_role])
+    end
+  end
+  let!(:shared_work_package_with_group) do
+    create(:group) do |group|
+      create(:work_package_member,
+             project:,
+             entity: work_package,
+             user: group,
+             roles: [view_work_package_role])
+    end
   end
 
-  describe '.possible_member' do
+  describe ".possible_member" do
     subject { Principal.possible_member(project) }
 
-    it 'returns non locked users, groups and placeholder users not part of the project yet' do
-      is_expected
-        .to match_array([active_user,
-                         registered_user,
-                         invited_user,
-                         placeholder_user,
-                         group])
+    context "as a simple user" do
+      current_user { active_user }
+
+      it "returns non locked users, groups and placeholder users not part of the project yet" do
+        expect(subject).to contain_exactly(active_user, member_in_public_project)
+      end
+    end
+
+    context "as a user with global permission to manage users" do
+      current_user { global_manager }
+
+      it "returns non locked users, groups and placeholder users not part of the project yet" do
+        expect(subject).to contain_exactly(admin_user, global_manager, active_user, registered_user, invited_user,
+                                           placeholder_user, group, member_in_public_project,
+                                           shared_work_package_with_user,
+                                           shared_work_package_with_group)
+      end
+    end
+
+    context "as an admin" do
+      current_user { admin_user }
+
+      it "returns non locked users, groups and placeholder users not part of the project yet" do
+        expect(subject).to contain_exactly(admin_user, global_manager, active_user, registered_user, invited_user,
+                                           placeholder_user, group, member_in_public_project,
+                                           shared_work_package_with_user,
+                                           shared_work_package_with_group)
+      end
     end
   end
 end

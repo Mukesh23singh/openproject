@@ -1,0 +1,30 @@
+# Schema: error response
+---
+type: object
+required:
+  - _type
+  - errorIdentifier
+  - message
+properties:
+  _embedded:
+    type: object
+    properties:
+      details:
+        type: object
+        properties:
+          attribute:
+            type: string
+  _type:
+    type: string
+    enum: ['Error']
+  errorIdentifier:
+    type: string
+  message:
+    type: string
+examples:
+  - _type: Error
+    errorIdentifier: urn:openproject-org:api:v3:errors:PropertyConstraintViolation
+    message: Project can't be blank.
+    _embedded:
+      details:
+        attribute: project

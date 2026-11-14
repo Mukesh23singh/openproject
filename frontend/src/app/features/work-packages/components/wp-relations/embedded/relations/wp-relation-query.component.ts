@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +20,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Component,
-  Inject,
-  Input,
-  OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
 import { OpUnlinkTableAction } from 'core-app/features/work-packages/components/wp-table/table-actions/actions/unlink-table-action';
 import { OpTableActionFactory } from 'core-app/features/work-packages/components/wp-table/table-actions/table-action';
 import { WorkPackageInlineCreateService } from 'core-app/features/work-packages/components/wp-inline-create/wp-inline-create.service';
@@ -50,13 +43,26 @@ import { WorkPackageNotificationService } from 'core-app/features/work-packages/
 import { GroupDescriptor } from 'core-app/features/work-packages/components/wp-single-view/wp-single-view.component';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-relation-query',
   templateUrl: '../wp-relation-query.html',
   providers: [
     { provide: WorkPackageInlineCreateService, useClass: WpRelationInlineCreateService },
   ],
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class WorkPackageRelationQueryComponent extends WorkPackageRelationQueryBase implements OnInit {
+  protected readonly PathHelper = inject(PathHelperService);
+  protected readonly wpInlineCreate = inject(WorkPackageInlineCreateService) as WpRelationInlineCreateService;
+  protected readonly wpRelations = inject(WorkPackageRelationsService);
+  protected readonly halEvents = inject(HalEventsService);
+  protected readonly notificationService = inject(WorkPackageNotificationService);
+  protected readonly I18n = inject(I18nService);
+
   @Input() public workPackage:WorkPackageResource;
 
   @Input() public query:QueryResource;
@@ -83,16 +89,6 @@ export class WorkPackageRelationQueryComponent extends WorkPackageRelationQueryB
 
   public idFromLink = idFromLink;
 
-  constructor(protected readonly PathHelper:PathHelperService,
-              @Inject(WorkPackageInlineCreateService) protected readonly wpInlineCreate:WpRelationInlineCreateService,
-              protected readonly wpRelations:WorkPackageRelationsService,
-              protected readonly halEvents:HalEventsService,
-              protected readonly queryUrlParamsHelper:UrlParamsHelperService,
-              protected readonly notificationService:WorkPackageNotificationService,
-              protected readonly I18n:I18nService) {
-    super(queryUrlParamsHelper);
-  }
-
   ngOnInit() {
     const relationType = this.getRelationTypeFromQuery();
 
@@ -113,7 +109,7 @@ export class WorkPackageRelationQueryComponent extends WorkPackageRelationQueryB
     // When relations have changed, refresh this table
     this.wpRelations.observe(this.workPackage.id!)
       .pipe(
-        filter((val) => !_.isEmpty(val)),
+        filter((val) => !(val == null || (Array.isArray(val) ? val.length === 0 : Object.keys(val).length === 0))),
         this.untilDestroyed(),
       )
       .subscribe(() => this.refreshTable());

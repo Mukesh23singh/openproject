@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -45,7 +44,7 @@ class SCM::CheckoutInstructionsService
   def checkout_url(with_path = false)
     repository.scm.checkout_url(repository,
                                 checkout_base_url,
-                                with_path ? URI.escape(@path) : nil)
+                                with_path ? URI.encode_www_form_component(@path) : nil)
   end
 
   ##
@@ -58,13 +57,13 @@ class SCM::CheckoutInstructionsService
   ##
   # Returns the checkout base URL as defined in settings.
   def checkout_base_url
-    checkout_settings['base_url']
+    checkout_settings["base_url"]
   end
 
   ##
   # Returns the instructions defined in the settings.
   def instructions
-    checkout_settings['text'].presence ||
+    checkout_settings["text"].presence ||
       I18n.t("repositories.checkout.default_instructions.#{repository.vendor}")
   end
 
@@ -91,7 +90,7 @@ class SCM::CheckoutInstructionsService
   end
 
   def checkout_enabled?
-    checkout_settings['enabled'].to_i > 0
+    checkout_settings["enabled"].to_i > 0
   end
 
   def supported_but_not_enabled?
@@ -118,9 +117,9 @@ class SCM::CheckoutInstructionsService
   #
   def permission
     project = repository.project
-    if user.allowed_to?(:commit_access, project)
+    if user.allowed_in_project?(:commit_access, project)
       :readwrite
-    elsif user.allowed_to?(:browse_repository, project)
+    elsif user.allowed_in_project?(:browse_repository, project)
       :read
     else
       :none

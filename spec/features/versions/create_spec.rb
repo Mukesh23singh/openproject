@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,48 +22,84 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'version create', type: :feature, js: false do
+RSpec.describe "version create", :js do
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[manage_versions view_work_packages])
+    create(:user,
+           member_with_permissions: { project => %i[manage_versions view_work_packages] })
   end
-  let(:project) { FactoryBot.create(:project) }
-  let(:new_version_name) { 'A new version name' }
+  let(:project) { create(:project) }
+  let(:new_version_name) { "A new version name" }
 
   before do
     login_as(user)
   end
 
-  context 'create a version' do
-    it 'and redirect to default' do
+  context "create a version" do
+    it "and redirect to default" do
       visit new_project_version_path(project)
 
-      fill_in 'Name', with: new_version_name
-      click_on 'Create'
+      fill_in "Name", with: new_version_name
+      click_on "Create"
 
       expect(page).to have_current_path(project_settings_versions_path(project))
-      expect(page).to have_content new_version_name
+      expect(page).to have_text new_version_name
     end
 
-    it 'and redirect back to where you started' do
+    it "and redirect back to where you started" do
       visit project_roadmap_path(project)
-      click_on 'New version'
+      page.find("[aria-label='New version']").click
 
-      fill_in 'Name', with: new_version_name
-      click_on 'Create'
+      fill_in "Name", with: new_version_name
+      click_on "Create"
 
       expect(page).to have_text("Successful creation")
       expect(page).to have_current_path(project_roadmap_path(project))
-      expect(page).to have_content new_version_name
+      expect(page).to have_text new_version_name
+    end
+
+    context "with a custom field" do
+      let!(:custom_field) do
+        create(:version_custom_field, :string,
+               name: "Release Notes",
+               is_required: true)
+      end
+
+      it "I can create a version with a custom field value including validation" do
+        visit project_settings_versions_path(project)
+
+        page.find_test_selector("versions-create-button").click
+
+        expect(page).to have_text("New version")
+
+        fill_in "Name", with: "Version 1.0"
+
+        # Intentionally not filling in the required custom field
+        click_on "Create"
+
+        # Should stay on the form page and show validation error
+        expect(page).to have_text("New version")
+        expect(page).to have_field(custom_field.name, with: "", validation_error: "Value can't be blank")
+
+        fill_in custom_field.name, with: "Bug fixes and improvements"
+
+        click_on "Create"
+
+        expect(page).to have_text("Successful creation")
+        expect(page).to have_text("Version 1.0")
+
+        # Verify the custom field value was saved
+        created_version = Version.find_by(name: "Version 1.0")
+        expect(created_version).not_to be_nil
+        expect(created_version.send(:"custom_field_#{custom_field.id}"))
+          .to eq("Bug fixes and improvements")
+      end
     end
   end
 end

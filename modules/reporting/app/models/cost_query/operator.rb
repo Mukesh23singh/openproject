@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,18 +29,18 @@ class CostQuery::Operator < Report::Operator
   # Operators from Redmine
   new "c", arity: 0, label: :label_closed do
     def modify(query, field, *_values)
-      raise "wrong field" if field.to_s.split('.').last != "status_id"
+      raise "wrong field" if field.to_s.split(".").last != "status_id"
 
-      query.where "(#{Status.table_name}.is_closed = #{quoted_true})"
+      query.where "(#{Status.table_name}.category = 'closed')"
       query
     end
   end
 
   new "o", arity: 0, label: :label_open do
     def modify(query, field, *_values)
-      raise "wrong field" if field.to_s.split('.').last != "status_id"
+      raise "wrong field" if field.to_s.split(".").last != "status_id"
 
-      query.where "(#{Status.table_name}.is_closed = #{quoted_false})"
+      query.where "(#{Status.table_name}.category IS DISTINCT FROM 'closed')"
       query
     end
   end
@@ -50,8 +49,13 @@ class CostQuery::Operator < Report::Operator
     def modify(query, field, *values)
       p_ids = []
       values.each do |value|
-        p_ids += ([value] << Project.find(value).descendants.map { |p| p.id })
+        project = Project.visible.find(value)
+        next unless project
+
+        p_ids << project.id
+        p_ids += project.descendants.pluck(:id)
       end
+
       "=".to_operator.modify query, field, p_ids
     rescue ActiveRecord::RecordNotFound
       query
@@ -62,9 +66,52 @@ class CostQuery::Operator < Report::Operator
     def modify(query, field, *values)
       p_ids = []
       values.each do |value|
-        p_ids += ([value] << Project.find(value).descendants.map { |p| p.id })
+        value.to_s.split(",").each do |id|
+          project = Project.visible.find(id)
+          next unless project
+
+          p_ids << project.id
+          p_ids += project.descendants.pluck(:id)
+        end
       end
+
       "!".to_operator.modify query, field, p_ids
+    rescue ActiveRecord::RecordNotFound
+      query
+    end
+  end
+
+  new "=_child_work_packages", validate: :integers, label: :label_is_work_package_with_descendants do
+    def modify(query, field, *values)
+      wp_ids = []
+      values.each do |value|
+        work_package = WorkPackage.visible.find(value)
+        next unless work_package
+
+        wp_ids << work_package.id
+        wp_ids += work_package.descendants.pluck(:id)
+      end
+
+      "=".to_operator.modify query, field, wp_ids
+    rescue ActiveRecord::RecordNotFound
+      query
+    end
+  end
+
+  new "!_child_work_packages", validate: :integers, label: :label_is_not_work_package_with_descendants do
+    def modify(query, field, *values)
+      wp_ids = []
+      values.each do |value|
+        value.to_s.split(",").each do |id|
+          work_package = WorkPackage.visible.find(id)
+          next unless work_package
+
+          wp_ids << work_package.id
+          wp_ids += work_package.descendants.pluck(:id)
+        end
+      end
+
+      "!".to_operator.modify query, field, wp_ids
     rescue ActiveRecord::RecordNotFound
       query
     end

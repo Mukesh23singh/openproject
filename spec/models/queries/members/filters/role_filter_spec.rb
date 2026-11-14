@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,40 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Members::Filters::RoleFilter, type: :model do
-  let(:role1) { FactoryBot.build_stubbed(:role) }
-  let(:role2) { FactoryBot.build_stubbed(:role) }
+RSpec.describe Queries::Members::Filters::RoleFilter do
+  shared_let(:role1) { create(:project_role, name: "Bravo") }
+  shared_let(:role2) { create(:project_role, name: "Alpha") }
 
-  before do
-    allow(Role)
-      .to receive(:pluck)
-      .with(:name, :id)
-      .and_return([[role1.name, role1.id], [role2.name, role2.id]])
-  end
-
-  it_behaves_like 'basic query filter' do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :role_id }
     let(:type) { :list_optional }
     let(:name) { Member.human_attribute_name(:role) }
 
-    describe '#allowed_values' do
-      it 'is a list of the possible values' do
-        expected = [[role1.name, role1.id], [role2.name, role2.id]]
+    describe "#allowed_values" do
+      it "is a list of the possible values, ordered by name" do
+        expect(instance.allowed_values).to eq([[role2.name, role2.id], [role1.name, role1.id]])
+      end
 
-        expect(instance.allowed_values).to match_array(expected)
+      it "lists a role holding several permissions only once" do
+        expect(role1.permissions.size).to be > 1
+
+        expect(instance.allowed_values.count { |(_, id)| id == role1.id }).to eq(1)
       end
     end
   end
 
-  it_behaves_like 'list_optional query filter' do
+  it_behaves_like "list_optional query filter" do
     let(:attribute) { :role_id }
     let(:model) { Member }
     let(:joins) { :member_roles }

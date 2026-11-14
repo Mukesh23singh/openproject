@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,15 +32,15 @@ module API
     module Endpoints
       class Modify < Bodied
         def default_instance_generator(model)
-          ->(_params, _current_user) do
-            instance_variable_get("@#{model.name.demodulize.underscore}")
+          lambda do |_params, _current_user|
+            instance_variable_get(:"@#{model.name.demodulize.underscore}")
           end
         end
 
         private
 
         def present_success(_request, _call)
-          raise NotImplementedError
+          raise SubclassResponsibilityError
         end
 
         def present_error(call)
@@ -56,7 +57,7 @@ module API
         end
 
         def merge_dependent_errors(call)
-          errors = ActiveModel::Errors.new call.result
+          errors = ActiveModel::Errors.new call.all_results.first
 
           call.dependent_results.each do |dr|
             dr.errors.full_messages.each do |full_message|
@@ -68,17 +69,26 @@ module API
         end
 
         def dependent_error_message(result, full_message)
+          key =
+            if result.id.blank?
+              :error_in_new_dependent
+            else
+              :error_in_dependent
+            end
+
           I18n.t(
-            :error_in_dependent,
+            key,
             dependent_class: result.model_name.human,
             related_id: result.id,
-            related_subject: result.name,
+            related_subject: dependent_error_subject(result),
             error: full_message
           )
         end
 
+        def dependent_error_subject(dependent_result) = dependent_result.name
+
         def deduce_process_service
-          "::#{deduce_backend_namespace}::#{update_or_create}Service".constantize
+          lookup_namespaced_class("#{update_or_create}Service")
         end
 
         def deduce_process_contract

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,51 +20,71 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Time entry activity', type: :feature do
-  shared_let(:admin) { FactoryBot.create :admin }
-  let(:project) { FactoryBot.create(:project) }
+RSpec.describe "Time entry activity", :js do
+  shared_let(:admin) { create(:admin) }
+  let(:project) { create(:project) }
 
   before do
     login_as(admin)
   end
 
-  it 'supports CRUD' do
-    visit enumerations_path
+  it "allows creating new activities and activating them on projects" do
+    visit admin_settings_time_entry_activities_path
 
-    page.all('.wp-inline-create--add-link[title="New enumeration value"]').first.click
+    page.find_test_selector("add-enumeration-button").click
 
-    fill_in 'Name', with: 'A new activity'
-    click_on('Create')
+    fill_in "Name", with: "A new activity"
+    click_on("Save")
 
-    expect(page.current_path)
-      .to eql enumerations_path
+    # we are redirected back to the index page
+    expect(page).to have_current_path(admin_settings_time_entry_activities_path)
+    expect(page).to have_text("A new activity")
 
-    expect(page)
-      .to have_content('A new activity')
+    # It allows editing (Regression #62459)
+    click_link "A new activity"
+
+    fill_in "Name", with: "Development"
+    click_on("Save")
+
+    expect(page).to have_current_path(admin_settings_time_entry_activities_path)
+    expect(page).to have_text("Development")
+
+    activity = TimeEntryActivity.find_by(name: "Development")
+    expect(activity).to be_present
+    expect(TimeEntryActivity).not_to exist(name: "A new activity")
 
     visit project_settings_general_path(project)
 
-    click_on "Time tracking activities"
+    click_on "Time and costs"
 
-    expect(page)
-      .to have_field('A new activity', checked: true)
+    within("[data-test-selector='project-time-entry-activity-#{activity.id}']") do
+      expect_checked_state
 
-    uncheck 'A new activity'
+      page.find("[data-test-selector='toggle-project-time-entry-activity-mapping-#{activity.id}'] > button").click
 
-    click_on 'Save'
+      expect_unchecked_state
+    end
 
-    expect(page)
-      .to have_content "Successful update."
+    # persisted after a full page reload
+    visit project_settings_time_entry_activities_path(project)
 
-    expect(page)
-      .to have_field('A new activity', checked: false)
+    within("[data-test-selector='project-time-entry-activity-#{activity.id}']") do
+      expect_unchecked_state
+    end
+  end
+
+  def expect_checked_state
+    expect(page).to have_css(".ToggleSwitch-statusOn")
+  end
+
+  def expect_unchecked_state
+    expect(page).to have_css(".ToggleSwitch-statusOff")
   end
 end

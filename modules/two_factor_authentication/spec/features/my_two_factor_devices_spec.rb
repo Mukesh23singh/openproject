@@ -1,102 +1,139 @@
-require_relative '../spec_helper'
+# frozen_string_literal: true
 
-describe 'My Account 2FA configuration', with_2fa_ee: true,
-                                         type: :feature,
-                                         with_config: { '2fa': { active_strategies: %i[developer totp] } },
-                                         js: true do
-  let(:dialog) { ::Components::PasswordConfirmationDialog.new }
-  let(:user_password) { 'boB!4' * 4 }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../spec_helper"
+
+RSpec.describe "My Account 2FA configuration",
+               :js,
+               with_settings: {
+                 plugin_openproject_two_factor_authentication: { "active_strategies" => %i[developer totp] }
+               } do
+  let(:dialog) { Components::PasswordConfirmationDialog.new }
+  let(:user_password) { "boB!4" * 4 }
   let(:user) do
-    FactoryBot.create(:user,
-                      login: 'bob',
-                      password: user_password,
-                      password_confirmation: user_password)
+    create(:user,
+           login: "bob",
+           password: user_password,
+           password_confirmation: user_password)
   end
+
+  include Flash::Expectations
 
   before do
     login_as user
   end
 
-  it 'allows 2FA device management' do
+  it "allows 2FA device management" do
     # Visit empty index
-    visit my_2fa_devices_path
-    expect(page).to have_selector('.generic-table--empty-row', text: I18n.t('two_factor_authentication.devices.not_existing'))
-    expect(page).to have_selector('.on-off-status.-disabled')
-
-    # Visit inline create
-    find('.wp-inline-create--add-link').click
-    expect(page).to have_selector('h2', text: I18n.t('two_factor_authentication.devices.add_new'))
-    expect(current_path).to eq new_my_2fa_device_path
+    visit my_security_path
+    expect(page).to have_css(".blankslate", text: I18n.t("two_factor_authentication.devices.not_existing"))
+    expect(page).to have_css(".on-off-status.-disabled")
 
     # Select SMS
-    find('.mobile-otp-new-device-sms .button').click
+    menu_button = find_test_selector("two_factor_authentication_devices_button")
+    menu_button.click
+    wait_for_network_idle if using_cuprite?
+    expect(page).to have_test_selector("two_factor_authentication_devices_sms")
+    sms_menu_item = find_test_selector("two_factor_authentication_devices_sms")
+    sms_menu_item.click
 
     # Try to save with invalid phone number
-    fill_in 'device_phone_number', with: 'invalid!'
+    fill_in "device_phone_number", with: "invalid!"
     click_button I18n.t(:button_continue)
 
     # Enter valid phone number
-    expect(page).to have_selector('#errorExplanation', text: 'Phone number must be of format +XX XXXXXXXXX')
-    fill_in 'device_phone_number', with: '+49 123456789'
+    expect_flash(type: :error, message: "Phone number must be of format +XX XXXXXXXXX")
+    fill_in "device_phone_number", with: "+49 123456789"
     click_button I18n.t(:button_continue)
 
     # Fill in wrong token
-    fill_in 'otp', with: 'whatever'
+    fill_in "otp", with: "whatever"
 
     # Log token for next access
     sms_token = nil
-    allow_any_instance_of(::OpenProject::TwoFactorAuthentication::TokenStrategy::Developer)
-        .to receive(:create_mobile_otp).and_wrap_original do |m|
+    # rubocop:disable RSpec/AnyInstance
+    allow_any_instance_of(OpenProject::TwoFactorAuthentication::TokenStrategy::Developer)
+      .to receive(:create_mobile_otp).and_wrap_original do |m|
       sms_token = m.call
     end
+    # rubocop:enable RSpec/AnyInstance
 
     click_button I18n.t(:button_continue)
 
-    expect(page).to have_selector('h2', text: I18n.t('two_factor_authentication.devices.confirm_device'))
-    expect(page).to have_selector('input#otp')
-    expect(page).to have_selector('.flash.error',
-                                  text: I18n.t('two_factor_authentication.devices.registration_failed_token_invalid'))
+    expect(page).to have_css("h2", text: I18n.t("two_factor_authentication.devices.confirm_device"))
+    expect(page).to have_field("otp")
+
+    expect_flash(type: :error, message: I18n.t("two_factor_authentication.devices.registration_failed_token_invalid"))
 
     # Fill in correct token
-    fill_in 'otp', with: sms_token
+    fill_in "otp", with: sms_token
     click_button I18n.t(:button_continue)
 
     # Assert that it exists and is default
-    expect(page).to have_selector('.mobile-otp--two-factor-device-row td', text: 'Mobile phone (bob) (+49 123456789)')
-    expect(page).to have_selector('.mobile-otp--two-factor-device-row td .icon-yes', count: 2)
-    expect(page).to have_selector('.on-off-status.-enabled')
+    expect(page).to have_css(".mobile-otp--two-factor-device-row", text: "Mobile phone (bob) (+49 123456789)")
+    expect(page).to have_css(".mobile-otp--two-factor-device-row .octicon-check", count: 2)
+    expect(page).to have_css(".on-off-status.-enabled")
 
     # Create another one as totp
-    # Visit create button
-    visit my_2fa_devices_path
-    find('.toolbar-item .button', text: '2FA device').click
-    expect(page).to have_selector('h2', text: I18n.t('two_factor_authentication.devices.add_new'))
-    expect(current_path).to eq new_my_2fa_device_path
-
+    visit my_security_path
+    menu_button = find_test_selector("two_factor_authentication_devices_button")
+    menu_button.click
+    wait_for_network_idle if using_cuprite?
+    expect(page).to have_test_selector("two_factor_authentication_devices_totp")
     # Select totp
-    find('.mobile-otp-new-device-totp .button').click
+    totp_menu_item = find_test_selector("two_factor_authentication_devices_totp")
+    totp_menu_item.click
+    expect(page).to have_test_selector("two_factor_authentication_new_device_header_title",
+                                       text: I18n.t("two_factor_authentication.devices.add_new"))
+    expect(page).to have_current_path new_my_2fa_device_path, ignore_query: true
 
     # Change identifier
-    fill_in 'device_identifier', with: 'custom identifier'
+    fill_in "device_identifier", with: "custom identifier"
     click_button I18n.t(:button_continue)
 
     # Confirm token
-    expect(page).to have_selector('h2', text: I18n.t('two_factor_authentication.devices.confirm_device'))
-    expect(page).to have_selector('input#otp')
+    expect(page).to have_css("h2", text: I18n.t("two_factor_authentication.devices.confirm_device"))
+    expect(page).to have_field("otp")
 
     device = user.otp_devices.order(:id).last
-    expect(device.identifier).to eq 'custom identifier'
+    expect(device.identifier).to eq "custom identifier"
     expect(device.default).to be_falsey
     expect(device.active).to be_falsey
 
-    fill_in 'otp', with: device.totp.now
+    fill_in "otp", with: device.totp.now
     click_button I18n.t(:button_continue)
 
-    expect(page).to have_selector('.mobile-otp--two-factor-device-row', count: 2)
-    rows = page.all('.mobile-otp--two-factor-device-row')
-    expect(rows[0]).to have_selector('.mobile-otp--two-factor-device-row td .icon-yes', count: 2)
-    expect(rows[1]).to have_selector('.mobile-otp--two-factor-device-row td', text: 'custom identifier')
-    expect(rows[1]).to have_selector('.mobile-otp--two-factor-device-row td .icon-yes', count: 1)
+    expect(page).to have_css(".mobile-otp--two-factor-device-row", count: 2)
+    rows = page.all(".mobile-otp--two-factor-device-row")
+    expect(rows[0]).to have_css(".octicon-check", count: 2)
+    expect(rows[1]).to have_text("custom identifier")
+    expect(rows[1]).to have_css(".octicon-check", count: 1)
 
     device.reload
     expect(device.active).to be_truthy
@@ -104,35 +141,61 @@ describe 'My Account 2FA configuration', with_2fa_ee: true,
 
     # Make the second one the default
     # Confirm the password wrongly
-    find('.two-factor--mark-default-button').click
-    dialog.confirm_flow_with 'wrong_password', should_fail: true
+    within rows[1] do
+      page.find_test_selector("two-factor--actions-button").click
+    end
+    page.find_test_selector("two-factor--make-default-button").click
+    dialog.confirm_flow_with "wrong_password", should_fail: true
 
     # Confirm again
-    find('.two-factor--mark-default-button').click
+    rows = page.all(".mobile-otp--two-factor-device-row")
+    within rows[1] do
+      page.find_test_selector("two-factor--actions-button").click
+    end
+    page.find_test_selector("two-factor--make-default-button").click
     dialog.confirm_flow_with user_password, should_fail: false
 
-    expect(page).to have_selector('.mobile-otp--two-factor-device-row', count: 2)
-    rows = page.all('.mobile-otp--two-factor-device-row')
-    expect(rows[0]).to have_selector('.mobile-otp--two-factor-device-row td .icon-yes', count: 1)
-    expect(rows[1]).to have_selector('.mobile-otp--two-factor-device-row td .icon-yes', count: 2)
+    expect_and_dismiss_flash(message: "Successful update")
+
+    expect(page).to have_css(".mobile-otp--two-factor-device-row", count: 2)
+    rows = page.all(".mobile-otp--two-factor-device-row")
+    expect(rows[0]).to have_css(".octicon-check", count: 1)
+    expect(rows[1]).to have_css(".octicon-check", count: 2)
 
     device.reload
     expect(device.default).to be_truthy
 
     # Delete the sms device
-    rows[0].find('.two-factor--delete-button').click
+    within rows[0] do
+      page.find_test_selector("two-factor--actions-button").click
+    end
+    rows[0].find("[data-test-selector='two-factor--delete-button']").click
     dialog.confirm_flow_with user_password, should_fail: false
 
-    expect(page).to have_selector('.mobile-otp--two-factor-device-row', count: 1)
-    expect(page).to have_selector('.on-off-status.-enabled')
+    expect(page).to have_css(".mobile-otp--two-factor-device-row", count: 1)
+    expect(page).to have_css(".on-off-status.-enabled")
     expect(user.otp_devices.count).to eq 1
 
     # Delete the totp device
-    find('.two-factor--delete-button').click
+    rows = page.all(".mobile-otp--two-factor-device-row")
+    within rows[0] do
+      page.find_test_selector("two-factor--actions-button").click
+    end
+    page.find_test_selector("two-factor--delete-button").click
     dialog.confirm_flow_with user_password, should_fail: false
 
-    expect(page).to have_selector('.generic-table--empty-row', text: I18n.t('two_factor_authentication.devices.not_existing'))
-    expect(page).to have_selector('.on-off-status.-disabled')
+    expect(page).to have_css(".blankslate", text: I18n.t("two_factor_authentication.devices.not_existing"))
+    expect(page).to have_css(".on-off-status.-disabled")
     expect(user.otp_devices.count).to eq 0
+  end
+
+  context "when a device has been registered already" do
+    let!(:device) { create(:two_factor_authentication_device_totp, user:) }
+
+    it "loads the page correctly (Regression #41719)" do
+      visit my_security_path
+
+      expect(page).to have_text device.identifier
+    end
   end
 end

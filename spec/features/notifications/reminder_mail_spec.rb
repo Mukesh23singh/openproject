@@ -1,97 +1,132 @@
-require 'spec_helper'
-require_relative '../users/notifications/shared_examples'
+# frozen_string_literal: true
 
-describe "Reminder email sending", type: :feature, js: true do
-  let!(:project) { FactoryBot.create :project, members: { current_user => role } }
-  let!(:mute_project) { FactoryBot.create :project, members: { current_user => role } }
-  let(:role) { FactoryBot.create(:role, permissions: %i[view_work_packages]) }
-  let(:other_user) { FactoryBot.create(:user) }
-  let(:work_package) { FactoryBot.create(:work_package, project: project) }
-  let(:watched_work_package) { FactoryBot.create(:work_package, project: project, watcher_users: [current_user]) }
-  let(:involved_work_package) { FactoryBot.create(:work_package, project: project, assigned_to: current_user) }
-  # The run_at time of the delayed job used for scheduling the reminder mails
-  # needs to be within a time frame eligible for sending out mails for the chose
-  # time zone. For the time zone Hawaii (UTC-10) this means between 8:00:00 and 8:14:59 UTC.
-  # The job is scheduled to run every 15 min so the run_at will in production always move between the quarters of an hour.
-  # The current time can be way behind that.
-  let(:current_utc_time) {ActiveSupport::TimeZone['Pacific/Honolulu'].parse("2021-09-30T08:34:10").utc }
-  let(:job_run_at) { ActiveSupport::TimeZone['Pacific/Honolulu'].parse("2021-09-30T08:00:00").utc }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-  # Fix the time of the specs to ensure a consistent run
-  around do |example|
-    Timecop.travel(current_utc_time) do
-      example.run
+require "spec_helper"
+require_relative "../users/notifications/shared_examples"
+
+RSpec.describe "Reminder email sending",
+               js: false,
+               with_good_job_batches: [Notifications::ScheduleReminderMailsJob] do
+  let!(:project) { create(:project, members: { receiving_user => role }) }
+  let!(:mute_project) { create(:project, members: { receiving_user => role }) }
+  let(:role) { create(:project_role, permissions: %i[view_work_packages]) }
+  let(:other_user) { create(:user) }
+  let(:work_package) { create(:work_package, project:) }
+  let(:watched_work_package) { create(:work_package, project:, watcher_users: [receiving_user]) }
+  let(:involved_work_package) { create(:work_package, project:, assigned_to: receiving_user) }
+  # GoodJob::Job#cron_at is used for scheduling the reminder mails.
+  # It needs to be within a time frame eligible for sending out mails for the chosen
+  # time zone. For the time zone Hawaii (UTC-10) this means 8:00:00 as the job has a cron tab to be run every 15 min.
+  let(:job_run_at) { ActiveSupport::TimeZone["Pacific/Honolulu"].parse("2021-09-30T08:00:00").utc }
+
+  let(:scheduled_job) do
+    Notifications::ScheduleReminderMailsJob.perform_later.tap do |job|
+      GoodJob::Job
+        .where(id: job.job_id)
+        .update_all(cron_at: job_run_at)
     end
   end
 
-  current_user do
-    FactoryBot.create(
+  # The reminder mail is sent out after notifications have been created which might have happened way earlier.
+  # This spec will be fixed to this time ensure a consistent run and to mimic the time that typically has passed
+  # between the changes to a work package and the reminder mail being sent out.
+  let(:work_package_update_time) { ActiveSupport::TimeZone["Pacific/Honolulu"].parse("2021-09-30T01:50:34").utc }
+
+  let!(:receiving_user) do
+    create(
       :user,
       preferences: {
-        time_zone: 'Pacific/Honolulu',
+        time_zone: "Pacific/Honolulu",
         daily_reminders: {
           enabled: true,
-          times: [hitting_reminder_slot_for('Pacific/Honolulu', current_utc_time)]
+          times: [hitting_reminder_slot_for("Pacific/Honolulu", job_run_at)]
+        },
+        immediate_reminders: {
+          mentioned: false
         }
       },
       notification_settings: [
-        FactoryBot.build(:notification_setting,
-                         involved: true,
-                         watched: true,
-                         mentioned: true,
-                         work_package_commented: true,
-                         work_package_created: true,
-                         work_package_processed: true,
-                         work_package_prioritized: true,
-                         work_package_scheduled: true)
+        build(:notification_setting,
+              assignee: true,
+              responsible: true,
+              watched: true,
+              mentioned: true,
+              work_package_commented: true,
+              work_package_created: true,
+              work_package_processed: true,
+              work_package_prioritized: true,
+              work_package_scheduled: true)
       ]
     )
   end
 
-  before do
-    watched_work_package
-    work_package
-    involved_work_package
-
-    ActiveJob::Base.queue_adapter.enqueued_jobs.clear
-
-    # There is no delayed_job associated when using the testing backend of ActiveJob
-    # so we have to mock it.
-    allow(Notifications::ScheduleReminderMailsJob)
-      .to receive(:delayed_job)
-            .and_return(instance_double(Delayed::Backend::ActiveRecord::Job, run_at: job_run_at))
+  around do |example|
+    Timecop.travel(work_package_update_time) do
+      example.run
+    end
   end
 
-  it 'sends a digest mail based on the configuration', with_settings: { journal_aggregation_time_minutes: 0 } do
+  it "sends a digest mail based on the configuration", with_settings: { journal_aggregation_time_minutes: 0 } do
     # Perform some actions the user listens to
     User.execute_as other_user do
+      watched_work_package
+      work_package
+      involved_work_package
+
       note = <<~NOTE
-        Hey <mention class=\"mention\"
-                     data-id=\"#{current_user.id}\"
-                     data-type=\"user\"
-                     data-text=\"@#{current_user.name}\">
-              @#{current_user.name}
+        Hey <mention class="mention"
+                     data-id="#{receiving_user.id}"
+                     data-type="user"
+                     data-text="@#{receiving_user.name}">
+              @#{receiving_user.name}
             </mention>
       NOTE
 
-      work_package.add_journal(other_user, note)
+      work_package.add_journal(user: other_user, notes: note)
       work_package.save!
 
-      watched_work_package.subject = 'New watched work package subject'
+      watched_work_package.subject = "New watched work package subject"
       watched_work_package.save!
 
-      involved_work_package.description = 'New involved work package description'
+      involved_work_package.description = "New involved work package description"
       involved_work_package.save!
     end
 
-    # The Job is triggered by time so we mock it and the jobs started by it being triggered
-    Notifications::ScheduleReminderMailsJob.perform_later
-    2.times { perform_enqueued_jobs }
+    GoodJob.perform_inline
+    scheduled_job
+    GoodJob.perform_inline
 
-    expect(ActionMailer::Base.deliveries.length)
-      .to be 1
-
+    expect(ActionMailer::Base.deliveries.length).to be 1
+    # 3 work package created
+    # 3 times updated (1 for each work package)
+    # One of those was a mention for which the user opted out to not receive immediate notifications
     expect(ActionMailer::Base.deliveries.first.subject)
-      .to eql "OpenProject - 1 unread notification including a mention"
+      .to eql "OpenProject - 6 unread notifications including a mention"
   end
 end

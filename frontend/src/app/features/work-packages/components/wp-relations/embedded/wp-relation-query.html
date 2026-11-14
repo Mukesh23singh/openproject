@@ -1,23 +1,25 @@
-<ng-container *ngIf="!hidden">
-  <div *ngIf="group" class="attributes-group--header">
-    <div class="attributes-group--header-container">
-      <h3 class="attributes-group--header-text"
-          [textContent]="group.name"></h3>
+@if (!hidden) {
+  @if (group) {
+    <div class="attributes-group--header">
+      <div class="attributes-group--header-container">
+        <h3 class="attributes-group--header-text"
+        [attr.id]="groupHeadingId"
+        [textContent]="group.name"></h3>
+      </div>
     </div>
-  </div>
-
+  }
   <wp-embedded-table #embeddedTable
-                     (onQueryLoaded)="handleQueryLoaded($event)"
-                     [initialLoadingIndicator]="false"
-                     [queryProps]="queryProps"
-                     [tableActions]="tableActions"
-                     [configuration]="{ actionsColumnEnabled: true,
+    (onQueryLoaded)="handleQueryLoaded($event)"
+    [initialLoadingIndicator]="false"
+    [queryProps]="queryProps"
+    [tableActions]="tableActions"
+                     [configuration]="{ labelledBy: group ? groupHeadingId : null,
+                                        actionsColumnEnabled: true,
                                         hierarchyToggleEnabled: false,
                                         inlineCreateEnabled: true,
                                         compactTableStyle: true,
                                         columnMenuEnabled: false,
                                         contextMenuEnabled: false,
                                         projectIdentifier: idFromLink(workPackage.project.href),
-                                        projectContext: false }" >
-  </wp-embedded-table>
-</ng-container>
+                                        projectContext: false }"  />
+}

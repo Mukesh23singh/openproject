@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,12 +30,11 @@
 module Components
   class ConfirmationDialog
     include Capybara::DSL
+    include Capybara::RSpecMatchers
     include RSpec::Matchers
 
-    def initialize; end
-
     def container
-      '.op-modal'
+      ".spot-modal"
     end
 
     def expect_open
@@ -43,13 +43,13 @@ module Components
 
     def confirm
       page.within(container) do
-        page.find('.confirm-form-submit--continue').click
+        page.find('[data-test-selector="confirmation-modal--confirmed"]').click
       end
     end
 
     def cancel
       page.within(container) do
-        page.find('.confirm-form-submit--cancel').click
+        page.find('[data-test-selector="confirmation-modal--cancel"]').click
       end
     end
   end

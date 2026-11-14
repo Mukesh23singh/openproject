@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,114 +22,90 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Groups
   class AddUsersService < ::BaseServices::BaseContracted
-    include Groups::Concerns::MembershipManipulation
+    using CoreExtensions::SquishSql
 
     def initialize(group, current_user:, contract_class: AdminOnlyContract)
       self.model = group
 
-      super user: current_user,
-            contract_class: contract_class
+      super(user: current_user,
+            contract_class:)
     end
 
     private
 
-    def modify_members_and_roles(params)
-      sql_query = ::OpenProject::SqlSanitization
-                  .sanitize add_to_user_and_projects_cte,
-                            group_id: model.id,
-                            user_ids: params[:ids]
+    def persist(call)
+      validate_department_membership(call)
+      return call unless call.success?
 
+      sql_query = ::OpenProject::SqlSanitization
+                    .sanitize add_to_group,
+                              group_id: model.id,
+                              user_ids: params[:ids]
       execute_query(sql_query)
+
+      call
     end
 
-    def add_to_user_and_projects_cte
-      <<~SQL
-        -- select existing users from given IDs
-        WITH found_users AS (
-          SELECT id as user_id FROM #{User.table_name} WHERE id IN (:user_ids)
-        ),
-        timestamp AS (
-          SELECT CURRENT_TIMESTAMP as time
-        ),
-        -- select existing memberships of the group
-        group_memberships AS (
-          SELECT project_id, user_id FROM #{Member.table_name} WHERE user_id = :group_id
-        ),
-        -- select existing member_roles of the group
-        group_roles AS (
-          SELECT members.project_id AS project_id,
-                 members.user_id AS user_id,
-                 members.id AS member_id,
-                 member_roles.role_id AS role_id,
-                 member_roles.id AS member_role_id
-          FROM #{MemberRole.table_name} member_roles
-          JOIN #{Member.table_name} members
-          ON members.id = member_roles.member_id AND members.user_id = :group_id
-        ),
-        -- insert into group_users association
-        new_group_users AS (
-          INSERT INTO group_users (group_id, user_id)
-          SELECT :group_id as group_id, user_id FROM found_users
-          ON CONFLICT DO NOTHING
-        ),
-        -- find members that already exist
-        existing_members AS (
-          SELECT members.id, found_users.user_id, members.project_id
-          FROM members, found_users, group_memberships
-          WHERE members.user_id = found_users.user_id
-          AND members.project_id = group_memberships.project_id
-          AND members.id IS NOT NULL
-        ),
-        -- insert the group user into members
-        new_members AS (
-          INSERT INTO #{Member.table_name} (project_id, user_id, updated_at, created_at)
-          SELECT group_memberships.project_id, found_users.user_id, (SELECT time from timestamp), (SELECT time from timestamp)
-          FROM found_users, group_memberships
-          WHERE NOT EXISTS (SELECT 1 FROM existing_members WHERE existing_members.user_id = found_users.user_id AND existing_members.project_id = group_memberships.project_id)
-          ON CONFLICT(project_id, user_id) DO NOTHING
-          RETURNING id, user_id, project_id
-        ),
-        -- copy the member roles of the group
-        add_roles AS (
-          INSERT INTO #{MemberRole.table_name} (member_id, role_id, inherited_from)
-          SELECT members.id, group_roles.role_id, group_roles.member_role_id
-          FROM group_roles
-          JOIN
-            (SELECT * FROM new_members UNION SELECT * from existing_members) members ON group_roles.project_id = members.project_id
-          -- Ignore if the role was already inserted by us
-          ON CONFLICT DO NOTHING
-          RETURNING id, member_id, role_id
-        ),
-        -- get the ids of members where roles have been added the member did not have before
-        members_with_added_roles AS (
-          SELECT DISTINCT add_roles.member_id
-          FROM add_roles
-          WHERE NOT EXISTS
-            (SELECT 1 FROM #{MemberRole.table_name}
-              WHERE #{MemberRole.table_name}.member_id = add_roles.member_id
-              AND #{MemberRole.table_name}.role_id = add_roles.role_id
-              AND #{MemberRole.table_name}.id != add_roles.id)
-        ),
-        touch_existing_members AS (
-          UPDATE members SET updated_AT = CURRENT_TIMESTAMP
-          WHERE id IN (SELECT id from existing_members)
-          AND id IN (SELECT member_id from members_with_added_roles)
-        )
+    # The same validation exists in Groups::BaseContract, but it relies on in-memory
+    # group_users that are new_record?. This service inserts group_users via raw SQL,
+    # so the contract never sees them. We duplicate the check here against the params directly.
+    def validate_department_membership(call)
+      return unless model.organizational_unit?
 
-        SELECT member_id from members_with_added_roles
+      conflicts = users_already_in_departments(params[:ids])
+
+      conflicts.each do |user_id, department_id|
+        call.errors.add(:group_users, :user_already_in_department, user_id:, department_id:)
+      end
+
+      call.success = false if conflicts.any?
+    end
+
+    def users_already_in_departments(user_ids)
+      GroupUser
+        .joins(:group)
+        .merge(Group.organizational_units)
+        .where(user_id: user_ids)
+        .where.not(group_id: model.id)
+        .pluck(:user_id, :group_id)
+    end
+
+    def after_perform(call)
+      create_inherited_roles(model)
+
+      model.ancestors.each do |ancestor|
+        create_inherited_roles(ancestor)
+      end
+
+      call
+    end
+
+    def create_inherited_roles(group)
+      Groups::CreateInheritedRolesService
+        .new(group, current_user: user, contract_class:)
+        .call(user_ids: params[:ids], message: params[:message])
+    end
+
+    def add_to_group
+      <<~SQL.squish
+        INSERT INTO group_users (group_id, user_id)
+        SELECT :group_id as group_id, user_id FROM
+          (SELECT id as user_id FROM #{User.table_name} WHERE id IN (:user_ids)) users
+        ON CONFLICT DO NOTHING
       SQL
     end
 
-    def touch_updated(member_ids)
-      # do nothing in this case as we already touch while updating
+    def execute_query(query)
+      ::Group
+        .connection
+        .exec_query(query)
     end
   end
 end

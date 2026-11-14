@@ -1,0 +1,53 @@
+<%=
+  component_wrapper do
+    flex_layout(align_items: :center, text_align: :center, p: 3) do |body|
+      if overbooked?
+        body.with_row(mb: 2) do
+          render(Primer::Beta::Octicon.new(:hourglass, size: :medium, color: :danger))
+        end
+
+        body.with_row(mb: 2) do
+          render(Primer::Beta::Heading.new(tag: :h2, font_size: 4)) { overbooking_heading }
+        end
+
+        body.with_row(mb: 3) do
+          render(Primer::Beta::Text.new(tag: :p, color: :muted, m: 0)) { overbooking_description }
+        end
+
+        if working_schedule?
+          body.with_row(mb: 1) do
+            render(Primer::Beta::Text.new(tag: :p, color: :muted, m: 0)) { schedule_note }
+          end
+        end
+
+        body.with_row(mb: 3) do
+          if unplannable?
+            render(Primer::Beta::Text.new(tag: :p, font_weight: :bold, m: 0)) { unplannable_note }
+          else
+            render(Primer::Beta::Text.new(tag: :p, m: 0)) { overtime_summary }
+          end
+        end
+      end
+
+      body.with_row(w: :full) do
+        form_with(
+          url: form_url,
+          method: form_method,
+          id: form_id,
+          data: { turbo_stream: true }
+        ) do
+          if hidden_fields
+            safe_join(hidden_fields.map { |name, value| hidden_field_tag(name, value) })
+          else
+            safe_join(
+              [
+                (hidden_field_tag("filters", @filters) if @filters.present?),
+                *@form_values.map { |name, value| hidden_field_tag("resource_allocation[#{name}]", value) }
+              ].compact
+            )
+          end
+        end
+      end
+    end
+  end
+%>

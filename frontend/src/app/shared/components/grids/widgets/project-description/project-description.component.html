@@ -1,22 +1,14 @@
 <widget-header
+  [headingId]="headingId"
   [name]="widgetName"
   [editable]="isEditable">
 
-  <attribute-help-text slot="prepend"
+  <attribute-help-text slot="append"
                        attribute="description"
-                       [attributeScope]="'Project'"></attribute-help-text>
+                       [attributeScope]="'Project'" />
 
-  <widget-menu
-      slot="menu"
-      [resource]="resource">
-  </widget-menu>
+  <widget-menu slot="menu"
+    [resource]="resource" />
 </widget-header>
 
-<div class="grid--widget-content -allow-inner-overflow">
-  <edit-form *ngIf="(project$ | async) as project"
-             [resource]="project">
-    <editable-attribute-field [resource]="project"
-                              fieldName="description">
-    </editable-attribute-field>
-  </edit-form>
-</div>
+<turbo-frame class="grid--widget-content" [id]="frameId" [src]="src" loading="lazy" />

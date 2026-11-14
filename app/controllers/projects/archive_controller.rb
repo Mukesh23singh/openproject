@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Projects::ArchiveController < ApplicationController
-  before_action :find_project_by_project_id
-  before_action :require_admin
+  include OpTurbo::ComponentStream
+
+  before_action :find_project_including_archived
+  before_action :authorize, only: %i[create dialog]
+  before_action :require_admin, only: [:destroy]
 
   def create
     change_status_action(:archive)
@@ -40,30 +42,39 @@ class Projects::ArchiveController < ApplicationController
     change_status_action(:unarchive)
   end
 
+  def dialog
+    respond_with_dialog Projects::ArchiveDialogComponent.new(project: @project)
+  end
+
   private
+
+  def find_project_including_archived
+    # The visible scope filters out archived projects, but here we want to explicitly unarchive them.
+    # The contracts do proper permission checks, so we can skip the visible scope here.
+    @project = Project.find(params[:project_id])
+  end
 
   def change_status_action(status)
     service_call = change_status(status)
 
-    if service_call.success?
-      redirect_to(project_path_with_status)
-    else
+    if !service_call.success?
       flash[:error] = t(:"error_can_not_#{status}_project",
-                        errors: service_call.errors.full_messages.join(', '))
-      redirect_back fallback_location: project_path_with_status
+                        errors: service_call.errors.full_messages.join(", "))
     end
+
+    redirect_to(projects_path, status: :see_other)
   end
 
   def change_status(status)
-    "Projects::#{status.to_s.camelcase}Service"
-      .constantize
+    service_class(status)
       .new(user: current_user, model: @project)
       .call
   end
 
-  def project_path_with_status
-    acceptable_params = params.permit(:status).to_h.compact.select { |_, v| v.present? }
-
-    projects_path(acceptable_params)
+  def service_class(status)
+    case status
+    when :archive then Projects::ArchiveService
+    when :unarchive then Projects::UnarchiveService
+    end
   end
 end

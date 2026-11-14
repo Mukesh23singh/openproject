@@ -6,9 +6,13 @@
   &.ck-editor__editable_inline
     padding-left: 2px !important
 
+  .ck-content .table table th
+    @include op-uc-table-header-styles
+
 // Wrapper for full text element
-ckeditor-augmented-textarea .op-ckeditor--wrapper
-  margin-bottom: 2rem
+// matches the primer form default spacing
+opce-ckeditor-augmented-textarea .op-ckeditor--attachments
+  margin-top: var(--stack-gap-normal)
 
 // Ensure same border and min-height for preview
 .ck-content,
@@ -16,9 +20,23 @@ ckeditor-augmented-textarea .op-ckeditor--wrapper
   border: 1px solid var(--ck-color-base-border)
   min-height: 100px
   padding: 10px
+  --ck-editor-editable-padding: 7px 10px
+
+  // Keep editor content typography aligned with surrounding OpenProject styles.
+  --ck-content-font-family: var(--body-font-family)
+  --ck-content-font-size: var(--body-font-size)
 
 // Specific overrides for ck contenteditable
 .ck-content
+
+  // Remove the 12px edge margin of CKEditor 49, except for widgets,
+  // which need the room for their "insert paragraph" buttons.
+  &.ck.ck-editor__editable_inline
+    > :first-child:not(.ck-widget)
+      margin-top: 0
+
+    > :last-child:not(.ck-widget)
+      margin-bottom: 0
 
   // Code block
   pre
@@ -66,6 +84,10 @@ ckeditor-augmented-textarea .op-ckeditor--wrapper
   transform: translateX( -15px )
   z-index: 1000 !important
 
+// Force forms of ck to be block
+// as our forms are inline by default
+.ck.ck-form
+  display: block
 
 // Override fixed position of toolbar
 // Otherwise the toolbar will 'disappear' behind the topmenu
@@ -75,11 +97,50 @@ ckeditor-augmented-textarea .op-ckeditor--wrapper
 .ck.ck-sticky-panel__content
   position: unset !important
 
+// Keep the grouped toolbar dropdown within the editor when surrounding split
+// panes reduce its available width.
+.ck.ck-toolbar.ck-toolbar_grouping
+  container-type: inline-size
+
+  > .ck-toolbar__grouped-dropdown > .ck-dropdown__panel
+    max-width: calc(100cqw - 8px)
+
+    > .ck-toolbar
+      max-width: 100%
+
+      > .ck-toolbar__items
+        max-width: 100%
+        flex-wrap: wrap
+
+.ck.ck-toolbar > .op-ai-actions .ck-splitbutton__action > .ck-button__label
+  max-width: 12em
+  overflow: hidden
+  text-overflow: ellipsis
+
 // Mentions autocomplete
 .ck-list__item .mention-list-item
   display: block
   max-width: 400px
   @include text-shortener
+
+.ck.ck-list.ck-mentions
+  --ck-list-padding: var(--ck-spacing-sm) 0
+  --ck-list-item-outer-padding: 0
+  --ck-list-item-min-width: 15em
+
+  // Must be more specific than the .ck-reset_all reset of CKEditor.
+  > .ck-list__item > .mention-list-item
+    padding: 0.18em 1.2em
+    font-size: var(--ck-font-size-md)
+    line-height: 1.84615
+
+  > .ck-list__item:not(.ck-mentions__item_focused) > .mention-list-item:hover
+    background: var(--ck-color-list-button-hover-background, var(--ck-list-button-hover-background-color))
+
+  > .ck-list__item.ck-mentions__item_focused > .ck-button
+    background: var(--ck-color-list-button-on-background, var(--ck-list-button-on-background-color))
+    color: var(--ck-color-list-button-on-text, var(--ck-list-button-on-text-color))
+    box-shadow: none
 
 // Document editor styles
 .document-editor
@@ -89,24 +150,24 @@ ckeditor-augmented-textarea .op-ckeditor--wrapper
 
   .document-editor__toolbar
     position: sticky
-    top: 0px
-    z-index: 2
+    top: 0
+    z-index: 3
 
-    // Adjust top offset to match if globally
-    // scrolling (content-wrapper)
-    .ckeditor--content-scrollable &,
-    .form--field.-visible-overflow &
-      top: -10px
+    // Reset these styles explicitly when the editor is opened inside a Dialog, as position: sticky opens a separate stacking context.
+    // In case the dialog has multiple editors below each other, these different context interfere and the paragraph dropdown of an editor will be behind the editor below it.
+    // See: WP#53724
+    dialog &
+      position: initial
+      z-index: auto
 
   .ck.ck-toolbar.ck-rounded-corners
     border-bottom-left-radius: 0
     border-bottom-right-radius: 0
 
   .document-editor__editable-container
-    overflow-y: auto
     border: 1px solid var(--ck-color-base-border)
     border-top: none
-    border-radius: var(--ck-border-radius)
+    border-radius: var(--ck-radius-base)
     border-top-left-radius: 0
     border-top-right-radius: 0
 
@@ -119,5 +180,20 @@ ckeditor-augmented-textarea .op-ckeditor--wrapper
     margin-left: 0
     margin-right: 40px
 
-.ck tr .ck-editor__nested-editable 
+.ck tr .ck-editor__nested-editable
   border: 1px solid var(--ck-color-base-border)
+
+.ck-icon_inherit-color
+  path
+    fill: var(--body-font-color) !important
+
+.ck.ck-balloon-panel.ck-powered-by-balloon
+  z-index: var(--ck-z-default) !important
+
+@media (max-width: $breakpoint-sm)
+  .ck-balloon-panel.ck-balloon-panel_visible
+    left: 5vw !important
+    right: 5vw !important
+
+  .ck-list__item .mention-list-item
+    max-width: none !important

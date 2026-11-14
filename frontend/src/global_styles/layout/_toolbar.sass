@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,11 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
+@import "helpers"
+
 $nm-color-error-background: #fedada
 
 $nm-color-success-border: #35c53f
@@ -59,14 +60,6 @@ $nm-color-success-background: #d8fdd1
   &.-with-dropdown .toolbar-item.drop-down
     position: relative
 
-  &.-minimum-title
-    .toolbar-items
-      flex-grow: 1
-
-    .title-container
-      flex-grow: 0
-      flex-basis: auto
-
 // Align title and toolbar with flex
 .toolbar
   display: flex
@@ -85,27 +78,22 @@ $nm-color-success-background: #d8fdd1
 .toolbar-items
   display: flex
   flex-wrap: wrap
-  margin: 0 -10px 0 0
+  gap: 10px
+  margin: 0
   padding: 0
+  justify-content: flex-end
 
   li
     list-style-type: none
-    flex-grow: 1
 
   .toolbar-item
-    margin: 0 10px 10px 0
-    // spacing between nav items
-    flex-grow: 1
-
-    // hide right margin for e.g., conditional buttons
-    &.-no-spacing
-      margin-right: 0
-
     &.-no-grow
       flex-grow: 0
 
+    a.button
+      text-decoration: none
+
     .button
-      width: 100%
       overflow: hidden
       white-space: normal
       // For links the total height adds borders to line-height (== 34px)
@@ -119,16 +107,17 @@ $nm-color-success-background: #d8fdd1
       margin: 0
       padding: 0
 
+    // Special case for WP Timeline Buttons
+    &:has(.toolbar-button-group:empty)
+      display: none
+
   .toolbar-button-group
     display: flex
     justify-content: flex-end
     flex-direction: row
-    margin-left: 0px
+    margin-left: 0
+    gap: 2px
 
-    > li
-      margin-right: 2px
-
-  button,
   .button
     // Overwrite Foundastion's default padding. Let line-height fix vertical
     // center
@@ -139,13 +128,10 @@ $nm-color-success-background: #d8fdd1
       font-size: 14px
 
     .button--text
-      margin-left: 0.2em
+      margin: 0 4px
 
     .badge
-      font-size: 14px
       vertical-align: 1px
-
-      font-size: 14px
       line-height: 1
 
       i
@@ -156,22 +142,19 @@ $nm-color-success-background: #d8fdd1
           font-size: 14px
           line-height: 1
 
-  button,
   .button,
   input[type=text],
   input[type=number],
   select
     @include toolbar-element-sizing
-    border: 1px solid var(--toolbar-item--border-color)
+    border: 1px solid var(--button-default-borderColor-rest)
 
-  button,
-  .button,
-  .toolbar-input--affix
-    background: var(--toolbar-item--bg-color)
+  .button
+    background: var(--button-default-bgColor-rest)
 
     &.-pressed,
     &:active
-      background: var(--toolbar-item--bg-color-pressed)
+      background: var(--button-default-bgColor-active)
       box-shadow: inset 0 2px 3px rgba(0, 0, 0, .125)
 
   select
@@ -205,10 +188,13 @@ $nm-color-success-background: #d8fdd1
         vertical-align: text-top
 
 // Allow title container to grow
+.toolbar-title--container
+  display: flex
+  flex: 1
+
 .title-container
   flex: 1 1
   white-space: nowrap
-  margin-bottom: 10px
   max-width: 100%
   // margin-bottom of toolbar buttons
 
@@ -225,11 +211,11 @@ $nm-color-success-background: #d8fdd1
   div.inline-edit h2
     margin: 10px 0
     padding: 0px 5px
-    color: var(--toolbar-title-color)
+    color: var(--fgColor-muted)
     line-height: 34px
     height: 34px
-    @include breakpoint(medium down)
-      font-size: var(--h2-font-size)
+    @media screen and (max-width: $breakpoint-md)
+      font-size: 1.5rem
 
     &:focus, &:hover
       outline: 1px solid #ddd
@@ -245,16 +231,15 @@ $nm-color-success-background: #d8fdd1
     padding: 0px 5px
     -moz-margin: 10px 0
     margin: 9px 0
-    color: var(--toolbar-title-color)
-    font-size: var(--h2-font-size)
-    height: 36px
-    line-height: 36px
+    color: var(--fgColor-muted)
+    font-size: 1.5rem
+    @include toolbar-input-styles
     width: calc(100% + 2px)
 
     &.-error
       display: block
       background: $nm-color-error-background !important
-      border-color: var(--content-form-danger-zone-bg-color) !important
+      border-color: var(--borderColor-danger-emphasis) !important
 
   ul
     margin: 0
@@ -265,7 +250,7 @@ $nm-color-success-background: #d8fdd1
     float: none
 
   span.filter-selection
-    @include query-select-dropdown-filter-select(var(--primary-color))
+    @include query-select-dropdown-filter-select(var(--accent-color))
 
 .toolbar-input-group
   display: flex
@@ -284,19 +269,6 @@ $nm-color-success-background: #d8fdd1
     margin: 0
     font-size: 1.05rem
     flex-grow: 1
-
-  .toolbar-input-group--affix
-    background: var(--toolbar-item--bg-color)
-    border: 1px solid var(--toolbar-item--border-color)
-    color: $inlinelabel-color
-    border-radius: 2px
-    white-space: nowrap
-
-    &.-prepend
-      border-right: none !important
-
-    &.-append
-      border-left: none !important
 
 .toolbar
   *

@@ -1,44 +1,67 @@
-require_relative '../../spec_helper'
+# frozen_string_literal: true
 
-describe 'Create BCF',
-         type: :feature,
-         js: true,
-         with_config: { edition: 'bim' },
-         with_mail: false do
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../../spec_helper"
+
+RSpec.describe "Create BCF", :js,
+               with_config: { edition: "bim" } do
   let(:project) do
-    FactoryBot.create(:project,
-                      types: [type, type_with_cf],
-                      enabled_module_names: %i[bim work_package_tracking],
-                      work_package_custom_fields: [integer_cf])
+    create(:project,
+           types: [type, type_with_cf],
+           enabled_module_names: %i[bim work_package_tracking])
   end
   let(:index_page) { Pages::IfcModels::ShowDefault.new(project) }
   let(:permissions) { %i[view_ifc_models view_linked_issues manage_bcf add_work_packages edit_work_packages view_work_packages] }
-  let!(:status) { FactoryBot.create(:default_status) }
-  let!(:priority) { FactoryBot.create :priority, is_default: true }
+  let!(:status) { create(:default_status) }
+  let!(:priority) { create(:priority, is_default: true) }
 
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: permissions
+    create(:user,
+           member_with_permissions: { project => permissions })
   end
 
   let!(:model) do
-    FactoryBot.create(:ifc_model_minimal_converted,
-                      project: project,
-                      uploader: user)
+    create(:ifc_model_minimal_converted,
+           project:,
+           uploader: user)
   end
-  let(:type) { FactoryBot.create(:type) }
+  let(:type) { create(:type) }
   let(:type_with_cf) do
-    FactoryBot.create(:type, custom_fields: [integer_cf])
+    create(:type, custom_fields: [integer_cf])
   end
   let(:integer_cf) do
-    FactoryBot.create(:int_wp_custom_field)
+    create(:integer_wp_custom_field)
   end
 
-  shared_examples 'bcf details creation' do |with_viewpoints|
+  shared_examples "bcf details creation" do |with_viewpoints:|
     it "can create a new #{with_viewpoints ? 'bcf' : 'plain'} work package" do
       create_page = index_page.create_wp_by_button(type)
-      create_page.view_route = view_route
 
       create_page.expect_current_path
 
@@ -69,15 +92,13 @@ describe 'Create BCF',
       type_field.activate!
       type_field.set_value type_with_cf.name
 
-      cf_field = create_page.edit_field(:"customField#{integer_cf.id}")
+      cf_field = create_page.edit_field(integer_cf.attribute_name(:camel_case).to_sym)
       cf_field.set_value(815)
 
       create_page.save!
 
-      sleep 5
-
       index_page.expect_and_dismiss_toaster(
-        message: 'Successful creation. Click here to open this work package in fullscreen view.'
+        message: "Successful creation."
       )
 
       if with_viewpoints
@@ -85,7 +106,7 @@ describe 'Create BCF',
       end
 
       work_package = WorkPackage.last
-      split_page = ::Pages::SplitWorkPackage.new(work_package, project)
+      split_page = Pages::PrimerizedSplitWorkPackage.new(work_package, project)
       split_page.ensure_page_loaded
       split_page.expect_subject
 
@@ -97,7 +118,7 @@ describe 'Create BCF',
         expect(work_package.bcf_issue.viewpoints.count).to eq 2
       end
 
-      expect(page).to have_current_path /bcf\/#{Regexp.escape(view_route)}$/, ignore_query: true
+      expect(page).to have_current_path /bcf$/, ignore_query: true
     end
   end
 
@@ -105,74 +126,45 @@ describe 'Create BCF',
     login_as(user)
   end
 
-  context 'with all permissions' do
-    context 'on the split page' do
-      let(:view_route) { 'split' }
+  context "with all permissions" do
+    context "when on default view" do
       before do
-        index_page.visit!
-        index_page.finished_loading
+        index_page.visit_and_wait_until_finished_loading!
       end
 
-      it_behaves_like 'bcf details creation', true
+      it_behaves_like "bcf details creation", with_viewpoints: true
     end
 
-    context 'on the split page switching to list' do
-      let(:view_route) { 'list' }
+    context "when going to cards view first" do
       before do
-        index_page.visit!
-        index_page.finished_loading
+        index_page.visit_and_wait_until_finished_loading!
 
-        index_page.switch_view 'Cards'
-        expect(page).to have_current_path /\/bcf\/list$/, ignore_query: true
+        index_page.switch_view "Cards"
       end
 
-      it_behaves_like 'bcf details creation', false
-    end
-
-    context 'starting on the list page' do
-      let(:view_route) { 'list' }
-      before do
-        visit bcf_project_frontend_path(project, "list")
-        expect(page).to have_current_path /\/bcf\/list$/, ignore_query: true
-      end
-
-      it_behaves_like 'bcf details creation', false
-    end
-
-    context 'starting on the details page of an existing work package' do
-      let(:work_package) { FactoryBot.create :work_package, project: project }
-      let(:view_route) { 'split' }
-      before do
-        visit bcf_project_frontend_path(project, "split/details/#{work_package.id}")
-        expect(page).to have_current_path /\/bcf\/split\/details/, ignore_query: true
-      end
-
-      it_behaves_like 'bcf details creation', true
+      it_behaves_like "bcf details creation", with_viewpoints: false
     end
   end
 
-  context 'without add_work_packages permission' do
+  context "without add_work_packages permission" do
     let(:permissions) { %i[view_ifc_models manage_bcf view_work_packages] }
 
-    it 'has the create button disabled' do
-      index_page.visit!
-      index_page.finished_loading
+    it "has the create button disabled" do
+      index_page.visit_and_wait_until_finished_loading!
 
       index_page.expect_wp_create_button_disabled
     end
   end
 
-  context 'with add_work_packages but without manage_bcf permission' do
+  context "with add_work_packages but without manage_bcf permission" do
     let(:permissions) { %i[view_ifc_models view_work_packages add_work_packages] }
 
-    context 'on the split page' do
-      let(:view_route) { 'split' }
+    context "when on default view" do
       before do
-        index_page.visit!
-        index_page.finished_loading
+        index_page.visit_and_wait_until_finished_loading!
       end
 
-      it_behaves_like 'bcf details creation', false
+      it_behaves_like "bcf details creation", with_viewpoints: false
     end
   end
 end

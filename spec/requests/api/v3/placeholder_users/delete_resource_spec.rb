@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,20 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
-require_relative './delete_resource_examples'
+require "spec_helper"
+require_relative "delete_resource_examples"
 
-describe ::API::V3::PlaceholderUsers::PlaceholderUsersAPI,
-         'delete',
-         type: :request do
+RSpec.describe API::V3::PlaceholderUsers::PlaceholderUsersAPI, "delete" do
   include API::V3::Utilities::PathHelper
 
-  shared_let(:placeholder) { FactoryBot.create :placeholder_user, name: 'foo' }
+  shared_let(:placeholder) { create(:placeholder_user, name: "foo") }
 
   let(:send_request) do
     header "Content-Type", "application/json"
@@ -51,33 +49,42 @@ describe ::API::V3::PlaceholderUsers::PlaceholderUsersAPI,
     delete path
   end
 
-  context 'when admin' do
-    let(:user) { FactoryBot.build_stubbed :admin }
+  context "when admin" do
+    let(:user) { build_stubbed(:admin) }
 
-    it_behaves_like 'deletion allowed'
+    it_behaves_like "deletion allowed"
   end
 
-  context 'when locked admin' do
-    let(:user) { FactoryBot.build_stubbed :admin, status: Principal.statuses[:locked] }
+  context "when locked admin" do
+    let(:user) { build_stubbed(:admin, status: Principal.statuses[:locked]) }
 
-    it_behaves_like 'deletion is not allowed'
+    it_behaves_like "deletion is not allowed"
   end
 
-  context 'when non-admin' do
-    let(:user) { FactoryBot.build_stubbed :user, admin: false }
+  context "when non-admin" do
+    let(:user) { build_stubbed(:user, admin: false) }
 
-    it_behaves_like 'deletion is not allowed'
+    it_behaves_like "deletion is not allowed"
   end
 
-  context 'when user with manage_user permission' do
-    let(:user) { FactoryBot.create :user, global_permission: %[manage_placeholder_user] }
+  context "when user with manage_placeholder_user permission" do
+    let(:user) { create(:user, global_permissions: %[manage_placeholder_user]) }
 
-    it_behaves_like 'deletion allowed'
+    it_behaves_like "deletion allowed"
   end
 
-  context 'when anonymous user' do
-    let(:user) { FactoryBot.create :anonymous }
+  context "when anonymous user" do
+    let(:user) { create(:anonymous) }
 
-    it_behaves_like 'deletion is not allowed'
+    context "when login_required", with_settings: { login_required: true } do
+      it_behaves_like "error response",
+                      401,
+                      "Unauthenticated",
+                      I18n.t("api_v3.errors.code_401")
+    end
+
+    context "when not login_required", with_settings: { login_required: false } do
+      it_behaves_like "deletion is not allowed"
+    end
   end
 end

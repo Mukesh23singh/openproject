@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +20,32 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import {
-  Component, ElementRef, EventEmitter, Input, OnInit, Output, ViewChild,
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Input,
+  OnInit,
+  Output,
+  ViewChild,
 } from '@angular/core';
-import { HttpErrorResponse, HttpEventType, HttpProgressEvent } from '@angular/common/http';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
+import {
+  HttpErrorResponse,
+  HttpEvent,
+  HttpEventType,
+  HttpProgressEvent,
+} from '@angular/common/http';
+import { BehaviorSubject, combineLatest, Observable } from 'rxjs';
+
 import { debugLog } from 'core-app/shared/helpers/debug_output';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { UploadFile, UploadHttpEvent, UploadInProgress } from 'core-app/core/file-upload/op-file-upload.service';
 
 @Component({
   selector: 'op-toasters-upload-progress',
@@ -42,31 +54,39 @@ import { UploadFile, UploadHttpEvent, UploadInProgress } from 'core-app/core/fil
       <span class="filename" [textContent]="fileName"></span>
       <progress max="100" value="0" #progressBar></progress>
       <p #progressPercentage>0%</p>
-      <span class="upload-completed" *ngIf="completed || error">
-      <op-icon icon-classes="icon-close" *ngIf="error"></op-icon>
-      <op-icon icon-classes="icon-checkmark" *ngIf="completed"></op-icon>
-    </span>
+      @if (completed || error) {
+        <span class="upload-completed">
+          @if (error) {
+            <op-icon icon-classes="icon-close" />
+          }
+          @if (completed) {
+            <op-icon icon-classes="icon-checkmark" />
+          }
+        </span>
+      }
     </li>
-  `,
+    `,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
-export class UploadProgressComponent extends UntilDestroyedMixin implements OnInit {
-  @Input() public upload:UploadInProgress;
+export class UploadProgressComponent extends UntilDestroyedMixin implements OnInit, AfterViewInit {
+  @Input() public file:File;
 
-  @Output() public onError = new EventEmitter<HttpErrorResponse>();
+  @Input() public upload:Observable<HttpEvent<unknown>>;
 
-  @Output() public onSuccess = new EventEmitter<undefined>();
+  @Output() public uploadError = new EventEmitter<HttpErrorResponse>();
 
-  @ViewChild('progressBar')
-  progressBar:ElementRef;
+  @Output() public uploadSuccess = new EventEmitter<void>();
 
-  @ViewChild('progressPercentage')
-  progressPercentage:ElementRef;
+  @ViewChild('progressBar') progressBar:ElementRef<HTMLProgressElement>;
 
-  public file:UploadFile;
+  @ViewChild('progressPercentage') progressPercentage:ElementRef<HTMLParagraphElement>;
 
   public error = false;
 
   public completed = false;
+
+  private viewInitialized = new BehaviorSubject<boolean>(false);
 
   set value(value:number) {
     this.progressBar.nativeElement.value = value;
@@ -77,49 +97,54 @@ export class UploadProgressComponent extends UntilDestroyedMixin implements OnIn
     }
   }
 
-  constructor(protected readonly I18n:I18nService) {
-    super();
-  }
-
   ngOnInit() {
-    this.file = this.upload[0];
-    const observable = this.upload[1];
-
-    observable
-      .pipe(
-        this.untilDestroyed(),
-      )
+    combineLatest([
+      this.upload,
+      this.viewInitialized,
+    ]).pipe(this.untilDestroyed())
       .subscribe(
-        (evt:UploadHttpEvent) => {
+        ([evt, initialized]) => {
+          if (!initialized) {
+            return;
+          }
+
           switch (evt.type) {
             case HttpEventType.Sent:
               this.value = 5;
-              return debugLog(`Uploading file "${this.file.name}" of size ${this.file.size}.`);
-
+              debugLog(`Uploading file "${this.file.name}" of size ${this.file.size}.`);
+              break;
             case HttpEventType.UploadProgress:
-              return this.updateProgress(evt);
-
+              this.updateProgress(evt);
+              break;
             case HttpEventType.Response:
               debugLog(`File ${this.fileName} was fully uploaded.`);
               this.value = 100;
               this.completed = true;
-              return this.onSuccess.emit();
-
+              this.uploadSuccess.emit();
+              break;
+            case HttpEventType.DownloadProgress:
+            case HttpEventType.ResponseHeader:
+              /* do nothing */
+              break;
             default:
-            // Sent or unknown event
+              console.warn(`unknown event type: ${evt.type}`);
           }
         },
         (error:HttpErrorResponse) => this.handleError(error),
       );
   }
 
-  public get fileName():string|undefined {
-    return this.file && this.file.name;
+  ngAfterViewInit():void {
+    this.viewInitialized.next(true);
+  }
+
+  public get fileName():string {
+    return this.file?.name;
   }
 
   private updateProgress(evt:HttpProgressEvent) {
     if (evt.total) {
-      this.value = Math.round(evt.loaded / evt.total * 100);
+      this.value = Math.round((evt.loaded / evt.total) * 100);
     } else {
       this.value = 10;
     }
@@ -127,6 +152,6 @@ export class UploadProgressComponent extends UntilDestroyedMixin implements OnIn
 
   private handleError(error:HttpErrorResponse) {
     this.error = true;
-    this.onError.emit(error);
+    this.uploadError.emit(error);
   }
 }

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,22 +28,28 @@
 module OpenProject
   module AccessControl
     class Mapper
-      def permission(name, hash, options = {})
-        options[:project_module] = @project_module
-        mapped_permissions << Permission.new(name, hash, options)
+      def permission(name, hash, **)
+        mapped_permissions << Permission.new(name, hash, project_module: @project_module, **)
       end
 
       def project_module(name, options = {})
         options[:dependencies] = Array(options[:dependencies]) if options[:dependencies]
-        mapped_modules << { name: name, order: 0 }.merge(options)
+        mapped_modules << { name:, order: 0 }.merge(options)
+        permission_count = mapped_permissions.size
 
         if block_given?
           @project_module = name
           yield self
           @project_module = nil
-        else
-          project_modules_without_permissions << name
         end
+
+        project_modules_without_permissions << name if mapped_permissions.size == permission_count
+      end
+
+      def enabled_by_default!(if: true)
+        raise ArgumentError, "enabled_by_default! must be called within a project_module block" unless @project_module
+
+        mapped_modules.last[:enabled_by_default] = binding.local_variable_get(:if)
       end
 
       def mapped_modules

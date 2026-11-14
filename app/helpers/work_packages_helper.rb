@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,120 +34,31 @@ module WorkPackagesHelper
   # Displays a link to +work_package+ with its subject.
   # Examples:
   #
-  #   link_to_work_package(package)                            # => Defect #6: This is the subject
-  #   link_to_work_package(package, all_link: true)            # => Defect #6: This is the subject (everything within the link)
-  #   link_to_work_package(package, truncate: 9)               # => Defect #6: This i...
-  #   link_to_work_package(package, subject: false)            # => Defect #6
-  #   link_to_work_package(package, type: false)               # => #6: This is the subject
-  #   link_to_work_package(package, project: true)             # => Foo - Defect #6
-  #   link_to_work_package(package, id_only: true)             # => #6
-  #   link_to_work_package(package, subject_only: true)        # => This is the subject (as link)
-  #   link_to_work_package(package, status: true)              # => #6 New (if #id => true)
-  def link_to_work_package(package, options = {})
-    if options[:subject_only]
-      options.merge!(type: false,
-                     subject: true,
-                     id: false,
-                     all_link: true)
-    elsif options[:id_only]
-      options.merge!(type: false,
-                     subject: false,
-                     id: true,
-                     all_link: true)
-    else
-      options.reverse_merge!(type: true,
-                             subject: true,
-                             id: true)
+  #   link_to_work_package(package)                            # => Defect <id>: This is the subject
+  #   link_to_work_package(package, link_subject: true)        # => Defect <id>: This is the subject (everything within the link)
+  #   link_to_work_package(package, display_project: true)     # => Foo - Defect <id>: This is the subject
+  def link_to_work_package(work_package, display_project: false, link_subject: false) # rubocop:disable Metrics/AbcSize
+    output = ActiveSupport::SafeBuffer.new
+    output << "#{work_package.project} - " if display_project && work_package.project_id
+
+    link = link_to(work_package_path(work_package),
+                   title: work_package.subject,
+                   class: link_to_work_package_css_classes(work_package)) do
+      link_parts = []
+      link_parts << work_package.type.to_s if work_package.type_id
+      link_parts << "#{work_package.formatted_id}:"
+      link_parts << content_tag(:span, I18n.t(:label_closed_work_packages), class: "sr-only") if work_package.closed?
+      link_parts << work_package.subject if link_subject
+
+      safe_join(link_parts, " ")
     end
 
-    parts = { prefix: [],
-              hidden_link: [],
-              link: [],
-              suffix: [],
-              title: [],
-              css_class: link_to_work_package_css_classes(package, options) }
-
-    # Prefix part
-
-    parts[:prefix] << package.project.to_s if options[:project]
-
-    # Link part
-
-    parts[:link] << h(options[:before_text].to_s) if options[:before_text]
-
-    parts[:link] << h(package.type.to_s) if options[:type]
-
-    parts[:link] << "##{h(package.id)}" if options[:id]
-
-    parts[:link] << h(package.status).to_s if options[:id] && options[:status] && package.status_id
-
-    # Hidden link part
-
-    if package.closed? && !options[:no_hidden]
-      parts[:hidden_link] << content_tag(:span,
-                                         I18n.t(:label_closed_work_packages),
-                                         class: 'hidden-for-sighted')
-    end
-
-    # Suffix part
-
-    if options[:subject]
-      subject = if options[:subject]
-                  subject = package.subject
-                  if options[:truncate]
-                    subject = truncate(subject, length: options[:truncate])
-                  end
-
-                  subject
-                end
-
-      parts[:suffix] << h(subject)
-    end
-
-    # title part
-
-    parts[:title] << (options[:title].nil? ? package.subject : options[:title])
-
-    # combining
-
-    prefix = parts[:prefix].join(' ')
-    suffix = parts[:suffix].join(' ')
-    link = parts[:link].join(' ').strip
-    hidden_link = parts[:hidden_link].join
-    title = parts[:title].join(' ')
-    css_class = parts[:css_class].join(' ')
-
-    # Determine path or url
-    work_package_link =
-      if options.fetch(:only_path, true)
-        work_package_path(package)
-      else
-        work_package_url(package)
-      end
-
-    if options[:all_link]
-      link_text = [prefix, link].reject(&:empty?).join(' - ')
-      link_text = [link_text, suffix].reject(&:empty?).join(': ')
-      link_text = [hidden_link, link_text].reject(&:empty?).join
-
-      link_to(link_text.html_safe,
-              work_package_link,
-              title: title,
-              class: css_class)
-    else
-      link_text = [hidden_link, link].reject(&:empty?).join
-
-      html_link = link_to(link_text.html_safe,
-                          work_package_link,
-                          title: title,
-                          class: css_class)
-
-      [[prefix, html_link].reject(&:empty?).join(' - '),
-       suffix].reject(&:empty?).join(': ')
-    end.html_safe
+    output << link
+    output << " #{work_package.subject}" unless link_subject
+    output
   end
 
-  def work_package_list(work_packages, &_block)
+  def work_package_list(work_packages, &)
     ancestors = []
     work_packages.each do |work_package|
       while ancestors.any? && !work_package.is_descendant_of?(ancestors.last)
@@ -159,72 +69,104 @@ module WorkPackagesHelper
     end
   end
 
-  def send_notification_option(checked = false)
-    content_tag(:label, for: 'send_notification', class: 'form--label-with-check-box') do
-      (content_tag 'span', class: 'form--check-box-container' do
-        boxes = hidden_field_tag('send_notification', '0', id: nil)
+  def work_package_dates_icon(work_package)
+    work_package.schedule_manually ? :pin : "op-auto-date"
+  end
 
-        boxes += check_box_tag('send_notification',
-                               '1',
+  def work_package_formatted_dates(work_package)
+    start_date = work_package.start_date ? format_date(work_package.start_date) : nil
+    due_date = work_package.due_date ? format_date(work_package.due_date) : nil
+
+    # If both dates are missing, return just one dash
+    return "-" if start_date.nil? && due_date.nil?
+
+    return start_date if start_date == due_date
+
+    # Return the formatted date range (start_date - due_date)
+    "#{start_date} - #{due_date}"
+  end
+
+  def send_notification_option(checked: false)
+    content_tag(:label, for: "send_notification", class: "form--label-with-check-box") do
+      (content_tag "span", class: "form--check-box-container" do
+        boxes = hidden_field_tag("send_notification", "0", id: nil)
+
+        boxes += check_box_tag("send_notification",
+                               "1",
                                checked,
-                               class: 'form--check-box')
+                               class: "form--check-box")
         boxes
-      end) + I18n.t('notifications.send_notifications')
+      end) + I18n.t("notifications.send_notifications")
     end
-  end
-
-  # Returns a string of css classes that apply to the issue
-  def work_package_css_classes(work_package)
-    s = 'work_package preview-trigger'.html_safe
-    s << " status-#{work_package.status.position}" if work_package.status
-    s << " priority-#{work_package.priority.position}" if work_package.priority
-    s << ' closed' if work_package.closed?
-    s << ' overdue' if work_package.overdue?
-    s << ' child' if work_package.child?
-    s << ' parent' unless work_package.leaf?
-    s << ' created-by-me' if User.current.logged? && work_package.author_id == User.current.id
-    s << ' assigned-to-me' if User.current.logged? && work_package.assigned_to_id == User.current.id
-    s
-  end
-
-  def work_package_associations_to_address(associated)
-    ret = ''.html_safe
-
-    ret += content_tag(:p, I18n.t(:text_destroy_with_associated), class: 'bold')
-
-    ret += content_tag(:ul) do
-      associated.inject(''.html_safe) do |list, associated_class|
-        list += content_tag(:li, associated_class.model_name.human, class: 'decorated')
-
-        list
-      end
-    end
-
-    ret
   end
 
   def back_url_is_wp_show?
-    route = Rails.application.routes.recognize_path(params[:back_url] || request.env['HTTP_REFERER'])
-    route[:controller] == 'work_packages' && route[:action] == 'index' && route[:state]&.match?(/^\d+/)
+    route = OpenProject::StaticRouting.recognize_route(params[:back_url] || request.env["HTTP_REFERER"])
+    return false if route.nil?
+
+    route[:controller] == "work_packages" && route[:action] == "index" && route[:state]&.match?(/^\d+/)
   end
 
   def last_work_package_note(work_package)
-    note_journals = work_package.journals.select(&:notes?)
+    note_journals = work_package.journals.internal_visible.select(&:notes?)
     return t(:text_no_notes) if note_journals.empty?
 
     note_journals.last.notes
   end
 
+  def work_packages_columns_options
+    @work_packages_columns_options ||= Query
+      .new
+      .displayable_columns
+      .sort_by(&:caption)
+      .map { |column| { name: column.caption, id: stored_column_id(column.name) } }
+  end
+
+  def selected_work_packages_columns_options
+    Setting[:work_package_list_default_columns]
+      .map { |column| stored_column_id(column) }
+      .filter_map { |column| work_packages_columns_options.find { |c| c[:id] == column } }
+  end
+
+  def protected_work_packages_columns_options
+    protected_columns = %w[id subject]
+    work_packages_columns_options
+      .select { |column| protected_columns.include?(column[:id]) }
+  end
+
+  # Label for the version(s) attribute, driven by the multiple-versions feature.
+  # While the feature is off we keep the legacy singular "Version" wording even
+  # though the value now comes from the target_versions association.
+  def work_package_versions_label
+    attribute = Setting::WorkPackageMultipleVersions.active? ? :target_versions : :version
+    WorkPackage.human_attribute_name(attribute)
+  end
+
+  # Presented value for the version(s) attribute, read from target_versions.
+  # Legacy behavior surfaces the single associated version; with the feature on
+  # it lists all target versions, ordered by name for a stable rendering.
+  def work_package_versions_value(work_package)
+    if Setting::WorkPackageMultipleVersions.active?
+      work_package.target_versions.sort_by(&:name).join(", ")
+    else
+      work_package.lowest_target_version
+    end
+  end
+
   private
 
-  def truncated_work_package_description(work_package, lines = 3)
+  def stored_column_id(name)
+    Queries::WorkPackages::StoredNames.stored_select(name).to_s
+  end
+
+  def truncated_work_package_description(work_package, lines = 3) # rubocop:disable Metrics/AbcSize
     description_lines = work_package.description.to_s.lines.to_a[0, lines]
 
     if description_lines[lines - 1] && work_package.description.to_s.lines.to_a.size > lines
       description_lines[lines - 1].strip!
 
-      while !description_lines[lines - 1].end_with?('...')
-        description_lines[lines - 1] = description_lines[lines - 1] + '.'
+      while !description_lines[lines - 1].end_with?("...")
+        description_lines[lines - 1] = description_lines[lines - 1] + "."
       end
     end
 
@@ -232,7 +174,7 @@ module WorkPackagesHelper
       empty_element_tag
     else
       ::OpenProject::TextFormatting::Renderer.format_text(
-        description_lines.join(''),
+        description_lines.join,
         object: work_package,
         attribute: :description,
         no_nesting: true
@@ -240,24 +182,9 @@ module WorkPackagesHelper
     end
   end
 
-  def info_user_attributes(work_package)
-    responsible = if work_package.responsible_id.present?
-                    "<span class='label'>#{WorkPackage.human_attribute_name(:responsible)}:</span> " +
-                      h(work_package.responsible.name).to_s
-                  end
-
-    assignee = if work_package.assigned_to_id.present?
-                 "<span class='label'>#{WorkPackage.human_attribute_name(:assigned_to)}:</span> " +
-                   h(work_package.assigned_to.name).to_s
-               end
-
-    [responsible, assignee].compact.join('<br>').html_safe
-  end
-
-  def link_to_work_package_css_classes(package, options)
-    classes = ['work_package']
-    classes << 'closed' if package.closed?
-    classes << options[:class].to_s
+  def link_to_work_package_css_classes(package)
+    classes = ["work_package"]
+    classes << "closed" if package.closed?
 
     classes
   end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,32 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { ChangeDetectionStrategy, Component, HostListener, Input, OnInit, Type, inject } from '@angular/core';
 import {
-  ChangeDetectionStrategy,
-  Component,
-  Injector,
-  OnInit,
-} from '@angular/core';
-import { StateService } from '@uirouter/core';
-import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
-import { States } from 'core-app/core/states/states.service';
-import { FirstRouteService } from 'core-app/core/routing/first-route-service';
-import { KeepTabService } from 'core-app/features/work-packages/components/wp-single-view-tabs/keep-tab/keep-tab.service';
-import { WorkPackageViewSelectionService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
-import { WorkPackageSingleViewBase } from 'core-app/features/work-packages/routing/wp-view-base/work-package-single-view.base';
+  WorkPackageViewFocusService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
+import {
+  KeepTabService,
+} from 'core-app/features/work-packages/components/wp-single-view-tabs/keep-tab/keep-tab.service';
+import {
+  WorkPackageSingleViewBase,
+} from 'core-app/features/work-packages/routing/wp-view-base/work-package-single-view.base';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
-import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
-import { BackRoutingService } from 'core-app/features/work-packages/components/back-routing/back-routing.service';
+import {
+  WorkPackageNotificationService,
+} from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
 import { WpSingleViewService } from 'core-app/features/work-packages/routing/wp-view-base/state/wp-single-view.service';
+import { RecentItemsService } from 'core-app/core/recent-items.service';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
+import {
+  WorkPackageTabsService,
+} from 'core-app/features/work-packages/components/wp-tabs/services/wp-tabs/wp-tabs.service';
+import { TabComponent } from 'core-app/features/work-packages/components/wp-tabs/components/wp-tab-wrapper/tab';
 
 @Component({
   templateUrl: './wp-split-view.html',
@@ -52,77 +55,62 @@ import { WpSingleViewService } from 'core-app/features/work-packages/routing/wp-
     WpSingleViewService,
     { provide: HalResourceNotificationService, useClass: WorkPackageNotificationService },
   ],
+  standalone: false,
 })
 export class WorkPackageSplitViewComponent extends WorkPackageSingleViewBase implements OnInit {
-  /** Reference to the base route e.g., work-packages.partitioned.list or bim.partitioned.split */
-  private baseRoute:string = this.$state.current.data.baseRoute;
+  keepTab = inject(KeepTabService);
+  wpTableFocus = inject(WorkPackageViewFocusService);
+  recentItemsService = inject(RecentItemsService);
+  readonly urlParams = inject(UrlParamsService);
+  readonly wpTabs = inject(WorkPackageTabsService);
 
-  constructor(
-    public injector:Injector,
-    public states:States,
-    public firstRoute:FirstRouteService,
-    public keepTab:KeepTabService,
-    public wpTableSelection:WorkPackageViewSelectionService,
-    public wpTableFocus:WorkPackageViewFocusService,
-    readonly $state:StateService,
-    readonly backRouting:BackRoutingService,
-  ) {
-    super(injector, $state.params.workPackageId);
+  @Input() showTabs = true;
+
+  @Input() resizerClass = 'work-packages-partitioned-page--content-right';
+
+    // enable other parts of the application to trigger an immediate update
+  // e.g. a stimulus controller
+  // currently used by the new activities tab which does its own polling
+  @HostListener('document:ian-update-immediate')
+  triggerImmediateUpdate() {
+    this.storeService.reload();
   }
 
   ngOnInit():void {
     this.observeWorkPackage();
-
-    const wpId = this.$state.params.workPackageId;
-    const focusedWP = this.wpTableFocus.focusedWorkPackage;
-
-    if (!focusedWP) {
-      // Focus on the work package if we're the first route
-      const isFirstRoute = this.firstRoute.name === `${this.baseRoute}.details.overview`;
-      const isSameID = this.firstRoute.params && wpId === this.firstRoute.params.workPackageI;
-      this.wpTableFocus.updateFocus(wpId, (isFirstRoute && isSameID));
-    } else {
-      this.wpTableFocus.updateFocus(wpId, false);
-    }
-
-    if (this.wpTableSelection.isEmpty) {
-      this.wpTableSelection.setRowState(wpId, true);
-    }
-
-    this.wpTableFocus.whenChanged()
-      .pipe(
-        this.untilDestroyed(),
-      )
-      .subscribe((newId) => {
-        const idSame = wpId.toString() === newId.toString();
-        if (!idSame && this.$state.includes(`${this.baseRoute}.details`)) {
-          this.$state.go(
-            (this.$state.current.name as string),
-            { workPackageId: newId, focus: false },
-          );
-        }
-      });
   }
 
-  get shouldFocus():boolean {
-    return this.$state.params.focus === true;
+  /**
+   * Set focus, selection, and recent-items after the WP has loaded.
+   *
+   * Intentionally deferred from ngOnInit because the route param
+   * (this.workPackageId) may be a semantic identifier like "PROJ-7",
+   * but focus/selection services are keyed by numeric PK. By the time
+   * init() runs, this.workPackage.id is guaranteed to be the numeric PK.
+   */
+  protected override init():void {
+    super.init();
+    const numericId = this.workPackage.id!;
+    this.wpTableFocus.initializeSelectionAndFocus(numericId, false);
+
+    this.recentItemsService.add(numericId);
   }
 
-  showBackButton():boolean {
-    return this.baseRoute.includes('bim');
+  get activeTabComponent():Type<TabComponent>|undefined {
+    return this
+      .wpTabs
+      .tabs
+      .find((tab) => tab.id === this.activeTab)
+      ?.component;
   }
 
-  backToList():void {
-    this.backRouting.goToBaseState();
-  }
-
-  protected handleLoadingError(error:unknown):void {
-    const message = this.notificationService.retrieveErrorMessage(error);
+  protected override handleLoadingError(error:unknown):void {
+    super.handleLoadingError(error);
 
     // Go back to the base route, closing this split view
-    void this.$state.go(
-      this.baseRoute,
-      { flash_message: { type: 'error', message } },
+    Turbo.visit(
+      `${this.urlParams.basePathWithoutDetails()}${window.location.search}`,
+      { frame: 'content-bodyRight', action: 'replace' },
     );
   }
 }

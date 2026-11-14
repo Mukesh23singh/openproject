@@ -1,40 +1,49 @@
-#English strings go here
+---
 zh-CN:
-  label_avatar: "头像"
-  label_avatar_plural: "头像"
-  label_current_avatar: "当前头像"
-  label_choose_avatar: "从文件中选择头像"
-  message_avatar_uploaded: "头像更改成功。"
-  error_image_upload: "保存图像时出错。"
-  error_image_size: "图像太大。"
-  button_change_avatar: "更改头像"
-  are_you_sure_delete_avatar: "确定要删除头像吗？"
-  avatar_deleted: "成功删除头像。"
-  unable_to_delete_avatar: "无法删除头像。"
-  wrong_file_format: "允许的格式是 jpg、png、gif"
-  empty_file_error: "请上传一张有效的图像（jpg、png、gif）"
+  are_you_sure_delete_avatar: 确定要删除头像吗？
+  avatar_deleted: 成功删除头像。
   avatars:
-    label_avatar: "头像"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: '当前头像'
-    label_local_avatar: '自定义头像'
-    text_current_avatar: |
-      以下图像显示当前头像。
-    text_upload_instructions: |
-      上传您自己的自定义头像，大小为 128 × 128 像素。更大的文件将被调整并裁剪以匹配。
-      选择图像后，上传前会显示头像的预览。
-    text_change_gravatar_html: '要为您的邮件地址更改或添加 Gravatar，请转到 %{gravatar_url}。'
-    text_your_local_avatar: |
-      OpenProject 允许您上传自己的自定义头像。
-    text_local_avatar_over_gravatar: |
-      如果您设置了一个自定义头像，则此头像将优先于上面的 Gravatar。
-    text_your_current_gravatar: |
-      OpenProject 将使用您的 Gravatar（如果已注册）或者默认图像或图标（如果存在）。
-      当前头像如下：
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: 自定义头像
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: 头像更改成功。
+    preview: 预览
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: '启用用户 Gravatar'
-      gravatar_default: "默认的 Gravatar 图像"
-      enable_local_avatars: '启用用户自定义头像'
-
-
-
+      enable_gravatars: 启用用户 Gravatar
+      enable_local_avatars: 启用用户自定义头像
+      gravatar_default: 默认的 Gravatar 图像
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: 图片
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: 请上传一张有效的图像（jpg、png、gif）
+  error_image_size: 图像太大。
+  error_image_upload: 保存图像时出错。
+  label_avatar: 头像
+  label_avatar_plural: 头像
+  label_choose_avatar: 从文件中选择头像
+  label_current_avatar: 当前头像
+  message_avatar_uploaded: 头像更改成功。
+  plugin_openproject_avatars:
+    description: 该插件允许 OpenProject 用户上传图片作为头像，并使用 Gravatar 中注册的图像。
+    name: Avatar头像
+  unable_to_delete_avatar: 无法删除头像。
+  wrong_file_format: 允许的格式是 jpg、png、gif

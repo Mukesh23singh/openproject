@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-Dir[File.dirname(__FILE__) + '/*.rb'].each { |file| require_dependency file }
+Dir["#{File.dirname(__FILE__)}/*.rb"].without(__FILE__).each { |file| require file }
 
 module API
   module V3
@@ -38,9 +35,11 @@ module API
           def create(filter, operator, form_embedded: false)
             klass = representer_class(filter)
 
+            return nil if klass.nil?
+
             instance = klass.new(filter,
                                  operator,
-                                 form_embedded: form_embedded)
+                                 form_embedded:)
 
             if filter.is_a?(::Queries::Filters::Shared::CustomFields::Base)
               instance.extend(::API::V3::Queries::Schemas::CustomFieldJsonCacheKeyMixin)
@@ -52,21 +51,21 @@ module API
           private
 
           @specific_conversion = {
-            'CreatedAtFilter': 'DateTimeFilter',
-            'UpdatedAtFilter': 'DateTimeFilter',
-            'AuthorFilter': 'UserFilter',
-            'ResponsibleFilter': 'AllPrincipalsFilter',
-            'AssignedToFilter': 'AllPrincipalsFilter',
-            'WatcherFilter': 'UserFilter'
+            CreatedAtFilter: "DateTimeFilter",
+            UpdatedAtFilter: "DateTimeFilter",
+            AuthorFilter: "UserFilter",
+            ResponsibleFilter: "ProjectMembersFilter",
+            AssignedToFilter: "ProjectMembersFilter",
+            WatcherFilter: "UserFilter"
           }
 
           def representer_class(filter)
             name = filter_specific_representer_class(filter) ||
-                   cf_representer_class(filter) ||
-                   type_specific_representer_class(filter) ||
-                   custom_representer_class(filter)
+              cf_representer_class(filter) ||
+              type_specific_representer_class(filter) ||
+              custom_representer_class(filter)
 
-            name.constantize
+            name&.constantize
           end
 
           def filter_specific_representer_class(filter)
@@ -91,14 +90,18 @@ module API
             format = filter.custom_field.field_format
 
             case format
-            when 'list'
-              'API::V3::Queries::Schemas::CustomOptionFilterDependencyRepresenter'
-            when 'bool'
-              'API::V3::Queries::Schemas::BooleanFilterDependencyRepresenter'
-            when 'user', 'version', 'float'
+            when "list"
+              "API::V3::Queries::Schemas::CustomOptionFilterDependencyRepresenter"
+            when "bool"
+              "API::V3::Queries::Schemas::BooleanFilterDependencyRepresenter"
+            when "user", "version", "float"
               "API::V3::Queries::Schemas::#{format.camelize}FilterDependencyRepresenter"
-            when 'string'
-              'API::V3::Queries::Schemas::TextFilterDependencyRepresenter'
+            when "hierarchy", "weighted_item_list"
+              "API::V3::Queries::Schemas::HierarchyFilterDependencyRepresenter"
+            when "string", "link"
+              "API::V3::Queries::Schemas::TextFilterDependencyRepresenter"
+            when "datetime"
+              "API::V3::Queries::Schemas::DateTimeFilterDependencyRepresenter"
             end
           end
 
@@ -108,12 +111,9 @@ module API
             end
 
             name = @specific_conversion[filter.class.to_s.demodulize.to_sym]
-            if name.nil?
-              raise ArgumentError,
-                    "Filter #{filter.class} does not map to a dependency representer."
-            end
+            return "API::V3::Queries::Schemas::#{name}DependencyRepresenter" if name.present?
 
-            "API::V3::Queries::Schemas::#{name}DependencyRepresenter"
+            raise ArgumentError, "Filter #{filter.class} does not map to a dependency representer."
           end
 
           module_function :create,

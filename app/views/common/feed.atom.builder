@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,22 +33,23 @@ xml.feed "xmlns" => "http://www.w3.org/2005/Atom" do
   first_item_event = !first_item.nil? && first_item.respond_to?(:data) ? first_item.data : first_item
   updated_time = first_item_event.nil? ? Time.now : first_item_event.event_datetime
 
-  xml.title   truncate_single_line(@title, length: 100)
-  xml.link    "rel" => "self", "href" => url_for(only_path: false)
-  xml.link    "rel" => "alternate", "href" => url_for(only_path: false, format: nil, key: nil)
-  xml.id      url_for(controller: '/homescreen', action: :index, only_path: false)
+  xml.title truncate_single_line(@title, length: 100)
+  xml.link "rel" => "self", "href" => url_for(only_path: false)
+  xml.link "rel" => "alternate", "href" => url_for(only_path: false, format: nil, key: nil)
+  xml.id url_for(controller: "/homescreen", action: :index, only_path: false)
   xml.updated(updated_time.xmlschema)
   xml.author { xml.name Setting.app_title }
-  xml.generator(uri: OpenProject::Info.url) { xml.text! OpenProject::Info.app_name; }
+  xml.generator(uri: OpenProject::Info.url) { xml.text! OpenProject::Info.app_name }
   @items.each do |item|
-    item_event = !first_item.nil? && first_item.respond_to?(:data) ? item.data : item
+    item_event = item.try(:data) || item
 
     xml.entry do
-      url = if item_event.is_a? Activities::Event
-              item_event.event_url
-            else
-              url_for(item_event.event_url(only_path: false))
-            end
+      url =
+        if item_event.is_a? Activities::Event
+          item_event.event_url
+        else
+          url_for(item_event.event_url(only_path: false))
+        end
       if @project
         xml.title truncate_single_line(item_event.event_title, length: 100)
       else
@@ -60,7 +62,9 @@ xml.feed "xmlns" => "http://www.w3.org/2005/Atom" do
       if author
         xml.author do
           xml.name(author)
-          xml.email(author.mail) if author.is_a?(User) && !author.mail.blank? && !author.pref.hide_mail
+          if author.is_a?(User) && author.mail.present? && User.current.allowed_globally?(:view_user_email)
+            xml.email(author.mail)
+          end
         end
       end
       xml.content "type" => "html" do

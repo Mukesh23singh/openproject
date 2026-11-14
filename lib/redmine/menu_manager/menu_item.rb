@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,12 +36,17 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
               :child_menus,
               :last,
               :partial,
-              :engine
+              :scheme,
+              :engine,
+              :enterprise_feature,
+              :show_divider_before
 
+  # rubocop:disable Metrics/AbcSize
+  # rubocop:disable Metrics/PerceivedComplexity
   def initialize(name, url, options)
     raise ArgumentError, "Invalid option :if for menu item '#{name}'" if options[:if] && !options[:if].respond_to?(:call)
     raise ArgumentError, "Invalid option :html for menu item '#{name}'" if options[:html] && !options[:html].is_a?(Hash)
-    raise ArgumentError, 'Cannot set the :parent to be the same as this item' if options[:parent] == name.to_sym
+    raise ArgumentError, "Cannot set the :parent to be the same as this item" if options[:parent] == name.to_sym
 
     if options[:children] && !options[:children].respond_to?(:call)
       raise ArgumentError,
@@ -57,22 +59,30 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
     @param = options[:param] || :project_id
     @icon = options[:icon]
     @icon_after = options[:icon_after]
+    @enterprise_feature = options[:enterprise_feature]
+    @show_divider_before = options[:show_divider_before]
     @caption = options[:caption]
     @context = options[:context]
     @html_options = options[:html].nil? ? {} : options[:html].dup
     # Adds a unique class to each menu item based on its name
     @html_options[:class] = [
       @html_options[:class], "#{@name.to_s.dasherize}-menu-item"
-    ].compact.join(' ')
+    ].compact.join(" ")
     @parent = options[:parent]
     @child_menus = options[:children]
     @last = options[:last] || false
     @partial = options[:partial]
+    @scheme = options[:scheme]
     @badge = options[:badge]
     @engine = options[:engine]
     @allow_deeplink = options[:allow_deeplink]
-    super @name.to_sym
+    @skip_permissions_check = !!options[:skip_permissions_check]
+    @is_heading = options[:is_heading]
+    super(@name.to_sym)
   end
+
+  # rubocop:enable Metrics/AbcSize
+  # rubocop:enable Metrics/PerceivedComplexity
 
   def caption(project = nil)
     if @caption.is_a?(Proc)
@@ -80,7 +90,7 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
       c = @name.to_s.humanize if c.blank?
       c
     elsif @caption.nil?
-      l_or_humanize(name, prefix: 'label_')
+      l_or_humanize(name, prefix: "label_")
     else
       @caption.is_a?(Symbol) ? I18n.t(@caption) : @caption
     end
@@ -102,9 +112,9 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
     @icon = new_icon
   end
 
-  def badge(project = nil)
+  def badge(**)
     if @badge.is_a?(Proc)
-      @badge.call(project).to_s
+      @badge.call(**).to_s
     else
       @badge
     end
@@ -137,10 +147,14 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
     @allow_deeplink = allow_deeplink
   end
 
+  def skip_permissions_check?
+    @skip_permissions_check
+  end
+
   def html_options(options = {})
     if options[:selected]
       o = @html_options.dup
-      o[:class] += ' selected'
+      o[:class] += " selected"
       o
     else
       @html_options
@@ -148,7 +162,7 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
   end
 
   def add_condition(new_condition)
-    raise ArgumentError, 'Condition needs to be callable' unless new_condition.respond_to?(:call)
+    raise ArgumentError, "Condition needs to be callable" unless new_condition.respond_to?(:call)
 
     old_condition = @condition
     @condition = if old_condition.respond_to?(:call)
@@ -156,5 +170,17 @@ class Redmine::MenuManager::MenuItem < Redmine::MenuManager::TreeNode
                  else
                    ->(project) { new_condition.call(project) }
                  end
+  end
+
+  def heading?
+    @is_heading || false
+  end
+
+  def enterprise_feature_missing?
+    @enterprise_feature.present? && !EnterpriseToken.allows_to?(@enterprise_feature)
+  end
+
+  def show_divider_before?
+    @show_divider_before || false
   end
 end

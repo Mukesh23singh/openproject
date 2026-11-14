@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,50 +39,58 @@
 #
 # for this purpose.
 
+# rubocop:disable-next Rails/SquishedSQLHeredocs
 module Journals
   class CreateService
-    attr_accessor :journable, :user
+    include Helpers
+
+    attr_reader :journable, :user, :associations
 
     def initialize(journable, user)
-      self.user = user
-      self.journable = journable
+      @user = user
+      @journable = journable
+      @associations = Association.for(journable)
     end
 
-    def call(notes: '')
+    def call(notes: "", internal: false, cause: CauseOfChange::NoCause.new)
+      raise CauseOfChange::InvalidCauseError.new(cause) unless cause.is_a?(CauseOfChange::Base)
+
       Journal.transaction do
-        journal = create_journal(notes)
+        journal = create_journal(notes, internal, cause)
 
-        return ServiceResult.new success: true unless journal
+        if journal
+          reload_journals
+        end
 
-        destroy_predecessor(journal)
-
-        journal
-
-        reload_journals
-        touch_journable(journal)
-
-        ServiceResult.new success: true, result: journal
+        ServiceResult.success result: journal
       end
     end
 
     private
 
-    def destroy_predecessor(journal)
-      predecessor = journal.previous
+    # Aggregatable journals must meet the following criteria:
+    #
+    # * The journalizing happens within the configured aggregation time
+    # * The journalizing is carried out by the same user
+    # * The cause is identical or extends the predecessor's cause
+    # * ONLY one note exists between the predecessor and the journal to be created
+    # * The predecessor and the journal to be created have the same restriction
+    #
+    # Instead of removing the predecessor, return it here so that it can be stripped in the journal creating
+    # SQL to than be refilled. That way, references to the journal, including ones users have, are kept intact.
+    def aggregatable_predecessor(notes, internal, cause)
+      predecessor = journable.last_journal
 
-      if aggregatable?(predecessor, journal)
-        notify_aggregation_destruction(predecessor, journal)
-
-        predecessor.destroy
-
-        take_over_journal_details(predecessor, journal)
-      end
+      predecessor if aggregatable?(predecessor, notes, internal, cause)
     end
 
-    def create_journal(notes)
-      Rails.logger.debug "Inserting new journal for #{journable_type} ##{journable.id}"
+    def create_journal(notes, internal, cause)
+      predecessor = aggregatable_predecessor(notes, internal, cause)
+      cause = aggregate_cause(predecessor, cause)
 
-      create_sql = create_journal_sql(notes)
+      log_journal_creation(predecessor)
+
+      create_sql = create_journal_sql(predecessor, notes, internal, cause)
 
       # We need to ensure that the result is genuine. Otherwise,
       # calling the service repeatedly for the same journable
@@ -97,115 +106,285 @@ module Journals
       Journal.instantiate(result) if result
     end
 
-    # The sql necessary for creating the journal inside the database.
+    # The result of the whole SQL statement is a snapshot of the journable (e.g. a WorkPackage or a WikPage) at the point
+    # the SQL statement was run:
+    # * There will be either a newly created entry in the `journals` table or an updated entry in it if the former journal
+    #   of the journable was aggregated (two consecutive updates within a configurable time frame by the same user).
+    # * A new entry in the data table of the journable (e.g. work_package_journals for a WorkPackage) will be created
+    #   containing a copy of the columns of the journable.
+    # * New entries in the attachable_journals table, one for every attachment the journable has at the time.
+    # * New entries in the customizable_journals table, one for every custom value the journable has at the time.
+    # * New entries in the storages_file_links_journals table, one for file link value the journable has at the time.
+    # * New entries in the meeting_agenda_item_journals table, one for agenda_item the journable has at the time.
+    # * New entries in the meeting_section_journals table, one for each section the journable has at the time.
+    # * New entries in the meeting_outcome_journals table, one for each outcome the journable has at the time.
+    #
     # It consists of a couple of parts that are kept as individual queries (as CTEs) but
     # are all executed within a single database call.
     #
-    # The first CTEs (`max_journals`) responsibility is to fetch the latests journal and have that available for later queries
-    # (i.e. when determining the latest state of the journable and when getting the current version number).
+    # The next CTEs (`max_journals`) responsibility is to fetch the latest journal and have that available for later queries
+    # (i.e. when determining the latest state of the journable, when getting the current version number and when
+    # comparing the timestamps of the last journalization time and the work package's updated_at time).
     #
-    # The second CTE (`changes`) determines whether a change as occurred so that a new journal needs to be created. The next CTE,
-    # that will insert new data, will only do so if the changes CTE returns an entry. The only exception to this check is that
-    # if a note is provided, a journal will be created regardless of whether any changes are detected. To determine whether a
-    # change is worthy of being journalized, the current and the latest journalized state are compared in three aspects:
+    # The next CTE (`changes`) determines whether a change as occurred so that a new journal needs to be created. This check
+    # is carried out the check if journalization needs to be carried out at all. To determine
+    # whether a change is worthy of being journalized, the current and the latest journalized state are compared in four aspects:
     # * the journable's table columns are compared to the columns in the journable's journal data table
     # (e.g. work_package_journals for WorkPackages). Only columns that exist in the journable's journal data table are considered
     # (and some columns like the primary key `id` is ignored). Therefore, to add an attribute to be journalized, it needs to
     # be added to that table.
     # * the journable's attachments are compared to the attachable_journals entries being associated with the most recent journal.
     # * the journable's custom values are compared to the customizable_journals entries being associated with the most
-    # recent journal.
+    #   recent journal.
+    # * the journable's file_links are compared to the storages_file_links_journals entries being associated with the most
+    #   recent journal.
+    # * the journable's meeting_agenda_items are compared to the meeting_agenda_item_journals entries being associated with the
+    #   most recent journal.
+    # * the journable's meeting_sections are compared to the meeting_section_journals entries being associated with the
+    #   most recent journal.
+    # * the journable's meeting_outcomes are compared to the meeting_outcome_journals entries being associated with the
+    #   most recent journal.
     # When comparing text based values, newlines are normalized as otherwise users having a different OS might change a text value
     # without intending to.
     #
-    # Only if a change has been identified (or if a note is present) is a journal inserted by the third CTE (`insert_journal`).
-    # Its creation timestamp will be updated_at value of the journable as this is the logical creation time. If a note is present,
-    # however, the current time is taken as it signifies an action in itself and there might not be a change at all. In such a
-    # case, the journable will later on receive the creation date of the journal as its updated_at value. The update timestamp of
-    # a journable and the creation date of its most recent journal should always be in sync.
+    # Journalization continues only if
+    # * a change has been identified (by the `changes` CTE)
+    # * OR a note is present
+    # * OR a cause is present (which would be different from the cause of the predecessor as that one would otherwise be
+    #   aggregated with)
+    # * OR a predecessor is replaced
     #
-    # Both cases (having a note or a change) can at this point be identified by a journal having been created. Therefore, the
-    # return value of that insert statement is further on used to identify whether the next statements (`insert_data`,
-    # `insert_attachable` and `insert_customizable`) should actually insert data. It is additionally used as the values returned
-    # by the overall SQL statement so that an AR instance can be instantiated with it.
+    # If a change has been identified (not for a note or a cause) and a predecessor to aggregate with exists, the predecessor's
+    # data is stripped. this is done by the CTEs 'cleanup_predecessor_data' and the ones for the associated data,
+    # 'cleanup_predecessor_XYZ' (where XYZ is e.g. attachable or customizable). If no predecessor exists,
+    # a noop SQL statement is run instead.
+    # To strip the information from the journal, the data record (e.g. from work_packages_journals) as well as the
+    # associated data information is removed. The journal itself is kept and will later on have its
+    # updated_at and possibly its notes property updated.
     #
-    # If a journal is created, all columns that also exist in the journable's data table are inserted as a new entry into
-    # to the data table with a reference to the newly created journal. Again, newlines are normalized.
+    # To enforce consistent timestamps throughout the data structure of journable and journal, the time used for further timestamp
+    # setting is then calculated once between the two CTEs `touch_journable` and `fetch_time`. The auxiliary tables
+    # (attachable_journals, customizable_journals and storages_file_links_journals) don't have timestamps so they can be
+    # disregarded.
     #
-    # If a journal is created, all entries in the attachments table associated to the journable are recreated as entries
-    # in the attachable_journals table.
+    # Most of the time, the time used will be the updated_at of the journable. This follows the logic that most of the time
+    # the journable receives new attributes first which will subsequently trigger the run of this service. During the course
+    # of the journable saving, the updated_at will receive a current timestamp by Rails. But if only a cause or a note is added,
+    # or if a custom value, an attachable or a file_link is altered, the journable will not have been touched before and
+    # therefore the time this SQL statement is run at will be used. The SQL will in this case touch the journable with that
+    # timestamp itself (`touch_journable`).
+    # Whether the journable was updated before or the SQL statement did it, the value of either will end up in the result
+    # of the `fetch_time` CTE to be used in the later stages of the SQL. In both cases, the time is forced past the
+    # timestamp of the most recent journal so that the journals of a journable remain strictly ordered.
     #
-    # If a journal is created, all entries in the custom_values table associated to the journable are recreated as entries
-    # in the customizable_journals table. Again, newlines are normalized.
-    def create_journal_sql(notes)
-      <<~SQL
-        WITH max_journals AS (
-          #{select_max_journal_sql}
-        ), changes AS (
-          #{select_changed_sql}
-        ), insert_data AS (
-          #{insert_data_sql(notes)}
-        ), inserted_journal AS (
-          #{insert_journal_sql(notes)}
-        ), insert_attachable AS (
-          #{insert_attachable_sql}
-        ), insert_customizable AS (
-          #{insert_customizable_sql}
-        )
+    # After the SQL is run, the timestamps of the journable, the predecessor journal and the newly created journal will have
+    # interdependencies:
+    # * If a new journal is created (i.e. no predecessor is aggregated):
+    #   * The updated_at of the journable, the newly created journal's created_at, updated_at and the lower bound of its
+    #     validity_period as well as the upper bound of the predecessor's validity_period will be the same (`fetch_time` value).
+    #   * The upper bound of the newly created journal's validity_period will be NULL meaning that it does not end yet.
+    # * If a predecessor is aggregated:
+    #   * The updated_at of the journable and the aggregated journal's updated_at will be the same.
+    #   * The created_at of the aggregated journal as well as its lower bound of the validity_period will be the same as
+    #     before.
+    # The timestamps are updated by `touch_journable` and `update_predecessor` respectively.
+    #
+    # In case of no aggregation, the preceding journal will now have values for both the upper as well as the lower bound
+    # of its validity_range. Such a journal can then be considered closed.
+    #
+    # The `inserted_journal` will either update the updated_at value of the aggregated predecessor or, in the absence
+    # of an aggregated predecessor create a new journal with the timestamps as described above. Both rely on the return
+    # value of `insert_data'. That CTE, on the basis of what was identified in `changes` (and only if there are some)
+    # writes the snapshot of the journables column into the correct data journal (e.g work_package_journals for a
+    # WorkPackage). The return values of the `insert_data` is relevant also for the `inserted_data` CTE as the `data_id` field
+    # needs to be inserted into the journal. This is also the reason why the `insert_data` CTE is run before
+    # the `inserted_journal`.
+    #
+    # All cases (having a change, a note or a cause) can at this point be identified by a journal having been created
+    # or replaced which are treated the same.
+    # Therefore, the return value of the `inserted_journal` is further on used to identify whether the next statements
+    # (`insert_attachable`, `insert_customizable` and `insert_storable`) should actually insert data. It is additionally
+    # used as the values returned by the overall SQL statement so that an AR instance can be instantiated with it.
+    #
+    def create_journal_sql(predecessor, notes, internal, cause)
+      journal_modifications = journal_modification_sql(predecessor, notes, internal, cause)
+      relation_modifications = relation_modifications_sql(predecessor, notes, cause)
 
+      journal_cte_clauses = [journal_modifications]
+      journal_cte_clauses << relation_modifications if relation_modifications.any?
+
+      <<~SQL
+        WITH #{journal_cte_clauses.join(',')}
         SELECT * from inserted_journal
       SQL
     end
 
-    def insert_journal_sql(notes)
-      journal_sql = <<~SQL
-        INSERT INTO
-          journals (
-            journable_id,
-            journable_type,
-            version,
-            activity_type,
-            user_id,
-            notes,
-            created_at,
-            updated_at,
-            data_id,
-            data_type
-          )
-        SELECT
-          :journable_id,
-          :journable_type,
-          COALESCE(max_journals.version, 0) + 1,
-          :activity_type,
-          :user_id,
-          :notes,
-          #{journal_timestamp_sql(notes, ':created_at')},
-          #{journal_timestamp_sql(notes, ':updated_at')},
-          insert_data.id,
-          :data_type
-        FROM max_journals, insert_data
-        RETURNING *
+    def journal_modification_sql(predecessor, notes, internal, cause)
+      <<~SQL
+        max_journals AS (
+          #{select_max_journal_sql}
+        ), changes AS (
+          #{select_changed_sql}
+        ), cleanup_predecessor_data AS (
+          #{cleanup_predecessor_data_sql(predecessor, notes, cause)}
+        ), touch_journable AS (
+          #{touch_journable_sql(notes, cause)}
+        ), fetch_time AS (
+          #{fetch_time_sql}
+        ), insert_data AS (
+          #{insert_data_sql(notes, cause)}
+        ), update_predecessor AS (
+          #{update_predecessor_sql(predecessor, notes, cause)}
+        ), inserted_journal AS (
+          #{update_or_insert_journal_sql(predecessor, notes, internal, cause)}
+        )
       SQL
-
-      ::OpenProject::SqlSanitization.sanitize(journal_sql,
-                                              notes: notes,
-                                              journable_id: journable.id,
-                                              activity_type: journable.activity_type,
-                                              journable_type: journable_type,
-                                              user_id: user.id,
-                                              created_at: journable_timestamp,
-                                              updated_at: journable_timestamp,
-                                              data_type: journable.class.journal_class.name)
     end
 
-    def insert_data_sql(notes)
-      condition = if notes.blank?
-                    "AND EXISTS (SELECT * FROM changes)"
-                  else
-                    ""
-                  end
+    def relation_modifications_sql(predecessor, notes, cause)
+      associations.map do |association|
+        association_modifications_sql(association, predecessor, notes, cause)
+      end
+    end
 
-      data_sql = <<~SQL
+    def association_modifications_sql(association, predecessor, notes, cause)
+      <<~SQL
+        cleanup_predecessor_#{association.name} AS (
+          #{association.cleanup_predecessor(predecessor, notes, cause)}
+        ), insert_#{association.name} AS (
+          #{association.insert_sql}
+        )
+      SQL
+    end
+
+    def select_max_journal_sql
+      sanitize(<<~SQL, journable_id:, journable_type:)
+        SELECT
+          :journable_id journable_id,
+          :journable_type journable_type,
+          updated_at,
+          COALESCE(journals.version, fallback.version) AS version,
+          COALESCE(journals.id, 0) id,
+          COALESCE(journals.data_id, 0) data_id
+        FROM
+          journals
+        RIGHT OUTER JOIN
+          (SELECT 0 AS version) fallback
+        ON
+          journals.journable_id = :journable_id
+          AND journals.journable_type = :journable_type
+          AND journals.version IN (
+            SELECT MAX(version)
+            FROM journals
+            WHERE journable_id = :journable_id
+            AND journable_type = :journable_type
+          )
+      SQL
+    end
+
+    def select_changed_sql
+      sql = <<~SQL
+        SELECT
+           *
+        FROM
+          (#{changes_data_sql}) data_changes
+      SQL
+
+      associations.each do |association|
+        sql += <<~SQL
+          FULL JOIN
+            (#{association.changes_sql}) #{association.name}_changes
+          ON
+            #{association.name}_changes.journable_id = data_changes.journable_id
+        SQL
+      end
+
+      sql
+    end
+
+    def cleanup_predecessor_data_sql(predecessor, notes, cause)
+      cleanup_predecessor_for(predecessor,
+                              notes,
+                              cause,
+                              data_table_name,
+                              :id,
+                              :data_id)
+    end
+
+    # Updates the updated_at timestamp of the journable.
+    #
+    # Whenever an attribute is updated on the journable before creating the journal, the updated_at timestamp
+    # will already have been increased so nothing needs to be done.
+    # But if any of the associated data is updated or if only a cause or note is added, the journable would
+    # otherwise not have received an updated timestamp.
+    #
+    # Therefore, this is only carried out if:
+    # * if there are changes or a note or a cause
+    # * AND the journable doesn't already have a newer timestamp than the most recent journal
+    def touch_journable_sql(notes, cause)
+      if journable.class.aaj_options[:timestamp].to_sym == :updated_at
+        sql = <<~SQL
+          UPDATE
+            #{journable_table_name}
+          SET
+            updated_at = #{after_latest_journal_sql('statement_timestamp()')}
+          WHERE
+            id = :id
+            #{only_on_changed_or_forced_condition_sql(notes, cause)}
+            AND NOT updated_at > (SELECT updated_at FROM max_journals)
+          RETURNING updated_at
+        SQL
+
+        sanitize(sql,
+                 id: journable.id)
+      else
+        <<~SQL
+          SELECT NULL::timestamp with time zone AS updated_at
+        SQL
+      end
+    end
+
+    # Fetches the timestamp to be used by all subsequent SQL statements e.g. for
+    # * setting the created_at and updated_at timestamps of the newly created journal
+    # * setting the updated_at timestamp on an updated (aggregated with) journal
+    # * setting the validity_period (upper bound) of the preceding journal.
+    def fetch_time_sql
+      timestamp = <<~SQL.squish
+        COALESCE(
+          (SELECT updated_at FROM touch_journable),
+          (SELECT #{journable_timestamp_column} FROM #{journable_table_name} WHERE id = :journable_id)
+        )
+      SQL
+
+      sanitize(<<~SQL, journable_id:)
+        SELECT #{after_latest_journal_sql(timestamp)} AS updated_at
+      SQL
+    end
+
+    # Ensures the timestamp to insert is newer than the timestamp of the most recent journal.
+    #
+    # The journals of a journable have to be strictly ordered in time as the timestamp used here becomes the upper
+    # bound of the predecessor's validity_period, whose lower bound is the predecessor's own timestamp.
+    #
+    # Neither of the two clocks the timestamp may come from ensures that:
+    #  1) the database clock behind statement_timestamp() can be behind the application clock that
+    #     wrote the most recent journal
+    #
+    #  2) the journable's timestamp attribute MAY be stale
+    #     (because the record has been touched elsewhere since it was loaded).
+    #
+    # As a result, we use GREATEST to ensure the timestamp is newer than the most recent journal.
+    def after_latest_journal_sql(timestamp)
+      <<~SQL.squish
+        GREATEST(
+          #{timestamp},
+          (SELECT updated_at FROM max_journals) + interval '1 microsecond'
+        )
+      SQL
+    end
+
+    def insert_data_sql(notes, cause)
+      sanitize(<<~SQL, journable_id:)
         INSERT INTO
           #{data_table_name} (
             #{data_sink_columns}
@@ -216,160 +395,116 @@ module Journals
         #{journable_data_sql_addition}
         WHERE
           #{journable_table_name}.id = :journable_id
-          #{condition}
+          #{only_on_changed_or_forced_condition_sql(notes, cause)}
+        RETURNING *
+      SQL
+    end
+
+    # Sets the validity_period's upper boundary of the preceding journal to the created_at timestamp of the inserted journal.
+    # The upper bound set is not included.
+    # If there is a predecessor (meaning we are aggregating/updating an existing journal), nothing is done.
+    # In that case, the preceding journal is the one we are currently aggregating with so it will still remain
+    # the most recent one.
+    def update_predecessor_sql(predecessor, notes, cause)
+      return "SELECT 1" if predecessor.present?
+
+      <<~SQL
+        UPDATE
+          journals
+        SET
+          validity_period = tstzrange(lower(validity_period), (SELECT updated_at FROM fetch_time), '[)')
+        WHERE
+          id = (SELECT id from max_journals)
+          #{only_on_changed_or_forced_condition_sql(notes, cause)}
+      SQL
+    end
+
+    def update_or_insert_journal_sql(predecessor, notes, internal, cause)
+      if predecessor
+        update_journal_sql(predecessor, notes, cause)
+      else
+        insert_journal_sql(notes, internal, cause)
+      end
+    end
+
+    def update_journal_sql(predecessor, notes, cause)
+      # If there is a predecessor, we don't want to create a new one, we simply rewrite it.
+      # The original data of that predecessor (data e.g. work_package_journals, customizable_journals, attachable_journals)
+      # has been deleted before but the notes need to be taken over and the timestamps updated as if the
+      # journal would have been created.
+      #
+      # A lot of the data does not need to be set anew, since we only aggregate if that data stays the same
+      # (e.g. the user_id).
+      #
+      # In case there is no change at all, the journal will not need to be modified. But even
+      # without a change, having notes or a cause will require to have the journal written.
+      sql = <<~SQL
+        UPDATE
+          journals
+        SET
+          notes = :notes,
+          updated_at = (SELECT updated_at FROM fetch_time),
+          data_id = insert_data.id,
+          cause = :cause
+        FROM insert_data
+        WHERE journals.id = :predecessor_id
+        #{only_on_changed_or_forced_condition_sql(notes, cause)}
+        RETURNING
+          journals.*
+      SQL
+
+      sanitize(sql,
+               notes: notes.presence || predecessor.notes,
+               predecessor_id: predecessor.id,
+               cause: cause_sql(cause))
+    end
+
+    def insert_journal_sql(notes, internal, cause)
+      sql = <<~SQL
+        INSERT INTO
+          journals (
+            journable_id,
+            journable_type,
+            version,
+            user_id,
+            notes,
+            restricted,
+            created_at,
+            updated_at,
+            data_id,
+            data_type,
+            cause,
+            validity_period
+          )
+        SELECT
+          :journable_id,
+          :journable_type,
+          COALESCE(max_journals.version, 0) + 1,
+          :user_id,
+          :notes,
+          :restricted,
+          (SELECT updated_at FROM fetch_time),
+          (SELECT updated_at FROM fetch_time),
+          insert_data.id,
+          :data_type,
+          :cause,
+          tstzrange((SELECT updated_at FROM fetch_time), NULL)
+        FROM max_journals, insert_data
         RETURNING *
       SQL
 
-      ::OpenProject::SqlSanitization.sanitize(data_sql,
-                                              journable_id: journable.id)
+      sanitize(sql,
+               notes:,
+               restricted: internal,
+               cause: cause_sql(cause),
+               journable_id:,
+               journable_type:,
+               user_id: user.id,
+               data_type: journable.class.journal_class.name)
     end
 
-    def insert_attachable_sql
-      attachable_sql = <<~SQL
-        INSERT INTO
-          attachable_journals (
-            journal_id,
-            attachment_id,
-            filename
-          )
-        SELECT
-          #{id_from_inserted_journal_sql},
-          attachments.id,
-          attachments.file
-        FROM attachments
-        WHERE
-          #{only_if_created_sql}
-          AND attachments.container_id = :journable_id
-          AND attachments.container_type = :journable_class_name
-      SQL
-
-      ::OpenProject::SqlSanitization.sanitize(attachable_sql,
-                                              journable_id: journable.id,
-                                              journable_class_name: journable.class.name)
-    end
-
-    def insert_customizable_sql
-      customizable_sql = <<~SQL
-        INSERT INTO
-          customizable_journals (
-            journal_id,
-            custom_field_id,
-            value
-          )
-        SELECT
-          #{id_from_inserted_journal_sql},
-          custom_values.custom_field_id,
-          #{normalize_newlines_sql('custom_values.value')}
-        FROM custom_values
-        WHERE
-          #{only_if_created_sql}
-          AND custom_values.customized_id = :journable_id
-          AND custom_values.customized_type = :journable_class_name
-          AND custom_values.value IS NOT NULL
-          AND custom_values.value != ''
-      SQL
-
-      ::OpenProject::SqlSanitization.sanitize(customizable_sql,
-                                              journable_id: journable.id,
-                                              journable_class_name: journable.class.name)
-    end
-
-    def select_max_journal_sql
-      max_journal_sql = <<~SQL
-        SELECT
-          :journable_id journable_id,
-          :journable_type journable_type,
-          COALESCE(journals.version, fallback.version) AS version,
-          COALESCE(journals.id, 0) id,
-          COALESCE(journals.data_id, 0) data_id
-        FROM
-          journals
-        RIGHT OUTER JOIN
-          (SELECT 0 AS version) fallback
-        ON
-           journals.journable_id = :journable_id
-           AND journals.journable_type = :journable_type
-           AND journals.version IN (SELECT MAX(version) FROM journals WHERE journable_id = :journable_id AND journable_type = :journable_type)
-      SQL
-
-      ::OpenProject::SqlSanitization.sanitize(max_journal_sql,
-                                              journable_id: journable.id,
-                                              journable_type: journable_type)
-    end
-
-    def select_changed_sql
-      <<~SQL
-        SELECT
-           *
-        FROM
-          (#{data_changes_sql}) data_changes
-        FULL JOIN
-          (#{customizable_changes_sql}) customizable_changes
-        ON
-          customizable_changes.journable_id = data_changes.journable_id
-        FULL JOIN
-          (#{attachable_changes_sql}) attachable_changes
-        ON
-          attachable_changes.journable_id = data_changes.journable_id
-      SQL
-    end
-
-    def attachable_changes_sql
-      attachable_changes_sql = <<~SQL
-        SELECT
-          max_journals.journable_id
-        FROM
-          max_journals
-        LEFT OUTER JOIN
-          attachable_journals
-        ON
-          attachable_journals.journal_id = max_journals.id
-        FULL JOIN
-          (SELECT *
-           FROM attachments
-           WHERE attachments.container_id = :journable_id AND attachments.container_type = :container_type) attachments
-        ON
-          attachments.id = attachable_journals.attachment_id
-        WHERE
-          (attachments.id IS NULL AND attachable_journals.attachment_id IS NOT NULL)
-          OR (attachable_journals.attachment_id IS NULL AND attachments.id IS NOT NULL)
-      SQL
-
-      ::OpenProject::SqlSanitization.sanitize(attachable_changes_sql,
-                                              journable_id: journable.id,
-                                              container_type: journable.class.name)
-    end
-
-    def customizable_changes_sql
-      customizable_changes_sql = <<~SQL
-        SELECT
-          max_journals.journable_id
-        FROM
-          max_journals
-        LEFT OUTER JOIN
-          customizable_journals
-        ON
-          customizable_journals.journal_id = max_journals.id
-        FULL JOIN
-          (SELECT *
-           FROM custom_values
-           WHERE custom_values.customized_id = :journable_id AND custom_values.customized_type = :customized_type) custom_values
-        ON
-          custom_values.custom_field_id = customizable_journals.custom_field_id
-        WHERE
-          (custom_values.value IS NULL AND customizable_journals.value IS NOT NULL)
-          OR (customizable_journals.value IS NULL AND custom_values.value IS NOT NULL AND custom_values.value != '')
-          OR (#{normalize_newlines_sql('customizable_journals.value')} !=
-              #{normalize_newlines_sql('custom_values.value')})
-      SQL
-
-      ::OpenProject::SqlSanitization.sanitize(customizable_changes_sql,
-                                              customized_type: journable.class.name,
-                                              journable_id: journable.id)
-    end
-
-    def data_changes_sql
-      data_changes_sql = <<~SQL
+    def changes_data_sql
+      sanitize(<<~SQL, journable_id:)
         SELECT
           #{journable_table_name}.id journable_id
         FROM
@@ -385,17 +520,6 @@ module Journals
         WHERE
           #{journable_table_name}.id = :journable_id AND (#{data_changes_condition_sql})
       SQL
-
-      ::OpenProject::SqlSanitization.sanitize(data_changes_sql,
-                                              journable_id: journable.id)
-    end
-
-    def only_if_created_sql
-      "EXISTS (SELECT * from inserted_journal)"
-    end
-
-    def id_from_inserted_journal_sql
-      "(SELECT id FROM inserted_journal)"
     end
 
     def data_changes_condition_sql
@@ -404,9 +528,7 @@ module Journals
 
       data_changes = (journable.journaled_columns_names - text_column_names).map do |column_name|
         <<~SQL
-          (#{journable_table}.#{column_name} != #{data_table}.#{column_name})
-          OR (#{journable_table}.#{column_name} IS NULL AND #{data_table}.#{column_name} IS NOT NULL)
-          OR (#{journable_table}.#{column_name} IS NOT NULL AND #{data_table}.#{column_name} IS NULL)
+          (#{journable_table}.#{column_name} IS DISTINCT FROM #{data_table}.#{column_name})
         SQL
       end
 
@@ -417,30 +539,30 @@ module Journals
         SQL
       end
 
-      data_changes.join(' OR ')
+      data_changes.join(" OR ")
     end
 
     def data_sink_columns
       text_columns = text_column_names
-      (journable.journaled_columns_names - text_columns + text_columns).join(', ')
+      (journable.journaled_columns_names - text_columns + text_columns).join(", ")
     end
 
     def data_source_columns
       text_columns = text_column_names
       normalized_text_columns = text_columns.map { |column| normalize_newlines_sql(column) }
-      (journable.journaled_columns_names - text_columns + normalized_text_columns).join(', ')
+      (journable.journaled_columns_names - text_columns + normalized_text_columns).join(", ")
     end
 
     def journable_data_sql_addition
-      journable.class.aaj_options[:data_sql]&.call(journable) || ''
+      journable.class.aaj_options[:data_sql]&.call(journable) || ""
     end
 
     def text_column_names
       journable.class.columns_hash.select { |_, v| v.type == :text }.keys.map(&:to_sym) & journable.journaled_columns_names
     end
 
-    def journable_timestamp
-      journable.send(journable.class.aaj_options[:timestamp])
+    def journable_timestamp_column
+      Journal.connection.quote_column_name(journable.class.aaj_options[:timestamp])
     end
 
     def journable_type
@@ -455,16 +577,9 @@ module Journals
       journable.class.journal_class.table_name
     end
 
-    def normalize_newlines_sql(column)
-      "REGEXP_REPLACE(COALESCE(#{column},''), '\\r\\n', '\n', 'g')"
-    end
-
-    def journal_timestamp_sql(notes, attribute)
-      if notes.blank? && journable_timestamp
-        attribute
-      else
-        'now()'
-      end
+    def cause_sql(cause)
+      # Using the same encoder mechanism that ActiveRecord uses for json/jsonb columns
+      ActiveSupport::JSON.encode(cause)
     end
 
     # Because we added the journal via bare metal sql, rails does not yet
@@ -474,36 +589,53 @@ module Journals
       journable.journals.reload if journable.journals.loaded?
     end
 
-    def touch_journable(journal)
-      return unless journal.notes.present?
-
-      # Not using touch here on purpose,
-      # as to avoid changing lock versions on the journables for this change
-      attributes = journable.send(:timestamp_attributes_for_update_in_model)
-
-      timestamps = attributes.index_with { journal.created_at }
-      journable.update_columns(timestamps) if timestamps.any?
-    end
-
-    def aggregatable?(predecessor, journal)
+    def aggregatable?(predecessor, notes, internal, cause)
       predecessor.present? &&
-        Setting.journal_aggregation_time_minutes.to_i > 0 &&
-        predecessor.created_at >= journal.created_at - Setting.journal_aggregation_time_minutes.to_i.minutes &&
-        predecessor.user_id == journal.user_id &&
-        (predecessor.notes.empty? || journal.notes.empty?)
+        aggregation_active? &&
+        within_aggregation_time?(predecessor) &&
+        same_user?(predecessor) &&
+        only_one_or_same_cause?(predecessor, cause) &&
+        only_one_note?(predecessor, notes) &&
+        same_restriction?(predecessor, internal)
     end
 
-    def notify_aggregation_destruction(predecessor, journal)
-      OpenProject::Notifications.send(OpenProject::Events::JOURNAL_AGGREGATE_BEFORE_DESTROY,
-                                      journal: journal,
-                                      predecessor: predecessor)
+    def aggregation_active?
+      Setting.journal_aggregation_time_minutes.to_i > 0
     end
 
-    def take_over_journal_details(predecessor, journal)
-      if predecessor.notes.present?
-        journal.update_columns(notes: predecessor.notes, version: predecessor.version)
+    def within_aggregation_time?(predecessor)
+      minutes = journable.class.try(:journal_aggregation_time_minutes) ||
+                Setting.journal_aggregation_time_minutes.to_i
+      predecessor.updated_at >= (Time.zone.now - minutes.minutes)
+    end
+
+    def same_user?(predecessor)
+      predecessor.user_id == user.id
+    end
+
+    def only_one_or_same_cause?(predecessor, cause)
+      predecessor.cause.empty? || predecessor.cause == cause || cause.mergeable_into?(predecessor.cause)
+    end
+
+    def aggregate_cause(predecessor, cause)
+      return cause unless predecessor
+
+      cause.merge_into(predecessor.cause) || cause
+    end
+
+    def only_one_note?(predecessor, notes)
+      predecessor.notes.empty? || notes.empty?
+    end
+
+    def same_restriction?(predecessor, internal)
+      predecessor.internal == internal
+    end
+
+    def log_journal_creation(predecessor)
+      if predecessor
+        Rails.logger.debug { "[#{self.class.name}] Aggregating journal #{predecessor.id} for #{journable_type} ##{journable.id}" }
       else
-        journal.update_columns(version: predecessor.version)
+        Rails.logger.debug { "[#{self.class.name}] Inserting new journal for #{journable_type} ##{journable.id}" }
       end
     end
   end

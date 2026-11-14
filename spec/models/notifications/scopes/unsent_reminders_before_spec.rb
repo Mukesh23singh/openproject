@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,81 +22,94 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Notifications::Scopes::UnsentRemindersBefore, type: :model do
-  describe '.unsent_reminders_before' do
-    subject(:scope) { ::Notification.unsent_reminders_before(recipient: recipient, time: time) }
+RSpec.describe Notifications::Scopes::UnsentRemindersBefore do
+  describe ".unsent_reminders_before" do
+    subject(:scope) { Notification.unsent_reminders_before(recipient:, time:) }
 
     let(:recipient) do
-      FactoryBot.create(:user)
+      create(:user)
     end
     let(:time) do
       Time.current
     end
 
-    let(:notification) do
-      FactoryBot.create(:notification,
-                        recipient: notification_recipient,
-                        read_ian: notification_read_ian,
-                        mail_reminder_sent: notification_mail_reminder_sent,
-                        created_at: notification_created_at)
+    let!(:notification) do
+      create(:notification,
+             recipient: notification_recipient,
+             read_ian: notification_read_ian,
+             mail_reminder_sent: notification_mail_reminder_sent,
+             mail_alert_sent: notification_mail_alert_sent,
+             created_at: notification_created_at)
     end
     let(:notification_mail_reminder_sent) { false }
+    let(:notification_mail_alert_sent) { false }
     let(:notification_read_ian) { false }
-    let(:notification_created_at) { Time.current - 10.minutes }
+    let(:notification_created_at) { 10.minutes.ago }
     let(:notification_recipient) { recipient }
 
-    let!(:notifications) { notification }
-
-    shared_examples_for 'is empty' do
-      it 'is empty' do
-        expect(scope)
-          .to be_empty
+    context "with an unread, not alerted about and not reminded notification that was created before the time and for the user" do
+      it "returns the notification" do
+        expect(scope).to contain_exactly(notification)
       end
     end
 
-    context 'with a unread and not reminded notification that was created before the time and for the user' do
-      it 'returns the notification' do
-        expect(scope)
-          .to match_array([notification])
-      end
+    context "with a notification that was created after the time" do
+      let(:notification_created_at) { 10.minutes.from_now }
+
+      it { is_expected.to be_empty }
     end
 
-    context 'with a unread and not reminded notification that was created after the time and for the user' do
-      let(:notification_created_at) { Time.current + 10.minutes }
+    context "with a notification that was created for different user" do
+      let(:notification_recipient) { create(:user) }
 
-      it_behaves_like 'is empty'
+      it { is_expected.to be_empty }
     end
 
-    context 'with a unread and not reminded notification that was created before the time and for different user' do
-      let(:notification_recipient) { FactoryBot.create(:user) }
-
-      it_behaves_like 'is empty'
-    end
-
-    context 'with a unread and not reminded notification created before the time and for the user' do
+    context "with a notification reminded mark set to nil" do
       let(:notification_mail_reminder_sent) { nil }
 
-      it_behaves_like 'is empty'
+      it { is_expected.to be_empty }
     end
 
-    context 'with a unread but reminded notification created before the time and for the user' do
+    context "with a reminded notification" do
       let(:notification_mail_reminder_sent) { true }
 
-      it_behaves_like 'is empty'
+      it { is_expected.to be_empty }
     end
 
-    context 'with a read notification that was created before the time' do
+    context "with a notification read mark set to nil" do
+      let(:notification_read_ian) { nil }
+
+      it "returns the notification" do
+        expect(scope).to contain_exactly(notification)
+      end
+    end
+
+    context "with a read notification" do
       let(:notification_read_ian) { true }
 
-      it_behaves_like 'is empty'
+      it { is_expected.to be_empty }
+    end
+
+    context "with a notification alert mark set to nil" do
+      let(:notification_mail_alert_sent) { nil }
+
+      it "returns the notification" do
+        expect(scope).to contain_exactly(notification)
+      end
+    end
+
+    context "with a notification about which user was already alerted" do
+      let(:notification_mail_alert_sent) { true }
+
+      it { is_expected.to be_empty }
     end
   end
 end

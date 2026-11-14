@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,11 +32,11 @@ class UserSearchService
   attr_reader :users_only, :project
 
   SEARCH_SCOPES = [
-    'project_id',
-    'ids',
-    'group_id',
-    'status',
-    'name'
+    "project_id",
+    "ids",
+    "group_id",
+    "status",
+    "name"
   ]
 
   def initialize(params, users_only: false)
@@ -60,7 +59,7 @@ class UserSearchService
   end
 
   def ids_search(scope)
-    ids = params[:ids].split(',')
+    ids = params[:ids].split(",")
 
     scope.where(id: ids)
   end
@@ -70,21 +69,21 @@ class UserSearchService
     c = ARCondition.new
 
     case params[:status]
-    when 'blocked'
+    when "blocked"
       @status = :blocked
       scope = scope.blocked
-    when 'all'
+    when "all"
       @status = :all
       # No scope change necessary
     else
       @status = params[:status] ? params[:status].to_i : User.statuses[:active]
       scope = scope.not_blocked if users_only && @status == User.statuses[:active]
-      c << ['status = ?', @status]
+      c << ["status = ?", @status]
     end
 
-    unless params[:name].blank?
+    if params[:name].present?
       name = "%#{params[:name].strip.downcase}%"
-      c << ['LOWER(login) LIKE ? OR LOWER(firstname) LIKE ? OR LOWER(lastname) LIKE ? OR LOWER(mail) LIKE ?', name, name, name,
+      c << ["LOWER(login) LIKE ? OR LOWER(firstname) LIKE ? OR LOWER(lastname) LIKE ? OR LOWER(mail) LIKE ?", name, name, name,
             name]
     end
 

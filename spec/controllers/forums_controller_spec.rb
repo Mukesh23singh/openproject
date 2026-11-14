@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,302 +22,217 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ForumsController, type: :controller do
-  shared_let(:user) { FactoryBot.create(:user) }
-  let(:project) { FactoryBot.create(:project) }
-  let!(:forum) { FactoryBot.create(:forum, project: project) }
+RSpec.describe ForumsController do
+  let(:permissions) { %i[view_messages] }
+  let(:project_role) { create(:project_role, permissions:, add_public_permissions: false) }
+
+  let(:project) { create(:project, enabled_module_names: ["forums"]) }
+  let(:user) { create(:user, member_with_roles: { project => project_role }) }
+  let!(:forum) { create(:forum, project:) }
 
   before do
-    disable_flash_sweep
+    login_as(user)
   end
 
-  describe '#index' do
-    context 'public project' do
-      let(:project) { FactoryBot.create(:public_project) }
-      let!(:role) { FactoryBot.create(:non_member) }
+  describe "#index" do
+    let(:other_project) { create(:project, member_with_permissions: { user => permissions }) }
+    let!(:forum_in_other_project) { create(:forum, project: other_project) }
 
-      it 'renders the index template' do
-        as_logged_in_user(user) do
-          get :index, params: { project_id: project.id }
-        end
+    it "renders the index template with the requested forum" do
+      get :index, params: { project_id: project.id }
 
-        expect(response).to be_successful
-        expect(response).to render_template 'forums/index'
-        expect(assigns(:forums)).to be_present
-        expect(assigns(:project)).to be_present
-      end
-    end
-
-    context 'assuming authorized' do
-      it 'renders the index template' do
-        as_logged_in_user(user) do
-          allow(@controller).to receive(:authorize).and_return(true)
-          get :index, params: { project_id: project.id }
-        end
-        expect(response).to be_successful
-      end
-    end
-
-    it 'renders 404 for not found' do
-      get :index, params: { project_id: 'not found' }
-      expect(response.status).to eq 404
-    end
-  end
-
-  describe '#show' do
-    before do
-      expect(project).to receive_message_chain(:forums, :find).and_return(forum)
-      expect(@controller).to receive(:authorize)
-      expect(@controller).to receive(:find_project_by_project_id) do
-        @controller.instance_variable_set(:@project, project)
-      end
-    end
-
-    it 'renders the show template' do
-      get :show, params: { project_id: project.id, id: 1 }
       expect(response).to be_successful
-      expect(response).to render_template 'forums/show'
-    end
-  end
-
-  describe '#create' do
-    let(:params) { { project_id: project.id, forum: forum_params } }
-    let(:forum_params) { { name: 'my forum', description: 'awesome forum' } }
-
-    before do
-      expect(@controller).to receive(:authorize)
-      expect(@controller).to receive(:find_project_by_project_id) do
-        @controller.instance_variable_set(:@project, project)
-      end
-
-      # parameter expectation needs to have strings as keys
-      expect(Forum)
-        .to receive(:new)
-        .with(ActionController::Parameters.new(forum_params).permit!)
-        .and_return(forum)
+      expect(response).to render_template("forums/index")
+      expect(assigns(:forums)).to contain_exactly(forum)
+      expect(assigns(:project)).to eq(project)
     end
 
-    describe 'w/ the params being valid' do
-      before do
-        expect(forum).to receive(:save).and_return(true)
+    context "when user does not have permission to view forums" do
+      let(:permissions) { [:view_project] }
 
-        as_logged_in_user user do
-          post :create, params: params
-        end
-      end
-
-      it 'should redirect to the index page if successful' do
-        expect(response)
-          .to redirect_to controller: '/forums',
-                          action: 'index',
-                          project_id: project.id
-      end
-
-      it 'have a successful creation flash' do
-        expect(flash[:notice]).to eq(I18n.t(:notice_successful_create))
-      end
-    end
-
-    describe 'w/ the params being invalid' do
-      before do
-        expect(forum).to receive(:save).and_return(false)
-
-        as_logged_in_user user do
-          post :create, params: params
-        end
-      end
-
-      it 'should render the new template' do
-        expect(response).to render_template('new')
+      it "renders 403 forbidden" do
+        get :index, params: { project_id: project.id }
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end
 
-  describe '#destroy' do
-    let(:forum_params) { { name: 'my forum', description: 'awesome forum' } }
+  describe "#show" do
+    it "renders the show template with the requested forum" do
+      get :show, params: { project_id: project.id, id: forum.id }
 
-    before do
-      expect(@controller).to receive(:authorize)
-      expect(project).to receive_message_chain(:forums, :find).and_return(forum)
-      expect(@controller).to receive(:find_project_by_project_id) do
-        @controller.instance_variable_set(:@project, project)
-      end
+      expect(response).to be_successful
+      expect(response).to render_template("forums/show")
+      expect(assigns(:forum)).to eq(forum)
+      expect(assigns(:project)).to eq(project)
+      expect(assigns(:message)).to be_a_new(Message)
     end
 
-    it 'will request destruction and redirect' do
-      expect(forum).to receive(:destroy)
-      delete :destroy, params: { project_id: project.id, id: 1 }
-      expect(response).to be_redirect
-    end
-  end
+    context "when user does not have permission to view messages" do
+      let(:permissions) { [:view_project] }
 
-  describe '#move' do
-    let(:project) { FactoryBot.create(:project) }
-    let!(:forum_1) do
-      FactoryBot.create(:forum,
-                        project: project,
-                        position: 1)
-    end
-    let!(:forum_2) do
-      FactoryBot.create(:forum,
-                        project: project,
-                        position: 2)
-    end
-
-    before do
-      allow(@controller).to receive(:authorize).and_return(true)
-    end
-
-    describe '#higher' do
-      let(:move_to) { 'higher' }
-
-      before do
-        post 'move', params: { id: forum_2.id,
-                               project_id: forum_2.project_id,
-                               forum: { move_to: move_to } }
-      end
-
-      it do expect(forum_2.reload.position).to eq(1) end
-
-      it do expect(response).to be_redirect end
-
-      it do
-        expect(response)
-          .to redirect_to controller: '/forums',
-                          action: 'index',
-                          project_id: project.id
-      end
-    end
-  end
-
-  describe '#update' do
-    let!(:forum) do
-      FactoryBot.create(:forum, name: 'Forum name',
-                                description: 'Forum description')
-    end
-
-    before do
-      expect(@controller).to receive(:authorize)
-    end
-
-    describe 'w/ the params being valid' do
-      before do
-        as_logged_in_user user do
-          put :update, params: { id: forum.id,
-                                 project_id: forum.project_id,
-                                 forum: { name: 'New name', description: 'New description' } }
-        end
-      end
-
-      it 'should redirect to the index page if successful' do
-        expect(response).to redirect_to controller: '/forums',
-                                        action: 'index',
-                                        project_id: forum.project_id
-      end
-
-      it 'have a successful update flash' do
-        expect(flash[:notice]).to eq(I18n.t(:notice_successful_update))
-      end
-
-      it 'should change the database entry' do
-        forum.reload
-        expect(forum.name).to eq('New name')
-        expect(forum.description).to eq('New description')
-      end
-    end
-
-    describe 'w/ the params being invalid' do
-      before do
-        as_logged_in_user user do
-          post :update, params: { id: forum.id,
-                                  project_id: forum.project_id,
-                                  forum: { name: '', description: 'New description' } }
-        end
-      end
-
-      it 'should render the edit template' do
-        expect(response).to render_template('edit')
-      end
-
-      it 'should not change the database entry' do
-        forum.reload
-        expect(forum.name).to eq('Forum name')
-        expect(forum.description).to eq('Forum description')
-      end
-    end
-  end
-
-  describe '#sticky' do
-    let!(:message1) { FactoryBot.create(:message, forum: forum) }
-    let!(:message2) { FactoryBot.create(:message, forum: forum) }
-    let!(:sticked_message1) do
-      FactoryBot.create(:message, forum_id: forum.id,
-                                  subject: 'How to',
-                                  content: 'How to install this cool app',
-                                  sticky: '1',
-                                  sticked_on: Time.now - 2.minute)
-    end
-
-    let!(:sticked_message2) do
-      FactoryBot.create(:message, forum_id: forum.id,
-                                  subject: 'FAQ',
-                                  content: 'Frequestly asked question',
-                                  sticky: '1',
-                                  sticked_on:
-                                   Time.now - 1.minute)
-    end
-
-    describe 'all sticky messages' do
-      before do
-        expect(@controller).to receive(:authorize)
+      it "renders 403 forbidden" do
         get :show, params: { project_id: project.id, id: forum.id }
-      end
-
-      it 'renders show' do
-        expect(response).to render_template 'show'
-      end
-      it 'should be displayed on top' do
-        expect(assigns[:topics][0].id).to eq(sticked_message1.id)
+        expect(response).to have_http_status(:forbidden)
       end
     end
 
-    describe 'edit a sticky message' do
-      before(:each) do
-        sticked_message1.sticky = 0
-        sticked_message1.save!
+    describe "with some messages messages" do
+      let!(:message1) { create(:message, forum:, updated_at: 1.minute.ago) }
+      let!(:message2) { create(:message, forum:, updated_at: 4.minutes.ago) }
+      let!(:sticked_message1) do
+        create(:message, forum_id: forum.id,
+                         subject: "How to",
+                         content: "How to install this cool app",
+                         sticky: true,
+                         updated_at: 2.minutes.ago,
+                         sticked_on: 2.minutes.ago)
       end
 
-      describe 'when sticky is unset from message' do
-        before do
-          expect(@controller).to receive(:authorize)
-          get :show, params: { project_id: project.id, id: forum.id }
-        end
+      let!(:sticked_message2) do
+        create(:message, forum_id: forum.id,
+                         subject: "FAQ",
+                         content: "Frequestly asked question",
+                         sticky: true,
+                         updated_at: 10.minutes.ago,
+                         sticked_on: 10.minutes.ago)
+      end
 
-        it 'it should not be displayed as sticky message' do
-          expect(sticked_message1.sticked_on).to be_nil
-          expect(assigns[:topics][0].id).not_to eq(sticked_message1.id)
+      it "displays the messages in the correct order, moving stickies to the top" do
+        get :show, params: { project_id: project.id, id: forum.id }
+
+        expect(assigns(:topics)).to eq([
+                                         sticked_message2,
+                                         sticked_message1,
+                                         message1,
+                                         message2
+                                       ])
+      end
+
+      context "when requesting JSON format" do
+        it "renders the messages in the correct order as JSON" do
+          # JSON rendering was dysfunctional because the template does not exist
+
+          expect do
+            get :show, params: { project_id: project.id, id: forum.id }, format: :json
+          end.to raise_error(ActionController::UnknownFormat)
         end
       end
 
-      describe 'when sticky is set back to message' do
-        before do
-          sticked_message1.sticky = 1
-          sticked_message1.save!
+      context "when requesting ATOM format" do
+        it "renders the messages in the correct order as ATOM" do
+          get :show, params: { project_id: project.id, id: forum.id }, format: :atom
 
-          expect(@controller).to receive(:authorize)
-          get :show, params: { project_id: project.id, id: forum.id }
+          expect(response).to be_successful
+          expect(response.content_type).to eq("application/atom+xml; charset=utf-8")
+          expect(assigns(:messages)).to eq([
+                                             sticked_message2,
+                                             sticked_message1,
+                                             message1,
+                                             message2
+                                           ])
         end
+      end
+    end
+  end
 
-        it 'it should not be displayed on first position' do
-          expect(assigns[:topics][0].id).to eq(sticked_message2.id)
+  describe "#create" do
+    let(:params) { { project_id: project.id, forum: forum_params } }
+    let(:forum_params) { { name: "my forum", description: "awesome forum" } }
+
+    context "when the user is not allowed to manage forums" do
+      it "renders 403 forbidden" do
+        post :create, params: params
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    context "when the user is allowed to manage forums" do
+      let(:permissions) { %i[view_messages manage_forums] }
+
+      describe "with valid params" do
+        it "creates a new forum and redirects to index" do
+          expect do
+            post :create, params:
+          end.to change(Forum, :count).by(1)
+
+          expect(response).to redirect_to project_forums_path(project)
+          expect(flash[:notice]).to eq(I18n.t(:notice_successful_create))
+        end
+      end
+
+      describe "with invalid params" do
+        let(:forum_params) { { name: "", description: "awesome forum" } }
+
+        it "renders the new template" do
+          expect do
+            post :create, params:
+          end.not_to change(Forum, :count)
+
+          expect(response).to render_template("new")
+        end
+      end
+    end
+  end
+
+  describe "#destroy" do
+    context "when the user is not allowed to manage forums" do
+      it "renders 403 forbidden" do
+        delete :destroy, params: { project_id: project.id, id: forum.id }
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    context "when the user is allowed to manage forums" do
+      let(:permissions) { %i[view_messages manage_forums] }
+
+      it "deletes the forum and redirects to index" do
+        expect do
+          delete :destroy, params: { project_id: project.id, id: forum.id }
+        end.to change(Forum, :count).by(-1)
+
+        expect(response).to redirect_to project_forums_path(project)
+        expect(response).to have_http_status(:see_other)
+        expect(flash[:notice]).to eq(I18n.t(:notice_successful_delete))
+      end
+    end
+  end
+
+  describe "#update" do
+    context "when the user is not allowed to manage forums" do
+      it "renders 403 forbidden" do
+        patch :update, params: { project_id: project.id, id: forum.id, forum: { name: "Updated Forum" } }
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    context "when the user is allowed to manage forums" do
+      let(:permissions) { %i[view_messages manage_forums] }
+
+      describe "with valid params" do
+        it "updates the forum and redirects to index" do
+          patch :update, params: { project_id: project.id, id: forum.id, forum: { name: "Updated Forum" } }
+
+          expect(response).to redirect_to project_forums_path(project)
+          expect(flash[:notice]).to eq(I18n.t(:notice_successful_update))
+          expect(forum.reload.name).to eq("Updated Forum")
+        end
+      end
+
+      describe "with invalid params" do
+        it "renders the edit template" do
+          expect do
+            patch :update, params: { project_id: project.id, id: forum.id, forum: { name: "" } }
+          end.not_to change { forum.reload.name }
+
+          expect(response).to render_template("edit")
         end
       end
     end

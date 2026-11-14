@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -19,24 +19,153 @@
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 da:
   activerecord:
+    attributes:
+      document:
+        content_binary: Binært indhold
+        title: Titel
+    errors:
+      models:
+        document_type:
+          one_or_more_required: Kan ikke slette den sidste dokumenttype
     models:
-      document: "Dokument"
-  default_doc_category_tech: "Teknisk dokumentation"
-  default_doc_category_user: "Brugerdokumentation"
-  enumeration_doc_categories: "Dokumentkategorier"
-  enumeration:
-    document_category:
-      documentation: Documentation
-      specification: Specifikation
-      other: Andet
+      document:
+        one: Dokument
+        other: Dokumenter
+      document_type:
+        one: Dokumenttype
+        other: Dokumenttyper
+  activity:
+    filter:
+      document: Dokumenter
+  attributes:
+    collaborative_editing_hocuspocus_url: URL til Hocuspocus-server
+    documents: Dokumenter
+  default_doc_category_tech: Teknisk dokumentation
+  default_doc_category_user: Brugerdokumentation
   documents:
-    label_attachment_author: "Attachment author"
-  label_document_added: "Dokument tilføjet"
-  label_document_new: "Nyt dokument"
-  label_document_plural: "Dokumenter"
-  label_documents: "Dokumenter"
-  permission_manage_documents: "Håndter dokumenter"
-  permission_view_documents: "Se dokumenter"
-  project_module_documents: "Dokumenter"
+    active_editors: Aktive redaktører
+    active_editors_count:
+      one: "%{count} aktiv redaktør"
+      other: "%{count} aktive redaktører"
+    admin:
+      collaboration_settings:
+        banner:
+          none_writable: Disse værdier konfigureres via miljøvariabler og kan ikke redigeres her.
+          some_unwritable: Nogle værdier konfigureres via miljøvariabler og kan ikke redigeres her.
+        hocuspocus_server: Hocuspocus-server
+        hocuspocus_server_secret:
+          caption: Indsæt den hemmelighed, der er leveret af Hocuspocus-serveren.
+          label: Klienthemmelighed
+        hocuspocus_server_url:
+          caption: WebSocket-adressen på en fungerende Hocuspocus-server.
+          invalid_scheme: Skal anvende en WebSocket-protokol (ws:// eller wss://).
+          label: URL til Hocuspocus-server
+        page_header:
+          description_html: |-
+            Når samarbejde i realtid er slået til, kan flere brugere redigere et dokument på samme tid.
+            Det kræver en fungerende [Hocuspocus-server](hocuspocus_server_link).
+      disable_text_collaboration_dialog:
+        confirmation_checkbox_message: Jeg forstår, at jeg kan miste data permanent
+        confirmation_message: |-
+          Alle eksisterende dokumenter kan blive utilgængelige. Gør det kun, hvis du er sikker på, at du vil deaktivere
+          samarbejde i realtid og BlockNote-editoren i denne installation.
+        heading: Deaktiver samarbejde i realtid?
+        success: Samarbejde i realtid er deaktiveret.
+        title: Deaktiver samarbejde i realtid
+      enable_text_collaboration:
+        description: |-
+          Når det er slået til, kan flere brugere arbejde sammen på et dokument samtidig.
+          Alle nye dokumenter bruger en ny editor (BlockNote) og kræver en fungerende forbindelse til en
+          Hocuspocus-server.
+        heading: Samarbejde i realtid er ikke aktiveret
+        primary_action: Aktivér samarbejde i realtid
+        success: Samarbejde i realtid er blevet aktiveret.
+    button_add_type: Type
+    collaboration_token:
+      errors:
+        collaboration_disabled: Samarbejde i realtid er ikke aktiveret.
+        collaboration_token_not_allowed: Anmodninger, der er godkendt med et samarbejdstoken, kan ikke anmode om nye samarbejdstokens.
+        invalid_previous_token: Det forrige samarbejdstoken er ugyldigt, allerede tilbagekaldt eller hører ikke til dette dokument og denne bruger.
+        not_collaborative: Dokumentet understøtter ikke samarbejde i realtid.
+    delete_dialog:
+      confirmation_message_html: Dokumentet og alle vedhæftede filer slettes permanent. Er du sikker på, at du vil gøre det?
+      heading: Vil du slette dokumentet?
+      title: Slet dokument
+    delete_document_type_dialog:
+      at_least_one_type_required:
+        heading: Kan ikke slette den sidste dokumenttype
+        message: Der skal altid være mindst én dokumenttype konfigureret. Opret først en anden, hvis du vil slette denne.
+        title: Kan ikke slette dokumenttype
+      confirmation_message: Typen "%{type_name}" bruges ikke i øjeblikket. Det påvirker ikke eksisterende dokumenter at slette den.
+      heading: Vil du slette dokumenttypen?
+      reassign_message:
+        one: Typen "%{type_name}" bruges i øjeblikket i %{document_count} dokument. Vælg, hvilken type det skal flyttes til.
+        other: Typen "%{type_name}" bruges i øjeblikket i %{document_count} dokumenter. Vælg, hvilken type de skal flyttes til.
+      select_reassign_to_label: Gentildel dokumenter til
+      title: Slet dokumenttype
+    document_categories_deprecation_notice:
+      description: |-
+        Med det nye modul Dokumenter er dine eksisterende filkategorier omdannet til dokumenttyper.
+        Alle eksisterende dokumenter er også flyttet til de nye typer.
+      heading: Filkategorier hedder nu 'Dokumenttyper'
+      primary_action: Konfigurer dokumenttyper
+      secondary_action: Få mere at vide om modulet Dokumenter
+    document_type_actions: Dokumenttype-handlinger
+    documents_list_blank_slate:
+      description: Der er ingen dokumenter i denne visning. Du kan klikke på knappen nedenfor for at tilføje et.
+      heading: Der er ingen dokumenter endnu
+    index_page:
+      label_legacy: Ældre
+      name: Navn
+      type: Type
+      updated_at: Senest redigeret
+    info_line:
+      connection_restored: Du er online igen.
+      currently_offline: Du er offline i øjeblikket.
+    label_attachment_author: Forfatter til vedhæftet fil
+    label_categories: Kategorier
+    last_updated_at_html: Senest gemt %{time}.
+    menu:
+      all: Alle dokumenter
+      collaboration_settings: Samarbejde i realtid
+      types: Typer
+    new_category: Ny kategori
+    new_type: Ny type
+    page_header:
+      action_menu:
+        document_actions: Dokumenthandlinger
+        edit_title: Rediger titel
+      heading: Alle dokumenter
+    show_edit_view:
+      connection_error_notice:
+        action: Prøv igen
+        description_server_unavailable: |-
+          Dokumentet kan ikke åbnes, fordi serveren til tekstsamarbejde i realtid ikke kan nås.
+          Kontakt administratoren, hvis problemet fortsætter.
+      tabs: Dokumentfaner
+    subheader:
+      filter:
+        label: Filter for dokumentnavn
+        placeholder: Skriv her for at søge i dokumentnavne
+    text_collaboration_disabled_notice:
+      description: |-
+        Dokumentet kan ikke åbnes, fordi tekstsamarbejde i realtid er slået fra.
+        Kontakt din administrator for at få slået tekstsamarbejde i realtid til, hvis du vil have adgang til dokumentet.
+  enumeration_doc_categories: Dokumentkategorier
+  label_document_added: Dokument tilføjet
+  label_document_category: Kategori
+  label_document_description: Beskrivelse
+  label_document_new: Nyt dokument
+  label_document_plural: Dokumenter
+  label_document_title: Titel
+  label_document_type: Type
+  label_documents: Dokumenter
+  permission_manage_documents: Administrer dokumenter
+  permission_view_documents: Vis dokumenter
+  plugin_openproject_documents:
+    description: Et OpenProject-plugin til oprettelse af dokumenter i projekter.
+    name: OpenProject Documents
+  project_module_documents: Dokumenter

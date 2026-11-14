@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +22,45 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe TabsHelper, type: :helper do
-  include TabsHelper
+RSpec.describe TabsHelper do
+  include described_class
 
   let(:given_tab) do
-    { name: 'avatar',
-      partial: 'avatars/users/avatar_tab',
+    { name: "avatar",
+      partial: "avatars/users/avatar_tab",
       path: ->(params) { edit_user_path(params[:user], tab: :avatar) },
       label: :label_avatar }
   end
 
   let(:expected_tab) do
-    { name: 'avatar',
-      partial: 'avatars/users/avatar_tab',
-      path: '/users/2/edit/avatar',
+    { name: "avatar",
+      partial: "avatars/users/avatar_tab",
+      path: "/users/2/edit/avatar",
       label: :label_avatar }
   end
 
-  describe 'render_extensible_tabs' do
+  describe "tabs_for_key" do
+    let(:current_user) { build(:user) }
+    let(:user) { build(:user, id: 2) }
+
     before do
-      allow_any_instance_of(TabsHelper)
-        .to receive(:render_tabs)
-        .with([expected_tab])
-        .and_return [expected_tab]
-
-      allow(::OpenProject::Ui::ExtensibleTabs)
+      allow(OpenProject::Ui::ExtensibleTabs)
         .to receive(:enabled_tabs)
-        .with(:user)
+        .with(:user, a_hash_including(user:, current_user:))
         .and_return [given_tab]
-
-      user = FactoryBot.build(:user, id: 2)
-      @tabs = render_extensible_tabs(:user, user: user)
     end
 
-    it "should return an evaluated path" do
-      expect(response.status).to eq 200
-      expect(@tabs).to eq([expected_tab])
+    it "returns an evaluated path" do
+      tabs = tabs_for_key(:user, user:)
+      expect(response).to have_http_status :ok
+      expect(tabs).to eq([expected_tab])
     end
   end
 end

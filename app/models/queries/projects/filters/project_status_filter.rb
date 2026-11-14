@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,44 +22,46 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-module Queries
-  module Projects
-    module Filters
-      class ProjectStatusFilter < ::Queries::Projects::Filters::ProjectFilter
-        include ProjectStatusHelper
+class Queries::Projects::Filters::ProjectStatusFilter < Queries::Projects::Filters::Base
+  include ProjectStatusHelper
 
-        def allowed_values
-          @allowed_values ||= ::Projects::Status.codes.map do |code, id|
-            [project_status_name_for_code(code), id.to_s]
-          end
-        end
-
-        def left_outer_joins
-          :status
-        end
-
-        def where
-          operator_strategy.sql_for_field(values, ::Projects::Status.table_name, :code)
-        end
-
-        def type
-          :list_optional
-        end
-
-        def self.key
-          :project_status_code
-        end
-
-        def human_name
-          I18n.t('js.grid.widgets.project_status.title')
-        end
-      end
+  def allowed_values
+    @allowed_values ||= Project.status_codes.map do |code, id|
+      [project_status_name(code), id.to_s]
     end
+  end
+
+  def type
+    :list_optional
+  end
+
+  def autocomplete_options
+    all_items = allowed_values.map { |name, id| { name:, id: } }
+    {
+      component: "opce-autocompleter",
+      bindValue: "id",
+      bindLabel: "name",
+      hideSelected: true,
+      defaultData: false,
+      items: all_items,
+      model: all_items.select { |item| values.include?(item[:id]) }
+    }
+  end
+
+  def where
+    operator_strategy.sql_for_field(values, model.table_name, :status_code)
+  end
+
+  def self.key
+    :project_status_code
+  end
+
+  def human_name
+    I18n.t("js.grid.widgets.project_status.title")
   end
 end

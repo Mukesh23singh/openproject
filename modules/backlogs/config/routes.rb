@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,57 +22,112 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-OpenProject::Application.routes.draw do
-  scope '', as: 'backlogs' do
-    scope 'projects/:project_id', as: 'project' do
-      resources :backlogs,         controller: :rb_master_backlogs,  only: :index
+Rails.application.routes.draw do
+  rails_relative_url_root = OpenProject::Configuration["rails_relative_url_root"] || ""
+  backlogs_redirect = lambda do |params, request, target|
+    query = request.query_string.presence
+    path = "#{rails_relative_url_root}/projects/#{params[:project_id]}/backlogs/#{target}"
 
-      resources :sprints,          controller: :rb_sprints,          only: %i[show update] do
-        resource :query,            controller: :rb_queries,          only: :show
+    query ? "#{path}?#{query}" : path
+  end
 
-        resource :taskboard,        controller: :rb_taskboards,       only: :show
+  scope "admin" do
+    resource :backlogs, only: :show, controller: "backlogs/settings", as: "admin_backlogs_settings"
+  end
 
-        resource :wiki,             controller: :rb_wikis,            only: %i[show edit]
-
-        resource :burndown_chart,   controller: :rb_burndown_charts,  only: :show
-
-        resources :impediments,      controller: :rb_impediments,      only: %i[create update]
-
-        resources :tasks,            controller: :rb_tasks,            only: %i[create update]
-
-        resources :export_card_configurations, controller: :rb_export_card_configurations, only: %i[index show] do
-          resources :stories, controller: :rb_stories, only: [:index]
-        end
-
-        resources :stories, controller: :rb_stories, only: %i[create update]
+  scope "projects/:project_id", as: "project", module: "projects" do
+    namespace "settings" do
+      resource :backlog_sharing, only: %i[show update]
+      resource :backlog_multiple_active_sprints, only: %i[show] do
+        post :toggle_multiple_active_sprints
       end
-
-      resource :query, controller: :rb_queries, only: :show
+      resource :backlog_estimation_unit, only: %i[show update]
     end
   end
 
-  scope 'projects/:project_id', as: 'project', module: 'projects' do
-    namespace 'settings' do
+  resources :projects, only: [] do
+    get "backlogs",
+        to: redirect { |params, request| backlogs_redirect.call(params, request, "backlog") },
+        as: :backlogs
+
+    # TODO: Remove these legacy (version 17.3) compatibility redirects in OpenProject 18.
+    get "sprints/:sprint_id/taskboard",
+        to: redirect { |params, request| backlogs_redirect.call(params, request, "sprints/#{params[:sprint_id]}/taskboard") }
+    get "sprints/:sprint_id/burndown_chart",
+        to: redirect { |params, request| backlogs_redirect.call(params, request, "sprints/#{params[:sprint_id]}/burndown_chart") }
+
+    namespace :backlogs do
+      resource :backlog, controller: :backlog, only: :show
+      resource :filters, controller: :filters, only: %i[show]
+      get "backlog/details/:work_package_id(/:tab)",
+          to: "backlog#details",
+          as: :backlog_details,
+          work_package_split_view: true,
+          constraints: { work_package_id: WorkPackage::SemanticIdentifier::ID_ROUTE_CONSTRAINT },
+          defaults: { tab: :overview }
+
+      resources :buckets, only: %i[create update destroy] do
+        collection do
+          get :new_dialog
+        end
+
+        member do
+          get :edit_dialog
+          get :destroy_dialog
+        end
+      end
+
+      resources :sprints, param: :sprint_id, only: %i[index create update] do
+        collection do
+          get :new_dialog
+          post :refresh_form
+        end
+
+        member do
+          post :start
+          post :finish
+          get :edit_dialog
+        end
+      end
+
+      resources :work_packages, controller: :work_packages, only: [] do
+        collection do
+          get :menu
+          get :add_existing_dialog
+          post :add_existing
+          post :move_to_sprint_dialog
+          post :move_to_bucket_dialog
+          put :move, action: :move_collection
+        end
+
+        member do
+          put :move
+        end
+      end
+
+      scope "sprints/:sprint_id" do
+        get "taskboard", to: "taskboard#show", as: :sprint_taskboard
+        get "burndown_chart", to: "burndown_chart#show", as: :sprint_burndown_chart
+
+        constraints(Constraints::FeatureDecision.new(:sprint_reports)) do
+          get "report", to: "sprint_reports#show", as: :sprint_report
+        end
+      end
+    end
+  end
+
+  scope "projects/:project_id", as: "project", module: "projects" do
+    namespace "settings" do
       resource :backlogs, only: %i[show update] do
         member do
-          post 'rebuild_positions' => 'backlogs#rebuild_positions'
+          post "rebuild_positions" => "backlogs#rebuild_positions"
         end
       end
     end
-  end
-
-  get 'projects/:project_id/versions/:id/edit' => 'version_settings#edit'
-
-  scope 'admin' do
-    resource :backlogs,
-             only: %i[show update],
-             controller: :backlogs_settings,
-             as: 'admin_backlogs_settings'
   end
 end

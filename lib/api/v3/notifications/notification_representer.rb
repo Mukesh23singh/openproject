@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,19 +33,25 @@ module API
         include API::Decorators::LinkedResource
         extend API::Decorators::PolymorphicResource
 
-        self_link title_getter: ->(*) { represented.subject }
+        self_link title: false
 
         property :id
-        property :subject
 
         property :read_ian,
                  as: :readIAN
 
-        property :reason
+        property :reason,
+                 exec_context: :decorator,
+                 getter: ->(*) { PropertyFactory.reason_for(represented) }
 
         date_time_property :created_at
 
         date_time_property :updated_at
+
+        property :details,
+                 embedded: true,
+                 exec_context: :decorator,
+                 getter: ->(*) { PropertyFactory.details_for(represented) }
 
         link :readIAN do
           next if represented.read_ian
@@ -73,8 +76,6 @@ module API
                             skip_render: ->(*) { represented.actor.nil? },
                             v3_path: :user
 
-        associated_resource :project
-
         associated_resource :journal,
                             as: :activity,
                             representer: ::API::V3::Activities::ActivityRepresenter,
@@ -83,11 +84,26 @@ module API
 
         polymorphic_resource :resource
 
+        resource :project,
+                 getter: ->(*) {
+                           ::API::V3::Projects::ProjectRepresenter
+                             .create(represented.resource.project, current_user:, embed_links:)
+                         },
+                 link: ->(*) {
+                         {
+                           href: api_v3_paths.project(represented.resource.project.id),
+                           title: represented.resource.project.name
+                         }
+                       },
+                 setter: ->(*) {
+                           raise NotImplementedError
+                         }
+
         def _type
-          'Notification'
+          "Notification"
         end
 
-        self.to_eager_load = %i[project actor]
+        self.to_eager_load = [:actor, :journal, :reminder, { resource: :project }]
       end
     end
   end

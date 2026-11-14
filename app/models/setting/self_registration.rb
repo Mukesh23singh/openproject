@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,6 +37,7 @@ class Setting
       manual_activation: 2,
       automatic_activation: 3
     }.freeze
+    KEYS = VALUES.invert.merge(VALUES.invert.transform_keys(&:to_s)).freeze
 
     def self.values
       VALUES
@@ -48,15 +48,23 @@ class Setting
     end
 
     def self.key(value:)
-      VALUES.find { |_k, v| v == value || v.to_s == value.to_s }&.first
+      KEYS[value]
     end
 
     def self.disabled
       value key: :disabled
     end
 
+    def self.selected?(val)
+      key(value: Setting.self_registration) == val.to_sym
+    end
+
     def self.disabled?
-      key(value: Setting.self_registration) == :disabled
+      selected?(:disabled)
+    end
+
+    def self.enabled?
+      !disabled?
     end
 
     def self.by_email
@@ -64,7 +72,7 @@ class Setting
     end
 
     def self.by_email?
-      key(value: Setting.self_registration) == :activation_by_email
+      selected?(:activation_by_email)
     end
 
     def self.manual
@@ -72,7 +80,7 @@ class Setting
     end
 
     def self.manual?
-      key(value: Setting.self_registration) == :manual_activation
+      selected?(:manual_activation)
     end
 
     def self.automatic
@@ -80,7 +88,11 @@ class Setting
     end
 
     def self.automatic?
-      key(value: Setting.self_registration) == :automatic_activation
+      selected?(:automatic_activation)
+    end
+
+    def self.unsupervised_registration?
+      by_email? || automatic?
     end
   end
 end

@@ -1,4 +1,31 @@
-import { Component, Injector } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { ChangeDetectionStrategy, Component, Injector, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { TabComponent } from 'core-app/features/work-packages/components/wp-table/configuration-modal/tab-portal-outlet';
 import { WorkPackageViewTimelineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-timeline.service';
@@ -7,54 +34,64 @@ import { QueryColumn } from 'core-app/features/work-packages/components/wp-query
 import { zoomLevelOrder } from 'core-app/features/work-packages/components/wp-table/timeline/wp-timeline';
 import { TimelineLabels, TimelineZoomLevel } from 'core-app/features/hal/resources/query-resource';
 
+const TIMELINE_LABEL_KEYS:Record<keyof TimelineLabels, true> = {
+  left: true,
+  right: true,
+  farRight: true,
+};
+
 @Component({
   templateUrl: './timelines-tab.component.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class WpTableConfigurationTimelinesTabComponent implements TabComponent {
+export class WpTableConfigurationTimelinesTabComponent implements TabComponent, OnInit {
+  readonly injector = inject(Injector);
+  readonly I18n = inject(I18nService);
+  readonly wpTableTimeline = inject(WorkPackageViewTimelineService);
+  readonly wpTableColumns = inject(WorkPackageViewColumnsService);
+
   public timelineVisible = false;
 
   public availableAttributes:{ id:string, name:string }[];
 
   public labels:TimelineLabels;
 
-  public availableLabels:string[];
+  public availableLabels:(keyof TimelineLabels)[];
 
   public zoomLevel:TimelineZoomLevel;
 
-  // Manualy build available zoom levels with zoom
+  // Manually build available zoom levels with zoom
   // because it is not part of the order.
   public availableZoomLevels:TimelineZoomLevel[] = ['auto', ...zoomLevelOrder];
 
   public text = {
-    title: this.I18n.t('js.timelines.gantt_chart'),
-    display_timelines: this.I18n.t('js.timelines.button_activate'),
+    title: this.I18n.t('js.gantt_chart.label'),
+    display_timelines: this.I18n.t('js.gantt_chart.button_activate'),
     display_timelines_hint: this.I18n.t('js.work_packages.table_configuration.show_timeline_hint'),
     zoom: {
       level: this.I18n.t('js.tl_toolbar.zooms'),
-      description: this.I18n.t('js.timelines.zoom.description'),
-      days: this.I18n.t('js.timelines.zoom.days'),
-      weeks: this.I18n.t('js.timelines.zoom.weeks'),
-      months: this.I18n.t('js.timelines.zoom.months'),
-      quarters: this.I18n.t('js.timelines.zoom.quarters'),
-      years: this.I18n.t('js.timelines.zoom.years'),
-      auto: this.I18n.t('js.timelines.zoom.auto'),
+      description: this.I18n.t('js.gantt_chart.zoom.description'),
+      days: this.I18n.t('js.gantt_chart.zoom.days'),
+      weeks: this.I18n.t('js.gantt_chart.zoom.weeks'),
+      months: this.I18n.t('js.gantt_chart.zoom.months'),
+      quarters: this.I18n.t('js.gantt_chart.zoom.quarters'),
+      years: this.I18n.t('js.gantt_chart.zoom.years'),
+      auto: this.I18n.t('js.gantt_chart.zoom.auto'),
     },
     labels: {
-      title: this.I18n.t('js.timelines.labels.title'),
-      description: this.I18n.t('js.timelines.labels.description'),
-      bar: this.I18n.t('js.timelines.labels.bar'),
-      none: this.I18n.t('js.timelines.filter.noneSelection'),
-      left: this.I18n.t('js.timelines.labels.left'),
-      right: this.I18n.t('js.timelines.labels.right'),
-      farRight: this.I18n.t('js.timelines.labels.farRight'),
+      title: this.I18n.t('js.gantt_chart.labels.title'),
+      description: this.I18n.t('js.gantt_chart.labels.description'),
+      bar: this.I18n.t('js.gantt_chart.labels.bar'),
+      none: this.I18n.t('js.gantt_chart.filter.noneSelection'),
+      left: this.I18n.t('js.gantt_chart.labels.left'),
+      right: this.I18n.t('js.gantt_chart.labels.right'),
+      farRight: this.I18n.t('js.gantt_chart.labels.farRight'),
     },
   };
-
-  constructor(readonly injector:Injector,
-    readonly I18n:I18nService,
-    readonly wpTableTimeline:WorkPackageViewTimelineService,
-    readonly wpTableColumns:WorkPackageViewColumnsService) {
-  }
 
   public onSave() {
     this.wpTableTimeline.update({
@@ -63,6 +100,13 @@ export class WpTableConfigurationTimelinesTabComponent implements TabComponent {
       labels: this.labels,
       zoomLevel: this.zoomLevel,
     });
+  }
+
+  public updateZoomLevel(value:string):void {
+    const level = this.availableZoomLevels.find((option) => option === value);
+    if (level !== undefined) {
+      this.zoomLevel = level;
+    }
   }
 
   public updateLabels(key:keyof TimelineLabels, value:string|null) {
@@ -81,8 +125,10 @@ export class WpTableConfigurationTimelinesTabComponent implements TabComponent {
 
     // Current label models
     const { labels } = this.wpTableTimeline;
-    this.labels = _.clone(labels);
-    this.availableLabels = Object.keys(this.labels);
+    this.labels = { ...labels };
+    this.availableLabels = Object.keys(this.labels).filter(
+      (key):key is keyof TimelineLabels => Object.hasOwn(TIMELINE_LABEL_KEYS, key),
+    );
 
     // Available labels
     const availableColumns = this.wpTableColumns
@@ -90,5 +136,9 @@ export class WpTableConfigurationTimelinesTabComponent implements TabComponent {
       .sort((a:QueryColumn, b:QueryColumn) => a.name.localeCompare(b.name));
 
     this.availableAttributes = [{ id: '', name: this.text.labels.none }].concat(availableColumns);
+  }
+
+  timelineToggleDisabled():boolean {
+    return window.location.pathname.includes('/gantt');
   }
 }

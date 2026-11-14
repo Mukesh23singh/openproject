@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open3'
-require 'find'
+require "open3"
+require "find"
 module OpenProject
   module SCM
     module Adapters
@@ -42,8 +39,8 @@ module OpenProject
           ##
           # Reads the configuration for this strategy from OpenProject's `configuration.yml`.
           def config
-            ['scm', vendor].inject(OpenProject::Configuration) do |acc, key|
-              HashWithIndifferentAccess.new acc[key]
+            ["scm", vendor].inject(OpenProject::Configuration) do |acc, key|
+              ActiveSupport::HashWithIndifferentAccess.new acc[key]
             end
           end
         end
@@ -69,7 +66,7 @@ module OpenProject
           if storage_available?
             count_required_storage
           else
-            raise Exceptions::SCMError.new I18n.t('repositories.storage.not_available')
+            raise Exceptions::SCMError.new I18n.t("repositories.storage.not_available")
           end
         end
 
@@ -84,14 +81,12 @@ module OpenProject
           root_url
         end
 
-        def config
-          self.class.config
-        end
+        delegate :config, to: :class
 
         ##
         # client executable command
         def client_command
-          ''
+          ""
         end
 
         def client_available
@@ -109,8 +104,8 @@ module OpenProject
         # Returns the version string of the scm client
         # Eg: '1.5.0' or 'Unknown version' if unknown
         def client_version_string
-          v = client_version || 'Unknown version'
-          v.is_a?(Array) ? v.join('.') : v.to_s
+          v = client_version || "Unknown version"
+          v.is_a?(Array) ? v.join(".") : v.to_s
         end
 
         ##
@@ -127,11 +122,11 @@ module OpenProject
         end
 
         def supports_annotate?
-          respond_to?('annotate')
+          respond_to?(:annotate)
         end
 
-        def target(path = '')
-          base = path.match(/\A\//) ? root_url : url
+        def target(path = "")
+          base = path.start_with?("/") ? root_url : url
           "#{base}/#{path}"
         end
 
@@ -177,9 +172,9 @@ module OpenProject
         #
         # If the operation throws an exception or the operation we rethrow a
         # +CommandFailed+ with a meaningful error message.
-        def popen3(args, opts = {}, &block)
+        def popen3(args, opts = {}, &)
           logger.debug "Shelling out: `#{stripped_command(args)}`"
-          Open3.popen3(client_command, *args, opts, &block)
+          Open3.popen3(client_command, *args, opts, &)
         rescue Exceptions::SCMError => e
           raise e
         rescue StandardError => e
@@ -204,6 +199,14 @@ module OpenProject
 
         def scm_encode(to, from, str)
           return nil if str.nil?
+
+          str = str.to_s
+          raise ArgumentError, "path is too long" if str.bytesize > 4096
+
+          if str.include?("\0") || str.include?("\n") || str.include?("\r")
+            raise ArgumentError, "path contains invalid characters"
+          end
+
           return str if to == from
 
           begin
@@ -235,7 +238,7 @@ module OpenProject
         # being unavailable on, e.g., Mac OS X.
         # On incompatible systems, will fall back to in-ruby counting
         def count_storage_du
-          output, err, code = Open3.capture3('du', '-bs', local_repository_path)
+          output, err, code = Open3.capture3("du", "-bs", local_repository_path)
 
           if code == 0 && output =~ /^(\d+)/
             Regexp.last_match(1).to_i
@@ -246,7 +249,7 @@ module OpenProject
           # May be raised when the command is not found.
           # Nothing we can do here.
           Rails.logger.error("Counting with 'du' failed with: '#{e.message}'." +
-                             'Falling back to in-ruby counting.')
+                             "Falling back to in-ruby counting.")
           nil
         end
 

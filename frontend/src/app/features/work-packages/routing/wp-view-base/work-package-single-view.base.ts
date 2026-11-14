@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,65 +20,89 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef,
-  Injector,
-} from '@angular/core';
+import { ChangeDetectorRef, Directive, Injector, Input, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
+import {
+  WorkPackageViewFocusService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { OpTitleService } from 'core-app/core/html/op-title.service';
 import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
 import { States } from 'core-app/core/states/states.service';
-import { KeepTabService } from 'core-app/features/work-packages/components/wp-single-view-tabs/keep-tab/keep-tab.service';
-import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
-import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import {
+  KeepTabService,
+} from 'core-app/features/work-packages/components/wp-single-view-tabs/keep-tab/keep-tab.service';
+import {
+  HalResourceEditingService,
+} from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
+import {
+  WorkPackageNotificationService,
+} from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { HookService } from 'core-app/features/plugins/hook-service';
 import { WpSingleViewService } from 'core-app/features/work-packages/routing/wp-view-base/state/wp-single-view.service';
 import { Observable } from 'rxjs';
 import { ActionsService } from 'core-app/core/state/actions/actions.service';
+import { AttachmentsResourceService } from 'core-app/core/state/attachments/attachments.service';
+import { StoragesResourceService } from 'core-app/core/state/storages/storages.service';
+import { FileLinksResourceService } from 'core-app/core/state/file-links/file-links.service';
+import { ProjectsResourceService } from 'core-app/core/state/projects/projects.service';
+import { ToastService } from 'core-app/shared/components/toaster/toast.service';
+import { HttpErrorResponse } from '@angular/common/http';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 
-export class WorkPackageSingleViewBase extends UntilDestroyedMixin {
-  @InjectField() states:States;
+@Directive()
+export abstract class WorkPackageSingleViewBase extends UntilDestroyedMixin {
+  injector = inject(Injector);
 
-  @InjectField() I18n!:I18nService;
+  @Input() workPackageId:string;
 
-  @InjectField() keepTab:KeepTabService;
+  @Input() activeTab = 'activity';
 
-  @InjectField() PathHelper:PathHelperService;
+  readonly states = inject(States);
 
-  @InjectField() halEditing:HalResourceEditingService;
+  readonly i18n = inject(I18nService);
 
-  @InjectField() wpTableFocus:WorkPackageViewFocusService;
+  readonly keepTab = inject(KeepTabService);
 
-  @InjectField() notificationService:WorkPackageNotificationService;
+  readonly PathHelper = inject(PathHelperService);
 
-  @InjectField() authorisationService:AuthorisationService;
+  readonly halEditing = inject(HalResourceEditingService);
 
-  @InjectField() cdRef:ChangeDetectorRef;
+  readonly wpTableFocus = inject(WorkPackageViewFocusService);
 
-  @InjectField() readonly titleService:OpTitleService;
+  readonly notificationService = inject(WorkPackageNotificationService);
 
-  @InjectField() readonly apiV3Service:APIV3Service;
+  readonly authorisationService = inject(AuthorisationService);
 
-  @InjectField() readonly hooks:HookService;
+  private readonly attachmentsResourceService = inject(AttachmentsResourceService);
 
-  @InjectField() readonly actions$:ActionsService;
+  private readonly fileLinkResourceService = inject(FileLinksResourceService);
 
-  @InjectField() readonly storeService:WpSingleViewService;
+  private readonly projectsResourceService = inject(ProjectsResourceService);
 
-  // Static texts
-  public text:any = {};
+  private readonly storages = inject(StoragesResourceService);
+
+  private readonly toastService = inject(ToastService);
+
+  readonly cdRef = inject(ChangeDetectorRef);
+
+  readonly titleService = inject(OpTitleService);
+
+  readonly apiV3Service = inject(ApiV3Service);
+
+  readonly hooks = inject(HookService);
+
+  readonly actions$ = inject(ActionsService);
+
+  readonly storeService = inject(WpSingleViewService);
 
   // Work package resource to be loaded from the cache
   public workPackage:WorkPackageResource;
@@ -91,54 +115,67 @@ export class WorkPackageSingleViewBase extends UntilDestroyedMixin {
 
   public displayNotificationsButton$:Observable<boolean>;
 
-  constructor(public injector:Injector,
-    protected workPackageId:string) {
-    super();
-    this.initializeTexts();
-  }
-
   /**
    * Observe changes of work package and re-run initialization.
    * Needs to be run explicitly by descendants.
+   *
+   * Note: this.workPackageId may be a semantic identifier (e.g. "PROJ-7")
+   * from the route param. In that case the initial load and stream are
+   * keyed under the semantic id, but cache writes elsewhere (e.g.
+   * cache.updateWorkPackage on save) key by the numeric PK on wp.id.
+   * If they differ, we open a parallel subscription on the numeric slot
+   * after the first emission so subsequent updates reach us — otherwise
+   * this.workPackage would freeze at the initial load. In classic mode
+   * (route param == numeric PK) no parallel subscription is opened, so
+   * the emission count is unchanged from the original behavior.
    */
-  protected observeWorkPackage() {
+  protected observeWorkPackage():void {
     this
       .apiV3Service
       .work_packages
       .id(this.workPackageId)
       .requireAndStream()
-      .pipe(
-        this.untilDestroyed(),
-      )
+      .pipe(this.untilDestroyed())
       .subscribe((wp:WorkPackageResource) => {
-        if (!this.workPackage) {
-          this.workPackage = wp;
-          this.init();
-        } else {
-          this.workPackage = wp;
+        if (wp.id && this.workPackageId !== wp.id) {
+          this.workPackageId = wp.id;
+          this.subscribeToNumericCacheSlot(wp.id);
         }
 
-        this.cdRef.detectChanges();
-      },
-      (error) => {
+        this.applyWorkPackage(wp);
+      }, (error) => {
         this.handleLoadingError(error);
       });
   }
 
-  /**
-   * Provide static translations
-   */
-  protected initializeTexts() {
-    this.text.tabs = {};
-    ['overview', 'activity', 'relations', 'watchers'].forEach((tab) => {
-      this.text.tabs[tab] = this.I18n.t(`js.work_packages.tabs.${tab}`);
-    });
+  private subscribeToNumericCacheSlot(numericId:string):void {
+    this
+      .apiV3Service
+      .work_packages
+      .cache
+      .state(numericId)
+      .values$()
+      .pipe(this.untilDestroyed())
+      .subscribe((nextWp:WorkPackageResource) => this.applyWorkPackage(nextWp));
+  }
+
+  private applyWorkPackage(wp:WorkPackageResource):void {
+    if (!this.workPackage) {
+      this.workPackage = wp;
+      this.init();
+    } else {
+      this.workPackage = wp;
+    }
+
+    this.titleService.setFirstPart(this.workPackage.subjectWithType(-1));
+
+    this.cdRef.detectChanges();
   }
 
   /**
    * Initialize controller after workPackage resource has been loaded.
    */
-  protected init() {
+  protected init():void {
     // Set elements
     this
       .apiV3Service
@@ -146,28 +183,39 @@ export class WorkPackageSingleViewBase extends UntilDestroyedMixin {
       .id(this.workPackage.project)
       .requireAndStream()
       .subscribe(() => {
-        this.projectIdentifier = this.workPackage.project.identifier;
+        this.projectIdentifier = this.workPackage.project.identifier as string;
         this.cdRef.detectChanges();
       });
 
-    this.displayNotificationsButton$ = this.storeService.query.hasNotifications$;
-    this.storeService.setFilters(this.workPackage.id as string);
+    // lazy load the work package's project, needed when initializing
+    // the work package resource from split view.
+    this.projectsResourceService
+      .requireEntity((this.workPackage.$links.project as CallableHalLink).href!)
+      .subscribe(
+        () => {},
+        (error:HttpErrorResponse) => {
+          this.toastService.addError(error);
+        },
+      );
 
-    // Set authorisation data
+    this.displayNotificationsButton$ = this.storeService.hasNotifications$;
+    this.storeService.setFilters(this.workPackage.id!);
+
+    // Set authorization data
     this.authorisationService.initModelAuth('work_package', this.workPackage.$links);
-
-    // Push the current title
-    this.titleService.setFirstPart(this.workPackage.subjectWithType(20));
 
     // Preselect this work package for future list operations
     this.showStaticPagePath = this.PathHelper.workPackagePath(this.workPackageId);
 
+    // Fetch attachments of current work package
+    if (this.workPackage.$links.attachments) {
+      this.attachmentsResourceService.fetchCollection((this.workPackage.$links.attachments as CallableHalLink).href!).subscribe();
+    }
+
     // Listen to tab changes to update the tab label
     this.keepTab.observable
-      .pipe(
-        this.untilDestroyed(),
-      )
-      .subscribe((tabs:any) => {
+      .pipe(this.untilDestroyed())
+      .subscribe((tabs:{ active:string }) => {
         this.updateFocusAnchorLabel(tabs.active);
       });
   }
@@ -180,12 +228,12 @@ export class WorkPackageSingleViewBase extends UntilDestroyedMixin {
    * Recompute the current tab focus label
    */
   public updateFocusAnchorLabel(tabName:string):string {
-    const tabLabel = this.I18n.t('js.label_work_package_details_you_are_here', {
-      tab: this.I18n.t(`js.work_packages.tabs.${tabName}`),
+    const tab = this.i18n.t(`js.work_packages.tabs.${tabName}`);
+    this.focusAnchorLabel = this.i18n.t('js.label_work_package_details_you_are_here', {
+      tab,
       type: this.workPackage.type.name,
       subject: this.workPackage.subject,
     });
-
-    return this.focusAnchorLabel = tabLabel;
+    return this.focusAnchorLabel;
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Authorization::QueryTransformation do
-  let(:on) { 'on' }
-  let(:name) { 'name' }
-  let(:after) { 'after' }
-  let(:before) { 'before' }
+RSpec.describe Authorization::QueryTransformation do
+  let(:on) { "on" }
+  let(:name) { "name" }
+  let(:after) { "after" }
+  let(:before) { "before" }
   let(:block) { ->(*args) { args } }
 
   let(:instance) do
@@ -43,31 +44,31 @@ describe Authorization::QueryTransformation do
                         block
   end
 
-  context 'initialSetup' do
-    it 'sets on' do
+  context "initialSetup" do
+    it "sets on" do
       expect(instance.on).to eql on
     end
 
-    it 'sets name' do
+    it "sets name" do
       expect(instance.name).to eql name
     end
 
-    it 'sets after' do
+    it "sets after" do
       expect(instance.after).to eql after
     end
 
-    it 'sets before' do
+    it "sets before" do
       expect(instance.before).to eql before
     end
 
-    it 'sets block' do
+    it "sets block" do
       expect(instance.block).to eql block
     end
   end
 
-  context 'apply' do
-    it 'calls the block' do
-      expect(instance.apply(1, 2, 3)).to match_array [1, 2, 3]
+  context "apply" do
+    it "calls the block" do
+      expect(instance.apply(1, 2, 3)).to contain_exactly(1, 2, 3)
     end
   end
 end

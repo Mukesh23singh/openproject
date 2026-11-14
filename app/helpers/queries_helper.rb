@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,25 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module QueriesHelper
-  def retrieve_query
-    @query = if params[:query_id].present?
-               Query.where(project: @project).find(params[:query_id])
-             else
-               Query.new_default(name: '_',
-                                 project: @project)
-             end
+  def retrieve_query(project)
+    query = if params[:query_id].present?
+              Query.where(project:).find(params[:query_id])
+            else
+              Query.new_default(project:)
+            end
 
     ::API::V3::UpdateQueryFromV3ParamsService
-      .new(@query, current_user)
+      .new(query, current_user)
       .call(params.permit!.to_h)
 
-    @query
+    query
   end
 end

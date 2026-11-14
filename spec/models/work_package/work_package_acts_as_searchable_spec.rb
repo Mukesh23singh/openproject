@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,33 +22,32 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackage, 'acts_as_searchable', type: :model do
+RSpec.describe WorkPackage, "acts_as_searchable" do
   include BecomeMember
 
-  let(:wp_subject) { 'the quick brown fox jumps over the lazy dog' }
+  let(:wp_subject) { "the quick brown fox jumps over the lazy dog" }
   let(:project) do
-    FactoryBot.create(:project,
-                      public: false)
+    create(:project,
+           public: false)
   end
   let(:work_package) do
-    FactoryBot.create(:work_package,
-                      subject: wp_subject,
-                      project: project)
+    create(:work_package,
+           subject: wp_subject,
+           project:)
   end
-  let(:user) { FactoryBot.create(:user) }
+  let(:user) { create(:user) }
 
-  describe '#search' do
-    describe "w/ the user being logged in
-              w/ searching for a matching string
-              w/ being member with the appropriate permission" do
+  describe "#search" do
+    describe "with the user being logged in " \
+             "with searching for a matching string " \
+             "with being member with the appropriate permission" do
       before do
         work_package
         allow(User).to receive(:current).and_return user
@@ -54,18 +55,18 @@ describe WorkPackage, 'acts_as_searchable', type: :model do
         become_member_with_permissions(project, user, :view_work_packages)
       end
 
-      it 'should return the work package' do
+      it "returns the work package" do
         expect(WorkPackage.search(wp_subject.split).first).to include(work_package)
       end
     end
 
-    describe "w/ the user being logged in
-              w/ being member with the appropriate permission
-              w/ searching for matching string
-              w/ searching with an offset" do
+    describe "with the user being logged in " \
+             "with being member with the appropriate permission " \
+             "with searching for matching string " \
+             "with searching with an offset" do
       # this offset recreates the way the time is transformed in the controller
       # This will have to be cleaned up
-      let(:offset) { (work_package.created_at - 1.minute).strftime('%Y%m%d%H%M%S').to_time }
+      let(:offset) { (work_package.created_at - 1.minute).strftime("%Y%m%d%H%M%S").to_time }
 
       before do
         work_package
@@ -74,8 +75,40 @@ describe WorkPackage, 'acts_as_searchable', type: :model do
         become_member_with_permissions(project, user, :view_work_packages)
       end
 
-      it 'should return the work package if the offset is before the work packages created at value' do
-        expect(WorkPackage.search(wp_subject.split, nil, offset: offset).first).to include(work_package)
+      it "returns the work package if the offset is before the work packages created at value" do
+        expect(WorkPackage.search(wp_subject.split, nil, offset:).first).to include(work_package)
+      end
+    end
+
+    describe "with a searchable list custom field with project-specific values" do
+      let(:type) { create(:type) }
+      let(:project) { create(:project, public: false, types: [type]) }
+      let(:custom_field) do
+        create(:list_wp_custom_field, :project_specific_allowlist,
+               types: [type], searchable: true, possible_values: %w[Acme Oscorp])
+      end
+      let(:acme) { custom_field.custom_options.find_by!(value: "Acme") }
+      let(:oscorp) { custom_field.custom_options.find_by!(value: "Oscorp") }
+      let!(:acme_work_package) do
+        create(:work_package, project:, type:, custom_values: { custom_field.id => acme.id.to_s })
+      end
+      let!(:oscorp_work_package) do
+        create(:work_package, project:, type:, custom_values: { custom_field.id => oscorp.id.to_s })
+      end
+
+      before do
+        create(:project_specific_value_restriction, project:, custom_option: acme)
+        allow(User).to receive(:current).and_return user
+
+        become_member_with_permissions(project, user, :view_work_packages)
+      end
+
+      it "finds the work package by an option usable in its project" do
+        expect(described_class.search(["Acme"]).first).to contain_exactly(acme_work_package)
+      end
+
+      it "does not find the work package by an option no longer usable in its project" do
+        expect(described_class.search(["Oscorp"]).first).to be_empty
       end
     end
   end

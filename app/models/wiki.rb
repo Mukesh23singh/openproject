@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,35 +22,47 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Wiki < ApplicationRecord
   belongs_to :project
-  has_many :pages, -> {
-    order('title')
-  }, class_name: 'WikiPage', dependent: :destroy
-  has_many :wiki_menu_items, -> {
-    order('name')
-  }, class_name: 'MenuItems::WikiMenuItem', dependent: :delete_all, foreign_key: 'navigatable_id'
-  has_many :redirects, class_name: 'WikiRedirect', dependent: :delete_all
+
+  has_many :pages, -> { order(:title) }, class_name: "WikiPage", inverse_of: :wiki, dependent: :destroy
+
+  has_many :wiki_menu_items,
+           -> { order(:name) },
+           class_name: "MenuItems::WikiMenuItem",
+           inverse_of: :wiki,
+           dependent: :delete_all,
+           foreign_key: "navigatable_id"
+
+  has_many :redirects, class_name: "WikiRedirect", dependent: :delete_all
 
   acts_as_watchable permission: :view_wiki_pages
 
+  scope :visible, ->(user = User.current) {
+    where(enabled: true)
+      .includes(:project)
+      .references(:project)
+      .merge(Project.allowed_to(user, :view_wiki_pages))
+  }
+
   accepts_nested_attributes_for :wiki_menu_items,
                                 allow_destroy: true,
-                                reject_if: proc { |attr| attr['name'].blank? && attr['title'].blank? }
+                                reject_if: proc { |attr| attr["name"].blank? && attr["title"].blank? }
 
-  validates_presence_of :start_page
+  validates :start_page, presence: true
 
   after_create :create_menu_item_for_start_page
 
   def visible?(user = User.current)
-    !user.nil? && user.allowed_to?(:view_wiki_pages, project)
+    enabled && user.allowed_in_project?(:view_wiki_pages, project)
   end
+
+  def disabled? = !enabled?
 
   # find the page with the given title
   # if page doesn't exist, return a new page
@@ -58,7 +70,7 @@ class Wiki < ApplicationRecord
     title = start_page if title.blank?
     # If a new page is initialized, it needs to have a slug (via the ensure_unique_url)
     # method right away, so that the correct menu item (if that exists already) is highlighted
-    find_page(title) || WikiPage.new(wiki: self, title: title).tap(&:ensure_unique_url)
+    find_page(title) || WikiPage.new(wiki: self, title:).tap(&:ensure_unique_url)
   end
 
   ##
@@ -101,16 +113,13 @@ class Wiki < ApplicationRecord
       project = Project.find_by(identifier: project_identifier) || Project.find_by(name: project_identifier)
     end
     if project && project.wiki
-      page = project.wiki.find_page(title)
-      if page && page.content
-        page
-      end
+      project.wiki.find_page(title)
     end
   end
 
   def create_menu_item_for_start_page
     wiki_menu_item = wiki_menu_items.find_or_initialize_by(title: start_page) do |item|
-      item.name = 'wiki'
+      item.name = "wiki"
     end
     wiki_menu_item.new_wiki_page = true
     wiki_menu_item.index_page = true
@@ -127,7 +136,7 @@ class Wiki < ApplicationRecord
   def matching_redirect(title)
     redirects
       .where(title: WikiPage.slug(title))
-      .or(redirects.where(title: title))
+      .or(redirects.where(title:))
       .first
   end
 end

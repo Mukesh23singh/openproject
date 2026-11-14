@@ -1,0 +1,36 @@
+<%=
+  flex_layout(
+    classes: "op-project-life-cycle-container",
+    data: {
+      test_selector: "project-life-cycle-#{phase.id}"
+    }
+  ) do |life_cycle_container|
+    life_cycle_container.with_row(flex_layout: true, align_items: :center) do |row|
+      row.with_column(mr: 1, flex_layout: true) do |text_and_icon|
+        text_and_icon.with_column(mr: 1, classes: icon_color_class) do
+          render Primer::Beta::Octicon.new(icon:)
+        end
+
+        text_and_icon.with_column do
+          render(Primer::Beta::Text.new(font_weight: :bold)) do
+            text
+          end
+        end
+      end
+
+      row.with_column do
+        render(Projects::PhaseStatusButtonComponent.new(phase: phase, user: @user))
+      end
+    end
+
+    life_cycle_container.with_row(w: :full) do
+      render(authorized_edit_link) do
+        if date_range_not_set?
+          render(Primer::Beta::Text.new) { t("placeholders.default") }
+        else
+          render Projects::PhaseComponent.new(phase: phase)
+        end
+      end
+    end
+  end
+%>

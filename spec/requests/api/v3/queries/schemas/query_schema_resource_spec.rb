@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Query Schema resource', type: :request do
+RSpec.describe "API v3 Query Schema resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.create(:project) }
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:project) { create(:project) }
+  let(:role) { create(:project_role, permissions:) }
   let(:permissions) { [:view_work_packages] }
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
 
   before do
@@ -48,7 +47,7 @@ describe 'API v3 Query Schema resource', type: :request do
       .and_return(user)
   end
 
-  describe '#get queries/schema' do
+  describe "#get queries/schema" do
     subject { last_response }
 
     let(:path) { api_v3_paths.query_schema }
@@ -57,21 +56,21 @@ describe 'API v3 Query Schema resource', type: :request do
       get path
     end
 
-    it 'succeeds' do
+    it "succeeds" do
       expect(subject.status)
-        .to eql(200)
+        .to be(200)
     end
 
-    it 'returns the schema' do
+    it "returns the schema" do
       expect(subject.body)
         .to be_json_eql(path.to_json)
-        .at_path('_links/self/href')
+        .at_path("_links/self/href")
     end
 
-    context 'user not allowed' do
+    context "user not allowed" do
       let(:permissions) { [] }
 
-      it_behaves_like 'unauthorized access'
+      it_behaves_like "unauthorized access"
     end
   end
 end

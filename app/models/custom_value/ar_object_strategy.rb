@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,36 +22,29 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class CustomValue::ARObjectStrategy < CustomValue::FormatStrategy
   def typed_value
-    return memoized_typed_value if memoized_typed_value
-
-    unless value.blank?
-      RequestStore.fetch(:"#{ar_class.name.underscore}_custom_value_#{value}") do
-        self.memoized_typed_value = ar_object(value)
-      end
-    end
+    cached_ar_object
   end
 
   def formatted_value
-    typed_value.to_s
+    cached_ar_object.to_s
   end
 
   def parse_value(val)
     if val.is_a?(ar_class)
-      self.memoized_typed_value = val
+      @cached_ar_object = val
 
       val.id.to_s
-    elsif val.blank?
-      super(nil)
     else
-      super
+      @cached_ar_object = nil
+
+      val.presence
     end
   end
 
@@ -63,11 +56,31 @@ class CustomValue::ARObjectStrategy < CustomValue::FormatStrategy
 
   private
 
-  def ar_class
-    raise NotImplementedError
+  # A value that is already stored stays valid, even after it stopped being usable in the project.
+  def usable_in_project?
+    customized = custom_value.customized
+    return true if !custom_field.project_specific_values_supported? || customized.nil?
+    return true if custom_value.persisted? && !custom_value.value_changed?
+
+    custom_field.usable_values_in(customized.project).exists?(id: value)
   end
 
-  def ar_object(_value)
-    raise NotImplementedError
+  # This method is not inlined in typed_value to allow separate changes to typed_value and formatted_value
+  def cached_ar_object
+    return @cached_ar_object if @cached_ar_object
+
+    if value.present?
+      RequestStore.fetch(:"#{ar_class.name.underscore}_custom_value_#{value}") do
+        @cached_ar_object = ar_object(value)
+      end
+    end
+  end
+
+  def ar_class
+    raise SubclassResponsibilityError
+  end
+
+  def ar_object(value)
+    ar_class.find_by(id: value)
   end
 end

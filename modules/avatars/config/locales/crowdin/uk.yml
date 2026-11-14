@@ -1,39 +1,49 @@
-#English strings go here
+---
 uk:
-  label_avatar: "Аватар"
-  label_avatar_plural: "Аватари"
-  label_current_avatar: "Поточний аватар"
-  label_choose_avatar: "Оберіть ваш Avatar з файлу"
-  message_avatar_uploaded: "Avatar успішно змінено."
-  error_image_upload: "Помилка під час збереження зображення."
-  error_image_size: "Зображення завелике."
-  button_change_avatar: "Змінити avatar"
-  are_you_sure_delete_avatar: "Ви впевнені, що хочете видалити свій avatar?"
-  avatar_deleted: "Аватар успішно видалено."
-  unable_to_delete_avatar: "Avatar не може бути видалений."
-  wrong_file_format: "Дозволені формати: jpg, png, gif"
-  empty_file_error: "Будь ласка, завантажте зображення вірного формату (jpg, png, gif)"
+  are_you_sure_delete_avatar: Ви впевнені, що хочете видалити свій avatar?
+  avatar_deleted: Аватар успішно видалено.
   avatars:
-    label_avatar: "Аватар"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Поточний avatar'
-    label_local_avatar: 'Довільний avatar'
-    text_current_avatar: |
-      Наступне зображення відоброжає поточний avatar.
-    text_upload_instructions: |
-      Завантажте особистий avatar розміром 128х128 пікселів. Зображення більшого розміру будуть автоматично обрізані та змаштабовані. Як тількі ви оберете зображення, буде відображено попередній перегляд вашого avatar до завантаження.
-    text_change_gravatar_html: 'Для зміни або додавання Gravatar до вашої електронної адреси, перейдіть за наступним посиланням: %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject дозволяє користувачам завантажувати особисті довільні avatar.
-    text_local_avatar_over_gravatar: |
-      Якщо ви встановите особистий avatar, він буде застосований до вашого облікового запису незалежно від налаштунків gravatar.
-    text_your_current_gravatar: |
-      OpenProject використовує ваше зображення gravatar, якщо ви зареєстровані у цьому сервісі, або буде використане зображення за замовчуванням, або ваш завантажений довільний avatar.
-      Ваше поточне зображення gravatar наступне:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Довільний avatar
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar успішно змінено.
+    preview: Переглянути знову
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Увімкнути gravatars'
-      gravatar_default: "Зображення Gravatar за замовчуванням"
-      enable_local_avatars: 'Увімкнути можливість завантажувати особисті avatars'
-
-
-
+      enable_gravatars: Увімкнути gravatars
+      enable_local_avatars: Увімкнути можливість завантажувати особисті avatars
+      gravatar_default: Зображення Gravatar за замовчуванням
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Зображення
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Будь ласка, завантажте зображення вірного формату (jpg, png, gif)
+  error_image_size: Зображення завелике.
+  error_image_upload: Помилка під час збереження зображення.
+  label_avatar: Аватар
+  label_avatar_plural: Аватари
+  label_choose_avatar: Оберіть ваш Avatar з файлу
+  label_current_avatar: Поточний аватар
+  message_avatar_uploaded: Avatar успішно змінено.
+  plugin_openproject_avatars:
+    description: Цей плагін дозволяє користувачам OpenProject завантажувати зображення для використання як аватара або використовувати наявні зображення з Gravatar.
+    name: Аватари
+  unable_to_delete_avatar: Avatar не може бути видалений.
+  wrong_file_format: 'Дозволені формати: jpg, png, gif'

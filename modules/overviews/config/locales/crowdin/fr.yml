@@ -1,4 +1,11 @@
+---
 fr:
+  activerecord:
+    models:
+      grids/overview:
+        one: Vue d'ensemble
+        other: Vues d'ensemble
   overviews:
-    label: 'Vue globale'
-  permission_manage_overview: 'Gérer la page d''aperçu'
+    label_dashboard: Tableau de bord
+    label_home: Accueil %{workspace_type}
+    label_overview: Vue d'ensemble

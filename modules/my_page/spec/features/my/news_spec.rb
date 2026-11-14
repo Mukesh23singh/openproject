@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,38 +20,41 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-require_relative '../../support/pages/my/page'
+require_relative "../../support/pages/my/page"
 
-describe 'My page news widget spec', type: :feature, js: true do
-  let!(:project) { FactoryBot.create :project }
-  let!(:other_project) { FactoryBot.create :project }
+RSpec.describe "My page news widget spec",
+               :js do
+  let!(:project) { create(:project) }
+  let!(:other_project) { create(:project) }
   let!(:visible_news) do
-    FactoryBot.create :news,
-                      project: project,
-                      description: 'blubs'
+    create(:news,
+           project:,
+           description: "blubs")
   end
   let!(:invisible_news) do
-    FactoryBot.create :news,
-                      project: other_project
+    create(:news,
+           project: other_project)
   end
   let(:other_user) do
-    FactoryBot.create(:user)
+    create(:user)
   end
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[])
+    create(:user,
+           member_with_permissions: { project => %i[] })
   end
   let(:my_page) do
     Pages::My::Page.new
+  end
+
+  let!(:my_page_grid) do
+    create(:my_page, :empty, user:)
   end
 
   before do
@@ -60,24 +63,24 @@ describe 'My page news widget spec', type: :feature, js: true do
     my_page.visit!
   end
 
-  it 'can add the widget and see the visible news' do
+  it "can add the widget and see the visible news" do
     # No other widgets exist as the user lacks the permissions for the default widgets
     # add widget in top right corner
-    my_page.add_widget(1, 1, :within, 'News')
+    my_page.add_widget(1, 1, :within, "News")
 
-    news_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(1)')
+    news_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(1)")
     news_area.expect_to_span(1, 1, 2, 2)
 
     expect(page)
-      .to have_content visible_news.title
+      .to have_text visible_news.title
     expect(page)
-      .to have_content visible_news.author.name
+      .to have_text visible_news.author.name
     expect(page)
-      .to have_content visible_news.project.name
+      .to have_text visible_news.project.name
     expect(page)
-      .to have_content visible_news.created_at.strftime('%m/%d/%Y')
+      .to have_text visible_news.created_at.strftime("%m/%d/%Y")
 
     expect(page)
-      .to have_no_content invisible_news.title
+      .to have_no_text invisible_news.title
   end
 end

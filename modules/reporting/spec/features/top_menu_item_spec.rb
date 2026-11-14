@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +20,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'Top menu items', js: true do
-  let(:user) { FactoryBot.create :user }
+RSpec.describe "Top menu items", :js do
+  shared_let(:project) { create(:project) }
+
+  let(:user) { create(:user) }
   let(:open_menu) { true }
 
   def has_menu_items?(*labels)
-    within '.op-app-header' do
+    within ".op-app-header" do
       labels.each do |l|
         expect(page).to have_link(l)
       end
@@ -41,9 +42,9 @@ feature 'Top menu items', js: true do
   end
 
   def expect_no_menu_item(*labels)
-    within '.op-app-header' do
+    within ".op-app-header" do
       labels.each do |l|
-        expect(page).not_to have_link(l)
+        expect(page).to have_no_link(l)
       end
     end
   end
@@ -52,52 +53,52 @@ feature 'Top menu items', js: true do
     # if the menu is not completely expanded (e.g. if the frontend thread is too fast),
     # the click might be ignored
 
-    within '.op-app-menu--item_has-dropdown .op-app-menu--dropdown[aria-expanded=true]' do
-      expect(page).not_to have_selector('[style~=overflow]')
+    within "#op-app-header--modules-menu-list" do
+      expect(page).to have_no_css("[style~=overflow]")
 
-      page.find_link(title).find('span').click
+      page.click_link(title)
     end
   end
 
   before do |ex|
     allow(User).to receive(:current).and_return user
-    FactoryBot.create(:anonymous_role)
-    FactoryBot.create(:non_member)
+    create(:anonymous_role)
+    create(:non_member)
 
-    if ex.metadata.key?(:allowed_to)
-      allow(user).to receive(:allowed_to?).and_return(ex.metadata[:allowed_to])
+    if ex.metadata.key?(:allow_all_permissions)
+      mock_permissions_for(user, &:allow_everything)
     end
 
     visit root_path
     top_menu.click if open_menu
   end
 
-  describe 'Modules' do
-    !let(:top_menu) { find(:css, "[title=#{I18n.t('label_modules')}]") }
+  describe "Modules" do
+    let!(:top_menu) { page.find_test_selector("op-app-header--modules-menu-button") }
 
-    let(:reporting_item) { I18n.t('cost_reports_title') }
+    let(:reporting_item) { I18n.t("cost_reports_title") }
 
-    context 'as an admin' do
-      let(:user) { FactoryBot.create :admin }
+    context "as an admin" do
+      let(:user) { create(:admin) }
 
-      it 'displays reporting item' do
+      it "displays reporting item" do
         has_menu_items?(reporting_item)
       end
 
-      it 'visits the reporting page' do
+      it "visits the reporting page" do
         click_link_in_open_menu(reporting_item)
-        expect(page).to have_current_path(url_for(controller: '/cost_reports', action: 'index', project_id: nil, only_path: true))
+        expect(page).to have_current_path(reporting_cost_reports_path)
       end
     end
 
-    context 'as a regular user' do
-      it 'has no menu item' do
+    context "as a regular user" do
+      it "has no menu item" do
         expect_no_menu_item reporting_item
       end
     end
 
-    context 'as a user with permissions', allowed_to: true do
-      it 'displays all options' do
+    context "as a user with permissions", :allow_all_permissions do
+      it "displays all options" do
         has_menu_items?(reporting_item)
       end
     end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,13 +31,13 @@ module CostQuery::CustomFieldMixin
   attr_reader :custom_field
 
   SQL_TYPES = {
-    'string' => 'varchar',
-    'list' => 'varchar',
-    'text' => 'text',
-    'bool' => 'boolean',
-    'date' => 'date',
-    'int' => 'decimal(60,3)',
-    'float' => 'decimal(60,3)'
+    "string" => "varchar",
+    "list" => "varchar",
+    "text" => "text",
+    "bool" => "boolean",
+    "date" => "date",
+    "int" => "decimal(60,3)",
+    "float" => "decimal(60,3)"
   }.freeze
 
   def self.extended(base)
@@ -68,7 +67,7 @@ module CostQuery::CustomFieldMixin
 
   def remove_subclasses
     module_parent.constants.each do |constant|
-      if constant.to_s.match /^CustomField\d+/
+      if constant.to_s.match? /^CustomField\d+/
         module_parent.send(:remove_const, constant)
       end
     end
@@ -94,6 +93,10 @@ module CostQuery::CustomFieldMixin
     @custom_field.name
   end
 
+  def underscore_name
+    @custom_field.column_name
+  end
+
   def prepare(field, class_name)
     @custom_field = field
     @class_name = class_name
@@ -109,41 +112,36 @@ module CostQuery::CustomFieldMixin
   end
 
   def list_join_table(field)
-    cast_as = SQL_TYPES[field.field_format]
-    cf_name = "custom_field#{field.id}"
-
     custom_values_table = CustomValue.table_name
     custom_options_table = CustomOption.table_name
 
-    # CustomValues of lists MAY have non-integer values when the list contained invalid values.
-    # Because of this, we do not cast the cv.value but rather the co.id
-
     <<-SQL
-    -- BEGIN Custom Field Join: #{cf_name}
+    -- BEGIN Custom Field Join: cf_#{field.id}
     LEFT OUTER JOIN (
     SELECT
-      CAST(co.value AS #{cast_as}) AS #{cf_name},
+      co.id AS #{db_field},
+      co.value,
       cv.customized_type,
       cv.custom_field_id,
       cv.customized_id
       FROM #{custom_values_table} cv
       INNER JOIN #{custom_options_table} co
       ON cv.custom_field_id = co.custom_field_id AND cv.value = co.id::VARCHAR
-    ) AS #{cf_name}
-    ON #{cf_name}.customized_type = 'WorkPackage'
+    ) AS #{db_field}
+    ON #{db_field}.customized_type = 'WorkPackage'
 
-    AND #{cf_name}.custom_field_id = #{field.id}
-    AND #{cf_name}.customized_id = entries.work_package_id
-    -- END Custom Field Join: #{cf_name}
+    AND #{db_field}.custom_field_id = #{field.id}
+    AND #{db_field}.customized_id = entries.entity_id
+    -- END Custom Field Join: cf_#{field.id}
     SQL
   end
 
   def default_join_table(field)
-    <<-SQL % [CustomValue.table_name, table_name, field.id, field.name, SQL_TYPES[field.field_format]]
-    -- BEGIN Custom Field Join: "%4$s"
+    <<-SQL % [CustomValue.table_name, table_name, field.id, SQL_TYPES[field.field_format]]
+    -- BEGIN Custom Field Join: cf_%3$d
     LEFT OUTER JOIN (
     \tSELECT
-    \t\tCAST(value AS %5$s) AS %2$s,
+    \t\tCAST(value AS %4$s) AS %2$s,
     \t\tcustomized_type,
     \t\tcustom_field_id,
     \t\tcustomized_id
@@ -152,13 +150,13 @@ module CostQuery::CustomFieldMixin
     AS %2$s
     ON %2$s.customized_type = 'WorkPackage'
     AND %2$s.custom_field_id = %3$d
-    AND %2$s.customized_id = entries.work_package_id
-    -- END Custom Field Join: "%4$s"
+    AND %2$s.customized_id = entries.entity_id
+    -- END Custom Field Join: cf_%3$d
     SQL
   end
 
   def new(*)
-    fail "Only subclasses of #{self} should be instanciated." if factory?
+    fail "Only subclasses of #{self} should be instantiated." if factory?
 
     super
   end

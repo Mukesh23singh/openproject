@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,7 +37,7 @@ module API
       }.freeze
 
       included do
-        def to_json(*args)
+        def to_json(*)
           return super if no_caching?
 
           cached_json_rep = OpenProject::Cache.fetch(json_cache_key) do
@@ -53,17 +50,25 @@ module API
             super
           end
 
-          cached_hash_rep = ::JSON::parse(cached_json_rep)
+          cached_hash_rep = ::JSON.parse(cached_json_rep)
 
           apply_link_cache_ifs(cached_hash_rep)
           apply_property_cache_ifs(cached_hash_rep)
 
           add_uncacheable_links(cached_hash_rep)
 
-          uncached_hash_rep = ::JSON::parse(uncached_json_rep)
-          hash_rep = uncached_hash_rep.deep_merge(cached_hash_rep)
+          uncached_hash_rep = ::JSON.parse(uncached_json_rep)
 
-          ::JSON::dump(hash_rep)
+          ::JSON.dump(uncached_hash_rep.deep_merge(cached_hash_rep))
+        end
+
+        # When this representer is a nested value inside another
+        # representer, the JSON adapter (multi_json >= 1.21 json_gem) serializes it
+        # via #as_json instead of #to_json. Needs to be routed through the cache-aware #to_json
+        # so cache_if/uncacheable stripping is applied. Without it, ActiveSupport's
+        # Object#as_json falls back to #to_hash and leaks guarded fields.
+        def as_json(*)
+          ::JSON.parse(to_json)
         end
 
         def json_cache_key
@@ -75,8 +80,8 @@ module API
                         self.class.name
                       end
 
-          classname.to_s.split('::') + [
-            'json',
+          classname.to_s.split("::") + [
+            "json",
             I18n.locale,
             json_key_representer_parts
           ]
@@ -91,7 +96,7 @@ module API
         private
 
         def apply_link_cache_ifs(hash_rep)
-          link_conditions = representable_attrs['links']
+          link_conditions = representable_attrs["links"]
                             .link_configs
                             .select { |config, _block| config[:cache_if] }
 
@@ -101,7 +106,7 @@ module API
 
             name = config[:rel]
 
-            delete_from_hash(hash_rep, '_links', name)
+            delete_from_hash(hash_rep, "_links", name.to_s)
           end
         end
 
@@ -115,12 +120,12 @@ module API
 
             hash_name = (config[:as] && instance_exec(&config[:as])) || name
 
-            delete_from_hash(hash_rep, config[:embedded] ? '_embedded' : nil, hash_name)
+            delete_from_hash(hash_rep, config[:embedded] ? "_embedded" : nil, hash_name)
           end
         end
 
         def add_uncacheable_links(hash_rep)
-          link_conditions = representable_attrs['links']
+          link_conditions = representable_attrs["links"]
                             .link_configs
                             .select { |config, _block| config[:uncacheable] }
 
@@ -129,23 +134,23 @@ module API
             block_result = instance_exec(&block)
 
             if block_result
-              hash_rep['_links'][name] = block_result
+              hash_rep["_links"][name] = block_result
             else
-              hash_rep['_links'].delete(name)
+              hash_rep["_links"].delete(name)
             end
           end
         end
 
-        # Overriding Roar::Hypermedia#perpare_link_for
+        # Overriding Roar::Hypermedia#prepare_link_for
         # to remove the cache_if option which would otherwise
         # be visible in the output
         def prepare_link_for(href, options)
           super(href, options.except(:cache_if, :uncacheable))
         end
 
-        # Overriding Roar::Hypbermedia#combile_links_for
+        # Overriding Roar::Hypermedia#compile_links_for
         # to remove all uncacheable links if the caching_state is set to :cacheable
-        def compile_links_for(configs, *args)
+        def compile_links_for(configs, *)
           current_configs = case caching_state
                             when :cacheable
                               configs.reject { |c| c.first[:uncacheable] }
@@ -155,7 +160,7 @@ module API
                               configs
                             end
 
-          super(current_configs, *args)
+          super(current_configs, *)
         end
 
         def delete_from_hash(hash, path, key)
@@ -192,7 +197,7 @@ module API
           cacheable << json_key_parts_of_represented
           cacheable << json_key_dependencies
 
-          OpenProject::Cache::CacheKey.expand(cacheable.flatten.compact)
+          OpenProject::Cache::CacheKey.expand(OpenProject::Cache::CacheKey.key(cacheable.flatten.compact))
         end
 
         def json_key_part_represented
@@ -231,14 +236,14 @@ module API
           self._cached_representer_config = cached_representer_configuration.deep_merge(config)
         end
 
-        def link(name, options = {}, &block)
+        def link(name, options = {}, &)
           rel_hash = name.is_a?(Hash) ? name : { rel: name }
-          super(rel_hash.merge(options), &block)
+          super(rel_hash.merge(options), &)
         end
 
-        def links(name, options = {}, &block)
+        def links(name, options = {}, &)
           rel_hash = name.is_a?(Hash) ? name : { rel: name }
-          super(rel_hash.merge(options), &block)
+          super(rel_hash.merge(options), &)
         end
       end
     end

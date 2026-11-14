@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module BasicData
   class SettingSeeder < Seeder
+    self.needs = [
+      BasicData::ProjectRoleSeeder,
+      BasicData::GlobalRoleSeeder,
+      BasicData::StatusSeeder
+    ]
+
     def seed_data!
       Setting.transaction do
         settings_not_in_db.each do |setting_name|
@@ -36,50 +42,62 @@ module BasicData
 
           Setting[setting_name.to_sym] = datum
         end
+        force_default_language_setting
       end
     end
 
     def applicable?
-      !settings_not_in_db.empty?
+      settings_not_in_db.any?
     end
 
     def not_applicable_message
-      'Skipping settings as all settings already exist in the db'
+      "Skipping settings as all settings already exist in the db"
     end
 
     def data
-      @settings ||= begin
-        settings = Setting.available_settings.each_with_object({}) do |(k, v), hash|
-          hash[k] = v['default'] || ''
+      @data ||= begin
+        settings = seedable_setting_definitions.each_with_object({}) do |definition, hash|
+          hash[definition.name] = definition.value
         end
 
-        # deviate from the defaults specified in settings.yml here
-        # to set a default role. The role cannot be specified in the settings.yml as
+        # deviate from the defaults specified in the settings definition here
+        # to set a default role. The role cannot be specified in the definition as
         # that would mean to know the ID upfront.
-        update_unless_present(settings, 'new_project_user_role_id') do
-          Role.find_by(name: I18n.t(:default_role_project_admin)).try(:id)
-        end
+        new_project_user_role_id = seed_data.find_reference(:default_role_project_admin, default: nil).try(:id)
+        settings["new_project_user_role_id"] = new_project_user_role_id
 
         # Set the closed status for repository commit references
-        update_unless_present(settings, 'commit_fix_status_id') do
-          Status.find_by(name: I18n.t(:default_status_closed)).try(:id)
-        end
+        status_closed = seed_data.find_reference(:default_status_closed, default: nil)
+        settings["commit_fix_status_id"] = status_closed.try(:id)
 
-        settings
+        # Add the current locale to the list of available languages
+        settings["available_languages"] = (Setting.available_languages + [I18n.locale]).map(&:to_s).uniq.sort
+
+        settings.compact
       end
     end
 
     private
 
-    def update_unless_present(settings, key)
-      if !settings_in_db.include?(key)
-        value = yield
-        settings[key] = value unless value.nil?
-      end
+    # Set the default language to the current locale
+    def force_default_language_setting
+      default_language_setting = Setting.find_or_initialize_by(name: "default_language")
+      # Need to force the value because it's non-writable if
+      # OPENPROJECT_DEFAULT_LANGUAGE env var is set.
+      default_language_setting.set_value!(I18n.locale, force: true)
+      default_language_setting.save!
+    end
+
+    def seedable_setting_definitions
+      Settings::Definition
+        .all
+        .values
+        .select(&:writable?)
+        .reject { |definition| definition.value.nil? }
     end
 
     def settings_in_db
-      @settings_in_db ||= Setting.all.pluck(:name)
+      Setting.all.pluck(:name)
     end
 
     def settings_not_in_db

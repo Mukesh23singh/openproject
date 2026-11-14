@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,46 +20,37 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Directive, ElementRef, Injector, Input,
-} from '@angular/core';
+import { Directive, Injector, Input, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { OpContextMenuTrigger } from 'core-app/shared/components/op-context-menu/handlers/op-context-menu-trigger.directive';
-import { OPContextMenuService } from 'core-app/shared/components/op-context-menu/op-context-menu.service';
 import { OpModalService } from 'core-app/shared/components/modal/modal.service';
 import { Board } from 'core-app/features/boards/board/board';
 import { BoardConfigurationModalComponent } from 'core-app/features/boards/board/configuration-modal/board-configuration.modal';
 import { BoardService } from 'core-app/features/boards/board/board.service';
-import { StateService } from '@uirouter/core';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
-import { triggerEditingEvent } from 'core-app/shared/components/editable-toolbar-title/editable-toolbar-title.component';
+import { selectableTitleIdentifier, triggerEditingEvent } from 'core-app/shared/components/editable-toolbar-title/editable-toolbar-title.component';
 
 @Directive({
+  // eslint-disable-next-line @angular-eslint/directive-selector
   selector: '[boardsToolbarMenu]',
+  standalone: false,
 })
 export class BoardsToolbarMenuDirective extends OpContextMenuTrigger {
+  readonly opModalService = inject(OpModalService);
+  readonly boardService = inject(BoardService);
+  readonly Notifications = inject(ToastService);
+  readonly injector = inject(Injector);
+  readonly I18n = inject(I18nService);
+  readonly http = inject(HttpClient);
+
+  // eslint-disable-next-line @angular-eslint/no-input-rename
   @Input('boardsToolbarMenu-resource') public board:Board;
-
-  public text = {
-    deleteSuccessful: this.I18n.t('js.notice_successful_delete'),
-  };
-
-  constructor(readonly elementRef:ElementRef,
-    readonly opContextMenu:OPContextMenuService,
-    readonly opModalService:OpModalService,
-    readonly boardService:BoardService,
-    readonly Notifications:ToastService,
-    readonly State:StateService,
-    readonly injector:Injector,
-    readonly I18n:I18nService) {
-    super(elementRef, opContextMenu);
-  }
 
   public get locals() {
     return {
@@ -68,7 +59,7 @@ export class BoardsToolbarMenuDirective extends OpContextMenuTrigger {
     };
   }
 
-  protected open(evt:JQuery.TriggeredEvent) {
+  protected open(evt:Event) {
     this.buildItems();
     this.opContextMenu.show(this, evt);
   }
@@ -92,7 +83,7 @@ export class BoardsToolbarMenuDirective extends OpContextMenuTrigger {
         icon: 'icon-edit',
         onClick: () => {
           if (this.board.grid.updateImmediately) {
-            jQuery('.toolbar-container .editable-toolbar-title--input').trigger(triggerEditingEvent);
+            document.querySelector(selectableTitleIdentifier)?.dispatchEvent(new CustomEvent(triggerEditingEvent, { bubbles: true }));
           }
 
           return true;
@@ -103,13 +94,19 @@ export class BoardsToolbarMenuDirective extends OpContextMenuTrigger {
         linkText: this.I18n.t('js.toolbar.settings.delete'),
         icon: 'icon-delete',
         onClick: () => {
-          if (this.board.grid.delete
+          if (this.board.id
+            && this.board.grid.delete
             && window.confirm(this.I18n.t('js.text_query_destroy_confirmation'))) {
-            this.boardService
-              .delete(this.board)
-              .then(() => {
-                this.State.go('boards.list', { flash_message: { type: 'success', message: this.text.deleteSuccessful } });
-              });
+            void this.http
+              .delete(
+                `/projects/${this.board.projectId}/boards/${this.board.id}`,
+                { responseType: 'json' },
+              )
+              .subscribe(
+                (response:{ redirect_url:string }) => {
+                  window.location.href = response.redirect_url;
+                },
+              );
           }
 
           return true;

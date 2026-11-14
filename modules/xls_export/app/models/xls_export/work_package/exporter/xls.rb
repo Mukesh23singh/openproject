@@ -1,10 +1,40 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module XlsExport::WorkPackage::Exporter
   class XLS < WorkPackage::Exports::QueryExporter
     include ::XlsExport::Concerns::SpreadsheetBuilder
+    include WorkPackage::Exports::AdditionalColumns
 
     def records
       work_packages
-        .includes(:assigned_to, :type, :priority, :category, :version)
+        .includes(:assigned_to, :type, :priority, :category, :target_versions, :observed_in_versions)
     end
 
     def spreadsheet_title
@@ -12,11 +42,11 @@ module XlsExport::WorkPackage::Exporter
     end
 
     def with_descriptions
-      options[:show_descriptions]
+      ActiveModel::Type::Boolean.new.cast(options[:show_descriptions])
     end
 
     def with_relations
-      options[:show_relations]
+      ActiveModel::Type::Boolean.new.cast(options[:show_relations])
     end
 
     def enable!(singleton_module)
@@ -24,7 +54,6 @@ module XlsExport::WorkPackage::Exporter
     end
 
     def export!
-      enable! WithTimeZone
       enable! WithDescription if with_descriptions
       enable! WithRelations if with_relations
 
@@ -32,35 +61,27 @@ module XlsExport::WorkPackage::Exporter
     end
   end
 
-  module WithTimeZone
-    def format_column_value(column, work_package)
-      value = super
-
-      if value.is_a? ActiveSupport::TimeWithZone
-        value.in_time_zone current_user.time_zone
-      else
-        value
-      end
-    end
-  end
-
   module WithDescription
-    def headers
+    def record_headers
       super + [WorkPackage.human_attribute_name(:description)]
     end
 
     def row(work_package)
-      super + [work_package.description]
+      super + [sanitize(work_package.description)]
+    end
+
+    def sanitize(string)
+      Rails::Html::FullSanitizer.new.sanitize(string)
     end
   end
 
   module WithRelations
     def add_headers!(spreadsheet)
-      headers_0 = [I18n.t(:label_work_package_plural)] +
-        columns.size.times.map { |_| "" } +
+      banners = ["", I18n.t(:label_work_package_plural)] +
+        Array.new(record_headers.size, "") +
         [I18n.t("js.work_packages.tabs.relations")]
 
-      spreadsheet.add_headers headers_0, 0
+      spreadsheet.add_headers banners, 0
       spreadsheet.add_headers headers, 1
     end
 
@@ -68,11 +89,19 @@ module XlsExport::WorkPackage::Exporter
       # The filtered work packages columns +
       # the relations columns +
       # the columns of the work packages connected by the relations.
-      [""] + super + [""] + with_relations_headers + super
+      [""] + record_headers + [""] + with_relations_headers + record_headers
     end
 
     def rows
       super.flatten(1) # since we will now generate several rows for each original row
+    end
+
+    def column_format_indexes(index)
+      [1 + index, related_block_offset + index]
+    end
+
+    def related_block_offset
+      @related_block_offset ||= 2 + record_headers.size + with_relations_headers.size
     end
 
     def row(work_package)
@@ -124,9 +153,9 @@ module XlsExport::WorkPackage::Exporter
 
     def relation_row(work_package, wp_columns, other, relation)
       type = relation_type work_package, other, relation
-      delay = relation ? relation.delay : ""
+      lag = relation ? relation.lag : ""
       description = relation ? relation.description : ""
-      relation_columns = ["", type, delay, description] + column_values(other)
+      relation_columns = ["", type, lag, description] + column_values(other)
 
       [""] + wp_columns + relation_columns
     end
@@ -136,22 +165,22 @@ module XlsExport::WorkPackage::Exporter
         normalized = relation.relation_type_for(work_package)
         I18n.t("js.relation_labels.#{normalized}", default: normalized)
       elsif work_package.parent_id == other.id
-        I18n.t 'xls_export.child_of'
+        I18n.t "xls_export.child_of"
       elsif work_package.children.where(id: other.id).exists?
-        I18n.t 'xls_export.parent_of'
+        I18n.t "xls_export.parent_of"
       end
     end
 
     def with_relations_headers
       [
         Relation.human_attribute_name(:relation_type),
-        Relation.human_attribute_name(:delay),
+        Relation.human_attribute_name(:lag),
         Relation.human_attribute_name(:description)
       ]
     end
 
     def work_package_relations(work_package)
-      work_package.relations.direct.non_hierarchy.visible
+      work_package.relations.visible
     end
   end
 end

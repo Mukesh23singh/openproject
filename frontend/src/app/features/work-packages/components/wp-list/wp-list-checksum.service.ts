@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,56 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { StateService, TransitionPromise } from '@uirouter/core';
 import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
-import { Injectable } from '@angular/core';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
+import { Injectable, inject } from '@angular/core';
 import { WorkPackageViewPagination } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-table-pagination';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
+import { Subject } from 'rxjs';
+import * as Turbo from '@hotwired/turbo';
 
 @Injectable()
 export class WorkPackagesListChecksumService {
-  constructor(protected UrlParamsHelper:UrlParamsHelperService,
-    protected $state:StateService) {
-  }
+  protected UrlParamsHelper = inject(UrlParamsHelperService);
+  protected urlParams = inject(UrlParamsService);
+
 
   public id:string|null;
 
   public checksum:string|null;
 
   public visibleChecksum:string|null;
+
+  /**
+   * Set right before pushing a self-initiated history entry below, consumed once by
+   * QueryParamListenerService's urlParams.changed$ subscriber to skip reacting to its
+   * own write (reloading there would just undo the change that triggered it).
+   *
+   * Turbo's own history object doesn't leave room for a custom flag inside the state
+   * it writes (it always writes `{ turbo: {...} }`, replacing whatever's passed in),
+   * so this can no longer live in `history.state` itself the way a plain `pushState`
+   * call could - hence the free-standing flag instead.
+   *
+   * Instance-scoped (not a module-level global): pages like BIM/BCF mount two
+   * independent isolated query-space islands at once, each with its own instance of
+   * this service - a shared global flag would let one island's self-initiated write
+   * be wrongly consumed by the other island's listener.
+   */
+  private selfInitiatedUrlChange = false;
+
+  public consumeSelfInitiatedUrlChangeFlag():boolean {
+    const value = this.selfInitiatedUrlChange;
+    this.selfInitiatedUrlChange = false;
+    return value;
+  }
+
+  /** Emits whenever visibleChecksum changes (useful for non-uiRouter pages to react to URL param changes) */
+  public readonly visibleChecksum$ = new Subject<string|null>();
 
   public updateIfDifferent(query:QueryResource,
     pagination:WorkPackageViewPagination):Promise<unknown> {
@@ -86,9 +113,9 @@ export class WorkPackagesListChecksumService {
     return this.isOutdated(query.id, newQueryChecksum);
   }
 
-  public executeIfOutdated(newId:string,
+  public executeIfOutdated(newId:string|null,
     newChecksum:string|null,
-    callback:Function) {
+    callback:() => void) {
     if (this.isUninitialized() || this.isOutdated(newId, newChecksum)) {
       this.set(newId, newChecksum);
 
@@ -96,7 +123,7 @@ export class WorkPackagesListChecksumService {
     }
   }
 
-  private set(id:string|null, checksum:string|null) {
+  public set(id:string|null, checksum:string|null) {
     this.id = id;
     this.checksum = checksum;
   }
@@ -142,16 +169,35 @@ export class WorkPackagesListChecksumService {
   }
 
   private getNewChecksum(query:QueryResource, pagination:WorkPackageViewPagination) {
-    return this.UrlParamsHelper.encodeQueryJsonParams(query, _.pick(pagination, ['page', 'perPage']));
+    return this.UrlParamsHelper.encodeQueryJsonParams(
+      query,
+      {
+        pp: pagination.perPage,
+        pa: pagination.page,
+      },
+    );
   }
 
-  private maintainUrlQueryState(id:string|null, checksum:string|null):TransitionPromise {
+  private maintainUrlQueryState(id:string|null, checksum:string|null):Promise<void> {
     this.visibleChecksum = checksum;
+    this.visibleChecksum$.next(checksum);
 
-    return this.$state.go(
-      '.',
-      { query_props: checksum, query_id: id },
-      { custom: { notify: false } },
-    );
+    const url = new URL(window.location.href);
+
+    if (checksum) {
+      url.searchParams.set('query_props', checksum);
+    } else {
+      url.searchParams.delete('query_props');
+    }
+
+    if (id) {
+      url.searchParams.set('query_id', id);
+    } else {
+      url.searchParams.delete('query_id');
+    }
+
+    this.selfInitiatedUrlChange = true;
+    Turbo.session.history.push(url);
+    return Promise.resolve();
   }
 }

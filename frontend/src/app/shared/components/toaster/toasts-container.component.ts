@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +20,35 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 import { IToast, ToastService } from './toast.service';
 
-export const toastsContainerSelector = 'op-toasts-container';
 
 @Component({
   template: `
     <div class="op-toast--wrapper">
       <div class="op-toast--casing">
-        <op-toast [toast]="toast" *ngFor="let toast of stack"></op-toast>
+        @for (toast of stack; track toast) {
+          <op-toast [toast]="toast" />
+        }
       </div>
     </div>
-  `,
+    `,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  selector: toastsContainerSelector,
+  selector: 'opce-toasts-container',
+  standalone: false,
 })
 export class ToastsContainerComponent extends UntilDestroyedMixin implements OnInit {
-  public stack:IToast[] = [];
+  readonly toastService = inject(ToastService);
+  readonly cdRef = inject(ChangeDetectorRef);
 
-  constructor(
-    readonly toastService:ToastService,
-    readonly cdRef:ChangeDetectorRef
-  ) {
-    super();
-  }
+  public stack:IToast[] = [];
 
   ngOnInit():void {
     this.toastService

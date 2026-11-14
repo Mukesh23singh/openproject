@@ -3,7 +3,6 @@ sidebar_navigation:
   title: Keyboard Shortcuts and Access Keys
   priority: 450
 description: Keyboard Shortcuts and Access Keys in OpenProject.
-robots: index, follow
 keywords: keyboard shortcuts and access keys
 ---
 # Keyboard Shortcuts and Access Keys
@@ -16,7 +15,7 @@ OpenProject (since version 3.0) offers useful keyboard shortcuts to  enhance you
 
 - Global Search: s
 - Project Search: p
-- Go to: My Page: g m
+- Go to: My page: g m
 - Open Help Page: –
 - Open regular shortcuts List: ?
 - Go to: Overview: g o
@@ -37,7 +36,7 @@ OpenProject (since version 3.0) offers useful keyboard shortcuts to  enhance you
 
 - Global Search: 4
 - Project Search: 5
-- Go to: My Page: –
+- Go to: My page: –
 - Open Help Page: 6
 - Open regular shortcuts List: –
 - Go to: Overview: –
@@ -74,10 +73,28 @@ OpenProject (since version 3.0) offers useful keyboard shortcuts to  enhance you
 
 ------
 
-### OS X
+### macOS
 
 - Firefox:  Ctrl + Opt + &lt;access key number&gt;
 - Google Chrome: Ctrl + Opt + &lt;access key number&gt;
 - Safari: Ctrl + Opt + &lt;access key number&gt;
 
 ------
+
+## Save text in rich editor
+
+To quickly save changes in a rich text editor (for example a work package description or a comment) you can use this shortcut.
+
+| Shortcut (Windows / Linux) | Shortcut (Mac) | Action                                                       |
+| -------------------------- | -------------- | ------------------------------------------------------------ |
+| CTRL + ENTER               | CMD + ENTER    | **Save changes.**<br>For inline-editable fields, save the field and close it.<br>For pages with a full WYSIWYG (meetings, wiki pages), submit the form. |
+
+Please also refer to documentation  on [working in Rich text editor in OpenProject](../wysiwyg).
+
+## Clear a work package selection
+
+Escape clears every work package selection on the page, in tables and card views alike, wherever the focus is. An open menu, dialog or editable field receives the Escape first, so one keypress never both dismisses something and clears the selection.
+
+| Shortcut (Windows / Linux) | Shortcut (Mac) | Action                                             |
+| -------------------------- | -------------- | -------------------------------------------------- |
+| ESC                        | ESC            | **Clear the selection** in every table and card view on the page. |

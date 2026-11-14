@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,31 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Forum < ApplicationRecord
+  include Lists::MoveAfterAnchor
+
+  SORTABLE_LIST_TYPE = "forum"
+
   belongs_to :project
   has_many :topics, -> {
     where("#{Message.table_name}.parent_id IS NULL")
       .order("#{Message.table_name}.sticky DESC")
-  }, class_name: 'Message'
+  }, class_name: "Message"
   has_many :messages, -> {
     order("#{Message.table_name}.sticky DESC")
   }, dependent: :destroy
-  belongs_to :last_message, class_name: 'Message', foreign_key: :last_message_id
+  belongs_to :last_message, class_name: "Message"
   acts_as_list scope: :project_id
   acts_as_watchable permission: :view_messages
 
-  validates_presence_of :name, :description
-  validates_length_of :name, maximum: 30
-  validates_length_of :description, maximum: 255
+  validates :name, :description, presence: true
+  validates :name, length: { maximum: 256 }
+  validates :description, length: { maximum: 255 }
 
   def visible?(user = User.current)
-    !user.nil? && user.allowed_to?(:view_messages, project)
+    !user.nil? && user.allowed_in_project?(:view_messages, project)
   end
 
   def to_s

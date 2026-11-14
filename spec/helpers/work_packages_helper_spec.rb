@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,274 +22,244 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackagesHelper, type: :helper do
-  let(:stub_work_package) { FactoryBot.build_stubbed(:work_package) }
-  let(:stub_project) { FactoryBot.build_stubbed(:project) }
-  let(:stub_type) { FactoryBot.build_stubbed(:type) }
-  let(:stub_user) { FactoryBot.build_stubbed(:user) }
-  let(:open_status) { FactoryBot.build_stubbed(:status, is_closed: false) }
-  let(:closed_status) { FactoryBot.build_stubbed(:status, is_closed: true) }
+RSpec.describe WorkPackagesHelper do
+  let(:stub_work_package) { build_stubbed(:work_package, type: stub_type) }
+  let(:stub_project) { build_stubbed(:project) }
+  let(:stub_type) { build_stubbed(:type) }
+  let(:stub_user) { build_stubbed(:user) }
+  let(:to_do_status) { build_stubbed(:status, category: "to_do") }
+  let(:closed_status) { build_stubbed(:status, category: "closed") }
 
-  describe '#link_to_work_package' do
+  describe "#link_to_work_package" do
     before do
-      stub_work_package.status = open_status
+      stub_work_package.status = to_do_status
     end
 
-    describe 'without parameters' do
-      it 'returns a link to the work package with the id as the text' do
-        link_text = Regexp.new("^##{stub_work_package.id}$")
-        expect(helper.link_to_work_package(stub_work_package)).to have_selector(
+    describe "without parameters" do
+      it "returns a link to the work package with type and id as the text if type is set" do
+        link_text = Regexp.new("^#{stub_type.name} ##{stub_work_package.id}:$")
+        expect(helper.link_to_work_package(stub_work_package)).to have_css(
           "a[href='#{work_package_path(stub_work_package)}']", text: link_text
         )
       end
 
-      it 'returns a link to the work package with type and id as the text if type is set' do
-        stub_work_package.type = stub_type
-
-        link_text = Regexp.new("^#{stub_type.name} ##{stub_work_package.id}$")
-        expect(helper.link_to_work_package(stub_work_package)).to have_selector(
-          "a[href='#{work_package_path(stub_work_package)}']", text: link_text
-        )
-      end
-
-      it 'additionally returns the subject' do
+      it "additionally returns the subject" do
         text = Regexp.new("#{stub_work_package.subject}$")
         expect(helper.link_to_work_package(stub_work_package)).to have_text(text)
       end
 
-      it 'prepends an invisible closed information if the work package is closed' do
+      it "prepends an invisible closed information if the work package is closed" do
         stub_work_package.status = closed_status
 
-        expect(helper.link_to_work_package(stub_work_package)).to have_selector('a span.hidden-for-sighted', text: 'closed')
-      end
-
-      it 'omits the invisible closed information if told so even though the work package is closed' do
-        stub_work_package.status = closed_status
-
-        expect(helper.link_to_work_package(stub_work_package, no_hidden: true))
-          .not_to have_selector('a span.hidden-for-sighted', text: 'closed')
+        result = helper.link_to_work_package(stub_work_package)
+        # The hidden span should be inside the link
+        expect(result).to have_css("a span.sr-only", text: "closed")
       end
     end
 
-    describe 'with the all_link option provided' do
-      it 'returns a link to the work package with the type, id, and subject as the text' do
-        stub_work_package.type = stub_type
-
+    describe "with the link_subject option provided" do
+      it "returns a link to the work package with the type, id, and subject as the text" do
         link_text = Regexp.new("^#{stub_type} ##{stub_work_package.id}: #{stub_work_package.subject}$")
         expect(helper.link_to_work_package(stub_work_package,
-                                           all_link: true)).to have_selector(
+                                           link_subject: true)).to have_css(
                                              "a[href='#{work_package_path(stub_work_package)}']", text: link_text
                                            )
       end
     end
 
-    describe 'when truncating' do
-      it 'truncates the subject if the subject is longer than the specified amount' do
-        stub_work_package.subject = '12345678'
-
-        text = Regexp.new('1234...$')
-        expect(helper.link_to_work_package(stub_work_package, truncate: 7)).to have_text(text)
-      end
-
-      it 'does not truncate the subject if the subject is shorter than the specified amount' do
-        stub_work_package.subject = '1234567'
-
-        text = Regexp.new('1234567$')
-        expect(helper.link_to_work_package(stub_work_package, truncate: 7)).to have_text(text)
-      end
-    end
-
-    describe 'when omitting the subject' do
-      it 'omits the subject' do
-        expect(helper.link_to_work_package(stub_work_package, subject: false)).not_to have_text(stub_work_package.subject)
-      end
-    end
-
-    describe 'when omitting the type' do
-      it 'omits the type' do
-        stub_work_package.type = stub_type
-
-        link_text = Regexp.new("^##{stub_work_package.id}$")
-        expect(helper.link_to_work_package(stub_work_package,
-                                           type: false)).to have_selector("a[href='#{work_package_path(stub_work_package)}']",
-                                                                          text: link_text)
-      end
-    end
-
-    describe 'with a project' do
+    describe "with a project" do
       let(:text) { Regexp.new("^#{stub_project.name} -") }
 
       before do
         stub_work_package.project = stub_project
       end
 
-      it 'prepends the project if parameter set to true' do
-        expect(helper.link_to_work_package(stub_work_package, project: true)).to have_text(text)
+      it "prepends the project if parameter set to true" do
+        expect(helper.link_to_work_package(stub_work_package, display_project: true)).to have_text(text)
       end
 
-      it 'does not include the project name if the parameter is missing/false' do
-        expect(helper.link_to_work_package(stub_work_package)).not_to have_text(text)
-      end
-    end
-
-    describe 'when only wanting the id' do
-      it 'returns a link with the id as text only even if the work package has a type' do
-        stub_work_package.type = stub_type
-
-        link_text = Regexp.new("^##{stub_work_package.id}$")
-        expect(helper.link_to_work_package(stub_work_package,
-                                           id_only: true)).to have_selector("a[href='#{work_package_path(stub_work_package)}']",
-                                                                            text: link_text)
-      end
-
-      it 'does not have the subject as text' do
-        expect(helper.link_to_work_package(stub_work_package, id_only: true)).not_to have_text(stub_work_package.subject)
+      it "does not include the project name if the parameter is missing/false" do
+        expect(helper.link_to_work_package(stub_work_package)).to have_no_text(text)
       end
     end
 
-    describe 'when only wanting the subject' do
-      it 'returns a link with the subject as text' do
-        link_text = Regexp.new("^#{stub_work_package.subject}$")
-        expect(helper.link_to_work_package(stub_work_package,
-                                           subject_only: true)).to have_selector(
-                                             "a[href='#{work_package_path(stub_work_package)}']", text: link_text
-                                           )
+    describe "in semantic mode",
+             with_settings: { work_packages_identifier: "semantic" } do
+      let(:stub_work_package) { build_stubbed(:work_package, type: stub_type, identifier: "MACROPROJ-42") }
+
+      it "uses the semantic identifier in the visible link label" do
+        link_text = Regexp.new("^#{stub_type.name} MACROPROJ-42:$")
+        expect(helper.link_to_work_package(stub_work_package))
+          .to have_css("a[href='#{work_package_path(stub_work_package)}']", text: link_text)
       end
-    end
 
-    describe 'with the status displayed' do
-      it 'returns a link with the status name contained in the text' do
-        stub_work_package.type = stub_type
-
-        link_text = Regexp.new("^#{stub_type.name} ##{stub_work_package.id} #{stub_work_package.status}$")
-        expect(helper.link_to_work_package(stub_work_package,
-                                           status: true)).to have_selector("a[href='#{work_package_path(stub_work_package)}']",
-                                                                           text: link_text)
+      it "does not embed the bare numeric `#N` form in the link label" do
+        result = helper.link_to_work_package(stub_work_package)
+        expect(result).to have_no_css("a", text: /##{stub_work_package.id}:/)
       end
     end
   end
 
-  describe '#work_package_css_classes' do
-    let(:statuses) { (1..5).map { |_i| FactoryBot.build_stubbed(:status) } }
-    let(:priority) { FactoryBot.build_stubbed :priority, is_default: true }
-    let(:status) { statuses[0] }
-    let(:stub_work_package) do
-      FactoryBot.build_stubbed(:work_package,
-                               status: status,
-                               priority: priority)
+  describe "#work_packages_columns_options" do
+    it "returns the columns options" do
+      expect(helper.work_packages_columns_options)
+        .to include(
+          { name: "Type", id: "type" },
+          { name: "Subject", id: "subject" },
+          { name: "Status", id: "status" }
+        )
     end
 
-    it 'always has the work_package class' do
-      expect(helper.work_package_css_classes(stub_work_package)).to include('work_package')
+    context "with multiple versions disabled", with_settings: { work_package_multiple_versions: false } do
+      it "offers the version column under the canonical target_versions id" do
+        expect(helper.work_packages_columns_options)
+          .to include({ name: WorkPackage.human_attribute_name(:version), id: "target_versions" })
+      end
+
+      it "does not offer a separate version id" do
+        expect(helper.work_packages_columns_options.pluck(:id)).not_to include("version")
+      end
     end
 
-    it "returns the position of the work_package's status" do
-      stub_work_package.status = open_status
-      allow(open_status).to receive(:position).and_return(5)
+    context "with multiple versions enabled", with_settings: { work_package_multiple_versions: true } do
+      it "offers the target versions column under its own id" do
+        expect(helper.work_packages_columns_options)
+          .to include({ name: WorkPackage.human_attribute_name(:target_versions), id: "target_versions" })
+      end
+    end
+  end
 
-      expect(helper.work_package_css_classes(stub_work_package)).to include('status-5')
+  describe "#selected_work_packages_columns_options",
+           with_settings: { work_package_list_default_columns: %w[id subject type status] } do
+    it "returns the columns options currently persisted in the setting (in that order)" do
+      expect(helper.selected_work_packages_columns_options)
+        .to eql([
+                  { name: "ID", id: "id" },
+                  { name: "Subject", id: "subject" },
+                  { name: "Type", id: "type" },
+                  { name: "Status", id: "status" }
+                ])
     end
 
-    it "returns the position of the work_package's priority" do
-      allow(priority).to receive(:position).and_return(5)
+    context "with target_versions persisted" do
+      context "and multiple versions disabled",
+              with_settings: { work_package_multiple_versions: false,
+                               work_package_list_default_columns: %w[id target_versions] } do
+        it "resolves the version column" do
+          expect(helper.selected_work_packages_columns_options)
+            .to eql([
+                      { name: "ID", id: "id" },
+                      { name: WorkPackage.human_attribute_name(:version), id: "target_versions" }
+                    ])
+        end
+      end
 
-      expect(helper.work_package_css_classes(stub_work_package)).to include('priority-5')
+      context "and multiple versions enabled",
+              with_settings: { work_package_multiple_versions: true,
+                               work_package_list_default_columns: %w[id target_versions] } do
+        it "resolves the target versions column" do
+          expect(helper.selected_work_packages_columns_options)
+            .to eql([
+                      { name: "ID", id: "id" },
+                      { name: WorkPackage.human_attribute_name(:target_versions), id: "target_versions" }
+                    ])
+        end
+      end
     end
 
-    it 'has a closed class if the work_package is closed' do
-      allow(stub_work_package).to receive(:closed?).and_return(true)
+    context "with the legacy version name persisted" do
+      context "and multiple versions disabled",
+              with_settings: { work_package_multiple_versions: false,
+                               work_package_list_default_columns: %w[id version] } do
+        it "resolves the version column" do
+          expect(helper.selected_work_packages_columns_options)
+            .to eql([
+                      { name: "ID", id: "id" },
+                      { name: WorkPackage.human_attribute_name(:version), id: "target_versions" }
+                    ])
+        end
+      end
 
-      expect(helper.work_package_css_classes(stub_work_package)).to include('closed')
+      context "and multiple versions enabled",
+              with_settings: { work_package_multiple_versions: true,
+                               work_package_list_default_columns: %w[id version] } do
+        it "resolves the target versions column" do
+          expect(helper.selected_work_packages_columns_options)
+            .to eql([
+                      { name: "ID", id: "id" },
+                      { name: WorkPackage.human_attribute_name(:target_versions), id: "target_versions" }
+                    ])
+        end
+      end
+    end
+  end
+
+  describe "#protected_work_packages_columns_options" do
+    it "returns the columns options currently persisted in the setting (in that order)" do
+      expect(helper.protected_work_packages_columns_options)
+        .to eql([
+                  { name: "ID", id: "id" },
+                  { name: "Subject", id: "subject" }
+                ])
+    end
+  end
+
+  describe "#last_work_package_note" do
+    let(:user) do
+      create(:user,
+             member_with_permissions: { project => permissions })
     end
 
-    it 'has no closed class if the work_package is not closed' do
-      allow(stub_work_package).to receive(:closed?).and_return(false)
+    let(:project) { create(:project, enabled_internal_comments: true) }
 
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('closed')
+    before do
+      allow(User).to receive(:current).and_return(user)
     end
 
-    it 'has an overdue class if the work_package is overdue' do
-      allow(stub_work_package).to receive(:overdue?).and_return(true)
+    context "with a work package that has notes" do
+      let(:work_package) { create(:work_package, project:) }
 
-      expect(helper.work_package_css_classes(stub_work_package)).to include('overdue')
+      before do
+        add_work_package_note(internal: false)
+        add_work_package_note(internal: true)
+      end
+
+      context "and the user has no permission to see internal notes" do
+        let(:permissions) { %i[view_work_packages] }
+
+        it "returns the last unrestricted note" do
+          expect(helper.last_work_package_note(work_package)).to eq("This is the last PUBLIC note")
+        end
+      end
+
+      context "and the user has permissions to see internal notes", with_ee: [:internal_comments] do
+        let(:permissions) { %i[view_work_packages view_internal_comments] }
+
+        it "returns the last unrestricted note" do
+          expect(helper.last_work_package_note(work_package)).to eq("This is the last INTERNAL note")
+        end
+      end
+
+      def add_work_package_note(internal: false)
+        work_package.add_journal(user:, notes: "This is the last #{internal ? 'INTERNAL' : 'PUBLIC'} note", internal:)
+        work_package.save(validate: false)
+      end
     end
 
-    it 'has an overdue class if the work_package is not overdue' do
-      allow(stub_work_package).to receive(:overdue?).and_return(false)
+    context "with a work package that has no notes" do
+      let(:work_package) { create(:work_package, project:) }
+      let(:permissions) { %i[view_work_packages] }
 
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('overdue')
-    end
-
-    it 'has a child class if the work_package is a child' do
-      allow(stub_work_package).to receive(:child?).and_return(true)
-
-      expect(helper.work_package_css_classes(stub_work_package)).to include('child')
-    end
-
-    it 'has no child class if the work_package is not a child' do
-      allow(stub_work_package).to receive(:child?).and_return(false)
-
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('child')
-    end
-
-    it 'has a parent class if the work_package is a parent' do
-      allow(stub_work_package).to receive(:leaf?).and_return(false)
-
-      expect(helper.work_package_css_classes(stub_work_package)).to include('parent')
-    end
-
-    it 'has no parent class if the work_package is not a parent' do
-      allow(stub_work_package).to receive(:leaf?).and_return(true)
-
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('parent')
-    end
-
-    it 'has a created-by-me class if the work_package is a created by the current user' do
-      stub_user = double('user', logged?: true, id: 5)
-      allow(User).to receive(:current).and_return(stub_user)
-      allow(stub_work_package).to receive(:author_id).and_return(5)
-
-      expect(helper.work_package_css_classes(stub_work_package)).to include('created-by-me')
-    end
-
-    it 'has no created-by-me class if the work_package is not created by the current user' do
-      stub_user = double('user', logged?: true, id: 5)
-      allow(User).to receive(:current).and_return(stub_user)
-      allow(stub_work_package).to receive(:author_id).and_return(4)
-
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('created-by-me')
-    end
-
-    it 'has a created-by-me class if the work_package is the current user is not logged in' do
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('created-by-me')
-    end
-
-    it 'has a assigned-to-me class if the work_package is a created by the current user' do
-      stub_user = double('user', logged?: true, id: 5)
-      allow(User).to receive(:current).and_return(stub_user)
-      allow(stub_work_package).to receive(:assigned_to_id).and_return(5)
-
-      expect(helper.work_package_css_classes(stub_work_package)).to include('assigned-to-me')
-    end
-
-    it 'has no assigned-to-me class if the work_package is not created by the current user' do
-      stub_user = double('user', logged?: true, id: 5)
-      allow(User).to receive(:current).and_return(stub_user)
-      allow(stub_work_package).to receive(:assigned_to_id).and_return(4)
-
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('assigned-to-me')
-    end
-
-    it 'has no assigned-to-me class if the work_package is the current user is not logged in' do
-      expect(helper.work_package_css_classes(stub_work_package)).not_to include('assigned-to-me')
+      it "returns the no notes text" do
+        expect(helper.last_work_package_note(work_package)).to eq(I18n.t(:text_no_notes))
+      end
     end
   end
 end

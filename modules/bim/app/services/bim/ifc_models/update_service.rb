@@ -1,12 +1,12 @@
 #-- copyright
-# OpenProject is a project management system.
-# Copyright (C) 2012-2018 the OpenProject Foundation (OPF)
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
 #
 # OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
-# Copyright (C) 2006-2017 Jean-Philippe Lang
+# Copyright (C) 2006-2013 Jean-Philippe Lang
 # Copyright (C) 2010-2013 the ChiliProject Team
 #
 # This program is free software; you can redistribute it and/or
@@ -20,18 +20,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
-#+
+#++
 
 module Bim
   module IfcModels
     class UpdateService < ::BaseServices::Update
       protected
 
-      def before_perform(params, _service_result)
+      def before_perform(_service_result)
         @ifc_attachment_updated = params[:ifc_attachment].present?
 
         super
@@ -46,7 +45,7 @@ module Bim
           if @ifc_attachment_updated
             model.update(conversion_status: ::Bim::IfcModels::IfcModel.conversion_statuses[:pending],
                          conversion_error_message: nil)
-            
+
             IfcConversionJob.perform_later(service_result.result)
           end
         end

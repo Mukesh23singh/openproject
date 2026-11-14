@@ -1,85 +1,151 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe "SpreadsheetBuilder" do
-  before(:each) do
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "SpreadsheetBuilder" do
+  before do
     @spreadsheet = OpenProject::XlsExport::SpreadsheetBuilder.new
     @sheet = @spreadsheet.send(:raw_sheet)
   end
 
-  it "should add a single title in the first row" do
+  it "adds a single title in the first row" do
     @spreadsheet.add_title("A fancy title")
     expect(@sheet.last_row_index).to eq(0)
   end
 
-  it "should add the title complety in the first cell" do
+  it "adds the title completely in the first cell" do
     title = "A fancy title"
     @spreadsheet.add_title(title)
     expect(@sheet.last_row[0]).to eq(title)
-    expect(@sheet.last_row[1]).to eq(nil)
+    expect(@sheet.last_row[1]).to be_nil
   end
 
-  it "should overwrite titles in consecutive calls" do
+  it "overwrites titles in consecutive calls" do
     title = "A fancy title"
     @spreadsheet.add_title(title)
     @spreadsheet.add_title(title)
     expect(@sheet.last_row_index).to eq(0)
   end
 
-  it "should do some formatting on the title" do
+  it "does some formatting on the title" do
     @spreadsheet.add_title("A fancy title")
     expect(@sheet.last_row.format(0)).not_to eq(@sheet.last_row.format(1))
   end
 
-  it "should add empty rows starting in the second line" do
+  it "adds empty rows starting in the second line" do
     @spreadsheet.add_empty_row
     expect(@sheet.last_row_index).to eq(1)
   end
 
-  it "should add empty rows at the next sequential row" do
+  it "adds empty rows at the next sequential row" do
     @spreadsheet.add_empty_row
     first = @sheet.last_row_index
     @spreadsheet.add_empty_row
     expect(@sheet.last_row_index).to eq(first + 1)
   end
 
-  it "should add headers in the second line per default" do
+  it "adds headers in the second line per default" do
     @spreadsheet.add_headers((1..3).to_a)
     expect(@sheet.last_row_index).to eq(1)
   end
 
-  it "should allow adding headers in the first line" do
+  it "allows adding headers in the first line" do
     @spreadsheet.add_headers((1..3).to_a, 0)
     expect(@sheet.last_row_index).to eq(0)
   end
 
-  it "should add headers with some formatting" do
+  it "adds headers with some formatting" do
     @spreadsheet.add_headers([1], 0)
     expect(@sheet.last_row.format(0)).not_to eq(@sheet.last_row.format(2))
   end
 
-  it "should start adding rows in the first line" do
+  it "starts adding rows in the first line" do
     @spreadsheet.add_row((1..3).to_a)
     expect(@sheet.last_row_index).to eq(1)
   end
 
-  it "should add rows sequentially" do
+  it "adds rows sequentially" do
     @spreadsheet.add_row((1..3).to_a)
     first = @sheet.last_row_index
     @spreadsheet.add_row((1..3).to_a)
     expect(@sheet.last_row_index).to eq(first + 1)
   end
 
-  it "should apply no formatting on rows" do
+  it "applies no formatting on rows" do
     @spreadsheet.add_row([1])
     expect(@sheet.last_row.format(0)).to eq(@sheet.last_row.format(1))
   end
 
-  it "should always use unix newlines" do
+  describe "column width of a date column" do
+    def width_for(number_format)
+      builder = OpenProject::XlsExport::SpreadsheetBuilder.new
+      builder.add_headers([""], 0) # as every exporter does, #add_row skips row 0
+      builder.add_row([Date.new(2026, 8, 24)])
+      builder.add_format_option_to_column(0, number_format:)
+      builder.xls
+
+      builder.send(:raw_sheet).column(0).width
+    end
+
+    it "widens the column so that a long date format still fits" do
+      expect(width_for("MMMM DD, YYYY")).to be > width_for("YYYY-MM-DD")
+    end
+
+    it "leaves number formats to the plain value width" do
+      expect(width_for("0.00")).to eq(width_for("YYYY-MM-DD"))
+    end
+
+    it "copes with a column that was given a format but never a value" do
+      builder = OpenProject::XlsExport::SpreadsheetBuilder.new
+      builder.add_headers([""], 0)
+      builder.add_row([Date.new(2026, 8, 24)])
+      builder.add_format_option_to_column(3, number_format: "YYYY-MM-DD")
+
+      expect { builder.xls }.not_to raise_error
+      expect(builder.send(:raw_sheet).column(1).width).to eq(0)
+    end
+  end
+
+  it "keeps booleans as booleans" do
+    builder = OpenProject::XlsExport::SpreadsheetBuilder.new
+    builder.add_row([true, false])
+
+    expect(builder.send(:raw_sheet).last_row.to_a).to eq([true, false])
+  end
+
+  it "alwayses use unix newlines" do
     @spreadsheet.add_row(["Some text including a windows newline (\r\n)", "And an old-style mac os newline (\r)"])
     2.times do |i|
-      expect(@spreadsheet.send("raw_sheet").last_row[i]).not_to include("\r")
-      expect(@spreadsheet.send("raw_sheet").last_row[i]).not_to include("\r\n")
-      expect(@spreadsheet.send("raw_sheet").last_row[i]).to include("\n")
+      expect(@spreadsheet.send(:raw_sheet).last_row[i]).not_to include("\r")
+      expect(@spreadsheet.send(:raw_sheet).last_row[i]).not_to include("\r\n")
+      expect(@spreadsheet.send(:raw_sheet).last_row[i]).to include("\n")
     end
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,7 +30,7 @@ module API
     module PlaceholderUsers
       class PlaceholderUsersAPI < ::API::OpenProjectAPI
         resources :placeholder_users do
-          get &::API::V3::Utilities::Endpoints::Index
+          get &::API::V3::Utilities::Endpoints::SqlFallbackedIndex
             .new(model: PlaceholderUser, scope: -> { PlaceholderUser.visible(current_user) })
             .mount
 
@@ -39,9 +38,11 @@ module API
             .new(model: PlaceholderUser)
             .mount
 
-          route_param :id, type: Integer, desc: 'Placeholder user ID' do
+          route_param :id, type: Integer, desc: "Placeholder user ID" do
             after_validation do
-              authorize_any %i[manage_placeholder_user manage_members], global: true
+              authorize_globally(:manage_placeholder_user) do
+                authorize_in_any_project(:manage_members)
+              end
               @placeholder_user = PlaceholderUser.visible.find(params[:id])
             end
 

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,31 +30,49 @@
 class Queries::Projects::Orders::CustomFieldOrder < Queries::Orders::Base
   self.model = Project.all
 
-  validates :custom_field, presence: { message: I18n.t(:'activerecord.errors.messages.does_not_exist') }
+  EXCLUDED_CUSTOM_FIELD_TYPES = %w[text].freeze
+
+  validates :custom_field, presence: { message: I18n.t(:"activerecord.errors.messages.does_not_exist") }
 
   def self.key
-    /cf_(\d+)/
+    valid_ids = RequestStore.fetch(:custom_sortable_project_custom_fields) do
+      scope.pluck(:id)
+    end
+
+    CustomField.column_name_pattern_for(valid_ids)
+  end
+
+  def self.scope
+    ProjectCustomField.where.not(field_format: EXCLUDED_CUSTOM_FIELD_TYPES).visible
   end
 
   def custom_field
-    @custom_field ||= begin
-      id = self.class.key.match(attribute)[1]
+    return @custom_field if defined?(@custom_field)
 
-      ProjectCustomField.visible.find_by_id(id)
-    end
+    @custom_field = self.class.scope.find_by(id: CustomField.id_from_column_name(attribute))
   end
 
-  def scope
-    super.select(custom_field.order_statements)
+  def available?
+    custom_field.present?
   end
 
   private
 
-  def order
-    joined_statement = custom_field.order_statements.map do |statement|
-      Arel.sql("#{statement} #{direction}")
+  def order(scope)
+    if (join_statement = custom_field.order_join_statement)
+      scope = scope.joins(join_statement)
     end
 
-    model.order(joined_statement)
+    if (order_statement = custom_field.order_statement)
+      order_statement = "#{order_statement} #{direction}"
+
+      if (null_handling = custom_field.order_null_handling(direction == :asc))
+        order_statement = "#{order_statement} #{null_handling}"
+      end
+
+      scope = scope.order(Arel.sql(order_statement))
+    end
+
+    scope
   end
 end

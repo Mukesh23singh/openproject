@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -19,17 +19,68 @@
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 sv:
-  project_module_github: "GitHub"
-  permission_show_github_content: "Show GitHub content"
-  github_integration:
-    pull_request_opened_comment: >
-      **PR öppnad:** Dra begäran %{pr_number} [%{pr_title}](%{pr_url}) för [%{repository}](%{repository_url}) har öppnats av [%{github_user}](%{github_user_url}).
-    pull_request_closed_comment: >
-      **PR Stängde:** Dra begäran %{pr_number} [%{pr_title}](%{pr_url}) för [%{repository}](%{repository_url}) har stängts av [%{github_user}](%{github_user_url}).
-    pull_request_merged_comment: >
-      **PR-sammanslagning:** Dra begäran %{pr_number} [%{pr_title}](%{pr_url}) för [%{repository}](%{repository_url}) har slagits samman av [%{github_user}](%{github_user_url}).
-    pull_request_referenced_comment: >
-      **Refererad i PR:** [%{github_user}](%{github_user_url}) refererade till detta arbetspaket i Pull-begäran %{pr_number} [%{pr_title}](%{pr_url}) på [%{repository}](%{repository_url}).
-    pull_request_ready_for_review_comment: >
-      **PR Ready for Review:** Pull request %{pr_number} [%{pr_title}](%{pr_url}) for [%{repository}](%{repository_url}) was marked as ready for review by [%{github_user}](%{github_user_url}).
+  activerecord:
+    models:
+      deploy_status_check:
+        one: Kontroll av distributionsstatus
+        other: Kontroller av distributionsstatus
+      deploy_target:
+        one: Distributionsmål
+        other: Distributionsmål
+      github_check_run:
+        one: GitHub-kontrollkörning
+        other: GitHub-kontrollkörningar
+      github_pull_request:
+        one: GitHub-pull request
+        other: GitHub-pull requests
+      github_user:
+        one: GitHub-användare
+        other: GitHub-användare
+  attributes:
+    additions_count: Antal tillägg
+    changed_files_count: Ändrade filer
+    comments_count: Antal kommentarer
+    deletions_count: Antal borttagningar
+    github: GitHub identifier
+    github_app_owner_avatar_url: URL till ägarens avatar
+    github_avatar_url: Avatar-URL
+    github_html_url: URL till pull request
+    github_login: GitHub-inloggning
+    github_updated_at: Uppdaterad den
+    host: Värd
+    labels: Etiketter
+    repository: Versionsarkiv
+    review_comments_count: Antal granskningskommentarer
+  button_add_deploy_target: Lägg till distributionsmål
+  label_deploy_target: Distributionsmål
+  label_deploy_target_new: Nytt distributionsmål
+  label_deploy_target_plural: Distributionsmål
+  label_github_comment_user: GitHub-aktör
+  label_github_integration: GitHub-integration
+  label_github_webhook_secret: Webhook-hemlighet
+  notice_deploy_target_created: Distributionsmål skapat
+  notice_deploy_target_destroyed: Distributionsmål borttaget
+  permission_introspection: Läs körande OpenProject-kärnversion och build-SHA
+  permission_show_github_content: Visa GitHub-innehåll
+  plugin_openproject_github_integration:
+    description: Integrerar OpenProject och GitHub för ett bättre arbetsflöde
+    name: OpenProject GitHub-integration
+  project_module_github: GitHub
+  text_deploy_target_api_key_info: 'En OpenProject-[API-nyckel](docs_url) som tillhör en användare med global introspektionsbehörighet.
+
+    '
+  text_deploy_target_type_info: 'För närvarande stöder vi endast OpenProject självt.
+
+    '
+  text_github_comment_user_info: 'OpenProject-användaren vars API-nyckel ska användas för att autentisera inkommande webhook-begäranden. När den anges avvisas begäranden som autentiserats med någon annan användares uppgifter. Den här användaren publicerar även automatiska kommentarer om distributionsstatus på arbetspaket. Om den inte anges används systemanvändaren som standard.
+
+    '
+  text_github_webhook_secret_info: 'En hemlig token som delas med GitHub när webhooken konfigureras. När den anges verifierar OpenProject X-Hub-Signature-256-huvudet för varje inkommande begäran och avvisar nyttolaster som inte matchar. Lämna tomt för att hoppa över verifieringen (rekommenderas inte).
+
+    '
+  text_github_webhook_secret_missing_warning: 'Ingen webhook-hemlighet är konfigurerad. Alla begäranden till GitHub-webhookens slutpunkt accepteras utan verifiering, vilket kan göra det möjligt för obehöriga aktörer att förfalska händelser. Det rekommenderas starkt att ange en hemlighet.
+
+    '
+  text_pull_request_deployed_to: "%{pr_link} utplacerad till %{deploy_target_link}"

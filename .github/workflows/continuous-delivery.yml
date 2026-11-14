@@ -1,21 +1,32 @@
-name: Core/CD
+name: continuous-delivery
 on:
   push:
     branches:
       - dev
       - release/*
+      - stable/*
+permissions:
+  contents: read
+
 jobs:
   trigger_downstream_workflow:
-    if: github.repository == 'opf/openproject'
+    permissions:
+      contents: none
+    if: github.repository == 'opf/openproject' && github.ref_type == 'branch'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Trigger downstream workflow
+      - name: Trigger Flavours workflow
         env:
-          TOKEN: ${{ secrets.OPENPROJECT_CI_TOKEN }}
-          SAAS_CD_WORKFLOW_ID: continuous-delivery-saas.yml
-          SAAS_REPOSITORY: opf/saas-openproject
+          TOKEN: ${{ secrets.OPENPROJECTCI_FLAVOUR_TRIGGER_TOKEN }}
+          REPOSITORY: opf/openproject-flavours
+          WORKFLOW_ID: ci.yml
+          REF_NAME: ${{ github.ref_name }}
+          THIS_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          curl -i --fail -H"authorization: Bearer $TOKEN" \
+          PAYLOAD=$(jq -n --arg ref "$REF_NAME" --arg triggered_by_url "$THIS_RUN_URL" \
+            '{"ref": "dev", "inputs": {"ref": $ref, "triggered_by_url": $triggered_by_url}}')
+          curl -i --fail-with-body -H"authorization: Bearer $TOKEN" \
             -XPOST -H"Accept: application/vnd.github.v3+json" \
-            https://api.github.com/repos/$SAAS_REPOSITORY/actions/workflows/$SAAS_CD_WORKFLOW_ID/dispatches \
-            -d '{"ref": "${{ github.ref }}"}'
+            https://api.github.com/repos/$REPOSITORY/actions/workflows/$WORKFLOW_ID/dispatches \
+            -d "$PAYLOAD"

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,14 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, ElementRef, OnInit } from '@angular/core';
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, inject } from '@angular/core';
 import { WorkPackageTimelineTableController } from 'core-app/features/work-packages/components/wp-table/timeline/container/wp-timeline-container.directive';
-import * as moment from 'moment';
+import moment, { Moment } from 'moment';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageViewTimelineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-timeline.service';
 import { TimelineZoomLevel } from 'core-app/features/hal/resources/query-resource';
@@ -39,55 +38,91 @@ import {
   timelineHeaderSelector,
   TimelineViewParameters,
 } from '../wp-timeline';
-import Moment = moment.Moment;
+
+import { WorkPackageTable } from 'core-app/features/work-packages/components/wp-fast-table/wp-fast-table';
+import { TableUiWork } from 'core-app/features/work-packages/components/wp-fast-table/table-ui-work';
+import { onDestroySafely } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
 
 @Component({
   selector: timelineHeaderSelector,
   templateUrl: './wp-timeline-header.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
+// eslint-disable-next-line @angular-eslint/component-class-suffix
 export class WorkPackageTimelineHeaderController implements OnInit {
-  public $element:JQuery;
+  readonly destroyRef = inject(DestroyRef);
+  private table:WorkPackageTable;
+  private uiWork:TableUiWork;
+
+  private prepareAttachment():boolean {
+    const controller = this.workPackageTimelineTableController;
+    const table = controller.workPackageTable;
+    if (this.destroyRef.destroyed || controller.destroyed || !table) return false;
+    if (this.table !== table) {
+      this.uiWork?.cancel();
+      this.table = table;
+      this.uiWork = new TableUiWork(table.destroyRef,
+        () => !this.destroyRef.destroyed && !controller.destroyed && controller.workPackageTable === table);
+    }
+    return true;
+  }
+
+  readonly I18n = inject(I18nService);
+  readonly wpTimelineService = inject(WorkPackageViewTimelineService);
+  readonly workPackageTimelineTableController = inject(WorkPackageTimelineTableController);
+
+  public element:HTMLElement;
 
   private activeZoomLevel:TimelineZoomLevel;
 
-  private innerHeader:JQuery;
+  private innerHeader:HTMLElement;
 
-  constructor(elementRef:ElementRef,
-    readonly I18n:I18nService,
-    readonly wpTimelineService:WorkPackageViewTimelineService,
-    readonly workPackageTimelineTableController:WorkPackageTimelineTableController) {
-    this.$element = jQuery(elementRef.nativeElement);
+  constructor() {
+    const elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+
+    this.element = elementRef.nativeElement;
   }
 
   ngOnInit() {
-    this.workPackageTimelineTableController
+    if (this.destroyRef.destroyed) return;
+    const release = this.workPackageTimelineTableController
       .onRefreshRequested('header', (vp:TimelineViewParameters) => this.refreshView(vp));
+    onDestroySafely(this.destroyRef, release);
+    onDestroySafely(this.destroyRef, () => this.uiWork?.cancel());
   }
 
   refreshView(vp:TimelineViewParameters) {
-    this.innerHeader = this.$element.find('.wp-table-timeline--header-inner');
+    if (!this.prepareAttachment()) return;
+    this.innerHeader = this.element.querySelector('.wp-table-timeline--header-inner')!;
     this.renderLabels(vp);
   }
 
-  private renderLabels(vp:TimelineViewParameters) {
-    if (this.activeZoomLevel === vp.settings.zoomLevel) {
-      return;
-    }
-
-    this.innerHeader.empty();
-    this.innerHeader.attr('data-current-zoom-level', this.wpTimelineService.zoomLevel);
+  private renderLabels(vp:TimelineViewParameters):void {
+    this.innerHeader.innerHTML = '';
+    this.innerHeader.setAttribute('data-current-zoom-level', this.wpTimelineService.zoomLevel);
 
     switch (vp.settings.zoomLevel) {
       case 'days':
-        return this.renderLabelsDays(vp);
+        this.renderLabelsDays(vp);
+        break;
       case 'weeks':
-        return this.renderLabelsWeeks(vp);
+        this.renderLabelsWeeks(vp);
+        break;
       case 'months':
-        return this.renderLabelsMonths(vp);
+        this.renderLabelsMonths(vp);
+        break;
       case 'quarters':
-        return this.renderLabelsQuarters(vp);
+        this.renderLabelsQuarters(vp);
+        break;
       case 'years':
-        return this.renderLabelsYears(vp);
+        this.renderLabelsYears(vp);
+        break;
+      default:
+        return;
     }
 
     this.activeZoomLevel = vp.settings.zoomLevel;
@@ -161,7 +196,7 @@ export class WorkPackageTimelineHeaderController implements OnInit {
     });
 
     this.renderTimeSlices(vp, 'quarter', 15, vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.innerHTML = this.I18n.t('js.timelines.quarter_label',
+      cell.innerHTML = this.I18n.t('js.gantt_chart.quarter_label',
         { quarter_number: start.format('Q') });
       cell.classList.add('-top-border');
       cell.style.height = '30px';
@@ -180,7 +215,7 @@ export class WorkPackageTimelineHeaderController implements OnInit {
     });
 
     this.renderTimeSlices(vp, 'quarter', 15, vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.innerHTML = this.I18n.t('js.timelines.quarter_label',
+      cell.innerHTML = this.I18n.t('js.gantt_chart.quarter_label',
         { quarter_number: start.format('Q') });
       cell.classList.add('-top-border');
       cell.style.height = '30px';
@@ -207,7 +242,8 @@ export class WorkPackageTimelineHeaderController implements OnInit {
       cell.style.width = calculatePositionValueForDayCount(vp, end.diff(start, 'days') + 1);
       cellCallback(start, cell);
     }
-    setTimeout(() => {
+    const uiWork = this.uiWork;
+    uiWork.task(() => {
       for (const [start, end] of rest) {
         const cell = this.addLabelCell();
         cell.style.top = `${marginTop}px`;
@@ -215,7 +251,7 @@ export class WorkPackageTimelineHeaderController implements OnInit {
         cell.style.width = calculatePositionValueForDayCount(vp, end.diff(start, 'days') + 1);
         cellCallback(start, cell);
       }
-    }, 0);
+    });
   }
 
   private addLabelCell():HTMLElement {

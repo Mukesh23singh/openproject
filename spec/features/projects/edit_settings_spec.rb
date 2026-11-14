@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,192 +22,363 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Projects', 'editing settings', type: :feature, js: true do
-  let(:name_field) { ::FormFields::InputFormField.new :name }
-  let(:parent_field) { ::FormFields::SelectFormField.new :parent }
-  let(:permissions) { %i(edit_project) }
+RSpec.describe "Projects", "editing settings", :js do
+  include_context "ng-select-autocomplete helpers"
+
+  let(:permissions) { %i(edit_project view_project_attributes edit_project_attributes) }
+  let(:project_memberships) { { project => permissions } }
 
   current_user do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: permissions)
+    create(:user, member_with_permissions: project_memberships)
   end
 
   shared_let(:project) do
-    FactoryBot.create(:project, name: 'Foo project', identifier: 'foo-project')
+    create(:project, name: "Foo project", identifier: "foo-project")
   end
 
-  it 'hides the field whose functionality is presented otherwise' do
-    visit project_settings_general_path(project.id)
+  describe "identifier edit" do
+    context "with classic IDs", with_settings: { work_packages_identifier: "classic" } do
+      it "updates the project identifier via dialog" do
+        visit project_settings_general_path(project)
 
-    expect(page).to have_no_text :all, 'Active'
-    expect(page).to have_no_text :all, 'Identifier'
-  end
+        click_on "Change identifier"
 
-  describe 'identifier edit', js: false do
-    it 'updates the project identifier' do
-      visit projects_path
-      click_on project.name
-      SeleniumHubWaiter.wait
-      click_on 'Project settings'
-      SeleniumHubWaiter.wait
-      click_on 'Change identifier'
+        expect(page).to have_dialog "Change project identifier"
 
-      expect(page).to have_content "Change the project's identifier"
-      expect(page).to have_current_path '/projects/foo-project/identifier'
+        within "dialog" do
+          expect(page).to have_text "This will permanently change identifiers and URLs"
+          fill_in "project[identifier]", with: "foo-bar"
+          click_on "Change identifier"
+        end
 
-      fill_in 'project[identifier]', with: 'foo-bar'
-      click_on 'Update'
-
-      expect(page).to have_content 'Successful update.'
-      expect(page)
-        .to have_current_path '/projects/foo-bar/settings/general'
-      expect(Project.first.identifier).to eq 'foo-bar'
+        expect(page).to have_text "Successful update."
+        expect(page).to have_current_path %r{/projects/foo-bar/settings/general}
+        expect(project.reload.identifier).to eq "foo-bar"
+      end
     end
 
-    it 'displays error messages on invalid input' do
-      visit project_identifier_path(project)
+    context "with semantic IDs", with_settings: { work_packages_identifier: "semantic" } do
+      it "updates the project identifier via dialog" do
+        visit project_settings_general_path(project)
 
-      fill_in 'project[identifier]', with: 'FOOO'
-      click_on 'Update'
+        click_on "Change identifier"
 
-      expect(page).to have_content 'Identifier is invalid.'
-      expect(page).to have_current_path '/projects/foo-project/identifier'
-    end
-  end
+        expect(page).to have_dialog "Change project identifier"
 
-  context 'with optional and required custom fields' do
-    let!(:optional_custom_field) do
-      FactoryBot.create(:custom_field, name: 'Optional Foo',
-                        type: ProjectCustomField,
-                        is_for_all: true)
-    end
-    let!(:required_custom_field) do
-      FactoryBot.create(:custom_field, name: 'Required Foo',
-                        type: ProjectCustomField,
-                        is_for_all: true,
-                        is_required: true)
-    end
+        within "dialog" do
+          expect(page).to have_text "This will permanently change identifiers and URLs"
+          fill_in "project[identifier]", with: "FOOBAR"
+          click_on "Change identifier"
+        end
 
-    it 'shows optional and required custom fields for edit without a separation' do
-      project.custom_field_values.last.value = 'FOO'
-      project.save!
+        expect(page).to have_text "Successful update."
+        expect(page).to have_current_path %r{/projects/FOOBAR/settings/general}
+        expect(project.reload.identifier).to eq "FOOBAR"
+      end
 
-      visit project_settings_general_path(project.id)
+      it "displays an error when the identifier does not start with a letter" do
+        visit project_settings_general_path(project)
 
-      expect(page).to have_text 'Optional Foo'
-      expect(page).to have_text 'Required Foo'
-    end
-  end
+        click_on "Change identifier"
 
-  context 'with a length restricted custom field' do
-    let!(:required_custom_field) do
-      FactoryBot.create(:string_project_custom_field,
-                        name: 'Foo',
-                        type: ProjectCustomField,
-                        min_length: 1,
-                        max_length: 2,
-                        is_for_all: true)
-    end
-    let(:foo_field) { ::FormFields::InputFormField.new required_custom_field }
+        expect(page).to have_dialog "Change project identifier"
 
-    it 'shows the errors of that field when saving (Regression #33766)' do
-      visit project_settings_general_path(project.id)
+        within "dialog" do
+          fill_in "project[identifier]", with: "123ABC"
+          click_on "Change identifier"
 
-      expect(page).to have_content 'Foo'
+          expect(page).to have_text "Identifier must start with a letter"
+        end
+      end
 
-      # Enter something too long
-      foo_field.set_value '1234'
+      it "displays an error when the identifier contains special characters" do
+        visit project_settings_general_path(project)
 
-      # It should cut of that remaining value
-      foo_field.expect_value '12'
+        click_on "Change identifier"
 
-      click_button 'Save'
+        expect(page).to have_dialog "Change project identifier"
 
-      expect(page).to have_text 'Successful update.'
+        within "dialog" do
+          fill_in "project[identifier]", with: "FOO@BAR"
+          click_on "Change identifier"
+
+          expect(page).to have_text "Identifier may only contain uppercase letters, numbers, and underscores"
+        end
+      end
     end
   end
 
-  context 'with a multi-select custom field' do
-    include_context 'ng-select-autocomplete helpers'
+  describe "editing basic details" do
+    before do
+      Pages::Projects::Settings::General.new(project).visit!
+    end
 
-    let!(:list_custom_field) { FactoryBot.create(:list_project_custom_field, name: 'List CF', multi_value: true) }
-    let(:form_field) { ::FormFields::SelectFormField.new list_custom_field }
+    it "updates the basic details" do
+      within_section "Basic details" do
+        fill_in "Name", with: "Bar project"
+        fill_in_rich_text "Description", with: "a long and verbose project description."
 
-    it 'can select multiple values' do
-      visit project_settings_general_path(project.id)
+        click_on "Update details"
+      end
 
-      form_field.select_option 'A', 'B'
+      expect_and_dismiss_flash type: :success, message: "Successful update."
 
-      click_on 'Save'
+      within_section "Basic details" do
+        expect(page).to have_field "Name", with: "Bar project"
+        expect(page).to have_selector :rich_text, "Description", text: "a long and verbose project description."
+      end
+    end
 
-      expect(page).to have_content 'Successful update.'
+    it "displays validation error on invalid input" do
+      within_section "Basic details" do
+        fill_in "Name", with: ""
+        click_on "Update details"
 
-      form_field.expect_selected 'A', 'B'
+        expect(page).to have_field "Name", with: "", validation_error: "Name can't be blank."
 
-      cvs = project.reload.custom_value_for(list_custom_field)
-      expect(cvs.count).to eq 2
-      expect(cvs.map(&:typed_value)).to contain_exactly 'A', 'B'
+        fill_in "Name", with: "A" * 256
+        click_on "Update details"
+
+        expect(page).to have_field "Name", with: "A" * 256, validation_error: "Name is too long (maximum is 255 characters)."
+      end
     end
   end
 
-  context 'with a date custom field' do
-    let!(:date_custom_field) { FactoryBot.create(:date_project_custom_field, name: 'Date') }
-    let(:form_field) { ::FormFields::InputFormField.new date_custom_field }
+  describe "editing status" do
+    before do
+      Pages::Projects::Settings::General.new(project).visit!
+    end
 
-    it 'can save and remove the date (Regression #37459)' do
-      visit project_settings_general_path(project.id)
+    it "sets the project status" do
+      within_section "Status" do
+        click_button accessible_description: "Edit status"
 
-      form_field.set_value '2021-05-26'
-      form_field.send_keys :escape
+        within :menu do
+          find(:menuitem, "Not started").click
+        end
+      end
 
-      click_on 'Save'
+      expect_and_dismiss_flash type: :success, message: "Successful update."
 
-      expect(page).to have_content 'Successful update.'
+      within_section "Status" do
+        button = find_button(accessible_description: "Edit status")
+        expect(button).to have_text "Not started"
+        button.click
 
-      form_field.expect_value '2021-05-26'
+        expect(find(:menu)).to have_selector :menuitem, "Not started", aria: { current: true }
+      end
+    end
 
-      cv = project.reload.custom_value_for(date_custom_field)
-      expect(cv.typed_value).to eq '2021-05-26'.to_date
+    it "unsets the project status" do
+      within_section "Status" do
+        click_button accessible_description: "Edit status"
+
+        within :menu do
+          find(:menuitem, "Finished").click
+        end
+      end
+
+      expect_and_dismiss_flash type: :success, message: "Successful update."
+
+      within_section "Status" do
+        click_button accessible_description: "Edit status"
+
+        within :menu do
+          find(:menuitem, "Not set").click
+        end
+      end
+
+      expect_and_dismiss_flash type: :success, message: "Successful update."
+
+      within_section "Status" do
+        button = find_button(accessible_description: "Edit status")
+        expect(button).to have_text "Not set"
+        button.click
+
+        expect(find(:menu)).to have_selector :menuitem, "Not set", aria: { current: true }
+      end
+    end
+
+    it "updates the project status description" do
+      within_section "Status" do
+        fill_in_rich_text "Status description", with: "Light-years behind 🥺"
+
+        click_on "Update status description"
+      end
+
+      expect_and_dismiss_flash type: :success, message: "Successful update."
+
+      within_section "Status" do
+        expect(page).to have_selector :rich_text, "Status description", text: "Light-years behind 🥺"
+      end
     end
   end
 
-  context 'with a user not allowed to see the parent project' do
-    include_context 'ng-select-autocomplete helpers'
-
-    let(:parent_project) { FactoryBot.create(:project) }
-    let(:parent_field) { ::FormFields::SelectFormField.new 'parent' }
+  describe "editing project relations" do
+    let(:parent_field) { FormFields::SelectFormField.new :parent }
+    let(:parent_project) { create(:project, name: "New parent project") }
 
     before do
       project.update_attribute(:parent, parent_project)
     end
 
-    it 'can update the project without destroying the relation to the parent' do
-      visit project_settings_general_path(project.id)
+    context "with a user allowed to see parent project" do
+      current_user { create(:user, member_with_permissions: { project => permissions, parent_project => permissions }) }
 
-      fill_in 'Name', with: 'New project name'
+      it "updates the parent project" do
+        Pages::Projects::Settings::General.new(project).visit!
 
-      parent_field.expect_selected I18n.t(:'api_v3.undisclosed.parent')
+        within_section "Project relations" do
+          parent_field.expect_selected "New parent project"
+          click_on "Update parent project"
+        end
 
-      click_on 'Save'
+        expect_and_dismiss_flash type: :success, message: "Successful update."
 
-      expect(page).to have_content 'Successful update.'
+        within_section "Project relations" do
+          parent_field.expect_selected "New parent project"
+        end
+      end
+    end
 
-      project.reload
+    context "with a user not allowed to see the parent project" do
+      it "can update the project without destroying the relation to the parent" do
+        Pages::Projects::Settings::General.new(project).visit!
 
-      expect(project.name)
-        .to eql 'New project name'
+        within_section "Project relations" do
+          parent_field.expect_selected I18n.t(:"api_v3.undisclosed.parent")
+          click_on "Update parent project"
+        end
 
-      expect(project.parent)
-        .to eql parent_project
+        expect_and_dismiss_flash type: :success, message: "Successful update."
+
+        project.reload
+        expect(project.parent).to eq parent_project
+      end
+    end
+
+    context "with a user allowed to add subprojects to other projects" do
+      # Only projects the user may add subprojects to are offered as a parent.
+      let(:candidate_project) { create(:project, name: "Alpha Initiative", identifier: "zulu-candidate") }
+      let(:other_candidate_project) { create(:project, name: "Beta Initiative", identifier: "yankee-candidate") }
+
+      current_user do
+        create(:user,
+               member_with_permissions: {
+                 project => permissions,
+                 candidate_project => %i(add_subprojects),
+                 other_candidate_project => %i(add_subprojects)
+               })
+      end
+
+      it_behaves_like "a project picker searchable by identifier" do
+        let(:general_page) { Pages::Projects::Settings::General.new(project) }
+        let(:target_project) { candidate_project }
+        let(:control_project) { other_candidate_project }
+
+        before do
+          general_page.visit!
+        end
+
+        def search_project(query)
+          general_page.parent_project_field.search_for(query)
+        end
+      end
+    end
+  end
+
+  describe "attribute help texts" do
+    let(:general_page) { Pages::Projects::Settings::General.new(project) }
+
+    context "without attribute help texts defined" do
+      before do
+        general_page.visit!
+      end
+
+      it "shows field labels without help text link" do
+        general_page.expect_field_label_without_help_text "Name"
+        general_page.expect_field_label_without_help_text "Description"
+        general_page.expect_field_label_without_help_text "Status description"
+        general_page.expect_field_label_without_help_text "Subproject of"
+      end
+
+      it "does not show help text link next to status button" do
+        within_section "Status" do
+          button = find_button(accessible_description: "Edit status")
+          expect(page).to have_no_link accessible_name: "Show help text", right_of: button
+        end
+      end
+    end
+
+    context "with attribute help texts defined" do
+      let!(:name_help_text) { create(:project_help_text, attribute_name: :name) }
+      let!(:description_help_text) { create(:project_help_text, attribute_name: :description) }
+      let!(:status_help_text) { create(:project_help_text, attribute_name: :status) }
+      let!(:status_description_help_text) { create(:project_help_text, attribute_name: :status_explanation) }
+      let!(:subproject_of_help_text) { create(:project_help_text, attribute_name: :parent) }
+
+      before do
+        general_page.visit!
+      end
+
+      it "shows field labels with help text link" do
+        general_page.expect_field_label_with_help_text "Name"
+        general_page.expect_field_label_with_help_text "Description"
+        general_page.expect_field_label_with_help_text "Status description"
+        general_page.expect_field_label_with_help_text "Subproject of"
+      end
+
+      it "shows help text link next to status button" do
+        within_section "Status" do
+          button = find_button(accessible_description: "Edit status")
+          expect(page).to have_link accessible_name: "Show help text", right_of: button
+        end
+      end
+
+      it "shows help text modal on clicking help text link" do
+        general_page.click_help_text_link_for_label "Description"
+
+        expect(page).to have_modal "Description"
+        within_modal "Description" do
+          expect(page).to have_text "Attribute help text"
+
+          click_on "Close"
+        end
+        expect(page).to have_no_modal "Description"
+      end
+    end
+  end
+
+  describe "workspace type badges in Subproject of field" do
+    shared_let(:portfolio) { create(:portfolio, name: "Parent Portfolio") }
+    shared_let(:program) { create(:program, name: "Parent Program") }
+    shared_let(:regular_project) { create(:project, name: "Regular Project") }
+    let(:parent_permissions) { %i[add_subprojects] }
+
+    let(:project_memberships) do
+      { project => permissions,
+        portfolio => parent_permissions,
+        program => parent_permissions,
+        regular_project => parent_permissions }
+    end
+
+    it "displays workspace type badges for portfolios and programs" do
+      general_page = Pages::Projects::Settings::General.new(project)
+      general_page.visit!
+
+      parent_field = general_page.parent_project_field
+
+      # Verify badges for different project types
+      parent_field.expect_option("Parent Portfolio", workspace_badge: "Portfolio")
+      parent_field.expect_option("Parent Program", workspace_badge: "Program")
+      parent_field.expect_option("Regular Project")
     end
   end
 end

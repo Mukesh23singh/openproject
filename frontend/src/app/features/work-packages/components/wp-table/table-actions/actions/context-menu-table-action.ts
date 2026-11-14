@@ -1,24 +1,56 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { withTooltip } from 'core-app/shared/helpers/tooltip-helper';
 import {
   contextColumnIcon,
   contextMenuLinkClassName,
+  invisibleIconButtonClasses,
   OpTableAction,
 } from 'core-app/features/work-packages/components/wp-table/table-actions/table-action';
-import { opIconElement } from 'core-app/shared/helpers/op-icon-builder';
+import { octiconElement } from 'core-app/shared/helpers/op-icon-builder';
+import { ICON_MAP } from 'core-app/shared/components/primer/dynamic-icon-map';
 
 export class OpContextMenuTableAction extends OpTableAction {
   public readonly identifier = 'open-context-menu-action';
 
   private text = {
-    linkTitle: this.I18n.t('js.label_open_context_menu'),
+    linkTitle: this.I18n().t('js.label_open_context_menu'),
   };
 
   public buildElement() {
-    const contextMenu = document.createElement('a');
-    contextMenu.href = '#';
-    contextMenu.classList.add(contextMenuLinkClassName, contextColumnIcon);
-    contextMenu.title = this.text.linkTitle;
-    contextMenu.appendChild(opIconElement('icon', 'icon-show-more-horizontal'));
+    const contextMenu = document.createElement('button');
+    contextMenu.type = 'button';
+    contextMenu.classList.add(contextMenuLinkClassName, contextColumnIcon, ...invisibleIconButtonClasses);
+    contextMenu.setAttribute('aria-haspopup', 'menu');
+    contextMenu.setAttribute('aria-expanded', 'false');
 
-    return contextMenu;
+    contextMenu.appendChild(octiconElement(ICON_MAP['kebab-horizontal'], 'small', 'Button-visual'));
+
+    return withTooltip(contextMenu, this.text.linkTitle, 'label');
   }
 }

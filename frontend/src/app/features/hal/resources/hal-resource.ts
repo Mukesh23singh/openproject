@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,47 +20,41 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { InputState } from 'reactivestates';
+import { merge } from 'lodash-es';
+import { InputState } from '@openproject/reactivestates';
 import { Injector } from '@angular/core';
 import { States } from 'core-app/core/states/states.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { HalLinkInterface } from 'core-app/features/hal/hal-link/hal-link';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { CallableHalLink, HalLinkInterface } from 'core-app/features/hal/hal-link/hal-link';
 import { ICKEditorContext } from 'core-app/shared/components/editor/components/ckeditor/ckeditor.types';
 import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import { cloneDeep } from 'lodash-es';
 import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { HalSource } from 'core-app/features/hal/interfaces';
 
-export interface HalResourceClass<T extends HalResource = HalResource> {
-  new(injector:Injector,
-    source:any,
-    $loaded:boolean,
-    halInitializer:(halResource:T) => void,
-    $halType:string):T;
+export type HalResourceClass<T extends HalResource = HalResource> = new(
+  _injector:Injector,
+  _source:unknown,
+  _$loaded:boolean,
+  _halInitializer:(_:HalResource) => void,
+  _$halType:string,
+) => T;
+
+export interface HalResourceLinks {
+  self:CallableHalLink;
+  [name:string]:CallableHalLink|CallableHalLink[]|undefined;
 }
 
-export type HalSourceLink = { href:string|null, title?:string };
-
-export type HalSourceLinks = {
-  [key:string]:HalSourceLink
-};
-
-export type HalSource = {
-  [key:string]:string|number|null|HalSourceLinks,
-  _links:HalSourceLinks
-};
+export type HalResourceEmbedded = Record<string, unknown>;
 
 export class HalResource {
-  // TODO this is the source of many issues in the frontend
-  // because it no longer properly type checks stuff
-  // Since 2019-10-21 I'm documenting what bugs this caused:
-  // https://community.openproject.com/wp/31462
-  [attribute:string]:any;
+  [attribute:string]:unknown;
 
   // The API type reported from API
   public _type:string;
@@ -76,15 +70,15 @@ export class HalResource {
   // This is required for attributes to be correctly mapped according to their configuration.
   public $halType:string;
 
-  @InjectField() states:States;
+  @LazyInject() states:States;
 
-  @InjectField() I18n!:I18nService;
+  @LazyInject() I18n!:I18nService;
 
   /**
-   * Constructs and initializes the HalResource. For this, the halResoureFactory is required.
+   * Constructs and initializes the HalResource. For this, the HalResourceService is required.
    *
-   * However, We can't inject the HalResourceFactory here because it itself depends on this class.
-   * So if you need to initialize a HalResource, use +HalResourceFactory.createHalResource+ instead.
+   * However, We can't inject the HalResourceService here because it itself depends on this class.
+   * So if you need to initialize a HalResource, use +HalResourceService.createHalResource+ instead.
    *
    * @param {Injector} injector
    * @param $halType The HalResource type that this instance maps to
@@ -93,22 +87,27 @@ export class HalResource {
    * @param {Function} initializer The initializer callback to HAL-transform all linked and embedded resources.
    *
    */
-  public constructor(public injector:Injector,
-    public $source:any,
+  public constructor(
+    public injector:Injector,
+    $source:unknown,
     public $loaded:boolean,
-    public halInitializer:(halResource:any) => void,
-    $halType:string) {
+    public halInitializer:(halResource:HalResource) => void,
+    $halType:string,
+  ) {
+    this.$source = $source as HalSource;
     this.$halType = $halType;
     this.$initialize($source);
   }
 
-  public static getEmptyResource(self:{ href:string|null } = { href: null }):any {
+  public static getEmptyResource(self:{ href:string|null } = { href: null }):HalSource {
     return { _links: { self } };
   }
 
-  public $links:any = {};
+  public $source:HalSource;
 
-  public $embedded:any = {};
+  public $links = {} as HalResourceLinks;
+
+  public $embedded:HalResourceEmbedded = {};
 
   public $self:Promise<this>;
 
@@ -116,11 +115,16 @@ export class HalResource {
 
   public static matchFromLink(href:string, expectedResource:string):string|null {
     const match = new RegExp(`/api/v3/${expectedResource}/(\\d+)`).exec(href);
-    return match && match[1];
+    return match?.[1] ?? null;
   }
 
-  public $initialize(source:any) {
-    this.$source = source.$source || source;
+  public $initialize(source:unknown) {
+    const wrapped = (source as { $source?:HalSource }).$source;
+    if (wrapped) {
+      this.$source = wrapped;
+    } else {
+      this.$source = source as HalSource;
+    }
     this.halInitializer(this);
   }
 
@@ -143,7 +147,7 @@ export class HalResource {
    */
   public get id():string|null {
     if (this.$source.id) {
-      return this.$source.id.toString();
+      return (this.$source.id as string|number).toString();
     }
 
     const id = idFromLink(this.href);
@@ -173,16 +177,19 @@ export class HalResource {
    * Create a HalResource from the copied source of the given, other HalResource.
    *
    * @param {HalResource} other
-   * @returns A HalResource with the identitical copied source of other.
+   * @returns A HalResource with the identical copied source of other.
    */
-  public $copy<T extends HalResource = HalResource>(source:Object = {}):T {
-    const clone:HalResourceClass<T> = this.constructor as any;
+  public $copy<T extends HalResource = HalResource>(source:object = {}):T {
+    const clone = this.constructor as HalResourceClass<T>;
 
-    return new clone(this.injector, _.merge(this.$plain(), source), this.$loaded, this.halInitializer, this.$halType);
+    return new clone(this.injector, merge(this.$plain(), source), this.$loaded, this.halInitializer, this.$halType);
   }
 
-  public $plain():any {
-    return _.cloneDeep(this.$source);
+  public $plain():HalSource {
+    // Use a deep clone (not structuredClone) because $source may contain
+    // HalResource instances (e.g. filter values), which carry functions and
+    // injector state that structuredClone cannot clone (DataCloneError).
+    return cloneDeep(this.$source);
   }
 
   public get $isHal():boolean {
@@ -225,13 +232,13 @@ export class HalResource {
 
   public previewPath():string|undefined {
     if (isNewResource(this) && this.project) {
-      return this.project.href;
+      return (this.project as { href:string }).href;
     }
 
     return undefined;
   }
 
-  public getEditorContext(fieldName:string):ICKEditorContext {
+  public getEditorContext(_fieldName:string):ICKEditorContext {
     return { type: 'constrained' };
   }
 
@@ -250,14 +257,15 @@ export class HalResource {
     // Otherwise, we risk returning a promise, that will never be resolved.
     state.putFromPromiseIfPristine(() => this.$loadResource(force));
 
-    return <Promise<this>>state.valuesPromise().then((source:any) => {
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
+    return state.valuesPromise().then((source:any) => {
       this.$initialize(source);
       this.$loaded = true;
       return this;
-    });
+    }) as Promise<this>;
   }
 
-  protected $loadResource(force = false):Promise<this> {
+  $loadResource(force = false):Promise<this> {
     if (!force) {
       if (this.$loaded) {
         return Promise.resolve(this);
@@ -270,7 +278,7 @@ export class HalResource {
 
     // Reset and load this resource
     this.$loaded = false;
-    this.$self = this.$links.self({}).then((source:any) => {
+    this.$self = this.$links.self({}).then((source:HalResource) => {
       this.$loaded = true;
       this.$initialize(source.$source);
       return this;
@@ -292,7 +300,7 @@ export class HalResource {
    */
   public $embeddableKeys():string[] {
     const properties = Object.keys(this.$source);
-    return _.without(properties, '_links', '_embedded', 'id');
+    return properties.filter((property) => !['_links', '_embedded', 'id'].includes(property));
   }
 
   /**
@@ -301,6 +309,6 @@ export class HalResource {
    */
   public $linkableKeys():string[] {
     const properties = Object.keys(this.$links);
-    return _.without(properties, 'self');
+    return properties.filter((property) => property !== 'self');
   }
 }

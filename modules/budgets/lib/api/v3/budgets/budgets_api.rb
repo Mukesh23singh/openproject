@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,15 +30,15 @@ module API
     module Budgets
       class BudgetsAPI < ::API::OpenProjectAPI
         resources :budgets do
-          route_param :id, type: Integer, desc: 'Budget ID' do
+          route_param :id, type: Integer, desc: "Budget ID" do
             after_validation do
               @budget = Budget.find(params[:id])
 
-              authorize(:view_budgets, context: @budget.project)
+              authorize_in_project(:view_budgets, project: @budget.project)
             end
 
             get do
-              BudgetRepresenter.new(@budget, current_user: current_user)
+              BudgetRepresenter.new(@budget, current_user:)
             end
 
             mount ::API::V3::Attachments::AttachmentsByBudgetAPI

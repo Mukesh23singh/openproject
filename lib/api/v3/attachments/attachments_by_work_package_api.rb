@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/attachments/attachment_collection_representer'
+require "api/v3/attachments/attachment_collection_representer"
 
 module API
   module V3
@@ -50,13 +49,13 @@ module API
           # while attachments are #addable? when the user has the :add_work_packages permission or
           # the :edit_work_packages permission, we cannot differentiate here between adding to a newly
           # created work package (for which :add_work_package would be required) and adding to an older
-          # work package (for which :edit_work_packages would be required). We thus only allow
-          # :edit_work_packages in this endpoint and require clients to upload uncontainered work packages
-          # first and attach them on wp creation.
-          post &API::V3::Attachments::AttachmentsByContainerAPI.create([:edit_work_packages])
+          # work package (for which :edit_work_packages or :add_work_package_attachments would be required).
+          # We thus only allow :edit_work_packages in this endpoint and require clients to upload uncontainered work
+          # packages first and attach them on wp creation.
+          post &API::V3::Attachments::AttachmentsByContainerAPI.create(%i[edit_work_packages add_work_package_attachments])
 
           namespace :prepare do
-            post &API::V3::Attachments::AttachmentsByContainerAPI.prepare([:edit_work_packages])
+            post &API::V3::Attachments::AttachmentsByContainerAPI.prepare(%i[edit_work_packages add_work_package_attachments])
           end
         end
       end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,16 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-describe HookHelper do
-  describe '#call_hook' do
-    context 'when called within a controller' do
+require "spec_helper"
+
+RSpec.describe HookHelper do
+  describe "#call_hook" do
+    context "when called within a controller" do
       let(:test_hook_controller_class) do
         # Also tests that the application controller has the model included
         Class.new(ApplicationController)
@@ -45,13 +45,13 @@ describe HookHelper do
         end
       end
       let(:project) do
-        instance_double('Project')
+        instance_double(Project)
       end
       let(:request) do
-        instance_double('ActiveSupport::Request')
+        instance_double(ActionDispatch::Request)
       end
 
-      it 'adds to the context' do
+      it "adds to the context" do
         allow(OpenProject::Hook)
           .to receive(:call_hook)
 
@@ -59,14 +59,14 @@ describe HookHelper do
 
         expect(OpenProject::Hook)
           .to have_received(:call_hook)
-                .with(:some_hook_identifier, { project: project,
+                .with(:some_hook_identifier, { project:,
                                                controller: instance,
-                                               request: request,
+                                               request:,
                                                hook_caller: instance })
       end
     end
 
-    context 'when called within a view' do
+    context "when called within a view" do
       let(:test_hook_view_class) do
         # Also tests that the application controller has the model included
         Class.new(ActionView::Base) do
@@ -75,7 +75,7 @@ describe HookHelper do
       end
       let(:instance) do
         test_hook_view_class
-          .new(ActionView::LookupContext.new(Rails.root.join('app/views')), {}, nil)
+          .new(ActionView::LookupContext.new(Rails.root.join("app/views")), {}, nil)
           .tap do |inst|
           inst.instance_variable_set(:@project, project)
           allow(inst)
@@ -87,17 +87,17 @@ describe HookHelper do
         end
       end
       let(:project) do
-        instance_double('Project')
+        instance_double(Project)
       end
       let(:request) do
-        instance_double('ActiveSupport::Request')
+        instance_double(ActionDispatch::Request)
       end
       let(:controller_instance) do
-        instance_double('ApplicationController')
+        instance_double(ApplicationController)
       end
 
-      it 'adds to the context' do
-        # mimicks having two different classes registered for the hook
+      it "adds to the context" do
+        # mimics having two different classes registered for the hook
         allow(OpenProject::Hook)
           .to receive(:call_hook)
           .and_return(%w[response1 response2])
@@ -107,9 +107,9 @@ describe HookHelper do
 
         expect(OpenProject::Hook)
           .to have_received(:call_hook)
-                .with(:some_hook_identifier, { project: project,
+                .with(:some_hook_identifier, { project:,
                                                controller: controller_instance,
-                                               request: request,
+                                               request:,
                                                hook_caller: instance })
       end
     end

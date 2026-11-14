@@ -1,51 +1,81 @@
-<div class="op-toast -{{ type }}" tabindex="0">
+<div class="op-toast -{{ type }} {{ icon }}" tabindex="0">
   <div class="op-toast--content" role="alert" aria-atomic="true">
-    <p>
-      <span [textContent]="toast.message"></span>
-      <span [textContent]="' '"></span>
-      <a class="op-toast--target-link"
-         *ngIf="toast.link"
-         (click)="executeTarget($event)"
-         [textContent]="toast.link!.text">
-      </a>
-    </p>
-    <div [ngSwitch]="type">
-      <div *ngSwitchCase="'upload'">
-        <div *ngIf="canBeHidden()">
-          <a (click)="show = true" [hidden]="show">
-            <op-icon icon-classes="icon-arrow-right2"></op-icon>
-          </a>
-          <a (click)="show = false" [hidden]="!show">
-            <op-icon icon-classes="icon-arrow-down1"></op-icon>
-          </a>
-          <span [textContent]="uploadText"></span>
+    @if (type === 'loading') {
+      <p [textContent]="toast.message"></p>
+      @if ((loading$ | async)) {
+        <div
+          class="op-loading-indicator op-loading-indicator_embedded"
+          >
+          <div></div><div></div>
         </div>
-        <div [ngClass]="{ '-hidden': !show && canBeHidden() }">
-          <ul class="op-toast--uploads" *ngIf="data && data.length > 0">
-            <op-toasters-upload-progress
-                *ngFor="let upload of data"
-                [upload]="upload"
-                (onSuccess)="onUploadSuccess()"
-                (onError)="onUploadError($event)">
-            </op-toasters-upload-progress>
-          </ul>
-        </div>
-      </div>
-      <div *ngSwitchCase="'success'"></div>
-      <div *ngSwitchCase="'error'">
-        <ul class="op-toast--errors">
-          <li *ngFor="let error of data" [textContent]="error"></li>
-        </ul>
-      </div>
+      }
+    }
+    @if (type !== 'loading') {
+      <p>
+        <span [textContent]="toast.message"></span>
+        <span [textContent]="' '"></span>
+        @if (toast.link) {
+          <a href="#"
+            class="op-toast--target-link"
+            [textContent]="toast.link!.text"
+            (click)="executeTarget()">
+          </a>
+        }
+      </p>
+    }
+    <div>
+      @switch (type) {
+        @case ('upload') {
+          <div>
+            @if (canBeHidden) {
+              <div>
+                <a href="#" [hidden]="show" (click)="show = true">
+                  <svg chevron-right-icon size="small"></svg>
+                </a>
+                <a href="#" [hidden]="!show" (click)="show = false">
+                  <svg chevron-down-icon size="small"></svg>
+                </a>
+                <span [textContent]="uploadText"></span>
+              </div>
+            }
+            <div [ngClass]="{ '-hidden': !show && canBeHidden }">
+              @if (uploads.length > 0) {
+                <ul class="op-toast--uploads">
+                  @for (upload of uploads; track upload) {
+                    <op-toasters-upload-progress [file]="upload[0]"
+                      [upload]="upload[1]"
+                      (uploadSuccess)="onUploadSuccess()"
+                      (uploadError)="remove()" />
+                  }
+                </ul>
+              }
+            </div>
+          </div>
+        }
+        @case ('success') {
+          <div></div>
+        }
+        @case ('error') {
+          <div>
+            <ul class="op-toast--errors">
+              @for (error of errors; track error) {
+                <li [textContent]="error"></li>
+              }
+            </ul>
+          </div>
+        }
+      }
     </div>
+    @if (removable) {
+      <button
+        type="button"
+        class="spot-link op-toast--close"
+        opTooltip
+        [label]="text.close_popup"
+        (click)="remove()"
+        >
+        <svg x-icon size="small"></svg>
+      </button>
+    }
   </div>
-  <button
-      *ngIf="removable()"
-      type="button"
-      class="op-link op-toast--close"
-      [title]="text.close_popup"
-      (click)="remove()"
-  >
-    <op-icon icon-classes="icon-context icon-close icon-no-color"></op-icon>
-  </button>
 </div>

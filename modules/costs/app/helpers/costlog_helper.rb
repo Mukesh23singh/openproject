@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module CostlogHelper
-  def cost_types_collection_for_select_options(selected_type = nil)
-    cost_types = CostType.active.sort
+  def cost_types_collection_for_select_options(selected_type = nil, project: nil)
+    scope = project ? CostType.available_for_project(project).active : CostType.active
+    cost_types = scope.sort
 
     if selected_type && !cost_types.include?(selected_type)
       cost_types << selected_type
@@ -38,12 +38,14 @@ module CostlogHelper
   end
 
   def user_collection_for_select_options(_options = {})
-    User
+    Principal
       .possible_assignee(@project)
+      .where(type: "User")
       .map { |t| [t.name, t.id] }
   end
 
   def extended_progress_bar(pcts, options = {})
+    options.reverse_merge!(hide_total_progress: true)
     return progress_bar(pcts, options) unless pcts.is_a?(Numeric) && pcts > 100
 
     closed = ((100.0 / pcts) * 100).round

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,269 +22,589 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
-require_relative 'concerns/work_package_by_button_creator'
+require "support/pages/page"
+require_relative "concerns/work_package_by_button_creator"
 
 module Pages
   class WorkPackagesTable < Page
     include ::Pages::WorkPackages::Concerns::WorkPackageByButtonCreator
+    include ::Components::Autocompleter::NgSelectAutocompleteHelpers
 
     attr_reader :project
 
+    # Initializes a new instance of the WorkPackagesTable class to drive the
+    # work package table page.
+    #
+    # @param project [Project] (optional) The project object used to construct
+    #   the URL. If unspecified or `nil` the global work packages page is used.
     def initialize(project = nil)
       @project = project
+      super()
     end
 
+    # Visits the work packages table with the specified query.
+    #
+    # @param query [Query] The query object.
     def visit_query(query)
       visit "#{path}?query_id=#{query.id}"
     end
 
+    # Visits the work packages table with the specified parameters.
+    #
+    # @param params [String] The query parameters.
     def visit_with_params(params)
       visit "#{path}?#{params}"
     end
 
+    # Expects the specified work packages to be listed in the table.
+    #
+    # @param work_packages [Array<WorkPackage>] The work package objects.
     def expect_work_package_listed(*work_packages)
       within(table_container) do
         work_packages.each do |wp|
-          expect(page).to have_selector(".wp-row-#{wp.id} td.subject",
-                                        text: wp.subject,
-                                        wait: 20)
+          expect(page).to have_css(".wp-row-#{wp.id} .wp-table--cell-td.subject",
+                                   text: wp.subject,
+                                   wait: 20)
         end
       end
     end
 
+    # Expects the specified work package to have the specified attributes in the
+    # table.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @param attr_value_hash [Hash] The attribute-value hash.
     def expect_work_package_with_attributes(work_package, attr_value_hash)
       within(table_container) do
         attr_value_hash.each do |column, value|
-          expect(page).to have_selector(
-            ".wp-row-#{work_package.id} td.#{column}", text: value.to_s, wait: 20
+          # Use exact_text when value is empty so Capybara actually asserts the cell
+          # is empty. With text: "", Capybara treats the constraint as absent and
+          # will happily match cells that contain text.
+          text_options = value.to_s.empty? ? { exact_text: "" } : { text: value.to_s }
+          expect(page).to have_css(
+            ".wp-row-#{work_package.id} .wp-table--cell-td.#{column.to_s.camelize(:lower)}", **text_options, wait: 20
           )
         end
       end
     end
 
+    # Expects a collection of groups and the count of their grouped items in the table.
+    # @param group_hash [Hash] Group names mapped to the count of their items, e.g. "first group" => 3
+    def expect_groups(group_hash)
+      within(table_container) do
+        group_hash.each do |group_name, count|
+          expect(page).to have_test_selector("op-group--value", text: "#{group_name} (#{count})")
+        end
+      end
+    end
+
+    # Expects the sums row in the table to have the specified attributes.
+    #
+    # @param attr_value_hash [Hash] The attribute-value hash.
+    def expect_sums_row_with_attributes(attr_value_hash)
+      within(table_container) do
+        attr_value_hash.each do |column, value|
+          expect(page).to have_css(
+            ".wp-table--sums-row div.#{column}", text: value.to_s, wait: 10
+          )
+        end
+      end
+    end
+
+    # Expects a work package with the specified subject to be listed in the table.
+    #
+    # @param subject [String] The subject of the work package.
     def expect_work_package_subject(subject)
       within(table_container) do
-        expect(page).to have_selector("td.subject",
-                                      text: subject,
-                                      wait: 20)
+        expect(page).to have_css(".wp-table--cell-td.subject",
+                                 text: subject,
+                                 wait: 20)
       end
     end
 
-    def expect_work_package_count(n)
+    # Expects the specified number of work packages to be listed in the table.
+    #
+    # @param count [Integer] The expected number of work packages.
+    def expect_work_package_count(count)
       within(table_container) do
-        expect(page).to have_selector(".wp--row", count: n, wait: 20)
+        expect(page).to have_css(".wp--row", count:, wait: 20)
       end
     end
 
-    ##
-    # Wraps expecting the page not to have the given work packages
+    # Updates the attributes of the specified work package.
+    #
+    # @param work_package [Object] The work package object.
+    # @param key_value_map [Hash] The attribute-value map.
+    def update_work_package_attributes(work_package, **key_value_map)
+      key_value_map.each do |key, value|
+        field = work_package_field(work_package, key)
+        field.update(value, save: true)
+      end
+    end
+
+    # Ensures that the specified work packages are not listed in the table.
+    #
+    # It wraps expecting the page not to have the given work packages
     # within a retry_block to ensure we do not fail when the page is
-    # still reloading (causing stale references or not found errors)
+    # still reloading (causing stale references or not found errors).
+    #
+    # @param work_packages [Array<Object>] The work package objects.
     def ensure_work_package_not_listed!(*work_packages)
       retry_block(args: { tries: 3, base_interval: 5 }) do
         within(table_container) do
           work_packages.each do |wp|
-            page.raise_if_found(".wp-row-#{wp.id} td.subject", text: wp.subject)
+            expect(page).to have_no_css(".wp-row-#{wp.id} .wp-table--cell-td.subject", text: wp.subject)
           end
         end
       end
     end
 
+    # Expects the work packages to be listed in the specified order.
+    #
+    # @param ids [Array<WorkPackage, String, Integer>] The work package IDs or
+    #   objects.
     def expect_work_package_order(*ids)
-      retry_block do
-        rows = page.all '.work-package-table .wp--row'
-        expected = ids.map { |el| el.is_a?(WorkPackage) ? el.id.to_s : el.to_s }
-        found = rows.map { |el| el['data-work-package-id'] }
+      expected = ids.map { |el| el.is_a?(WorkPackage) ? el.id.to_s : el.to_s }
 
-        raise "Order is incorrect: #{found.inspect} != #{expected.inspect}" unless found == expected
+      page.document.synchronize do
+        rows = page.all(".work-package-table .wp--row", minimum: expected.size)
+        found = rows.map { |el| el["data-work-package-id"] }
+
+        unless found == expected
+          raise Capybara::ElementNotFound, "Order is incorrect: #{found.inspect} != #{expected.inspect}"
+        end
       end
     end
 
+    # Expects no work packages to be listed in the table.
     def expect_no_work_package_listed
       within(table_container) do
-        expect(page).to have_selector('#empty-row-notification')
+        expect(page).to have_css("#empty-row-notification")
+        expect(page).to have_heading(I18n.t("js.work_packages.no_results.title"), level: 3)
       end
     end
 
+    # Expects the title of the table to be the specified name.
+    #
+    # @param name [String] The expected title.
+    # @param editable [Boolean] (optional) Whether the title is expected to be
+    #   editable.
     def expect_title(name, editable: true)
       if editable
-        expect(page).to have_field('editable-toolbar-title', with: name, wait: 10)
+        expect(page).to have_field("editable-toolbar-title", with: name, wait: 10)
       else
         expect(page)
-          .to have_selector('.toolbar-container', text: name, wait: 10)
+          .to have_css(".toolbar-container", text: name, wait: 10)
       end
     end
 
+    # Expects the specified query to be present in the select dropdown.
+    #
+    # @param name [String] The name of the query.
     def expect_query_in_select_dropdown(name)
-      page.find('.title-container').click
+      page.find(".title-container").click
 
-      page.within('#querySelect') do
-        expect(page).to have_selector('.op-sidemenu--item-action', text: name)
+      page.within('[data-test-selector="op-submenu--body"]') do
+        expect(page).to have_test_selector("op-submenu--item-action", text: name)
       end
     end
 
+    # Clicks the inline create button.
     def click_inline_create
-      ##
-      # When using the inline create on initial page load,
-      # there is a delay on travis where inline create can be clicked.
-      sleep 3
-
-      container.find('.wp-inline-create--add-link').click
-      expect(container).to have_selector('.wp-inline-create-row', wait: 10)
+      wait_for_network_idle if using_cuprite?
+      container.find('[data-test-selector="op-wp-inline-create"]').click
+      expect(container).to have_css(".wp-inline-create-row", wait: 30)
     end
 
-    def open_split_view(work_package)
-      split_page = SplitWorkPackage.new(work_package, project)
+    # Opens the split view for the specified work package.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @param primerized [Boolean] Whether to return a Pages::PrimerizedSplitWorkPackage
+    #   (the split view now rendered for work packages/gantt, the default) instead of
+    #   the legacy Pages::SplitWorkPackage.
+    # @return [Pages::SplitWorkPackage, Pages::PrimerizedSplitWorkPackage] The split work package page object.
+    def open_split_view(work_package, primerized: true)
+      split_page = if primerized
+                     PrimerizedSplitWorkPackage.new(work_package, project)
+                   else
+                     SplitWorkPackage.new(work_package, project)
+                   end
 
       # Hover row to show split screen button
       row_element = row(work_package)
       row_element.hover
 
-      scroll_to_and_click(row_element.find('.wp-table--details-link'))
+      scroll_to_and_click(row_element.find(:link, accessible_name: I18n.t("js.button_open_details")))
 
       split_page
     end
 
+    # Clicks on the row of the specified work package.
+    #
+    # @param work_package [WorkPackage] The work package object.
     def click_on_row(work_package)
       loading_indicator_saveguard
-      page.driver.browser.action.click(row(work_package).native).perform
+      row(work_package).click
     end
 
+    # Opens the full screen view of the specified work package by
+    # double-clicking.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @return [Pages::FullWorkPackage] The full work package page object.
     def open_full_screen_by_doubleclick(work_package)
       loading_indicator_saveguard
       # The 'id' column should have enough space to be clicked
-      click_target = row(work_package).find('.inline-edit--display-field.id')
-      page.driver.browser.action.double_click(click_target.native).perform
+      click_target = row(work_package).find(".inline-edit--display-field.id")
+      click_target.double_click
 
-      FullWorkPackage.new(work_package, project)
+      FullWorkPackage.new(work_package, project).tap(&:ensure_loaded)
     end
 
+    # Opens the full screen view of the specified work package by clicking on
+    # the link.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @return [Pages::FullWorkPackage] The full work package page oobject.
     def open_full_screen_by_link(work_package)
-      row(work_package).click_link(work_package.id)
+      row(work_package).click_link(work_package.id.to_s)
 
       FullWorkPackage.new(work_package)
     end
 
+    # Drags and drops a work package from one position to another.
+    #
+    # @param from [WorkPackage] The source work package object.
+    # @param to [WorkPackage] The target work package object.
     def drag_and_drop_work_package(from:, to:)
-      # Wait a bit because drag & drop in selenium is easily offended
-      sleep 1
+      drag_and_drop_list(from:, to:, elements: ".wp-table--row", handler: ".wp-table--drag-and-drop-handle")
+    end
 
-      rows = page.all('.wp-table--row')
-      source = rows[from]
-      target = rows[to]
+    def select_all_work_packages
+      send_select_all(roving_tab_stop || table_container.first("tr.wp-table--row", minimum: 1))
+      expect(page).to have_no_selector(:menu, I18n.t("js.label_work_package_context_menu"))
+    end
 
-      scroll_to_element(source)
-      source.hover
+    # Moves focus into the table with Tab from the entry control.
+    def tab_into_table
+      entry_control.execute_script("this.focus()")
+      press_keys(:tab)
+    end
 
-      page
-        .driver
-        .browser
-        .action
-        .move_to(source.native)
-        .click_and_hold(source.find('.wp-table--drag-and-drop-handle', visible: false).native)
-        .perform
+    # Presses Tab until `element` holds focus, giving up after `bound` presses.
+    #
+    # @param element [Capybara::Node::Element] The element expected to receive focus.
+    # @param bound [Integer] The maximum number of Tab presses.
+    def tab_until_focused(element, bound: 40)
+      bound.times do
+        break if element.matches_selector?(:css, ":focus", wait: 0)
 
-      ## Hover over each row to be sure,
-      # that the dragged element is reduced to the minimum height.
-      # Thus we can afterwards drag to the correct position.
-      rows.each do |row|
-        next if row == source
-
-        page
-          .driver
-          .browser
-          .action
-          .move_to(row.native)
-          .perform
+        press_keys(:tab)
       end
 
-      sleep 2
-
-      scroll_to_element(target)
-
-      page
-        .driver
-        .browser
-        .action
-        .move_to(target.native)
-        .release
-        .perform
-
-      # Wait a bit because drag & drop in selenium is easily offended
-      sleep 1
+      expect(element).to match_selector(:css, ":focus")
     end
 
-    def row(work_package)
-      table_container.find(row_selector(work_package))
+    # @return [Capybara::Node::Element] The control directly before the table in tab order.
+    def entry_control
+      last_toolbar_control
     end
 
-    def row_selector(el)
-      id = el.is_a?(WorkPackage) ? el.id.to_s : el.to_s
-      ".wp-row-#{id}-table"
+    # Tabs into the table, returns to the header row with Ctrl+Home and moves
+    # down by arrow keys until the row for `work_package` holds focus.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    def focus_row_by_keyboard(work_package)
+      tab_into_table
+      press_until_focused(:left, "tr")
+      press_keys(%i[control home])
+      press_until_focused(:down, row_selector(work_package))
     end
 
-    def edit_field(work_package, attribute)
-      context =
-        if work_package.nil?
-          table_container.find('.wp-inline-create-row')
-        else
-          row(work_package)
-        end
-
-      work_package_field(work_package, context, attribute)
+    # Focuses the row for `work_package` by keyboard, then moves right by
+    # arrow keys until its cell for `attribute` holds focus.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @param attribute [Symbol] The column attribute, e.g. `:subject`.
+    def focus_cell_by_keyboard(work_package, attribute)
+      focus_row_by_keyboard(work_package)
+      press_until_focused(:right, "#{row_selector(work_package)} #{cell_selector(attribute)}")
     end
 
-    def click_setting_item(label)
-      ::Components::WorkPackages::SettingsMenu
-        .new.open_and_choose(label)
+    # Sends keys to the focused element without clicking it first.
+    #
+    # @param keys [Array<Symbol, String, Array>] Keys as accepted by Cuprite.
+    def press_keys(*keys)
+      page.driver.browser.keyboard.type(*keys)
     end
 
-    def save_as(name)
-      click_setting_item 'Save as'
-
-      fill_in 'save-query-name', with: name
-
-      click_button 'Save'
-
-      expect_toast message: 'Successful creation.'
-      expect_title name
+    # Ferrum maps no symbol to the Menu key, so dispatch it from its own key table.
+    def press_menu_key
+      key = Ferrum::Keyboard::KEYS.fetch("ContextMenu").transform_keys(&:to_sym)
+      page.driver.browser.page.command("Input.dispatchKeyEvent", type: "rawKeyDown", **key)
+      page.driver.browser.page.command("Input.dispatchKeyEvent", type: "keyUp", **key)
     end
 
-    def save
-      click_setting_item /Save$/
+    def expect_focus_on_control(work_package, name)
+      expect(find(row_selector(work_package)))
+        .to have_selector(:link_or_button, accessible_name: name, focused: true)
     end
 
-    def table_container
-      find('#content .work-packages-split-view--tabletimeline-side')
+    # Expects the "Create new work package" button below the results to be rendered.
+    def expect_inline_create_button
+      expect(table_container).to have_button("Create new work package")
     end
 
-    def work_package_row_selector(work_package)
-      ".wp-row-#{work_package.id}"
+    # Expects the row for `work_package` to hold focus.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    def expect_focus_on_row(work_package)
+      expect(table_container).to have_css(row_selector(work_package), focused: true)
     end
 
-    protected
+    # Expects the row for `work_package` to be marked as the current work package.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    def expect_current_row(work_package)
+      expect(table_container).to have_css("#{row_selector(work_package)}[data-pressed]")
+    end
+
+    # Expects exactly the rows in `selected` among `among` to be marked selected.
+    #
+    # @param selected [Array<WorkPackage>] The work packages expected to be selected.
+    # @param among [Array<WorkPackage>] The work packages whose selection state is checked.
+    def expect_selected_rows(*selected, among:)
+      among.each do |work_package|
+        expect(treegrid)
+          .to have_selector(:row, work_package.subject, aria: { selected: selected.include?(work_package) })
+      end
+    end
+
+    # Expects the cell for `attribute` in the row for `work_package` to hold focus.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @param attribute [Symbol] The column attribute, e.g. `:subject`.
+    def expect_focus_on_cell(work_package, attribute)
+      expect(table_container).to have_css("#{row_selector(work_package)} #{cell_selector(attribute)}", focused: true)
+    end
+
+    # Expects the totals row cell holding the sum for `attribute` to hold focus.
+    #
+    # @param attribute [Symbol] The column attribute, e.g. `:estimated_time`.
+    def expect_focus_on_totals_cell(attribute)
+      sum_container = ".wp-table--sum-container.#{attribute.to_s.camelize(:lower)}"
+      expect(table_container).to have_css(
+        "tbody:not(.work-package--results-tbody) > tr.wp-table--sums-row > td:has(> #{sum_container})",
+        focused: true
+      )
+    end
+
+    # Expects the column header named `name` to hold focus.
+    #
+    # @param name [String] The visible column name, e.g. `"Subject"`.
+    def expect_focus_on_column_header(name)
+      expect(table_container).to have_selector(:columnheader, name, focused: true)
+    end
+
+    # Expects focus to rest on an element outside the table's grid (header,
+    # rows and totals), and not on the document body.
+    def expect_focus_outside_table
+      expect(table_container).to have_no_css(
+        "thead :focus, thead:focus, tr.wp-table--row:focus, tr.wp-table--row :focus, tr.wp-table--sums-row :focus, " \
+        "tr.wp-table--group-header:focus, tr.wp-table--group-header :focus"
+      )
+      expect(page).to have_css(":focus")
+    end
+
+    # @return [Capybara::Node::Element] The work package table exposed as a treegrid.
+    def treegrid
+      container.find(:table, role: "treegrid", accessible_name: table_name, exact: true)
+    end
 
     def container
       page
     end
 
-    def work_package_field(work_package, context, key)
-      case key.to_sym
-      when :date, :startDate, :dueDate
-        DateEditField.new context, key, is_milestone: work_package.milestone?, is_table: true
+    # @return [String] A CSS selector matching only this table, for scoping axe scans.
+    def axe_scope
+      "##{table_container.find('table.work-package-table[id]')[:id]}"
+    end
+
+    def table_name
+      I18n.t("js.label_work_package_plural")
+    end
+
+    # Expects the table's `aria-rowcount` and the `aria-rowindex` of every
+    # visible row, in document order from the header row down.
+    #
+    # @param rowcount [Integer] The expected `aria-rowcount` of the table.
+    # @param rows [Array<Integer>] The expected `aria-rowindex` of each exposed row.
+    def expect_row_positions(rowcount:, rows:)
+      wait_for { treegrid.all(:row).pluck("aria-rowindex") }.to eq(rows.map(&:to_s))
+      expect(treegrid).to match_selector(:table, aria: { rowcount: })
+    end
+
+    # Expects the table and all of its rows, hidden ones included, to carry no row position.
+    def expect_no_row_positions
+      expect(treegrid).to match_selector(:table, aria: { rowcount: nil })
+      expect(treegrid).to have_no_selector(:element, "tr", "aria-rowindex": /./, visible: :all)
+    end
+
+    # Returns the row element for the specified work package.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @return [Capybara::Node::Element] The row element.
+    def row(work_package)
+      table_container.find(row_selector(work_package))
+    end
+
+    # Returns the row element for the work package inline creation (after
+    # clicking "Create new work package").
+    #
+    # @return [Capybara::Node::Element] The row element.
+    def creation_row
+      table_container.find(".wp-inline-create-row")
+    end
+
+    # Returns the CSS selector for the row of the specified work package.
+    #
+    # @param elem [WorkPackage, String, Integer] The work package object or ID.
+    # @return [String] The CSS selector.
+    def row_selector(elem)
+      id = elem.is_a?(WorkPackage) ? elem.id.to_s : elem.to_s
+      ".wp-row-#{id}-table"
+    end
+
+    # Returns the edit field for the specified work package attribute.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @param attribute [Symbol] The attribute name.
+    # @return [EditField, DateEditField] The edit field.
+    def edit_field(work_package, attribute)
+      work_package_field(work_package, attribute)
+    end
+
+    # Opens the context menu for the specified work package row.
+    #
+    # It returns a `Components::WorkPackages::ContextMenu` instance which can
+    # be used to interact with the context menu.
+    #
+    # @param work_package [WorkPackage] The work package object.
+    # @return [Components::WorkPackages::ContextMenu] The context menu object.
+    def open_context_menu_for(work_package)
+      expect_work_package_subject(work_package.subject)
+      context_menu = Components::WorkPackages::ContextMenu.new
+      context_menu.open_for work_package
+      context_menu
+    end
+
+    # Clicks on the specified setting item in the page context menu.
+    #
+    # @param label [String] The label of the setting item.
+    def click_setting_item(label)
+      ::Components::WorkPackages::SettingsMenu
+        .new.open_and_choose(label)
+    end
+
+    # Saves the work package as a new query with the specified name.
+    #
+    # @param name [String] The name of the new query.
+    # @param by_title [Boolean] (optional) Whether to save through the title.
+    #   If `false` it will save through the context menu..
+    def save_as(name, by_title: false)
+      if by_title
+        title_input = find(".editable-toolbar-title--input")
+        title_input.set(name)
+        title_input.send_keys(:enter)
       else
-        EditField.new context, key
+        click_setting_item "Save as"
+        fill_in "save-query-name", with: name
+        click_button "Save"
+      end
+
+      expect_toast message: "Successful creation."
+      expect_title name
+    end
+
+    # Saves the work package query.
+    def save
+      click_setting_item /Save$/
+    end
+
+    def cell(work_package, attribute)
+      row(work_package).find(cell_selector(attribute))
+    end
+
+    def table_container
+      find("#content .work-packages-split-view--tabletimeline-side", wait: 20)
+    end
+
+    def work_package_container(work_package)
+      if work_package.nil?
+        creation_row
+      else
+        row(work_package)
+      end
+    end
+
+    def progress_popover(work_package)
+      Components::WorkPackages::ProgressPopover.new(container: page, field_selector_prefix: row_selector(work_package))
+    end
+
+    def expect_no_column_add_option(column_name)
+      completer = find(".wp-table--configuration-modal .op-draggable-autocomplete--input")
+      expect_no_ng_option(completer, column_name, results_selector: "body")
+    end
+
+    protected
+
+    def work_package_field(work_package, key)
+      row = work_package.nil? ? ".wp-inline-create-row" : row_selector(work_package)
+      selector = "#{row} .inline-edit--container.#{key.to_s.camelize(:lower)}"
+
+      case key.to_sym
+      when :date, :startDate, :dueDate, :combinedDate
+        DateEditField.new page, key, selector:, is_milestone: work_package.milestone?, is_table: true
+      when :estimatedTime, :remainingTime
+        ProgressEditField.new page, key, selector:
+      when :project
+        InlineProjectEditField.new page, key, selector:
+      else
+        EditField.new page, key, selector:
       end
     end
 
     private
+
+    def roving_tab_stop
+      table_container.first('.wp-table--row[tabindex="0"], .wp-table--row [tabindex="0"]', minimum: 0)
+    end
+
+    def last_toolbar_control
+      find("#content .toolbar-items")
+        .all("a[href]:not([tabindex='-1']), button:not(:disabled):not([tabindex='-1'])", minimum: 1)
+        .last
+    end
+
+    def press_until_focused(key, selector)
+      bound = table_container.all("tr.wp-table--row", minimum: 0).size + table_container.all("thead th", minimum: 0).size + 3
+      bound.times do
+        break if table_container.has_css?(selector, focused: true, wait: 0)
+
+        press_keys(key)
+      end
+
+      expect(table_container).to have_css(selector, focused: true)
+    end
+
+    def cell_selector(attribute)
+      ".wp-table--cell-td.#{attribute.to_s.camelize(:lower)}"
+    end
 
     def path
       project ? project_work_packages_path(project) : work_packages_path
@@ -290,12 +612,12 @@ module Pages
 
     def get_filter_name(label)
       retry_block do
-        label_field = page.find('.advanced-filters--filter-name', text: label)
-        filter_container = label_field.find(:xpath, '..')
+        label_field = page.find(".advanced-filters--filter-name", text: label)
+        filter_container = label_field.find(:xpath, "..")
 
-        raise 'Missing ID on Filter (Angular not ready?)' if filter_container['id'].nil?
+        raise "Missing ID on Filter (Angular not ready?)" if filter_container["id"].nil?
 
-        filter_container['id'].gsub('filter_', '')
+        filter_container["id"].gsub("filter_", "")
       end
     end
 

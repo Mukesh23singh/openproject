@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +22,29 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Widget::Controls::QueryName < Widget::Controls
-  dont_cache! # The name might change, but the query stays the same...
+  def initialize(...)
+    super
 
-  def render
-    options = { id: 'query_saved_name', 'data-translations' => translations }
-    if @subject.new_record?
-      name = I18n.t(:label_new_report)
-      icon = ''
-    else
-      name = @subject.name
-      options['data-is_public'] = @subject.public?
-      options['data-is_new'] = @subject.new_record?
-    end
-    write(content_tag(:span, h(name), options) + icon.to_s)
+    @system_arguments = { id: "query_saved_name", data: { translations: } }
+    @name = if @subject.new_record?
+              I18n.t(:label_new_report)
+            else
+              @subject.name
+            end
+    @system_arguments[:"data-is_new"] = false unless @subject.new_record?
+  end
+
+  def call
+    render Primer::Beta::Text.new(**@system_arguments).with_content(@name)
   end
 
   def translations
-    { isPublic: I18n.t(:field_is_public) }.to_json
+    { isPublic: I18n.t(:public, scope: "attributes") }.to_json
   end
 end

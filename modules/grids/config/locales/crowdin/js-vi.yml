@@ -1,63 +1,74 @@
+---
 vi:
   js:
     grid:
-      add_widget: 'Add widget'
-      remove: 'Remove widget'
-      configure: 'Configure widget'
-      upsale:
-        text: "Một số widget, như widget biểu đồ gói công việc, chỉ có sẵn trong"
-        link: 'Phiên bản doanh nghiệp.'
+      add_widget: Thêm tiện ích
+      configure: Định cấu hình tiện ích
+      remove: Xóa tiện ích
+      widget_menu_label: Show menu options for %{widgetName} widget
       widgets:
         custom_text:
-          title: 'Custom text'
+          title: Văn bản tùy chỉnh
         documents:
-          title: 'Tài liệu'
-          no_results: 'Chưa có tài liệu.'
+          no_results: Chưa có tài liệu.
+          title: Tài liệu
         members:
-          title: 'Members'
-          no_results: 'No visible members.'
-          view_all_members: 'View all members'
-          add: 'Thành viên'
-          too_many: 'Displaying %{count} of %{total} members.'
+          title: thành viên
+        missing_permission: Bạn không có quyền cần thiết để xem tiện ích này.
         news:
-          title: 'Tin tức'
-          at: 'tại'
-          no_results: 'Không có gì mới để báo cáo.'
+          title: tin tức
+        not_available: This widget is currently unavailable.
         project_description:
-          title: 'Project description'
-          no_results: "No description has been written yet. One can be provided in the 'Project settings'."
-        project_details:
-          title: 'Project details'
-          no_results: 'No custom fields have been defined for projects.'
+          title: mô tả
+        project_favorites:
+          no_results: You currently have no favorite projects. Add one or multiple projects as favorite through their overview or in a project list.
+          title: dự án yêu thích
         project_status:
-          title: 'Tình trạng dự án'
-          on_track: 'Theo dõi'
-          off_track: 'Không theo dõi'
-          at_risk: 'Có rủi ro'
-          not_set: 'Không được thiết lập'
+          at_risk: Có nguy cơ
+          discontinued: Đã ngừng sản xuất
+          finished: Đã hoàn thành
+          not_set: Không được thiết lập
+          not_started: Chưa bắt đầu
+          off_track: Lạc lối
+          on_track: Đang đi đúng hướng
+          title: trạng thái
+        project_timeline:
+          accessible_date_range: "%{start} to %{end}"
+          accessible_gate: 'Phase gate %{name}: %{date}'
+          accessible_milestone: 'Milestone %{name}: %{date}'
+          accessible_phase: 'Phase %{name}: %{date}'
+          accessible_sprint: 'Sprint %{name}: %{date}. Status: %{status}'
+          sprint_status:
+            active: Active
+            completed: Completed
+            in_planning: In planning
+          tooltip_type_gate: Phase gate
+          tooltip_type_milestone: Milestone
+          tooltip_type_phase: Phase
+          tooltip_type_sprint: Sprint
         subprojects:
-          title: 'Dự án con'
-          no_results: 'No subprojects.'
+          title: mục phụ
         time_entries_current_user:
-          title: 'Thời gian hiện tại (My spent time)'
-          displayed_days: 'Days displayed in the widget:'
+          displayed_days: 'Ngày hiển thị trong widget:'
+          title: Thời gian hiện tại (My spent time)
         time_entries_list:
-          title: 'Thời gian làm việc (trong 7 ngày gần nhất)'
-          no_results: 'Không có ghi nhận thời gian làm việc trong 7 ngày gần nhất.'
+          no_results: Không có mục thời gian trong 7 ngày qua.
+          title: Thời gian đã sử dụng (7 ngày qua)
         work_packages_accountable:
-          title: "Gói công việc mà tôi có trách nhiệm"
+          title: Gói công việc mà tôi có trách nhiệm
         work_packages_assigned:
-          title: 'Work package được chỉ định cho tôi'
-        work_packages_created:
-          title: 'Công việc tạo bởi tôi'
-        work_packages_watched:
-          title: 'Công việc có liên quan tới tôi'
-        work_packages_table:
-          title: 'Work packages table'
-        work_packages_graph:
-          title: 'Work packages graph'
+          title: Work package được chỉ định cho tôi
         work_packages_calendar:
-          title: 'Lịch'
+          title: lịch
+        work_packages_created:
+          title: Công việc tạo bởi tôi
+        work_packages_graph:
+          summary: Biểu đồ %{chartType} hiển thị các gói công việc %{description}.
+          title: Biểu đồ gói công việc
         work_packages_overview:
-          title: 'Work packages overview'
-          placeholder: 'Click to edit ...'
+          placeholder: Bấm vào để chỉnh sửa...
+          title: Tổng quan về gói công việc
+        work_packages_table:
+          title: Bảng gói công việc
+        work_packages_watched:
+          title: Công việc có liên quan tới tôi

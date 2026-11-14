@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,76 +22,63 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Relation < ApplicationRecord
-  include VirtualAttribute
+  belongs_to :from, class_name: "WorkPackage"
+  belongs_to :to, class_name: "WorkPackage"
 
-  include ::Scopes::Scoped
+  TYPE_RELATES      = "relates"
+  TYPE_PRECEDES     = "precedes"
+  TYPE_FOLLOWS      = "follows"
+  TYPE_BLOCKS       = "blocks"
+  TYPE_BLOCKED      = "blocked"
+  TYPE_DUPLICATES   = "duplicates"
+  TYPE_DUPLICATED   = "duplicated"
+  TYPE_INCLUDES     = "includes"
+  TYPE_PARTOF       = "partof"
+  TYPE_REQUIRES     = "requires"
+  TYPE_REQUIRED     = "required"
+  # The parent/child relation is maintained separately
+  # (in WorkPackage and WorkPackageHierarchy) and a relation cannot
+  # have the type 'parent' but this is abstracted to simplify the code.
+  TYPE_PARENT       = "parent"
+  TYPE_CHILD        = "child"
 
-  scopes :follows_non_manual_ancestors
-
-  scope :of_work_package,
-        ->(work_package) { where('from_id = ? OR to_id = ?', work_package, work_package) }
-
-  virtual_attribute :relation_type do
-    types = ((TYPES.keys + [TYPE_HIERARCHY]) & Relation.column_names).select do |name|
-      send(name).positive?
-    end
-
-    case types.length
-    when 1
-      types[0]
-    when 0
-      nil
-    else
-      TYPE_MIXED
-    end
-  end
-
-  TYPE_RELATES      = 'relates'.freeze
-  TYPE_DUPLICATES   = 'duplicates'.freeze
-  TYPE_DUPLICATED   = 'duplicated'.freeze
-  TYPE_BLOCKS       = 'blocks'.freeze
-  TYPE_BLOCKED      = 'blocked'.freeze
-  TYPE_PRECEDES     = 'precedes'.freeze
-  TYPE_FOLLOWS      = 'follows'.freeze
-  TYPE_INCLUDES     = 'includes'.freeze
-  TYPE_PARTOF       = 'partof'.freeze
-  TYPE_REQUIRES     = 'requires'.freeze
-  TYPE_REQUIRED     = 'required'.freeze
-  TYPE_HIERARCHY    = 'hierarchy'.freeze
-  TYPE_MIXED        = 'mixed'.freeze
-
+  # The order of the types is important. It's used to build up `ORDERED_TYPES`
+  # which is used to order relations of different kind like in the "Add relation"
+  # menu or the relations tab.
   TYPES = {
     TYPE_RELATES => {
-      name: :label_relates_to, sym_name: :label_relates_to, order: 1, sym: TYPE_RELATES
+      name: :label_relates_to, sym_name: :label_relates_to, order: 1,
+      sym: TYPE_RELATES
     },
-    TYPE_DUPLICATES => {
-      name: :label_duplicates, sym_name: :label_duplicated_by, order: 2, sym: TYPE_DUPLICATED
-    },
-    TYPE_DUPLICATED => {
-      name: :label_duplicated_by, sym_name: :label_duplicates, order: 3,
-      sym: TYPE_DUPLICATES, reverse: TYPE_DUPLICATES
-    },
-    TYPE_BLOCKS => {
-      name: :label_blocks, sym_name: :label_blocked_by, order: 4, sym: TYPE_BLOCKED
-    },
-    TYPE_BLOCKED => {
-      name: :label_blocked_by, sym_name: :label_blocks, order: 5,
-      sym: TYPE_BLOCKS, reverse: TYPE_BLOCKS
+    TYPE_FOLLOWS => {
+      name: :label_follows, sym_name: :label_precedes, order: 7,
+      sym: TYPE_PRECEDES
     },
     TYPE_PRECEDES => {
       name: :label_precedes, sym_name: :label_follows, order: 6,
       sym: TYPE_FOLLOWS, reverse: TYPE_FOLLOWS
     },
-    TYPE_FOLLOWS => {
-      name: :label_follows, sym_name: :label_precedes, order: 7,
-      sym: TYPE_PRECEDES
+    TYPE_DUPLICATES => {
+      name: :label_duplicates, sym_name: :label_duplicated_by, order: 6,
+      sym: TYPE_DUPLICATED
+    },
+    TYPE_DUPLICATED => {
+      name: :label_duplicated_by, sym_name: :label_duplicates, order: 7,
+      sym: TYPE_DUPLICATES, reverse: TYPE_DUPLICATES
+    },
+    TYPE_BLOCKS => {
+      name: :label_blocks, sym_name: :label_blocked_by, order: 4,
+      sym: TYPE_BLOCKED
+    },
+    TYPE_BLOCKED => {
+      name: :label_blocked_by, sym_name: :label_blocks, order: 5,
+      sym: TYPE_BLOCKS, reverse: TYPE_BLOCKS
     },
     TYPE_INCLUDES => {
       name: :label_includes, sym_name: :label_part_of, order: 8,
@@ -111,100 +98,44 @@ class Relation < ApplicationRecord
     }
   }.freeze
 
-  validates_numericality_of :delay, allow_nil: true
+  ORDERED_TYPES = [*TYPES.keys, TYPE_PARENT, TYPE_CHILD].freeze
 
-  validate :validate_sanity_of_relation
+  MAX_LAG = 2_000
+  MIN_LAG = -MAX_LAG
+
+  include ::Scopes::Scoped
+
+  scopes :used_for_scheduling_of,
+         :types,
+         :visible
+
+  scope :of_work_package,
+        ->(work_package) { where(from: work_package).or(where(to: work_package)) }
+
+  scope :follows_with_lag,
+        -> { follows.where("lag > 0") }
+
+  scope :of_predecessor,
+        ->(work_package) { where(to: work_package) }
+
+  scope :of_successor,
+        ->(work_package) { where(from: work_package) }
+
+  scope :not_of_predecessor,
+        ->(work_package) { where.not(to: work_package) }
+
+  scope :not_of_successor,
+        ->(work_package) { where.not(from: work_package) }
+
+  validates :lag, numericality: {
+    allow_nil: true,
+    less_than_or_equal_to: MAX_LAG,
+    greater_than_or_equal_to: MIN_LAG
+  }
+
+  validates :to, uniqueness: { scope: :from }
 
   before_validation :reverse_if_needed
-
-  before_save :set_type_column
-
-  [TYPE_RELATES,
-   TYPE_DUPLICATES,
-   TYPE_BLOCKS,
-   TYPE_PRECEDES,
-   TYPE_FOLLOWS,
-   TYPE_INCLUDES,
-   TYPE_REQUIRES,
-   TYPE_HIERARCHY].each do |type|
-    define_method "#{type}=" do |value|
-      instance_variable_set(:"@relation_type_set", nil)
-      super(value)
-    end
-  end
-
-  def self.relation_column(type)
-    if TYPES.key?(type) && TYPES[type][:reverse]
-      TYPES[type][:reverse]
-    elsif TYPES.key?(type) || type == TYPE_HIERARCHY
-      type
-    end
-  end
-
-  def self.visible(user = User.current)
-    direct
-      .where(from_id: WorkPackage.visible(user))
-      .where(to_id: WorkPackage.visible(user))
-  end
-
-  def self.from_work_package_or_ancestors(work_package)
-    ancestor_or_self_ids = work_package
-                           .ancestors_relations
-                           .or(where(from_id: work_package.id))
-                           .select(:from_id)
-
-    where(from_id: ancestor_or_self_ids)
-  end
-
-  def self.from_parent_to_self_and_descendants(work_package)
-    from_work_package_or_ancestors(work_package.parent)
-      .where(to_id: work_package.self_and_descendants.select(:id))
-  end
-
-  def self.from_self_and_descendants_to_ancestors(work_package)
-    # using parent.self_and_ancestors to be able to cope with unpersisted parent
-    where(from_id: work_package.self_and_descendants.select(:id))
-      .where(to_id: work_package.parent.self_and_ancestors.select(:id))
-  end
-
-  def self.hierarchy_or_follows
-    with_type_columns_0(_dag_options.type_columns - %i(hierarchy follows))
-      .non_reflexive
-  end
-
-  def self.hierarchy_or_reflexive
-    with_type_columns_0(_dag_options.type_columns - %i(hierarchy))
-  end
-
-  def self.non_hierarchy_of_work_package(work_package)
-    of_work_package(work_package)
-      .non_hierarchy
-      .direct
-  end
-
-  def self.to_root(work_package)
-    # MySQL does not support limit inside a subquery.
-    # As this is intended to be used inside a subquery, we have to avoid using limit
-    joins("LEFT OUTER JOIN relations r2
-          ON relations.to_id = r2.to_id
-          AND relations.hierarchy < r2.hierarchy")
-      .where('r2.id IS NULL')
-      .where(to_id: work_package.id)
-      .hierarchy_or_reflexive
-  end
-
-  def self.tree_of(work_package)
-    root_id = to_root(work_package)
-              .select(:from_id)
-
-    hierarchy
-      .where(from_id: root_id)
-  end
-
-  def self.sibling_of(work_package)
-    hierarchy
-      .where(from_id: work_package.parent_id)
-  end
 
   def other_work_package(work_package)
     from_id == work_package.id ? to : from
@@ -231,9 +162,23 @@ class Relation < ApplicationRecord
     TYPES[relation_type] ? TYPES[relation_type][key] : :unknown
   end
 
+  def predecessor = to
+  def predecessor_id = to_id
+  def successor = from
+  def successor_id = from_id
+
+  def predecessor_date
+    predecessor.due_date || predecessor.start_date
+  end
+
+  def successor_date
+    successor.start_date || successor.due_date
+  end
+
   def successor_soonest_start
-    if relation_type == TYPE_FOLLOWS && (to.start_date || to.due_date)
-      (to.due_date || to.start_date) + 1 + (delay || 0)
+    if follows? && predecessor_date
+      days = WorkPackages::Shared::WorkingDays.new
+      days.with_lag(predecessor_date, lag)
     end
   end
 
@@ -241,11 +186,10 @@ class Relation < ApplicationRecord
     TYPES[relation_type][:order] <=> TYPES[other.relation_type][:order]
   end
 
-  # delay is an attribute of Relation but its getter is masked by delayed_job's #delay method
-  # here we overwrite dj's delay method with the one reading the attribute
-  # since we don't plan to use dj with Relation objects, this should be fine
-  def delay
-    self[:delay]
+  TYPES.each_key do |type|
+    define_method :"#{type}?" do
+      canonical_type == self.class.canonical_type(type)
+    end
   end
 
   def canonical_type
@@ -263,37 +207,6 @@ class Relation < ApplicationRecord
 
   private
 
-  def shared_hierarchy?
-    to_from = hierarchy_but_not_self(to: to, from: from)
-    from_to = hierarchy_but_not_self(to: from, from: to)
-
-    to_from
-      .or(from_to)
-      .any?
-  end
-
-  def validate_sanity_of_relation
-    return unless from && to
-
-    errors.add :to_id, :invalid if from_id == to_id
-    errors.add :to_id, :not_same_project unless from.project_id == to.project_id ||
-                                                Setting.cross_project_work_package_relations?
-    errors.add :base, :cant_link_a_work_package_with_a_descendant if shared_hierarchy?
-  end
-
-  def set_type_column
-    if relation_type_changed? && relation_type_was
-      was_column = self.class.relation_column(relation_type_was)
-      write_attribute was_column, 0
-    end
-
-    return unless relation_type
-
-    new_column = self.class.relation_column(relation_type)
-
-    send("#{new_column}=", 1) if new_column
-  end
-
   # Reverses the relation if needed so that it gets stored in the proper way
   def reverse_if_needed
     if TYPES.key?(relation_type) && TYPES[relation_type][:reverse]
@@ -302,9 +215,5 @@ class Relation < ApplicationRecord
       self.from = work_package_tmp
       self.relation_type = TYPES[relation_type][:reverse]
     end
-  end
-
-  def hierarchy_but_not_self(to:, from:)
-    Relation.hierarchy.where(to: to, from: from).where.not(id: id)
   end
 end

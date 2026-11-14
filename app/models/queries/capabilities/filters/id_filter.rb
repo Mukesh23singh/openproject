@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,7 +34,8 @@ class Queries::Capabilities::Filters::IdFilter < Queries::Capabilities::Filters:
 
   def split_values
     values.map do |value|
-      if (matches = value.match(/\A(\w+\/\w+)\/([pg])(\d*)-(\d+)\z/))
+      # @deprecated Remove the context `p` for projects for 17.2
+      if (matches = value.match(/\A(\w+\/\w+)\/([gwp])(\d*)-(\d+)\z/))
         {
           action: matches[1],
           context_key: matches[2],
@@ -49,9 +51,9 @@ class Queries::Capabilities::Filters::IdFilter < Queries::Capabilities::Filters:
       conditions = ["action = '#{value[:action]}' AND principal_id = #{value[:principal_id]}"]
 
       conditions << if value[:context_id].present?
-                      ["context_id = #{value[:context_id]}"]
+                      "context_id = #{value[:context_id]}"
                     else
-                      ["context_id IS NULL"]
+                      "context_id IS NULL"
                     end
 
       "(#{conditions.join(' AND ')})"

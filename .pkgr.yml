@@ -1,8 +1,13 @@
 user: openproject
 group: openproject
+description: OpenProject
+homepage: "https://www.openproject.org"
+maintainer: "operations+packaging@openproject.com"
+license: "GPL"
 targets:
-  debian-9: &debian9
+  debian-11: &debian
     build_dependencies:
+      - wget
       - libsqlite3-dev
     dependencies:
       - unzip
@@ -11,43 +16,41 @@ targets:
       - tesseract-ocr
       - catdoc
       - imagemagick
-  debian-10:
-    <<: *debian9
-  debian-11:
-    <<: *debian9
-  ubuntu-16.04:
-    <<: *debian9
-  ubuntu-18.04:
-    <<: *debian9
-  ubuntu-20.04:
-    <<: *debian9
-  centos-7: &centos7
+  debian-12:
+    <<: *debian
+  ubuntu-22.04:
+    <<: *debian
+  centos-9:
+    env:
+      - NODE_ENV=production
+      - NPM_CONFIG_PRODUCTION=false
+      - SECRET_KEY_BASE=1
+      - OPENPROJECT_DISABLE__SECRET_KEY_BASE__CHECK=true
     dependencies:
       - epel-release
       - ImageMagick
       - unzip
       - poppler-utils
-  centos-8:
-    <<: *centos7
-  sles-12:
+  sles-15:
     build_dependencies:
       - sqlite3-devel
+    dependencies:
       - ImageMagick
 before_precompile: "packaging/setup"
 after_precompile: "packaging/teardown"
 services:
-  - postgres
+  - postgres:17
 installer: https://github.com/pkgr/installer.git
 wizards:
   - https://github.com/pkgr/addon-legacy-installer.git
   - ./packaging/addons/openproject-edition
-  - https://github.com/pkgr/addon-postgres
-  - https://github.com/pkgr/addon-apache2.git
+  - ./packaging/addons/addon-postgres
+  - https://github.com/pkgr/addon-apache2.git#set-host-header
   - ./packaging/addons/repositories
-  - https://github.com/pkgr/addon-smtp.git
   - https://github.com/pkgr/addon-memcached.git
   - ./packaging/addons/openproject
 buildpack: https://github.com/opf/heroku-buildpack-multi.git#master
 env:
   - NODE_ENV=production
   - NPM_CONFIG_PRODUCTION=false
+  - SECRET_KEY_BASE=1

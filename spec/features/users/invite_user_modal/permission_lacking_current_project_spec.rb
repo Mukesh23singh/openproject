@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,75 +22,63 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Inviting user in project the current user is lacking permission in', type: :feature, js: true do
+RSpec.describe "Inviting user in project the current user is lacking permission in", :js do
+  shared_let(:standard) { create(:standard_global_role) }
   let(:modal) do
-    ::Components::Users::InviteUserModal.new project: invite_project,
-                                             principal: other_user,
-                                             role: view_role
+    Components::Users::InviteUserModal.new project: invite_project,
+                                           principal: other_user,
+                                           role: view_role
   end
-  let(:quick_add) { ::Components::QuickAddMenu.new }
+  let(:quick_add) { Components::QuickAddMenu.new }
 
   let(:view_role) do
-    FactoryBot.create :role,
-                      permissions: []
+    create(:project_role,
+           permissions: [])
   end
   let(:invite_role) do
-    FactoryBot.create :role,
-                      permissions: %i[manage_members]
+    create(:project_role,
+           permissions: %i[manage_members])
   end
 
-  let!(:other_user) { FactoryBot.create(:user) }
-  let!(:view_project) { FactoryBot.create(:project, members: { current_user => view_role }) }
-  let!(:invite_project) { FactoryBot.create(:project, members: { current_user => invite_role }) }
+  let!(:other_user) { create(:user) }
+  let!(:view_project) { create(:project, members: { current_user => view_role }) }
+  let!(:invite_project) { create(:project, members: { current_user => invite_role }) }
 
   current_user do
-    FactoryBot.create :user
+    create(:user, global_permissions: %i[view_all_principals])
   end
 
-  it 'user cannot invite in current project but for different one' do
+  specify "user cannot invite in current project but for different one" do
     visit project_path(view_project)
 
     quick_add.expect_visible
 
     quick_add.toggle
 
-    quick_add.click_link 'Invite user'
+    quick_add.click_link "Invite user"
 
-    modal.expect_help_displayed I18n.t('js.invite_user_modal.project.lacking_permission_info')
+    wait_for_network_idle
+
+    modal.expect_help_displayed I18n.t("users.invite_user_modal.project.no_invite_rights")
 
     # Attempting to proceed without having a different project selected
 
-    modal.select_type 'User'
+    modal.click_continue
 
-    modal.click_next
+    modal.expect_error_displayed "Project can't be blank."
 
-    modal.expect_error_displayed I18n.t('js.invite_user_modal.project.lacking_permission')
-
-    # Proceeding with a different project
-    modal.autocomplete(invite_project.name)
-    modal.click_next
-
-    # Remaining steps
-    modal.principal_step
-    modal.role_step
-    modal.invitation_step
-
-    modal.expect_text "Invite #{other_user.name} to #{invite_project.name}"
-    modal.confirmation_step
-
-    modal.click_modal_button 'Send invitation'
-    modal.expect_text "#{other_user.name} was invited!"
+    # Proceeding with the invite project
+    modal.run_all_steps
 
     # Expect to be added to project
-    expect(invite_project.users)
+    expect(invite_project.users.reload)
       .to include(other_user)
   end
 end

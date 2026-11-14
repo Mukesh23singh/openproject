@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +20,22 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-$form--field-types: (text-field, text-area, select, check-box, radio-button, range-field, search, file)
+$form--field-types: (text-field, text-area, select, check-box, radio-button, range-field, search, file, date-picker)
+$base-line-height: 1.5
+$form-label-color: var(--body-font-color)
+$content-form-input-border: 1px solid var(--borderColor-default)
 
 %input-style
-  border: var(--content-form-input-border)
-  border-radius: 2px
-  font-size: 0.9rem
+  border: $content-form-input-border
+  border-radius: var(--borderRadius-medium)
+  font-size: var(--body-font-size)
 
-  &:hover, &:focus
+  &:focus
     border: var(--content-form-input-hover-border)
 
   vertical-align: middle
@@ -50,7 +52,6 @@ $form--field-types: (text-field, text-area, select, check-box, radio-button, ran
 
 %required-star
   @include default-transition
-  color: var(--primary-color-dark)
   content: '*'
   padding: 0 0.325rem
 
@@ -75,86 +76,14 @@ form
 
   &.-bordered
     padding: 30px 20px
-    background-color: var(--content-form-bg-color)
-    border: var(--content-form-border)
+    background-color: var(--bgColor-neutral-muted)
+    border: 1px solid var(--borderColor-neutral-muted)
 
     &.-compressed
       padding: 10px 20px 0 20px
 
     &.-medium-compressed
       padding: 10px 20px 20px 20px
-
-  &.danger-zone
-    border: 1px solid var(--content-form-danger-zone-bg-color)
-    // For correct display in IE
-    border-top: 0px
-
-    .form--section
-      padding-top: 0px
-      margin-bottom: 0px
-
-      & > *
-        padding-left: 1rem
-
-    .form--section-title
-      background-color: var(--content-form-danger-zone-bg-color)
-      color: var(--content-form-danger-zone-font-color) !important
-      padding: 1rem !important
-      margin: 0 0 1rem 0
-
-    input[type=text]
-      margin-bottom: 0
-
-    em
-      font-style: italic
-
-    p.danger-zone--warning
-      font-weight: bold
-      color: var(--content-form-danger-zone-bg-color)
-
-      span.icon,
-      span.icon-context
-        display: inline-block
-        vertical-align: middle
-        // This is an approximation necessary for vertical alignment (especially FF under Windows)
-        // This should be removable once the icon font is updated
-        // see: https://community.openproject.org/work_packages/21589/activity
-        margin-bottom: 0.0625em
-
-        &:before
-          padding-left: 0px
-          color: var(--content-form-danger-zone-bg-color)
-
-    .danger-zone--verification
-      display: flex
-
-      input
-        @extend %input--sizing
-        flex-basis: 50%
-        margin: 0 0.5rem 0 0
-
-      .button
-        @extend %input--sizing
-
-        &.-highlight
-          background: var(--content-form-danger-zone-bg-color)
-          color: var(--content-form-danger-zone-font-color)
-          border-color: var(--content-form-danger-zone-bg-color)
-
-          &.icon:before,
-          &.icon-context:before
-            color: var(--content-form-danger-zone-font-color)
-            padding-left: 0px
-
-    + .form--field-instructions
-      max-width: 100%
-
-    .form--field-instructions
-      margin: 0 0 1rem 0
-
-    .errorSpan
-      flex-basis: 50%
-      margin-right: 0.5rem
 
   .form--close
     position: absolute
@@ -167,20 +96,27 @@ form
     .-columns-2
       column-count: 2
 
+      .form--field
+        break-inside: avoid
+        page-break-inside: avoid
+        -webkit-column-break-inside: avoid
 
 hr
   width: 100%
   height: 1px
-  background: #ccc
+  background: var(--borderColor-default)
   border: 0
 
   &.form--separator
-    border-bottom: 1px solid var(--content-form-separator-color)
+    border-bottom: 1px solid var(--borderColor-default)
     margin: 0 0 30px
     background: none
 
     &.-invisible
       border-bottom-width: 0px
+
+    &_limited
+      max-width: 600px
 
 .form--space
   padding-top: 1rem
@@ -188,24 +124,6 @@ hr
 .form--row
   @include grid-block
   @include grid-visible-overflow
-
-.checkbox-label
-  position: relative
-  display: inline-block
-  vertical-align: top
-  line-height: 18px
-  user-select: none
-
-  input[type=checkbox]
-    border: 0
-    clip: rect(0 0 0 0)
-    height: 18px
-    margin: 0 -18px -18px 0
-    overflow: hidden
-    padding: 0
-    position: absolute
-    width: 18px
-    opacity: 0.001
 
 %form--fieldset-or-section
   padding: 1rem 0 0
@@ -217,51 +135,34 @@ hr
 
 
 %form--fieldset-legend-or-section-title
-  color: #4d4d4d
-  font-size: 1rem
-  font-weight: bold
+  color: var(--fgColor-muted)
+  font-size: var(--body-font-size)
+  font-weight: var(--base-text-weight-bold)
   line-height: 1.8
   text-transform: uppercase
-  border-bottom: 1px solid $gray
+  border-bottom: 1px solid var(--borderColor-default)
 
 // HACK. TODO: Remove fieldset element rules in various places.
 .form--fieldset,
 fieldset.form--fieldset
   @extend %form--fieldset-or-section
 
-  &.-collapsible.collapsed
-    .-hide-when-collapsed
-      display: none
-
 .form--fieldset-legend
   @extend %form--fieldset-legend-or-section-title
   width: 100%
-
-  .form--fieldset.-collapsible > &
-    @include without-link-styling
-    cursor: pointer
 
   &:before
     @include icon-common
     font-size: 0.75rem
 
-    .form--fieldset.-collapsible > &
-      @include icon-mixin-arrow-up1
-      padding: 0.625rem 0.25rem 0 0.25rem
-
-    .form--fieldset.-collapsible.-collapsed > &,
-    .form--fieldset.-collapsible.collapsed > &
-      @include icon-mixin-arrow-down1
-      padding: 0.625rem 0.25rem 0 0.25rem
-
-#sidebar .form--fieldset-legend
-  color: var(--main-menu-fieldset-header-color)
+#main-menu .form--fieldset-legend
+  color: var(--main-menu-font-color)
+  margin-bottom: 1rem
 
 .form--toolbar
   float: right
   text-align: right
-  color: #4d4d4d
-  font-size: 1rem
+  font-size: var(--body-font-size)
   font-style: italic
   line-height: 1.8
   margin-top: -1.8rem
@@ -275,12 +176,6 @@ fieldset.form--fieldset
 .form--toolbar-item
   padding: 0 0.25rem
   background-color: inherit
-
-  &.-in-header
-    margin-left: 5px
-    margin-bottom: 5px
-    font-style: italic
-    line-height: 44px
 
 .form--section
   @extend %form--fieldset-or-section
@@ -309,6 +204,12 @@ fieldset.form--fieldset
   // to the container because it's duplicated there.
   &.-visible-overflow .form--field-container
     overflow: visible
+
+  &.-align-start
+    align-items: start
+
+  &.-top-margin
+    margin-top: 1rem
 
   &.-vertical,
   .form.-vertical &
@@ -385,7 +286,7 @@ fieldset.form--fieldset
   &.-error
     @extend .icon-error
     color: var(--content-form-error-color)
-    font-weight: bold
+    font-weight: var(--base-text-weight-bold)
 
     &::before
       @include icon-common
@@ -393,12 +294,22 @@ fieldset.form--fieldset
       line-height: $base-line-height
       padding-right: 0.325rem
 
+  &.-bold
+    font-weight: var(--base-text-weight-bold)
+
+  &.-flex
+    display: flex
+    align-items: center
+
   &.-top
     align-self: flex-start
     line-height: 2.15rem
 
   .form--label.-error &
     color: var(--content-form-error-color)
+
+  &:has(.op-attribute-help-text)
+    @extend .op-attribute-label
 
 .form--field-container
   @include grid-content(10)
@@ -410,12 +321,36 @@ fieldset.form--fieldset
   flex-grow: 2
   align-items: stretch
 
+  .option-label .option-label--select
+    margin-left: $spot-spacing-1
+
   &.-wrap-around
     display: flex
     flex-wrap: wrap
 
+  &.-empty
+    margin-bottom: 1rem
+
+  &.-with-children-spacing
+    > *:not(:last-child)
+      margin-right: 0.5rem
+
   &.-vertical
     display: block
+
+  &.-horizontal
+    flex-direction: column
+
+    @include breakpoint(lg)
+      flex-direction: row
+      flex-wrap: wrap
+
+      > *:last-child
+        margin-right: auto
+
+  &.-enterprise-restricted
+    flex-direction: column
+    align-items: start
 
   .form--field.-visible-overflow &
     overflow: visible
@@ -481,6 +416,28 @@ fieldset.form--fieldset
   &.-no-italic
     font-style: normal
 
+  &.-xwide
+    max-width: 800px
+
+  &.-labeled-checkbox
+    margin-left: 25px
+
+  &.-with-bottom-spacing
+    margin-bottom: 1rem
+
+  .form--field.-vertical &
+    @include grid-size(12)
+    @include grid-offset(0)
+
+.form--field-error
+  @extend %form--field-after-container
+  font-style: italic
+  max-width: 500px
+  color: var(--content-form-error-color)
+
+  &.-with-bottom-spacing
+    margin-bottom: 1rem
+
 .form--inline-instructions
   font-style: italic
   display: inline
@@ -511,7 +468,7 @@ fieldset.form--fieldset
       max-width: 50px
 
     &.-xslim
-      max-width: 110px
+      max-width: 120px
 
     &.-slim
       max-width: 200px
@@ -543,11 +500,11 @@ fieldset.form--fieldset
 #{$text-input-selectors},
 select
   line-height: 100%
-  margin-bottom: 0rem
-  font-size: 0.9rem
+  margin-bottom: 0
+  font-size: var(--body-font-size)
 
-  &:hover, &:focus, &:active
-    border-color: #999
+  &:focus, &:active
+    border-color: var(--fgColor-accent)
 
 .-hide-placeholder-on-focus
   &:focus::placeholder
@@ -564,19 +521,21 @@ select
     &:active
       border-color: transparent
 
-    // But as an indicator, do show one on hover
-    &:hover
-      border-color: #999
-
 select
   &[disabled=disabled],
   &[disabled]
-    background-color: var(--inplace-edit--bg-color--disabled)
+    background-color: var(--control-bgColor-disabled)
     cursor: not-allowed
 
 input[readonly].-clickable
   cursor: pointer
-  background: white
+  background: var(--body-background)
+
+.form--text-field
+  &[readonly]:not(.-clickable)
+    background-color: var(--control-bgColor-disabled)
+    color: var(--control-fgColor-disabled);
+    cursor: not-allowed
 
 .form--select
   @extend %input-style
@@ -590,6 +549,18 @@ input[readonly].-clickable
     // in height in foundation for apps.
     height: auto
     min-width: 40px
+
+  option
+    background: var(--body-background)
+    color: var(--body-font-color)
+
+    &[disabled]
+      background-color: var(--bgColor-disabled)
+      color: var(--fgColor-disabled)
+
+  optgroup
+    background-color: var(--body-background)
+    color: var(--body-font-color)
 
 .form--inline-select
   display: inline-block
@@ -612,10 +583,6 @@ input[readonly].-clickable
   .form &
     margin-bottom: 0rem
 
-.form--select-autocompleter
-  max-height: 400px
-  overflow-y: auto
-
 .form--selected-value
   width: calc(100% - 42px)
   padding: 3px
@@ -624,7 +591,7 @@ input[readonly].-clickable
 .form--selected-value--container
   display: inline-block
   border: 1px solid transparent
-  border-radius: 2px
+  border-radius: var(--borderRadius-medium)
   overflow: visible
   width: 100%
   position: relative
@@ -637,7 +604,7 @@ input[readonly].-clickable
   &.-focus
     text-decoration: none
     color: var(--body-font-color)
-    border-color: var(--inplace-edit--border-color)
+    border-color: var(--borderColor-default)
 
     .form--selected-value--remover
       visibility: visible
@@ -696,49 +663,9 @@ input[readonly].-clickable
   color: $form-label-color
   margin-bottom: 0.8rem
 
-.form--matrix
-  border: var(--content-form-input-border)
-  border-radius: 2px
-  background: none
-  margin: 0 0 2rem 0
-  font-size: 0.9rem
-  line-height: 1.5
-
-.form--matrix-header-row
-  font-weight: bold
-  border-bottom: var(--content-form-input-border)
-  background-color: $gray-light
-
-.form--matrix-header-cell
-  padding: 0 1rem
-
-.form--matrix-row
-
-  &:nth-child(odd)
-    background-color: $gray-light
-
-  &:nth-child(even)
-    background-color: white
-
-.form--matrix-checkbox-cell
-  min-width: 1rem
-  max-width: 4rem
-  text-align: center
-
-.form--column
-  @include grid-block
-  @include grid-orient(vertical)
-  overflow-y: hidden
-  padding-left: 0 !important
-
-  &:nth-last-of-type(n+2)
-    padding-right: $block-padding
-
-  .form--field
-    flex-basis: auto
-
 .inline-label
   margin: 0rem
+  flex-grow: 1
 
   > .form-label.-transparent
     margin-bottom: 0
@@ -755,9 +682,6 @@ input[readonly].-clickable
     .form--field.-required > &
       &::after
         @extend %required-star
-
-      &:hover::after
-        color: var(--primary-color)
 
     > a
       display: block
@@ -797,16 +721,30 @@ input[readonly].-clickable
     @extend %required-star
     padding: 0 0.325rem 0 0
 
+  .form--check-box
+    top: -1px
+    position: relative
+
+.form--label-with-radio-button
+  display: block
+  clear: both
+  line-height: $base-line-height
+  padding: 0 2rem 0 0
+
+  & > .form--radio-button-container
+    display: block
+    float: left
+    padding-right: 0.5rem
+
 .form--field-affix
   flex: 0 0 auto
   display: flex
   font-size: 0.9rem
-  background: $inlinelabel-background
-  color: $inlinelabel-color
-  border: var(--content-form-input-border)
-  // OR $inlinelabel-border
-  border-radius: 2px
-  padding: 0 $form-padding
+  background: var(--bgColor-neutral-muted)
+  color: var(--body-font-color)
+  border: $content-form-input-border
+  border-radius: var(--borderRadius-medium)
+  padding: 0 0.5rem
   margin-bottom: 0rem
   align-items: center
   line-height: 1
@@ -837,7 +775,7 @@ input[readonly].-clickable
 
   .form--field-inline-button
     margin-right: 0
-    border: 1px solid var(--button--border-color)
+    border: 1px solid var(--button-default-borderColor-rest)
     border-left-width: 0px
     border-radius: 0px
 
@@ -846,50 +784,24 @@ input[readonly].-clickable
 
     &:first-of-type
       border-left-width: 1px
-      border-top-left-radius: 2px
-      border-bottom-left-radius: 2px
+      border-top-left-radius: var(--borderRadius-medium)
+      border-bottom-left-radius: var(--borderRadius-medium)
     &:last-of-type
-      border-top-right-radius: 2px
-      border-bottom-right-radius: 2px
+      border-top-right-radius: var(--borderRadius-medium)
+      border-bottom-right-radius: var(--borderRadius-medium)
 
-.form--list
-  display: flex
-  margin: 0
-  @include grid-layout(3)
-
-  @include breakpoint(large)
-    @include grid-layout(4)
-
-  @include breakpoint(xlarge)
-    @include grid-layout(6)
-
-  li, div
-    padding: 0
+    &:focus-within
+      @include focus
 
 // Text in textareas should look the same as in paragraphs
 // Foundation applies following rule to paragraphs
 textarea
   text-rendering: optimizeLegibility
 
-// Overwriting Foundation color variables.
-// Unfortunatel I do not know how to get it DRY.
-input[type=range]::-moz-range-thumb
-  background: var(--primary-color)
-
-input[type=range]::-webkit-slider-thumb
-  background: var(--primary-color)
-
-input[type=range]::-ms-thumb
-  background: var(--primary-color)
-
-input[type=range]::-moz-range-thumb:hover
-  background: var(--primary-color-dark)
-
-input[type=range]::-webkit-slider-thumb:hover
-  background: var(--primary-color-dark)
-
-input[type=range]::-ms-thumb:hover
-  background: var(--primary-color-dark)
+// Date and time inputs should be left-aligned on iOS
+input[type=date], input[type=time]
+  &::-webkit-date-and-time-value
+    text-align: left !important
 
 // Special handling for the permissions_form of Admin/Roles --> permission report
 // Since FF ESR is not able to handle the overflow of fieldsets correctly, a workaround is needed.
@@ -898,3 +810,7 @@ input[type=range]::-ms-thumb:hover
     display: inline-block
     width: 100%
     overflow: auto
+
+.form-autocompleter-container
+  display: grid
+  grid-template-columns: minmax(0, auto)

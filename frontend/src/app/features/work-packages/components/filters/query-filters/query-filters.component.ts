@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy, Component, Input, OnChanges, OnInit, Output, ViewChild,
-} from '@angular/core';
+import { sortBy } from 'lodash-es';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnChanges, OnInit, Output, ViewChild, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { DebouncedEventEmitter } from 'core-app/shared/helpers/rxjs/debounced-event-emitter';
-import { trackByName } from 'core-app/shared/helpers/angular/tracking-functions';
-import { BannersService } from 'core-app/core/enterprise/banners.service';
 import { NgSelectComponent } from '@ng-select/ng-select';
 import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { WorkPackageFiltersService } from 'core-app/features/work-packages/components/filters/wp-filters/wp-filters.service';
@@ -40,53 +36,77 @@ import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destr
 import { componentDestroyed } from '@w11k/ngx-componentdestroyed';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
 import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
+import { WorkPackageViewBaselineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
+import { combineLatestWith } from 'rxjs';
+import { repositionDropdownBugfix } from 'core-app/shared/components/autocompleter/op-autocompleter/autocompleter.helper';
+import { AlternativeSearchService } from 'core-app/shared/components/work-packages/alternative-search.service';
 
 const ADD_FILTER_SELECT_INDEX = -1;
 
 @Component({
-  selector: 'query-filters',
+  selector: 'op-query-filters',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './query-filters.component.html',
+  standalone: false,
 })
 export class QueryFiltersComponent extends UntilDestroyedMixin implements OnInit, OnChanges {
+  readonly wpTableFilters = inject(WorkPackageViewFiltersService);
+  readonly wpTableBaseline = inject(WorkPackageViewBaselineService);
+  readonly wpFiltersService = inject(WorkPackageFiltersService);
+  readonly I18n = inject(I18nService);
+  readonly alternativeSearchService = inject(AlternativeSearchService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   @ViewChild(NgSelectComponent) public ngSelectComponent:NgSelectComponent;
 
   @Input() public filters:QueryFilterInstanceResource[];
 
   @Input() public showCloseFilter = false;
 
-  @Output() public filtersChanged = new DebouncedEventEmitter<QueryFilterInstanceResource[]>(componentDestroyed(this));
+  @Output() public filtersChanged = new DebouncedEventEmitter<QueryFilterInstanceResource[]>(
+    componentDestroyed(this),
+    500,
+  );
 
-  public remainingFilters:any[] = [];
-
-  public eeShowBanners = false;
+  public remainingFilters:QueryFilterResource[] = [];
 
   public focusElementIndex = 0;
 
-  public trackByName = trackByName;
+  public baselineIncompatibleFilters:string[] = [];
 
   public text = {
     open_filter: this.I18n.t('js.filter.description.text_open_filter'),
     label_filter_add: this.I18n.t('js.work_packages.label_filter_add'),
     close_filter: this.I18n.t('js.filter.description.text_close_filter'),
-    upsale_for_more: this.I18n.t('js.filter.upsale_for_more'),
-    upsale_link: this.I18n.t('js.filter.upsale_link'),
     close_form: this.I18n.t('js.close_form_title'),
     selected_filter_list: this.I18n.t('js.label_selected_filter_list'),
     button_delete: this.I18n.t('js.button_delete'),
     please_select: this.I18n.t('js.placeholders.selection'),
     filter_by_text: this.I18n.t('js.work_packages.label_filter_by_text'),
+    search_by_meaning: this.I18n.t('js.global_search.search_by_meaning'),
+    baseline_warning: this.I18n.t('js.work_packages.filters.baseline_warning'),
   };
 
-  constructor(readonly wpTableFilters:WorkPackageViewFiltersService,
-    readonly wpFiltersService:WorkPackageFiltersService,
-    readonly I18n:I18nService,
-    readonly bannerService:BannersService) {
-    super();
+  public get filterByTextLabel():string {
+    return this.wpTableFilters.semanticSearchEnabled
+      ? this.text.search_by_meaning
+      : this.text.filter_by_text;
   }
 
-  ngOnInit() {
-    this.eeShowBanners = this.bannerService.eeShowBanners;
+  ngOnInit():void {
+    this.wpTableFilters.live$()
+      .pipe(
+        combineLatestWith(this.wpTableBaseline.live$()),
+        this.untilDestroyed(),
+      )
+      .subscribe(([filters]) => {
+        if (this.wpTableBaseline.isActive()) {
+          this.baselineIncompatibleFilters = this.wpTableBaseline.detectIncompatibleFilters(filters);
+        } else {
+          this.baselineIncompatibleFilters = [];
+        }
+        this.cdRef.detectChanges();
+      });
   }
 
   ngOnChanges() {
@@ -113,7 +133,7 @@ export class QueryFiltersComponent extends UntilDestroyedMixin implements OnInit
 
   public deactivateFilter(removedFilter:QueryFilterInstanceResource) {
     const index = this.filters.indexOf(removedFilter);
-    _.remove(this.filters, (f) => f.id === removedFilter.id);
+    this.filters.splice(index, 1);
 
     this.filtersChanged.emit(this.filters);
 
@@ -122,14 +142,14 @@ export class QueryFiltersComponent extends UntilDestroyedMixin implements OnInit
   }
 
   public get isSecondSpacerVisible():boolean {
-    const hasSearch = !!_.find(this.filters, (f) => f.id === 'search');
-    const hasAvailableFilter = !!this.filters.find((f) => f.id !== 'search' && this.isFilterAvailable(f));
+    const hasSearch = this.filters.some((f) => f.id === 'search');
+    const hasAvailableFilter = this.filters.some((f) => f.id !== 'search' && this.isFilterAvailable(f));
 
     return hasSearch && hasAvailableFilter;
   }
 
   private updateRemainingFilters() {
-    this.remainingFilters = _.sortBy(this.wpTableFilters.remainingVisibleFilters(this.filters), 'name');
+    this.remainingFilters = sortBy(this.wpTableFilters.remainingVisibleFilters(this.filters), 'name');
   }
 
   private updateFilterFocus(index:number) {
@@ -152,17 +172,16 @@ export class QueryFiltersComponent extends UntilDestroyedMixin implements OnInit
     return this.filters[index];
   }
 
-  public isFilterAvailable(filter:QueryFilterResource):boolean {
+  public isFilterAvailable(filter:QueryFilterInstanceResource):boolean {
     return (this.wpTableFilters.availableFilters.some((availableFilter) => availableFilter.id === filter.id)
-     && !(this.wpTableFilters.hidden.includes(filter.id) || filter.isTemplated()));
+      && !(this.wpTableFilters.hidden.includes(filter.id) || filter.isTemplated()));
   }
 
   public onOpen() {
-    setTimeout(() => {
-      const component = this.ngSelectComponent as any;
-      if (component && component.dropdownPanel) {
-        component.dropdownPanel._updatePosition();
-      }
-    }, 25);
+    repositionDropdownBugfix(this.ngSelectComponent);
   }
+
+  searchFunction = (term:string, currentItem:QueryFilterResource):boolean => {
+    return this.alternativeSearchService.searchFunction(term, currentItem);
+  };
 }

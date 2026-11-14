@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +20,44 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { OpContextMenuItem } from 'core-app/shared/components/op-context-menu/op-context-menu.types';
-import { StateService } from '@uirouter/core';
-import { OPContextMenuService } from 'core-app/shared/components/op-context-menu/op-context-menu.service';
-import { Directive, ElementRef, Input } from '@angular/core';
+import { Directive, Input, AfterViewInit, inject } from '@angular/core';
 import { isClickedWithModifier } from 'core-app/shared/helpers/link-handling/link-handling';
 import { OpContextMenuTrigger } from 'core-app/shared/components/op-context-menu/handlers/op-context-menu-trigger.directive';
-import { BrowserDetector } from 'core-app/core/browser/browser-detector.service';
 import { WorkPackageCreateService } from 'core-app/features/work-packages/components/wp-new/wp-create.service';
 import { Highlighting } from 'core-app/features/work-packages/components/wp-fast-table/builders/highlighting/highlighting.functions';
 import { TypeResource } from 'core-app/features/hal/resources/type-resource';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { extendSearchParams } from 'core-stimulus/helpers/url-helpers';
+import { BrowserDetector } from 'core-app/core/browser/browser-detector.service';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
 
 @Directive({
   selector: '[opTypesCreateDropdown]',
+  standalone: false,
 })
-export class OpTypesContextMenuDirective extends OpContextMenuTrigger {
-  @Input('projectIdentifier') public projectIdentifier:string|null|undefined;
+export class OpTypesContextMenuDirective extends OpContextMenuTrigger implements AfterViewInit {
+  readonly wpCreate = inject(WorkPackageCreateService);
+  readonly pathHelper = inject(PathHelperService);
+  readonly currentProject = inject(CurrentProjectService);
+  readonly browser = inject(BrowserDetector);
+  readonly urlParams = inject(UrlParamsService);
 
-  @Input('stateName') public stateName:string;
+  @Input() public projectIdentifier:string|null|undefined;
 
+  // eslint-disable-next-line @angular-eslint/no-input-rename
   @Input('dropdownActive') active:boolean;
 
-  constructor(readonly elementRef:ElementRef,
-    readonly opContextMenu:OPContextMenuService,
-    readonly browserDetector:BrowserDetector,
-    readonly wpCreate:WorkPackageCreateService,
-    readonly $state:StateService) {
-    super(elementRef, opContextMenu);
-  }
+  /** Whether this dropdown is mounted on the full work package view rather than a list toolbar. */
+  @Input() fullView = false;
+
+  public isOpen = false;
 
   ngAfterViewInit():void {
     super.ngAfterViewInit();
@@ -61,21 +65,26 @@ export class OpTypesContextMenuDirective extends OpContextMenuTrigger {
     if (!this.active) {
       return;
     }
+  }
 
-    // Force full-view create if in mobile view
-    if (this.browserDetector.isMobile) {
-      this.stateName = 'work-packages.new';
+  protected open(evt:Event) {
+    this.isOpen = !this.isOpen;
+    if (this.isOpen) {
+      void this
+        .wpCreate
+        .getEmptyForm(this.projectIdentifier)
+        .then((form) => {
+          this.buildItems(form.schema.type!.allowedValues as TypeResource[]);
+          this.opContextMenu.show(this, evt);
+        });
+    } else {
+      this.opContextMenu.close();
     }
   }
 
-  protected open(evt:JQuery.TriggeredEvent) {
-    this
-      .wpCreate
-      .getEmptyForm(this.projectIdentifier)
-      .then((form) => {
-        this.buildItems(form.schema.type.allowedValues);
-        this.opContextMenu.show(this, evt);
-      });
+  onClose(focus = false) {
+    this.isOpen = false;
+    super.onClose(focus);
   }
 
   public get locals():{ showAnchorRight?:boolean, contextMenuId?:string, items:OpContextMenuItem[] } {
@@ -89,17 +98,49 @@ export class OpTypesContextMenuDirective extends OpContextMenuTrigger {
     this.items = types.map((type:TypeResource) => ({
       disabled: false,
       linkText: type.name,
-      href: this.$state.href(this.stateName, { type: type.id! }),
+      href: this.buildHref(type),
       ariaLabel: type.name,
-      class: Highlighting.inlineClass('type', type.id!),
-      onClick: ($event:JQuery.TriggeredEvent) => {
-        if (isClickedWithModifier($event)) {
-          return false;
-        }
-
-        this.$state.go(this.stateName, { type: type.id });
-        return true;
-      },
+      class: Highlighting.typeClass(type.id!),
+      onClick: (event:MouseEvent) => this.handleClick(event, type),
     }));
+  }
+
+  /**
+   * `fullView` distinguishes this dropdown being mounted on the full work package
+   * view (opens another full "new work package" page) from a list toolbar (opens
+   * the create form inline via splitCreatePath).
+   */
+  private buildHref(type:TypeResource):string {
+    if (this.fullView) {
+      const newPath = this.currentProject.identifier
+        ? this.pathHelper.projectWorkPackageNewPath(this.currentProject.identifier)
+        : this.pathHelper.workPackageNewPath();
+      return extendSearchParams(newPath, { type: type.id! });
+    }
+
+    return extendSearchParams(this.urlParams.splitCreatePath(), { type: type.id! });
+  }
+
+  private handleClick(event:MouseEvent, type:TypeResource):boolean {
+    if (this.browser.isMobile) {
+      window.location.href = extendSearchParams(
+        this.pathHelper.projectWorkPackageNewPath(this.currentProject.id!),
+        { type: type.id! },
+      );
+      return true;
+    }
+
+    this.isOpen = false;
+    if (isClickedWithModifier(event)) {
+      return false;
+    }
+
+    if (this.fullView) {
+      Turbo.visit(this.buildHref(type), { action: 'advance' });
+    } else {
+      Turbo.visit(this.buildHref(type), { frame: 'content-bodyRight', action: 'advance' });
+    }
+
+    return true;
   }
 }

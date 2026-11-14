@@ -1,9 +1,37 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { tdClassName } from 'core-app/features/work-packages/components/wp-fast-table/builders/cell-builder';
 import { Injector } from '@angular/core';
 import { TableDragActionsRegistryService } from 'core-app/features/work-packages/components/wp-table/drag-and-drop/actions/table-drag-actions-registry.service';
 import { TableDragActionService } from 'core-app/features/work-packages/components/wp-table/drag-and-drop/actions/table-drag-action.service';
 import { internalSortColumn } from 'core-app/features/work-packages/components/wp-fast-table/builders/internal-sort-columns';
+import { grabberIconData, toDOMString } from '@openproject/octicons-angular';
 
 /** Debug the render position */
 const RENDER_DRAG_AND_DROP_POSITION = false;
@@ -32,10 +60,11 @@ export class DragDropHandleBuilder {
 
     td.classList.add('wp-table--sort-td', internalSortColumn.id, 'hide-when-print');
 
-    // Wrap handle as span
-    const span = document.createElement('span');
-    span.classList.add('wp-table--drag-and-drop-handle', 'icon-drag-handle');
-    td.appendChild(span);
+    const handle = document.createElement('span');
+    handle.classList.add('wp-table--drag-and-drop-handle', 'DragHandle');
+    handle.setAttribute('aria-hidden', 'true');
+    handle.innerHTML = toDOMString(grabberIconData, 'small', { class: 'octicon' });
+    td.appendChild(handle);
 
     if (RENDER_DRAG_AND_DROP_POSITION) {
       const text = document.createElement('span');

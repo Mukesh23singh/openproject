@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,25 +20,24 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
-#++require 'rspec'
+#++
 
-require 'spec_helper'
-require Rails.root + 'spec/lib/api/v3/work_packages/eager_loading/eager_loading_mock_wrapper'
+require "spec_helper"
+require Rails.root + "spec/lib/api/v3/work_packages/eager_loading/eager_loading_mock_wrapper"
 
-describe ::API::V3::WorkPackages::EagerLoading::Checksum do
+RSpec.describe API::V3::WorkPackages::EagerLoading::Checksum do
   let!(:bcf_issue) do
-    FactoryBot.create(:bcf_issue,
-                      work_package: work_package)
+    create(:bcf_issue,
+           work_package:)
   end
   let!(:work_package) do
-    FactoryBot.create(:work_package)
+    create(:work_package)
   end
 
-  describe '.apply' do
+  describe ".apply" do
     let!(:orig_checksum) do
       EagerLoadingMockWrapper
         .wrap(described_class, [work_package])
@@ -55,16 +52,16 @@ describe ::API::V3::WorkPackages::EagerLoading::Checksum do
         .cache_checksum
     end
 
-    it 'produces a different checksum on changes to the bcf issue id' do
+    it "produces a different checksum on changes to the bcf issue id" do
       bcf_issue.delete
-      FactoryBot.create(:bcf_issue,
-                        work_package: work_package)
+      create(:bcf_issue,
+             work_package:)
 
       expect(new_checksum)
         .not_to eql orig_checksum
     end
 
-    it 'produces a different checksum on changes to the bcf issue' do
+    it "produces a different checksum on changes to the bcf issue" do
       bcf_issue.update_column(:updated_at, Time.now + 10.seconds)
 
       expect(new_checksum)

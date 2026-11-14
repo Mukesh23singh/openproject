@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,7 +34,7 @@ module API
 
           resources :projects do
             route_param :id do
-              namespace 'bcf_xml' do
+              namespace "bcf_xml" do
                 helpers do
                   # Global helper to set allowed content_types
                   # This may be overridden when multipart is allowed (file uploads)
@@ -48,7 +47,7 @@ module API
                   end
 
                   def post_request?
-                    request.env['REQUEST_METHOD'] == 'POST'
+                    request.env["REQUEST_METHOD"] == "POST"
                   end
 
                   def import_options
@@ -63,23 +62,23 @@ module API
                 get do
                   project = find_project
 
-                  authorize(:view_linked_issues, context: project) do
+                  authorize_in_project(:view_linked_issues, project:) do
                     raise API::Errors::NotFound.new
                   end
 
-                  query = Query.new_default(name: '_', project: project)
+                  query = Query.new_default(project:)
                   updated_query = ::API::V3::UpdateQueryFromV3ParamsService.new(query, User.current).call(params)
 
                   exporter = ::OpenProject::Bim::BcfXml::Exporter.new(updated_query.result)
-                  header['Content-Disposition'] = "attachment; filename=\"#{exporter.bcf_filename}\""
-                  env['api.format'] = :binary
+                  header["Content-Disposition"] = "attachment; filename=\"#{exporter.bcf_filename}\""
+                  env["api.format"] = :binary
                   exporter.export!.content.read
                 end
 
                 post do
                   project = find_project
 
-                  authorize(:manage_bcf, context: project) do
+                  authorize_in_project(:manage_bcf, project:) do
                     raise API::Errors::NotFound.new
                   end
 
@@ -90,7 +89,7 @@ module API
                                                                         current_user: User.current)
 
                     unless importer.bcf_version_valid?
-                      error_message = I18n.t('bcf.bcf_xml.import_failed_unsupported_bcf_version',
+                      error_message = I18n.t("bcf.bcf_xml.import_failed_unsupported_bcf_version",
                                              minimal_version: OpenProject::Bim::BcfXml::Importer::MINIMUM_BCF_VERSION)
 
                       raise API::Errors::UnsupportedMediaType.new(error_message)
@@ -100,7 +99,7 @@ module API
                   rescue API::Errors::UnsupportedMediaType => e
                     raise e
                   rescue StandardError => e
-                    raise API::Errors::InternalError.new(e.message)
+                    raise API::Errors::InternalError.new(e.message, exception: e)
                   ensure
                     file.delete
                   end

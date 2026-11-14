@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-env = ENV['RAILS_ENV'] || 'production'
+env = ENV["RAILS_ENV"] || "production"
 
 if (db_config = ActiveRecord::Base.configurations.configs_for(env_name: env)[0]) &&
-   db_config.configuration_hash['adapter']&.start_with?('mysql')
-  warn <<~ERROR
+   db_config.configuration_hash["adapter"]&.start_with?("mysql")
+  abort <<~ERROR
     ======= INCOMPATIBLE DATABASE DETECTED =======
     Your database is set up for use with a MySQL or MySQL-compatible variant.
     This installation of OpenProject no longer supports these variants.
@@ -45,8 +46,4 @@ if (db_config = ActiveRecord::Base.configurations.configs_for(env_name: env)[0])
 
     ==============================================
   ERROR
-
-  # rubocop:disable Rails:Exit
-  Kernel.exit 1
-  # rubocop:enable Rails:Exit
 end

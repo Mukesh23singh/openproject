@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,446 +22,808 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Projects::ProjectRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Projects::ProjectRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
   subject(:generated) { representer.to_json }
 
+  let(:available_custom_fields) { [int_custom_field, version_custom_field] }
+  let(:all_available_custom_fields) { [int_custom_field, version_custom_field] }
+  let(:favorited) { true }
   let(:project) do
-    FactoryBot.build_stubbed(:project,
-                             parent: parent_project,
-                             description: 'some description',
-                             status: status).tap do |p|
-      allow(p)
-        .to receive(:available_custom_fields)
-        .and_return([int_custom_field, version_custom_field])
+    build_stubbed(:project,
+                  :with_status,
+                  parent: parent_workspace,
+                  description: "some description").tap do |p|
+      allow(p).to receive_messages(available_custom_fields:,
+                                   all_available_custom_fields:,
+                                   ancestors_from_root: ancestors)
 
-      allow(p)
-        .to receive(:"custom_field_#{int_custom_field.id}")
-        .and_return(int_custom_value.value)
-
-      allow(p)
-        .to receive(:custom_value_for)
-        .with(version_custom_field)
-        .and_return(version_custom_value)
-    end
-  end
-  let(:status) do
-    FactoryBot.build_stubbed(:project_status)
-  end
-  let(:parent_project) { FactoryBot.build_stubbed(:project) }
-  let(:representer) { described_class.create(project, current_user: user, embed_links: true) }
-
-  let(:user) do
-    FactoryBot.build_stubbed(:user).tap do |u|
-      allow(u)
-        .to receive(:allowed_to?) do |permission, context|
-        permissions.include?(permission) && context == project
+      if available_custom_fields.include?(int_custom_field)
+        allow(p)
+          .to receive(int_custom_field.attribute_getter)
+                .and_return(int_custom_value.value)
       end
+
+      if available_custom_fields.include?(version_custom_field)
+        allow(p)
+          .to receive(:custom_value_for)
+                .with(version_custom_field)
+                .and_return(version_custom_value)
+      end
+
+      if available_custom_fields.include?(calculated_value_custom_field)
+        allow(p)
+          .to receive(calculated_value_custom_field.attribute_getter)
+                .and_return(calculated_custom_value.value)
+      end
+
+      allow(p)
+        .to receive(:favorited_by?)
+              .and_return(favorited)
     end
   end
 
-  let(:int_custom_field) { FactoryBot.build_stubbed(:int_project_custom_field, visible: false) }
-  let(:version_custom_field) { FactoryBot.build_stubbed(:version_project_custom_field, visible: true) }
+  let(:int_custom_field) { build_stubbed(:integer_project_custom_field, admin_only: true) }
+  let(:version_custom_field) { build_stubbed(:version_project_custom_field, admin_only: false) }
   let(:int_custom_value) do
     CustomValue.new(custom_field: int_custom_field,
-                    value: '1234',
+                    value: "1234",
                     customized: nil)
   end
-  let(:version) { FactoryBot.build_stubbed(:version) }
+  let(:version) { build_stubbed(:version) }
   let(:version_custom_value) do
     CustomValue.new(custom_field: version_custom_field,
                     value: version.id,
                     customized: nil).tap do |cv|
-                      allow(cv)
-                        .to receive(:typed_value)
-                        .and_return(version)
-                    end
+      allow(cv)
+        .to receive(:typed_value)
+              .and_return(version)
+    end
+  end
+  let(:calculated_value_custom_field) do
+    build_stubbed(:calculated_value_project_custom_field, :skip_validations, admin_only: false, formula: "21 + 3")
+  end
+  let(:calculated_custom_value) do
+    build(:custom_value, custom_field: calculated_value_custom_field, value: "24.0")
+  end
+  let(:permissions) { %i[view_project add_work_packages view_members] }
+  let(:parent_workspace) do
+    build_stubbed(:project).tap do |parent|
+      allow(parent)
+        .to receive(:visible?)
+              .and_return(parent_visible)
+    end
+  end
+  let(:embed_links) { true }
+  let(:representer) { described_class.create(project, current_user:, embed_links:) }
+  let(:parent_visible) { true }
+  let(:ancestors) { [parent_workspace] }
+
+  let(:current_user) { build_stubbed(:user) }
+
+  before do
+    mock_permissions_for(current_user) do |mock|
+      mock.allow_in_project *permissions, project:
+    end
   end
 
-  let(:permissions) { %i[add_work_packages view_members] }
+  it "fulfills the documented schema" do
+    expect(generated).to match_json_schema.from_docs("project_model")
+  end
 
-  it { is_expected.to include_json('Project'.to_json).at_path('_type') }
+  it { is_expected.to include_json("Project".to_json).at_path("_type") }
 
-  describe 'properties' do
-    it_behaves_like 'property', :_type do
-      let(:value) { 'Project' }
+  describe "properties" do
+    describe "_type" do
+      context "for a project" do
+        it_behaves_like "property", :_type do
+          let(:value) { "Project" }
+        end
+      end
+
+      context "for a portfolio" do
+        let(:project) { build_stubbed(:portfolio) }
+
+        it "fulfills the documented schema" do
+          expect(generated).to match_json_schema.from_docs("portfolio_model")
+        end
+
+        it_behaves_like "property", :_type do
+          let(:value) { "Portfolio" }
+        end
+      end
+
+      context "for a program" do
+        let(:project) { build_stubbed(:program) }
+
+        it "fulfills the documented schema" do
+          expect(generated).to match_json_schema.from_docs("program_model")
+        end
+
+        it_behaves_like "property", :_type do
+          let(:value) { "Program" }
+        end
+      end
     end
 
-    it_behaves_like 'property', :id do
+    it_behaves_like "property", :id do
       let(:value) { project.id }
     end
 
-    it_behaves_like 'property', :identifier do
+    it_behaves_like "property", :identifier do
       let(:value) { project.identifier }
     end
 
-    it_behaves_like 'property', :name do
+    it_behaves_like "property", :name do
       let(:value) { project.name }
     end
 
-    it_behaves_like 'property', :active do
+    it_behaves_like "property", :active do
       let(:value) { project.active }
     end
 
-    it_behaves_like 'property', :public do
+    it_behaves_like "property", :public do
       let(:value) { project.public }
     end
 
-    it_behaves_like 'formattable property', :description do
+    describe "favorited" do
+      it_behaves_like "property", :favorited do
+        let(:value) { true }
+      end
+
+      it "is not cached" do
+        representer.to_json
+
+        allow(project)
+          .to receive(:favorited_by?)
+                .and_return(!favorited)
+
+        expect(representer.to_json)
+          .to be_json_eql((!favorited).to_json)
+                .at_path("favorited")
+      end
+    end
+
+    it_behaves_like "formattable property", :description do
       let(:value) { project.description }
     end
 
-    context 'statusExplanation' do
-      it_behaves_like 'formattable property', 'statusExplanation' do
-        let(:value) { status.explanation }
-      end
+    it_behaves_like "formattable property", "statusExplanation" do
+      let(:value) { project.status_explanation }
     end
 
-    it_behaves_like 'has UTC ISO 8601 date and time' do
+    it_behaves_like "has UTC ISO 8601 date and time" do
       let(:date) { project.created_at }
-      let(:json_path) { 'createdAt' }
+      let(:json_path) { "createdAt" }
     end
 
-    it_behaves_like 'has UTC ISO 8601 date and time' do
+    it_behaves_like "has UTC ISO 8601 date and time" do
       let(:date) { project.updated_at }
-      let(:json_path) { 'updatedAt' }
+      let(:json_path) { "updatedAt" }
     end
 
-    context 'int custom field' do
-      context 'if the user is admin' do
+    context "when the user does not have the view_project permission" do
+      let(:permissions) { [] }
+
+      it_behaves_like "no property", "statusExplanation"
+      it_behaves_like "no property", :description
+    end
+
+    describe "int custom field" do
+      context "if the user is admin" do
         before do
-          allow(user)
+          allow(current_user)
             .to receive(:admin?)
-            .and_return(true)
+                  .and_return(true)
         end
 
         it "has a property for the int custom field" do
-          is_expected
-            .to be_json_eql(int_custom_value.value.to_json)
-            .at_path("customField#{int_custom_field.id}")
+          expect(subject).to be_json_eql(int_custom_value.value.to_json)
+                               .at_path("customField#{int_custom_field.id}")
         end
       end
 
-      context 'if the user is no admin' do
+      context "if the user is no admin" do
         it "has no property for the int custom field" do
-          is_expected
-            .not_to have_json_path("customField#{int_custom_field.id}")
+          expect(subject).not_to have_json_path("customField#{int_custom_field.id}")
+        end
+      end
+
+      context "if the user is no admin and the field is visible" do
+        before do
+          int_custom_field.admin_only = false
+        end
+
+        it "has a property for the int custom field" do
+          expect(subject).to be_json_eql(int_custom_value.value.to_json)
+                               .at_path("customField#{int_custom_field.id}")
+        end
+      end
+
+      context "if the user lacks the :view_project permission" do
+        let(:permissions) { [] }
+
+        before do
+          int_custom_field.admin_only = false
+        end
+
+        it "has no property for the int custom field" do
+          expect(subject).not_to have_json_path("customField#{int_custom_field.id}")
+        end
+      end
+    end
+
+    describe "calculated value custom field" do
+      let(:available_custom_fields) { [calculated_value_custom_field] }
+      let(:all_available_custom_fields) { [calculated_value_custom_field] }
+      let(:cf_path) { "customField#{calculated_value_custom_field.id}" }
+
+      it "has a property for the calculated value custom field" do
+        expect(subject).to be_json_eql(calculated_custom_value.value.to_json)
+                             .at_path(cf_path)
+      end
+
+      context "when there is a calculation error" do
+        let(:cf_path) { "customField#{calculated_value_custom_field.id}Errors" }
+
+        let!(:calculated_value_error) do
+          build_stubbed(:calculated_value_error, custom_field: calculated_value_custom_field, customized: project)
+        end
+
+        before do
+          value_errors_double = instance_double(ActiveRecord::Relation)
+          allow(value_errors_double).to receive(:where)
+                                          .with(custom_field: calculated_value_custom_field)
+                                          .and_return([calculated_value_error])
+
+          allow(project).to receive(:calculated_value_errors)
+                                                    .and_return(value_errors_double)
+        end
+
+        it "has a property for calculation errors" do
+          expect(subject).to be_json_eql([
+            {
+              code: "ERROR_MATHEMATICAL",
+              message: I18n.t("calculated_values.errors.mathematical")
+            }
+          ].to_json).at_path(cf_path)
         end
       end
     end
   end
 
-  describe '_links' do
-    it { is_expected.to have_json_type(Object).at_path('_links') }
+  describe "_links" do
+    it { is_expected.to have_json_type(Object).at_path("_links") }
 
-    it 'links to self' do
-      expect(subject).to have_json_path('_links/self/href')
-    end
-    it 'has a title for link to self' do
-      expect(subject).to have_json_path('_links/self/title')
-    end
-
-    describe 'create work packages' do
-      context 'user allowed to create work packages' do
-        it 'has the correct path for a create form' do
-          is_expected
-            .to be_json_eql(api_v3_paths.create_project_work_package_form(project.id).to_json)
-            .at_path('_links/createWorkPackage/href')
-        end
-
-        it 'has the correct path to create a work package' do
-          is_expected.to be_json_eql(api_v3_paths.work_packages_by_project(project.id).to_json)
-            .at_path('_links/createWorkPackageImmediately/href')
+    describe "self" do
+      context "for a project" do
+        it_behaves_like "has a titled link" do
+          let(:link) { "self" }
+          let(:href) { api_v3_paths.project(project.id) }
+          let(:title) { project.name }
         end
       end
 
-      context 'user not allowed to create work packages' do
+      context "for a portfolio" do
+        let(:project) { build_stubbed(:portfolio) }
+
+        it_behaves_like "has a titled link" do
+          let(:link) { "self" }
+          let(:href) { api_v3_paths.portfolio(project.id) }
+          let(:title) { project.name }
+        end
+      end
+
+      context "for a program" do
+        let(:project) { build_stubbed(:program) }
+
+        it_behaves_like "has a titled link" do
+          let(:link) { "self" }
+          let(:href) { api_v3_paths.program(project.id) }
+          let(:title) { project.name }
+        end
+      end
+    end
+
+    describe "create work packages" do
+      context "if user is allowed to create work packages" do
+        it "has the correct path for a create form" do
+          expect(subject).to be_json_eql(api_v3_paths.create_workspace_work_package_form(project.id).to_json)
+                               .at_path("_links/createWorkPackage/href")
+        end
+
+        it "has the correct path to create a work package" do
+          expect(subject).to be_json_eql(api_v3_paths.work_packages_by_workspace(project.id).to_json)
+                               .at_path("_links/createWorkPackageImmediately/href")
+        end
+      end
+
+      context "if user is not allowed to create work packages" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'createWorkPackage' }
+        it_behaves_like "has no link" do
+          let(:link) { "createWorkPackage" }
         end
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'createWorkPackageImmediately' }
+        it_behaves_like "has no link" do
+          let(:link) { "createWorkPackageImmediately" }
         end
       end
     end
 
-    describe 'parent' do
-      before do
-        allow(parent_project)
-          .to receive(:visible?)
-          .and_return(visible)
+    describe "parent" do
+      it_behaves_like "has workspace linked", :parent_workspace do
+        let(:link) { :parent }
       end
-      let(:visible) { true }
+    end
 
-      it_behaves_like 'has a titled link' do
-        let(:link) { 'parent' }
-        let(:href) { api_v3_paths.project(parent_project.id) }
-        let(:title) { parent_project.name }
+    describe "ancestors" do
+      let(:link) { "ancestors" }
+      let(:grandparent_program) do
+        build_stubbed(:program).tap do |p|
+          allow(p)
+            .to receive(:visible?)
+                  .and_return(true)
+        end
       end
+      let(:root_portfolio) do
+        build_stubbed(:portfolio).tap do |p|
+          allow(p)
+            .to receive(:visible?)
+                  .and_return(true)
+        end
+      end
+      let(:ancestors) { [root_portfolio, grandparent_program, parent_workspace] }
 
-      context 'if lacking the permissions to see the parent' do
-        let(:visible) { false }
-
-        it_behaves_like 'has a titled link' do
-          let(:link) { 'parent' }
-          let(:href) { API::V3::URN_UNDISCLOSED }
-          let(:title) { I18n.t(:'api_v3.undisclosed.parent') }
+      it_behaves_like "has a link collection" do
+        let(:hrefs) do
+          [
+            {
+              href: api_v3_paths.portfolio(root_portfolio.id),
+              title: root_portfolio.name
+            },
+            {
+              href: api_v3_paths.program(grandparent_program.id),
+              title: grandparent_program.name
+            },
+            {
+              href: api_v3_paths.project(parent_workspace.id),
+              title: parent_workspace.name
+            }
+          ]
         end
       end
 
-      context 'without a parent' do
-        let(:parent_project) { nil }
+      context "if lacking the permissions to see the parent but being allowed to see the other ancestors" do
+        let(:parent_visible) { false }
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'parent' }
+        it_behaves_like "has a link collection" do
+          let(:hrefs) do
+            [
+              {
+                href: api_v3_paths.portfolio(root_portfolio.id),
+                title: root_portfolio.name
+              },
+              {
+                href: api_v3_paths.program(grandparent_program.id),
+                title: grandparent_program.name
+              },
+              {
+                href: API::V3::URN_UNDISCLOSED,
+                title: I18n.t(:"api_v3.undisclosed.ancestor")
+              }
+            ]
+          end
+        end
+      end
+
+      context "if lacking the permissions to see the parent but being an admin (archived project)" do
+        let(:parent_visible) { false }
+
+        before do
+          allow(current_user)
+            .to receive(:admin?)
+                  .and_return(true)
+        end
+
+        it_behaves_like "has a link collection" do
+          let(:hrefs) do
+            [
+              {
+                href: api_v3_paths.portfolio(root_portfolio.id),
+                title: root_portfolio.name
+              },
+              {
+                href: api_v3_paths.program(grandparent_program.id),
+                title: grandparent_program.name
+              },
+              {
+                href: api_v3_paths.project(parent_workspace.id),
+                title: parent_workspace.name
+              }
+            ]
+          end
+        end
+      end
+
+      context "without an ancestor" do
+        let(:parent_workspace) { nil }
+        let(:ancestors) { [] }
+
+        it_behaves_like "has an empty link collection"
+      end
+    end
+
+    describe "status" do
+      it_behaves_like "has a titled link" do
+        let(:link) { "status" }
+        let(:status_code) { project.status_code }
+        let(:href) { api_v3_paths.project_status(status_code) }
+        let(:title) { I18n.t(:"activerecord.attributes.project.status_codes.#{status_code}") }
+      end
+
+      context "if the status_code is nil" do
+        before { project.status_code = nil }
+
+        it_behaves_like "has an untitled link" do
+          let(:link) { "status" }
           let(:href) { nil }
         end
       end
-    end
 
-    context 'status' do
-      it_behaves_like 'has a titled link' do
-        let(:link) { 'status' }
-        let(:href) { api_v3_paths.project_status(project.status.code) }
-        let(:title) { I18n.t(:"activerecord.attributes.projects/status.codes.#{project.status.code}") }
-      end
+      context "if the user does not have the view_project permission" do
+        let(:permissions) { [] }
 
-      context 'if the status is nil' do
-        let(:status) { nil }
-
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'status' }
-          let(:href) { nil }
+        it_behaves_like "has no link" do
+          let(:link) { "status" }
         end
       end
     end
 
-    describe 'categories' do
-      it 'has the correct link to its categories' do
-        is_expected.to be_json_eql(api_v3_paths.categories_by_project(project.id).to_json)
-          .at_path('_links/categories/href')
+    describe "categories" do
+      it "has the correct link to its categories" do
+        expect(subject).to be_json_eql(api_v3_paths.categories_by_workspace(project.id).to_json)
+                             .at_path("_links/categories/href")
       end
     end
 
-    describe 'versions' do
-      context 'with only manage_versions permission' do
+    describe "versions" do
+      context "with only manage_versions permission" do
         let(:permissions) { [:manage_versions] }
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'versions' }
-          let(:href) { api_v3_paths.versions_by_project(project.id) }
+        it_behaves_like "has an untitled link" do
+          let(:link) { "versions" }
+          let(:href) { api_v3_paths.versions_by_workspace(project.id) }
         end
       end
 
-      context 'with only view_work_packages permission' do
+      context "with only view_work_packages permission" do
         let(:permissions) { [:view_work_packages] }
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'versions' }
-          let(:href) { api_v3_paths.versions_by_project(project.id) }
+        it_behaves_like "has an untitled link" do
+          let(:link) { "versions" }
+          let(:href) { api_v3_paths.versions_by_workspace(project.id) }
         end
       end
 
-      context 'without both permissions' do
+      context "without both permissions" do
         let(:permissions) { [:add_work_packages] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'versions' }
+        it_behaves_like "has no link" do
+          let(:link) { "versions" }
         end
       end
     end
 
-    describe 'types' do
-      context 'for a user having the view_work_packages permission' do
+    describe "types" do
+      context "for a user having the view_work_packages permission" do
         let(:permissions) { [:view_work_packages] }
 
-        it 'links to the types active in the project' do
-          is_expected.to be_json_eql(api_v3_paths.types_by_project(project.id).to_json)
-            .at_path('_links/types/href')
-        end
-
-        it 'links to the work packages in the project' do
-          is_expected.to be_json_eql(api_v3_paths.work_packages_by_project(project.id).to_json)
-                           .at_path('_links/workPackages/href')
+        it_behaves_like "has an untitled link" do
+          let(:link) { "types" }
+          let(:href) { api_v3_paths.types_by_workspace(project.id) }
         end
       end
 
-      context 'for a user having the manage_types permission' do
+      context "for a user having the manage_types permission" do
         let(:permissions) { [:manage_types] }
 
-        it 'links to the types active in the project' do
-          is_expected.to be_json_eql(api_v3_paths.types_by_project(project.id).to_json)
-                           .at_path('_links/types/href')
+        it_behaves_like "has an untitled link" do
+          let(:link) { "types" }
+          let(:href) { api_v3_paths.types_by_workspace(project.id) }
         end
       end
 
-      context 'for a user not having the necessary permissions' do
+      context "for a user not having the necessary permissions" do
         let(:permission) { [] }
 
-        it 'has no types link' do
-          is_expected.to_not have_json_path('_links/types/href')
-        end
-
-        it 'has no work packages link' do
-          is_expected.to_not have_json_path('_links/workPackages/href')
+        it_behaves_like "has no link" do
+          let(:link) { "types" }
         end
       end
     end
 
-    describe 'memberships' do
-      it_behaves_like 'has an untitled link' do
-        let(:link) { 'memberships' }
+    describe "memberships" do
+      it_behaves_like "has an untitled link" do
+        let(:link) { "memberships" }
         let(:href) { api_v3_paths.path_for(:memberships, filters: [{ project: { operator: "=", values: [project.id.to_s] } }]) }
       end
 
-      context 'without the view_members permission' do
+      context "without the view_members permission" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'memberships' }
+        it_behaves_like "has no link" do
+          let(:link) { "memberships" }
         end
       end
     end
 
-    context 'link custom field' do
-      context 'if the user is admin and the field is invisible' do
+    describe "schema" do
+      it_behaves_like "has an untitled link" do
+        let(:link) { "schema" }
+        let(:href) { api_v3_paths.workspace_schema }
+      end
+    end
+
+    describe "favor" do
+      context "when the project isn't favored yet" do
+        let(:favorited) { false }
+        let(:link) { "favor" }
+
+        it_behaves_like "has an untitled link" do
+          let(:href) { api_v3_paths.favor_workspace(project.id) }
+        end
+
+        it_behaves_like "the link indicates the verb" do
+          let(:verb) { :post }
+        end
+      end
+
+      context "when the project is favorited" do
+        let(:favorited) { true }
+
+        it_behaves_like "has no link" do
+          let(:link) { "favor" }
+        end
+      end
+
+      context "when the project isn't favored yet and the user is not logged in" do
+        let(:current_user) { build_stubbed(:anonymous) }
+        let(:favorited) { false }
+
+        it_behaves_like "has no link" do
+          let(:link) { "favor" }
+        end
+      end
+    end
+
+    describe "storages" do
+      let(:storage) { build_stubbed(:nextcloud_storage) }
+      let(:permissions) { %i[view_file_links] }
+
+      before do
+        allow(project).to receive(:storages).and_return([storage])
+      end
+
+      it_behaves_like "has a link collection" do
+        let(:link) { "storages" }
+        let(:hrefs) do
+          [
+            {
+              href: api_v3_paths.storage(storage.id),
+              title: storage.name
+            }
+          ]
+        end
+      end
+
+      context "if user has no permission to view file links" do
+        let(:permissions) { [] }
+
+        it_behaves_like "has no link" do
+          let(:link) { "storages" }
+        end
+      end
+    end
+
+    describe "link custom field" do
+      context "if the user is admin and the field is invisible" do
         before do
-          allow(user)
+          allow(current_user)
             .to receive(:admin?)
-            .and_return(true)
+                  .and_return(true)
 
-          version_custom_field.visible = false
+          version_custom_field.admin_only = true
         end
 
-        it 'links custom fields' do
-          is_expected
-            .to be_json_eql(api_v3_paths.version(version.id).to_json)
-            .at_path("_links/customField#{version_custom_field.id}/href")
+        it "links custom fields" do
+          expect(subject).to be_json_eql(api_v3_paths.version(version.id).to_json)
+                               .at_path("_links/customField#{version_custom_field.id}/href")
         end
       end
 
-      context 'if the user is no admin and the field is invisible' do
+      context "if the user is no admin and the field is invisible" do
         before do
-          version_custom_field.visible = false
+          version_custom_field.admin_only = true
         end
 
-        it "has no property for the int custom field" do
-          is_expected
-            .not_to have_json_path("links/customField#{version_custom_field.id}")
+        it "does not link the custom field" do
+          expect(subject).not_to have_json_path("links/customField#{version_custom_field.id}")
         end
       end
 
-      context 'if the user is no admin and the field is visible' do
-        it 'links custom fields' do
-          is_expected
-            .to be_json_eql(api_v3_paths.version(version.id).to_json)
-                  .at_path("_links/customField#{version_custom_field.id}/href")
+      context "if the user is no admin and the field is visible" do
+        it "links custom fields" do
+          expect(subject).to be_json_eql(api_v3_paths.version(version.id).to_json)
+                               .at_path("_links/customField#{version_custom_field.id}/href")
+        end
+      end
+
+      context "if the user lacks the :view_project permission" do
+        let(:permissions) { [] }
+
+        it "does not link the custom field" do
+          expect(subject).not_to have_json_path("links/customField#{version_custom_field.id}")
         end
       end
     end
 
-    describe 'update' do
-      context 'for a user having the edit_project permission' do
+    describe "update" do
+      context "for a user having the edit_project permission" do
         let(:permissions) { [:edit_project] }
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'update' }
+        it_behaves_like "has an untitled link" do
+          let(:link) { "update" }
           let(:href) { api_v3_paths.project_form project.id }
         end
       end
 
-      context 'for a user lacking the edit_project permission' do
+      context "for a user lacking the edit_project permission" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'update' }
+        it_behaves_like "has no link" do
+          let(:link) { "update" }
         end
       end
     end
 
-    describe 'updateImmediately' do
-      context 'for a user having the edit_project permission' do
+    describe "updateImmediately" do
+      context "for a user having the edit_project permission" do
         let(:permissions) { [:edit_project] }
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'updateImmediately' }
+        it_behaves_like "has an untitled link" do
+          let(:link) { "updateImmediately" }
           let(:href) { api_v3_paths.project project.id }
         end
       end
 
-      context 'for a user lacking the edit_project permission' do
+      context "for a user lacking the edit_project permission" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'updateImmediately' }
+        it_behaves_like "has no link" do
+          let(:link) { "updateImmediately" }
         end
       end
     end
 
-    describe 'delete' do
-      context 'for a user being admin' do
+    describe "delete" do
+      context "for a user being admin" do
         before do
-          allow(user)
+          allow(current_user)
             .to receive(:admin?)
-            .and_return(true)
+                  .and_return(true)
         end
 
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'delete' }
+        it_behaves_like "has an untitled link" do
+          let(:link) { "delete" }
           let(:href) { api_v3_paths.project project.id }
         end
       end
 
-      context 'for a non admin user' do
+      context "for a non admin user" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'delete' }
+        it_behaves_like "has no link" do
+          let(:link) { "delete" }
+        end
+      end
+    end
+
+    describe "disfavor" do
+      context "when the project is favorited" do
+        let(:favorited) { true }
+        let(:link) { "disfavor" }
+
+        it_behaves_like "has an untitled link" do
+          let(:href) { api_v3_paths.favor_workspace(project.id) }
+        end
+
+        it_behaves_like "the link indicates the verb" do
+          let(:verb) { :delete }
+        end
+      end
+
+      context "when the project is not favorited" do
+        let(:favorited) { false }
+
+        it_behaves_like "has no link" do
+          let(:link) { "disfavor" }
+        end
+      end
+
+      # This should not happen at all since the anonymous user cannot favor a project
+      # in the first place.
+      context "when the project is favored yet and the user is not logged in" do
+        let(:current_user) { build_stubbed(:anonymous) }
+        let(:favorited) { true }
+
+        it_behaves_like "has no link" do
+          let(:link) { "unfavor" }
+        end
+      end
+    end
+
+    describe "workPackages" do
+      context "for a user having the view_work_packages permission" do
+        let(:permissions) { [:view_work_packages] }
+
+        it_behaves_like "has an untitled link" do
+          let(:link) { "workPackages" }
+          let(:href) { api_v3_paths.work_packages_by_workspace(project.id) }
+        end
+      end
+
+      context "for a user not having the necessary permissions" do
+        let(:permission) { [] }
+
+        it_behaves_like "has no link" do
+          let(:link) { "workPackages" }
         end
       end
     end
   end
 
-  describe '_embedded' do
-    describe 'parent' do
-      let(:embedded_path) { '_embedded/parent' }
+  describe "_embedded" do
+    describe "parent" do
+      it_behaves_like "has workspace embedded", :parent_workspace do
+        let(:embedded_path) { "_embedded/parent" }
+      end
+    end
 
-      before do
-        allow(parent_project)
-          .to receive(:visible?)
-                .and_return(parent_visible)
+    describe "status" do
+      let(:embedded_path) { "_embedded/status" }
+
+      it "has the status embedded" do
+        expect(generated)
+          .to be_json_eql("ProjectStatus".to_json)
+                .at_path("#{embedded_path}/_type")
+
+        expect(generated)
+          .to be_json_eql(I18n.t("activerecord.attributes.project.status_codes.#{project.status_code}").to_json)
+                .at_path("#{embedded_path}/name")
       end
 
-      context 'when the user is allowed to see the parent' do
-        let(:parent_visible) { true }
+      context "if the status_code is nil" do
+        before { project.status_code = nil }
 
-        it 'has the parent embedded' do
+        it "has no status embedded" do
           expect(generated)
-            .to be_json_eql('Project'.to_json)
-                  .at_path("#{embedded_path}/_type")
-
-          expect(generated)
-            .to be_json_eql(parent_project.name.to_json)
-                  .at_path("#{embedded_path}/name")
+            .not_to have_json_path(embedded_path)
         end
       end
 
-      context 'when the user is forbidden to see the parent' do
-        let(:parent_visible) { false }
+      context "if the user does not have the view_project permission" do
+        let(:permissions) { [] }
 
-        it 'hides the parent' do
+        it "has no status embedded" do
           expect(generated)
             .not_to have_json_path(embedded_path)
         end
@@ -467,11 +831,11 @@ describe ::API::V3::Projects::ProjectRepresenter, 'rendering' do
     end
   end
 
-  describe 'caching' do
-    it 'is based on the representer\'s cache_key' do
+  describe "caching" do
+    it "is based on the representer's cache_key" do
       allow(OpenProject::Cache)
         .to receive(:fetch)
-        .and_call_original
+              .and_call_original
 
       representer.to_json
 
@@ -480,30 +844,23 @@ describe ::API::V3::Projects::ProjectRepresenter, 'rendering' do
               .with(representer.json_cache_key)
     end
 
-    describe '#json_cache_key' do
+    describe "#json_cache_key" do
       let!(:former_cache_key) { representer.json_cache_key }
 
-      it 'includes the name of the representer class' do
+      it "includes the name of the representer class" do
         expect(representer.json_cache_key)
-          .to include('API', 'V3', 'Projects', 'ProjectRepresenter')
+          .to include("API", "V3", "Projects", "ProjectRepresenter")
       end
 
-      it 'changes when the locale changes' do
+      it "changes when the locale changes" do
         I18n.with_locale(:fr) do
           expect(representer.json_cache_key)
             .not_to eql former_cache_key
         end
       end
 
-      it 'changes when the project is updated' do
-        project.updated_at = Time.now + 20.seconds
-
-        expect(representer.json_cache_key)
-          .not_to eql former_cache_key
-      end
-
-      it 'changes when the project status is updated' do
-        project.status.updated_at = Time.now + 20.seconds
+      it "changes when the project is updated" do
+        project.updated_at = 20.seconds.from_now
 
         expect(representer.json_cache_key)
           .not_to eql former_cache_key
@@ -511,9 +868,9 @@ describe ::API::V3::Projects::ProjectRepresenter, 'rendering' do
     end
   end
 
-  describe '.checked_permissions' do
-    it 'lists add_work_packages' do
-      expect(described_class.checked_permissions).to match_array([:add_work_packages])
+  describe ".checked_permissions" do
+    it "lists add_work_packages and view_project" do
+      expect(described_class.checked_permissions).to contain_exactly(:add_work_packages, :view_project)
     end
   end
 end

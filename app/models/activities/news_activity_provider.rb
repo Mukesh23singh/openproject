@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,44 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Activities::NewsActivityProvider < Activities::BaseActivityProvider
-  activity_provider_for type: 'news',
+  activity_provider_for type: "news",
                         permission: :view_news
 
   def event_query_projection
     [
-      activity_journal_projection_statement(:title, 'title'),
-      activity_journal_projection_statement(:project_id, 'project_id')
+      activity_journal_projection_statement(:title, "title"),
+      activity_journal_projection_statement(:project_id, "project_id")
     ]
   end
 
   protected
 
   def event_title(event)
-    event['title']
+    event["title"]
   end
 
   def event_type(_event)
-    'news'
+    "news"
   end
 
   def event_path(event)
-    url_helpers.news_path(url_helper_parameter(event))
+    url_helpers.project_news_path(url_helper_parameter(event))
   end
 
   def event_url(event)
-    url_helpers.news_url(url_helper_parameter(event))
+    url_helpers.project_news_url(url_helper_parameter(event))
   end
 
   private
 
   def url_helper_parameter(event)
-    event['journable_id']
+    { project_id: event["project_id"], id: event["journable_id"] }
   end
 end

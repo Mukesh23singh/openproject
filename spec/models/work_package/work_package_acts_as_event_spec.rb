@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,33 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackage, type: :model do
-  describe 'acts_as_event' do
-    let(:stub_work_package) { FactoryBot.build_stubbed(:work_package) }
+RSpec.describe WorkPackage do
+  describe "acts_as_event" do
+    let(:stub_work_package) { build_stubbed(:work_package) }
 
-    describe '#event_url' do
-      let(:expected_url) { { controller: :work_packages, action: :show, id: stub_work_package.id } }
+    describe "#event_url" do
+      context "in classic mode" do
+        let(:expected_url) { { controller: :work_packages, action: :show, id: stub_work_package.id } }
 
-      it { expect(stub_work_package.event_url).to eq(expected_url) }
+        it { expect(stub_work_package.event_url).to eq(expected_url) }
+      end
+
+      context "in semantic mode", with_settings: { work_packages_identifier: "semantic" } do
+        let(:project) { create(:project, :semantic) }
+        let(:work_package) { create(:work_package, project:) }
+
+        it "links to the semantic identifier rather than the numeric id" do
+          expect(work_package.event_url)
+            .to eq(controller: :work_packages, action: :show, id: work_package.reload.identifier)
+        end
+      end
     end
   end
 end

@@ -1,24 +1,40 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { AbstractWidgetComponent } from 'core-app/shared/components/grids/widgets/abstract-widget.component';
+import { ApplicationRef, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, OnChanges, OnDestroy, OnInit, SimpleChanges, ViewChild, inject } from '@angular/core';
 import {
-  ApplicationRef,
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  Injector,
-  OnChanges,
-  OnDestroy,
-  OnInit,
-  SimpleChanges,
-  ViewChild,
-} from '@angular/core';
-import { CustomTextEditFieldService } from 'core-app/shared/components/grids/widgets/custom-text/custom-text-edit-field.service';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
+  CustomTextEditFieldService,
+} from 'core-app/shared/components/grids/widgets/custom-text/custom-text-edit-field.service';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { filter } from 'rxjs/operators';
 import { GridAreaService } from 'core-app/shared/components/grids/grid/area.service';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
-import { DynamicBootstrapper } from 'core-app/core/setup/globals/dynamic-bootstrapper';
+import { GridWidgetResource } from 'core-app/features/hal/resources/grid-widget-resource';
 
 @Component({
   templateUrl: './custom-text.component.html',
@@ -26,25 +42,26 @@ import { DynamicBootstrapper } from 'core-app/core/setup/globals/dynamic-bootstr
   providers: [
     CustomTextEditFieldService,
   ],
+  standalone: false,
 })
 export class WidgetCustomTextComponent extends AbstractWidgetComponent implements OnInit, OnChanges, OnDestroy {
+  handler = inject(CustomTextEditFieldService);
+  protected cdr = inject(ChangeDetectorRef);
+  protected sanitization = inject(DomSanitizer);
+  protected appRef = inject(ApplicationRef);
+  protected layout = inject(GridAreaService);
+
   protected currentRawText:string;
 
   public customText:SafeHtml;
 
-  @ViewChild('displayContainer') readonly displayContainer:ElementRef;
+  public text!:{ attachments:string };
 
-  constructor(protected i18n:I18nService,
-    protected injector:Injector,
-    public handler:CustomTextEditFieldService,
-    protected cdr:ChangeDetectorRef,
-    protected sanitization:DomSanitizer,
-    protected appRef:ApplicationRef,
-    protected layout:GridAreaService) {
-    super(i18n, injector);
-  }
+  @ViewChild('displayContainer') readonly displayContainer:ElementRef<HTMLElement>;
 
   ngOnInit():void {
+    this.text = { attachments: this.i18n.t('js.label_attachments') };
+
     this.setupVariables(true);
 
     this
@@ -54,13 +71,19 @@ export class WidgetCustomTextComponent extends AbstractWidgetComponent implement
         this.untilDestroyed(),
         filter((value) => value !== this.resource.options.text),
       ).subscribe((newText) => {
-        const changeset = this.setChangesetOptions({ text: { raw: newText } });
-        this.resourceChanged.emit(changeset);
-      });
+      const changeset = this.setChangesetOptions({ text: { raw: newText } });
+      this.resourceChanged.emit(changeset);
+    });
+
+    this
+      .handler
+      .stateChanged$
+      .pipe(this.untilDestroyed())
+      .subscribe(() => this.cdr.markForCheck());
   }
 
   ngOnChanges(changes:SimpleChanges):void {
-    if (changes.resource.currentValue.options.text.raw !== this.currentRawText) {
+    if (((changes.resource.currentValue as GridWidgetResource).options.text as HalResource).raw !== this.currentRawText) {
       this.setupVariables();
 
       this.cdr.detectChanges();
@@ -68,15 +91,16 @@ export class WidgetCustomTextComponent extends AbstractWidgetComponent implement
   }
 
   public activate(event:MouseEvent) {
-    // Prevent opening the edit mode if a link was clicked
-    if (this.clickedElementIsLinkWithinDisplayContainer(event)) {
+    // Let interactive elements within the formatted text handle the click themselves.
+    if (this.clickedElementIsInteractiveWithinDisplayContainer(event)) {
       return;
     }
 
     // Load the attachments so that they are displayed in the list.
     // Once that is done, we can show the edit form.
-    this.resource.grid.updateAttachments().then(() => {
+    void this.resource.grid.updateAttachments().then(() => {
       this.handler.activate();
+      this.cdr.detectChanges();
     });
   }
 
@@ -125,19 +149,31 @@ export class WidgetCustomTextComponent extends AbstractWidgetComponent implement
   }
 
   private memorizeRawText() {
-    this.currentRawText = (this.resource.options.text as HalResource).raw;
+    this.currentRawText = (this.resource.options.text as HalResource).raw as string;
   }
 
   private memorizeCustomText() {
     this.customText = this.sanitization.bypassSecurityTrustHtml(this.handler.htmlText);
-
-    // Allow embeddable rendered content
-    setTimeout(() => {
-      DynamicBootstrapper.bootstrapOptionalEmbeddable(this.appRef, this.displayContainer.nativeElement);
-    }, 100);
   }
 
-  private clickedElementIsLinkWithinDisplayContainer(event:any) {
-    return this.displayContainer.nativeElement.contains(event.target.closest('a,macro'));
+  private clickedElementIsInteractiveWithinDisplayContainer(event:MouseEvent) {
+    const displayContainer = this.displayContainer.nativeElement;
+
+    // Pagination replaces the clicked button with the active-page span before
+    // this handler runs. The composed path retains the original button even
+    // after it has been detached from the DOM, unlike event.target.closest().
+    const eventPath = event.composedPath();
+    const displayContainerIndex = eventPath.indexOf(displayContainer);
+
+    if (displayContainerIndex === -1) {
+      return false;
+    }
+
+    const eventPathWithinDisplayContainer = eventPath.slice(0, displayContainerIndex);
+
+    return eventPathWithinDisplayContainer.some(
+      (target) => target instanceof Element
+        && target.matches('a, button, input, select, textarea, [role="button"], [role="link"]'),
+    );
   }
 }

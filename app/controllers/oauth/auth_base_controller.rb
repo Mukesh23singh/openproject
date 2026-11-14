@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,24 +38,48 @@ module OAuth
     prepend_before_action :extend_content_security_policy
 
     skip_before_action :check_if_login_required
-    layout 'only_logo'
+    no_authorization_required! :new,
+                               :create,
+                               :show,
+                               :destroy
+
+    layout "only_logo"
 
     def extend_content_security_policy
       return unless pre_auth&.authorizable?
 
-      additional_form_actions = application_redirect_uris
+      additional_form_actions = application_http_redirect_uris + application_native_redirect_uris
       return if additional_form_actions.empty?
 
       flash[:_csp_appends] = { form_action: additional_form_actions }
       append_content_security_policy_directives flash[:_csp_appends]
     end
 
-    def application_redirect_uris
-      pre_auth&.client&.application&.redirect_uri
-        .to_s
-        .split
-        .select { |url| url.start_with?('http') }
-        .map { |url| URI.join(url, '/').to_s }
+    def application_http_redirect_uris
+      registered_redirect_uris
+        .select { |url| url.start_with?("http") }
+        .map { |url| URI.join(url, "/").to_s }
+    end
+
+    def application_native_redirect_uris
+      registered_redirect_uris
+        .reject { |url| url.start_with?("http", "urn") }
+        .filter_map { |url| parse_native_redirect_uri(url) }
+    end
+
+    def parse_native_redirect_uri(value)
+      uri = URI.parse(value)
+      "#{uri.scheme}:"
+    rescue StandardError => e
+      Rails.logger.error "Failed to parse native URL '#{value}' for allowing CSP redirects: #{e.message} "
+      nil
+    end
+
+    def registered_redirect_uris
+      @registered_redirect_uris ||=
+        pre_auth&.client&.application&.redirect_uri
+          .to_s
+          .split
     end
   end
 end

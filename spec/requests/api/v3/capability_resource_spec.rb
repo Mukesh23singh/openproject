@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,56 +22,52 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 capabilities resource', type: :request, content_type: :json do
+RSpec.describe "API v3 capabilities resource", content_type: :json do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
   subject(:response) { last_response }
 
-  current_user do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: current_user_permissions)
-  end
-  let(:current_user_permissions) { [] }
-  let(:other_user_permissions) { %i[manage_members] }
-  let(:other_user_global_permissions) { %i[manage_user] }
-  let(:project) { FactoryBot.create(:project) }
-  let(:role) do
-    FactoryBot.create(:role, permissions: other_user_permissions)
-  end
-  let(:global_role) do
-    FactoryBot.create(:global_role, permissions: other_user_global_permissions)
-  end
-  let(:other_user) { FactoryBot.create(:user) }
-  let(:other_user_global_member) do
-    FactoryBot.create(:global_member,
-                      principal: other_user,
-                      roles: [global_role])
-  end
-  let(:other_user_member) do
-    FactoryBot.create(:member,
-                      principal: other_user,
-                      roles: [role],
-                      project: project)
+  shared_let(:project) { create(:project) }
+  shared_current_user do
+    create(:user,
+           member_with_permissions: { project => %i[manage_members] })
   end
 
-  describe 'GET api/v3/capabilities' do
+  let(:role) do
+    create(:project_role, permissions: %i[manage_members])
+  end
+  let(:global_role) do
+    create(:global_role, permissions: %i[create_user manage_user])
+  end
+  let(:other_user) { create(:user) }
+  let(:other_user_global_member) do
+    create(:global_member,
+           principal: other_user,
+           roles: [global_role])
+  end
+  let(:other_user_member) do
+    create(:member,
+           principal: other_user,
+           roles: [role],
+           project:)
+  end
+
+  describe "GET api/v3/capabilities" do
     let(:setup) do
       other_user_global_member
       other_user_member
     end
     let(:filters) { nil }
-    let(:path) { api_v3_paths.path_for(:capabilities, filters: filters, sort_by: [%i(id asc)]) }
+    let(:path) { api_v3_paths.path_for(:capabilities, filters:, sort_by: [%i(id asc)]) }
 
     before do
       setup
@@ -77,46 +75,45 @@ describe 'API v3 capabilities resource', type: :request, content_type: :json do
       get path
     end
 
-    context 'without params' do
-      it 'responds 400 Bad Request' do
+    context "without params" do
+      it "responds 400 Bad Request" do
         expect(subject.status).to eq(400)
       end
 
-      it 'communicates that either a context or a principal filter is required' do
+      it "communicates that either a context or a principal filter is required" do
         expect(subject.body)
-          .to be_json_eql('Error'.to_json)
-          .at_path('_type')
+          .to be_json_eql("Error".to_json)
+          .at_path("_type")
 
         expect(subject.body)
-          .to be_json_eql('urn:openproject-org:api:v3:errors:InvalidQuery'.to_json)
-          .at_path('errorIdentifier')
+          .to be_json_eql("urn:openproject-org:api:v3:errors:InvalidQuery".to_json)
+          .at_path("errorIdentifier")
       end
     end
 
-    context 'when filtering by principal id (with a user)' do
-      let(:current_user_permissions) { %i[manage_members] }
+    context "when filtering by principal id (with a user)" do
       let(:filters) do
-        [{ 'principalId' => {
-          'operator' => '=',
-          'values' => [current_user.id.to_s]
+        [{ "principalId" => {
+          "operator" => "=",
+          "values" => [current_user.id.to_s]
         } }]
       end
 
-      it 'contains only the filtered capabilities in the response' do
+      it "contains only the filtered capabilities in the response" do
         expect(subject.body)
-          .to be_json_eql('3')
-          .at_path('total')
+          .to be_json_eql("4")
+          .at_path("total")
 
         expect(subject.body)
           .to be_json_eql(api_v3_paths.user(current_user.id).to_json)
-          .at_path('_embedded/elements/0/_links/principal/href')
+          .at_path("_embedded/elements/0/_links/principal/href")
       end
     end
 
-    context 'with pageSize, offset and sortBy and filter' do
+    context "with pageSize, offset and sortBy and filter" do
       def expect_self_link(link, overrides = {})
-        href = JSON.parse(subject.body).dig('_links', link, 'href').split('?')
-        expected_path_params = Rack::Utils.parse_nested_query(path.split('?').last)
+        href = JSON.parse(subject.body).dig("_links", link, "href").split("?")
+        expected_path_params = Rack::Utils.parse_nested_query(path.split("?").last)
 
         expect(href.first)
           .to eql(api_v3_paths.capabilities)
@@ -126,228 +123,319 @@ describe 'API v3 capabilities resource', type: :request, content_type: :json do
       end
 
       let(:filters) do
-        [{ 'principal' => {
-          'operator' => '=',
-          'values' => [other_user.id.to_s]
+        [{ "principal" => {
+          "operator" => "=",
+          "values" => [other_user.id.to_s]
         } }]
       end
-      let(:path) { "#{api_v3_paths.path_for(:capabilities, filters: filters, sort_by: [%i(id asc)])}&pageSize=2&offset=2" }
+      let(:path) do
+        api_v3_paths.path_for(:capabilities,
+                              filters:,
+                              sort_by: [%i(id asc)],
+                              select: "*,elements/*",
+                              page_size: 2,
+                              offset: 3)
+      end
 
-      it 'returns a slice of the visible memberships' do
+      it "returns a slice of the visible memberships" do
         expect(subject.body)
-          .to be_json_eql('Collection'.to_json)
-          .at_path('_type')
+          .to be_json_eql("Collection".to_json)
+          .at_path("_type")
 
         expect(subject.body)
-          .to be_json_eql('6')
-          .at_path('total')
+          .to be_json_eql("7")
+          .at_path("total")
 
         expect(subject.body)
-          .to be_json_eql('2')
-          .at_path('count')
+          .to be_json_eql("2")
+          .at_path("count")
 
         expect(subject.body)
           .to be_json_eql("users/create/g-#{other_user.id}".to_json)
-          .at_path('_embedded/elements/1/id')
+          .at_path("_embedded/elements/0/id")
       end
 
-      it 'includes links for self and jumping' do
-        expect_self_link('self')
-        expect_self_link('jumpTo', 'offset' => '{offset}')
-        expect_self_link('changeSize', 'pageSize' => '{size}')
-        expect_self_link('previousByOffset', 'offset' => '1')
-        expect_self_link('nextByOffset', 'offset' => '3')
+      it "includes links for self and jumping" do
+        expect_self_link("self")
+        expect_self_link("jumpTo", "offset" => "{offset}")
+        expect_self_link("changeSize", "pageSize" => "{size}")
+        expect_self_link("previousByOffset", "offset" => "2")
+        expect_self_link("nextByOffset", "offset" => "4")
       end
     end
 
-    context 'when filtering by principal id (group)' do
+    context "when filtering by principal id (group)" do
       let(:filters) do
-        [{ 'principalId' => {
-          'operator' => '=',
-          'values' => [group.id.to_s]
+        [{ "principalId" => {
+          "operator" => "=",
+          "values" => [group.id.to_s]
         } }]
       end
       let(:other_user) { group }
-      let(:group) { FactoryBot.create(:group) }
+      let(:group) { create(:group) }
 
       let(:setup) do
         other_user_member
       end
 
-      it 'returns a collection of capabilities' do
+      it "returns a collection of capabilities" do
         expect(subject.body)
-          .to be_json_eql('Collection'.to_json)
-          .at_path('_type')
+          .to be_json_eql("Collection".to_json)
+          .at_path("_type")
 
         expect(subject.body)
-          .to be_json_eql('3')
-          .at_path('total')
+          .to be_json_eql("4")
+          .at_path("total")
 
         expect(subject.body)
-          .to be_json_eql("memberships/create/p#{project.id}-#{other_user.id}".to_json)
-          .at_path('_embedded/elements/0/id')
+          .to be_json_eql("activities/read/w#{project.id}-#{other_user.id}".to_json)
+          .at_path("_embedded/elements/0/id")
       end
     end
 
-    context 'when filtering by principal id (placeholder user)' do
+    context "when filtering by principal id (placeholder user)" do
       let(:filters) do
-        [{ 'principalId' => {
-          'operator' => '=',
-          'values' => [placeholder_user.id.to_s]
+        [{ "principalId" => {
+          "operator" => "=",
+          "values" => [placeholder_user.id.to_s]
         } }]
       end
       let(:other_user) { placeholder_user }
       let(:placeholder_user) do
-        FactoryBot.create(:placeholder_user)
+        create(:placeholder_user)
       end
 
       let(:setup) do
         other_user_member
       end
 
-      it 'returns a collection of capabilities' do
+      it "returns a collection of capabilities" do
         expect(subject.body)
-          .to be_json_eql('Collection'.to_json)
-          .at_path('_type')
+          .to be_json_eql("Collection".to_json)
+          .at_path("_type")
 
         expect(subject.body)
-          .to be_json_eql('3')
-          .at_path('total')
+          .to be_json_eql("4")
+          .at_path("total")
 
         expect(subject.body)
-          .to be_json_eql("memberships/create/p#{project.id}-#{other_user.id}".to_json)
-          .at_path('_embedded/elements/0/id')
+          .to be_json_eql("activities/read/w#{project.id}-#{other_user.id}".to_json)
+          .at_path("_embedded/elements/0/id")
       end
     end
 
-    context 'when filtering by principal id (with a user) but with the not operator' do
-      let(:current_user_permissions) { %i[manage_members] }
+    context "when filtering by principal id (with a user) but with the not operator" do
       let(:filters) do
-        [{ 'principalId' => {
-          'operator' => '!',
-          'values' => [current_user.id.to_s]
+        [{ "principalId" => {
+          "operator" => "!",
+          "values" => [current_user.id.to_s]
         } }]
       end
 
-      it 'responds 400 Bad Request' do
+      it "responds 400 Bad Request" do
         expect(subject.status).to eq(400)
       end
 
-      it 'communicates that either a context or a principal filter is required' do
+      it "communicates that either a context or a principal filter is required" do
         expect(subject.body)
-          .to be_json_eql('Error'.to_json)
-          .at_path('_type')
+          .to be_json_eql("Error".to_json)
+          .at_path("_type")
 
         expect(subject.body)
-          .to be_json_eql('urn:openproject-org:api:v3:errors:InvalidQuery'.to_json)
-          .at_path('errorIdentifier')
+          .to be_json_eql("urn:openproject-org:api:v3:errors:InvalidQuery".to_json)
+          .at_path("errorIdentifier")
       end
     end
 
-    context 'invalid filter' do
+    context "with an invalid filter" do
       let(:filters) do
-        [{ 'bogus' => {
-          'operator' => '=',
-          'values' => [current_user.id.to_s]
+        [{ "bogus" => {
+          "operator" => "=",
+          "values" => [current_user.id.to_s]
         } }]
       end
 
-      it 'returns 400' do
+      it "returns 422" do
         expect(subject.status)
-          .to be 400
+          .to be 422
       end
 
-      it 'communicates the error message' do
+      it "communicates the error message" do
         expect(subject.body)
-          .to be_json_eql('Error'.to_json)
-          .at_path('_type')
+          .to be_json_eql("Error".to_json)
+          .at_path("_type")
 
         expect(subject.body)
-          .to be_json_eql('urn:openproject-org:api:v3:errors:InvalidQuery'.to_json)
-          .at_path('errorIdentifier')
+          .to be_json_eql("urn:openproject-org:api:v3:errors:MultipleErrors".to_json)
+          .at_path("errorIdentifier")
       end
     end
 
-    context 'when filtering by project context' do
-      let(:other_project) { FactoryBot.create(:project) }
+    context "when filtering by project context" do
+      let(:other_project) { create(:project) }
+      let(:empty_role) { create(:project_role, permissions: []) }
+      # Necessary so that the current user is allowed to see the project
+      let(:current_user_other_member) do
+        create(:member,
+               principal: current_user,
+               roles: [empty_role],
+               project: other_project)
+      end
       let(:other_user_other_member) do
-        FactoryBot.create(:member,
-                          principal: other_user,
-                          roles: [role],
-                          project: other_project)
+        create(:member,
+               principal: other_user,
+               roles: [role],
+               project: other_project)
       end
 
       let(:filters) do
-        [{ 'context' => {
-          'operator' => '=',
-          'values' => ["p#{other_project.id}"]
+        [{ "context" => {
+          "operator" => "=",
+          "values" => ["w#{other_project.id}"]
         } }]
       end
 
       let(:setup) do
+        current_user_other_member
         other_user_global_member
         other_user_member
         other_user_other_member
       end
 
-      it 'contains only the filtered capabilities in the response' do
+      it "contains only the filtered capabilities in the response" do
         expect(subject.body)
-          .to be_json_eql('3')
-          .at_path('total')
+          .to be_json_eql("5")
+          .at_path("total")
 
         expect(subject.body)
           .to be_json_eql(api_v3_paths.project(other_project.id).to_json)
-          .at_path('_embedded/elements/0/_links/context/href')
+          .at_path("_embedded/elements/0/_links/context/href")
       end
     end
 
-    context 'when filtering by global context' do
+    context "when filtering by global context" do
       let(:filters) do
-        [{ 'context' => {
-          'operator' => '=',
-          'values' => ["g"]
+        [{ "context" => {
+          "operator" => "=",
+          "values" => ["g"]
         } }]
       end
 
-      it 'contains only the filtered capabilities in the response' do
+      it "contains only the filtered capabilities in the response" do
         expect(subject.body)
-          .to be_json_eql('3')
-          .at_path('total')
+          .to be_json_eql("3")
+          .at_path("total")
 
         expect(subject.body)
           .to be_json_eql(api_v3_paths.capabilities_contexts_global.to_json)
-          .at_path('_embedded/elements/0/_links/context/href')
+          .at_path("_embedded/elements/0/_links/context/href")
       end
     end
 
-    context 'without permissions' do
-      current_user do
-        FactoryBot.create(:user)
-      end
+    context "when signaling to only include a subset of properties" do
+      let(:path) { api_v3_paths.path_for(:capabilities, filters:, sort_by: [%i(id asc)], select: "elements/id") }
 
       let(:filters) do
-        [{ 'context' => {
-          'operator' => '=',
-          'values' => ["g"]
+        [{ "principalId" => {
+          "operator" => "=",
+          "values" => [current_user.id.to_s]
         } }]
       end
 
-      it 'is empty' do
+      it "contains only the filtered capabilities in the response" do
+        expected = {
+          _embedded: {
+            elements: [
+              {
+                id: "activities/read/w#{project.id}-#{current_user.id}"
+              },
+              {
+                id: "memberships/create/w#{project.id}-#{current_user.id}"
+              },
+              {
+                id: "memberships/destroy/w#{project.id}-#{current_user.id}"
+              },
+              {
+                id: "memberships/update/w#{project.id}-#{current_user.id}"
+              }
+            ]
+          }
+        }
+
         expect(subject.body)
-          .to be_json_eql('0')
-          .at_path('total')
+          .to be_json_eql(expected.to_json)
       end
     end
 
-    context 'when filtering by action' do
+    context "without permissions" do
+      current_user do
+        create(:user)
+      end
+
       let(:filters) do
-        [{ 'action' => {
-          'operator' => '=',
-          'values' => ["memberships/create"]
+        [{ "context" => {
+          "operator" => "=",
+          "values" => ["g"]
+        } }]
+      end
+
+      it "is empty and includes an empty element set", :aggregate_failures do
+        expect(subject.body)
+          .to be_json_eql("0")
+          .at_path("total")
+
+        expect(subject.body)
+          .to be_json_eql([].to_json)
+                .at_path("_embedded/elements")
+      end
+    end
+
+    context "with permissions in one project but not in the other and filtering for that invisible project" do
+      let(:other_project) { create(:project) }
+      let(:other_user_other_member) do
+        create(:member,
+               principal: other_user,
+               roles: [role],
+               project: other_project)
+      end
+
+      let(:setup) do
+        other_project
+        other_user_member
+        other_user_other_member
+      end
+
+      let(:filters) do
+        [
+          {
+            "context" => {
+              "operator" => "=",
+              "values" => ["p#{other_project.id}"]
+            }
+          }
+        ]
+      end
+
+      it "is empty and includes an empty element set", :aggregate_failures do
+        expect(subject.body)
+          .to be_json_eql("0")
+                .at_path("total")
+
+        expect(subject.body)
+          .to be_json_eql([].to_json)
+                .at_path("_embedded/elements")
+      end
+    end
+
+    context "when filtering by action" do
+      let(:filters) do
+        [{ "action" => {
+          "operator" => "=",
+          "values" => ["memberships/create"]
         } },
-         { 'principalId' => {
-           'operator' => '=',
-           'values' => [other_user.id.to_s]
+         { "principalId" => {
+           "operator" => "=",
+           "values" => [other_user.id.to_s]
          } }]
       end
 
@@ -355,20 +443,20 @@ describe 'API v3 capabilities resource', type: :request, content_type: :json do
         other_user_member
       end
 
-      it 'contains only the filtered capabilities in the response' do
+      it "contains only the filtered capabilities in the response" do
         expect(subject.body)
-          .to be_json_eql('1')
-          .at_path('total')
+          .to be_json_eql("1")
+          .at_path("total")
 
         expect(subject.body)
-          .to be_json_eql("memberships/create/p#{project.id}-#{other_user.id}".to_json)
-          .at_path('_embedded/elements/0/id')
+          .to be_json_eql("memberships/create/w#{project.id}-#{other_user.id}".to_json)
+          .at_path("_embedded/elements/0/id")
       end
     end
   end
 
-  describe 'GET /api/v3/capabilities/:id' do
-    let(:path) { api_v3_paths.capability("memberships/create/p#{project.id}-#{other_user.id}") }
+  describe "GET /api/v3/capabilities/:id" do
+    let(:path) { api_v3_paths.capability("memberships/create/w#{project.id}-#{other_user.id}") }
 
     let(:setup) do
       other_user_member
@@ -380,45 +468,67 @@ describe 'API v3 capabilities resource', type: :request, content_type: :json do
       get path
     end
 
-    it 'returns 200 OK' do
+    it "returns 200 OK" do
       expect(subject.status)
-        .to eql(200)
+        .to be(200)
     end
 
-    it 'returns the capability' do
+    it "returns the capability" do
       expect(subject.body)
-        .to be_json_eql('Capability'.to_json)
-        .at_path('_type')
+        .to be_json_eql("Capability".to_json)
+        .at_path("_type")
 
       expect(subject.body)
-        .to be_json_eql("memberships/create/p#{project.id}-#{other_user.id}".to_json)
-        .at_path('id')
+        .to be_json_eql("memberships/create/w#{project.id}-#{other_user.id}".to_json)
+        .at_path("id")
     end
 
-    context 'if querying a non existing capability' do
-      let(:path) { api_v3_paths.capability("foo/bar/p#{project.id}-#{other_user.id}") }
+    context "if querying a non existing capability" do
+      let(:path) { api_v3_paths.capability("foo/bar/w#{project.id}-#{other_user.id}") }
 
-      it 'returns 404 NOT FOUND' do
+      it "returns 404 NOT FOUND" do
         expect(subject.status)
           .to be 404
       end
     end
 
-    context 'if querying with malformed id' do
+    context "if querying with malformed id" do
       let(:path) { api_v3_paths.capability("foo/bar/baz-5") }
 
-      it 'returns 404 NOT FOUND' do
+      it "returns 404 NOT FOUND" do
         expect(subject.status)
           .to be 404
       end
     end
 
-    context 'if querying for an invisible user' do
+    context "if querying for an invisible user" do
       current_user do
-        FactoryBot.create(:user)
+        create(:user)
       end
 
-      it 'returns 404 NOT FOUND' do
+      it "returns 404 NOT FOUND" do
+        expect(subject.status)
+          .to be 404
+      end
+    end
+
+    context "with permissions in one project but querying for the project where permissions are lacking" do
+      let(:path) { api_v3_paths.capability("memberships/create/w#{other_project.id}-#{other_user.id}") }
+      let(:other_project) { create(:project) }
+      let(:other_user_other_member) do
+        create(:member,
+               principal: other_user,
+               roles: [role],
+               project: other_project)
+      end
+
+      let(:setup) do
+        other_project
+        other_user_member
+        other_user_other_member
+      end
+
+      it "returns 404 NOT FOUND" do
         expect(subject.status)
           .to be 404
       end

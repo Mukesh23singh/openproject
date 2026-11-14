@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,35 +20,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'OpenProject::Configuration' do
-  context '.cost_reporting_cache_filter_classes' do
-    before do
-      # This prevents the values from the actual configuration file to influence
-      # the test outcome.
-      #
-      # TODO: I propose to port this over to the core to always prevent this for specs.
-      OpenProject::Configuration.load(file: 'bogus')
-    end
-
-    after do
-      # resetting for now to avoid braking specs, who by now rely on having the file read.
-      OpenProject::Configuration.load
-    end
-
-    it 'is a true by default via the method' do
+RSpec.describe "OpenProject::Configuration" do
+  describe ".cost_reporting_cache_filter_classes" do
+    it "is a true by default via the method" do
       expect(OpenProject::Configuration.cost_reporting_cache_filter_classes).to be_truthy
     end
 
-    it 'is true by default via the hash' do
-      expect(OpenProject::Configuration['cost_reporting_cache_filter_classes']).to be_truthy
+    it "is true by default via the hash" do
+      expect(OpenProject::Configuration["cost_reporting_cache_filter_classes"]).to be_truthy
     end
   end
 end

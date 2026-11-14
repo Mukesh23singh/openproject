@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-shared_context 'with a mentioned work package being updated again' do
-  let(:project) { FactoryBot.create :project }
+require "spec_helper"
+
+RSpec.shared_context "with a mentioned work package being updated again" do
+  let(:project) { create(:project) }
 
   let(:work_package) do
-    FactoryBot.create(:work_package, project: project).tap do |wp|
+    create(:work_package, project:).tap do |wp|
       # Clear the initial journal job
       wp.save!
       clear_enqueued_jobs
@@ -41,28 +41,26 @@ shared_context 'with a mentioned work package being updated again' do
   end
 
   let(:role) do
-    FactoryBot.create :role, permissions: %w[view_work_packages edit_work_packages]
+    create(:project_role, permissions: %w[view_work_packages edit_work_packages])
   end
 
   let(:recipient) do
-    FactoryBot.create :user,
-                      preferences: {
-                        immediate_reminders: {
-                          mentioned: true
-                        }
-                      },
-                      notification_settings: [
-                        FactoryBot.build(:notification_setting,
-                                         mentioned: true,
-                                         involved: true)
-                      ],
-                      member_in_project: project,
-                      member_through_role: role
+    create(:user,
+           preferences: {
+             immediate_reminders: {
+               mentioned: true
+             }
+           },
+           notification_settings: [
+             build(:notification_setting,
+                   mentioned: true,
+                   assignee: true,
+                   responsible: true)
+           ],
+           member_with_roles: { project => role })
   end
   let(:actor) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_through_role: role
+    create(:user, member_with_roles: { project => role })
   end
 
   let(:comment) do
@@ -72,11 +70,7 @@ shared_context 'with a mentioned work package being updated again' do
   end
 
   let(:mentioned_notification) do
-    Notification.find_by(recipient: recipient, journal: work_package.journals.last, reason: :mentioned)
-  end
-
-  let(:assigned_notification) do
-    Notification.find_by(recipient: recipient, journal: work_package.journals.last, reason: :assigned)
+    Notification.find_by(recipient:, journal: work_package.journals.last, reason: :mentioned)
   end
 
   def trigger_comment!
@@ -89,11 +83,11 @@ shared_context 'with a mentioned work package being updated again' do
     work_package.reload
   end
 
-  def update_assignee!
+  def update_assignee!(assignee_user = recipient)
     clear_enqueued_jobs
 
     User.execute_as(actor) do
-      work_package.assigned_to = recipient
+      work_package.assigned_to = assignee_user
       work_package.save!
     end
 

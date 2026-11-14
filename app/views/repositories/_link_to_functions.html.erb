@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +20,21 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 <% if @entry && @entry.kind == 'file' %>
   <p>
-    <%= link_to_if action_name != 'changes', t(:label_history), {action: 'changes', project_id: @project, repo_path: to_path_param(@path), rev: @rev } %> |
+    <%= link_to_if action_name != "changes", t(:label_history), { action: "changes", project_id: @project, repo_path: to_path_param(@path), rev: @rev } %> |
     <% if @repository.supports_cat? %>
-      <%= link_to_if action_name != 'entry', t(:button_view), entry_revision_project_repository_path(project_id: @project, repo_path: to_path_param(@path), rev: @rev) %> |
+      <%= link_to_if action_name != "entry", t(:button_view), entry_revision_project_repository_path(project_id: @project, repo_path: to_path_param(@path), rev: @rev) %> |
     <% end %>
     <% if @repository.supports_annotate? %>
-      <%= link_to_if action_name != 'annotate', t(:button_annotate), {action: 'annotate', project_id: @project, repo_path: to_path_param(@path), rev: @rev } %> |
+      <%= link_to_if action_name != "annotate", t(:button_annotate), { action: "annotate", project_id: @project, repo_path: to_path_param(@path), rev: @rev } %> |
     <% end %>
-    <%= link_to(t(:button_download), {action: 'entry', project_id: @project, repo_path: to_path_param(@path), rev: @rev, format: 'raw' }) if @repository.supports_cat? %>
+    <%= link_to(t(:button_download), { action: "entry", project_id: @project, repo_path: to_path_param(@path), rev: @rev, format: "raw" }) if @repository.supports_cat? %>
     <%= "(#{number_to_human_size(@entry.size)})" if @entry.size %>
   </p>
 <% end %>

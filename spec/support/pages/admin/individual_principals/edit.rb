@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
+require "support/pages/page"
+require "support/components/autocompleter/ng_select_autocomplete_helpers"
 
 module Pages
   module Admin
     module IndividualPrincipals
       class Edit < ::Pages::Page
-        attr_reader :id
-        attr_reader :individual_principal
+        include ::Components::Autocompleter::NgSelectAutocompleteHelpers
+
+        attr_reader :id, :individual_principal
 
         def initialize(individual_principal)
           @individual_principal = individual_principal
@@ -45,8 +48,12 @@ module Pages
         end
 
         def open_projects_tab!
-          within('.content--tabs') do
-            click_on 'Projects'
+          return if page.has_css?('.PageHeader-tabNav a[aria-current="page"]', text: "Projects", wait: 0)
+
+          wait_for_turbo do
+            within(".PageHeader-tabNav") do
+              click_on "Projects"
+            end
           end
         end
 
@@ -54,63 +61,97 @@ module Pages
           open_projects_tab!
           select_project! project_name
           Array(as).each { |role| check role }
-          click_on 'Add'
+          click_on "Add"
 
           expect_project(project_name)
         end
 
         def remove_from_project!(name)
           open_projects_tab!
-          find_project(name).find('a[data-method=delete]').click
+          wait_for_turbo do
+            find_project(name).find("a[data-turbo-method=delete]").click
+          end
         end
 
         def edit_roles!(membership, roles)
           find("#member-#{membership.id} .memberships--edit-button").click
 
           page.within("#member-#{membership.id}-roles-form") do
-            page.all('.form--check-box').each do |f|
-              begin
-                f.set false
-              rescue Selenium::WebDriver::Error::InvalidElementStateError
-                # Happens if an element is disabled
-              end
+            page.all(".form--check-box").each do |f|
+              f.set false
+            rescue Selenium::WebDriver::Error::InvalidElementStateError
+              # Happens if an element is disabled
             end
             Array(roles).each { |role| page.check role }
-            page.find('.memberships--edit-submit-button').click
+            page.find(".memberships--edit-submit-button").click
           end
         end
 
         def expect_project(project_name)
-          expect(page).to have_selector('tr', text: project_name, wait: 10)
+          expect(page).to have_css("tr", text: project_name, wait: 10)
         end
 
         def expect_no_membership(project_name)
-          expect(page).to have_no_selector('tr', text: project_name)
+          expect(page).to have_no_css("tr", text: project_name, wait: 20)
         end
 
         def expect_roles(project_name, roles)
-          row = page.find('tr', text: project_name, wait: 10)
+          row = page.find("tr", text: project_name, wait: 10)
 
           roles.each do |role|
-            expect(row).to have_selector('span', text: role)
+            expect(row).to have_css("span", text: role)
           end
         end
 
         def find_project(name)
-          find('tr', text: name)
+          find("tr", text: name)
         end
 
         def has_project?(name)
-          has_selector? 'tr', text: name
+          has_selector? "tr", text: name
         end
 
         def select_project!(project_name)
-          select(project_name, from: 'membership_project_id')
+          select_autocomplete -> { page.find('[data-test-selector="membership_project_id"]') },
+                              query: project_name,
+                              select_text: project_name,
+                              results_selector: "body",
+                              wait: 10
+        end
+
+        # Types +query+ into the project autocompleter without selecting anything
+        # and returns the open dropdown, so that callers can test on the offered
+        # options.
+        def search_for_project(query)
+          search_autocomplete page.find('[data-test-selector="membership_project_id"]'),
+                              query:,
+                              results_selector: "body"
+        end
+
+        def open_global_roles_tab!
+          within(".PageHeader-tabNav") do
+            click_on "Global roles"
+          end
+        end
+
+        def expect_global_roles(roles)
+          selector = "#table_principal_roles tr td.role [data-test-selector='global-role-name']"
+          expect(page).to have_css(selector, count: roles.size)
+          roles_in_on_page = page.all(selector)
+
+          expect(roles_in_on_page.map(&:text)).to eq(roles)
+        end
+
+        def remove_global_role!(role_id)
+          within("#table_principal_roles") do
+            role_tr = find("#assigned_global_role_#{role_id}")
+            role_tr.find("a[data-test-selector='delete-global-role']").click
+          end
         end
 
         def activate!
-          within '.toolbar-items' do
-            click_button 'Activate'
+          within ".toolbar-items" do
+            click_button "Activate"
           end
         end
       end

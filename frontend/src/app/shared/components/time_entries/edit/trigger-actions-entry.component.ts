@@ -1,48 +1,85 @@
-import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Injector,
-} from '@angular/core';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { TimeEntryEditService } from 'core-app/shared/components/time_entries/edit/edit.service';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Injector, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
-import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import {
+  HalResourceEditingService,
+} from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { TimeEntryResource } from 'core-app/features/hal/resources/time-entry-resource';
-
-export const triggerActionsEntryComponentSelector = 'time-entry--trigger-actions-entry';
+import { Observable, switchMap } from 'rxjs';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { TurboRequestsService } from 'core-app/core/turbo/turbo-requests.service';
+import { HttpErrorResponse } from '@angular/common/http';
 
 @Component({
-  selector: triggerActionsEntryComponentSelector,
+  selector: 'opce-time-entry-trigger-actions',
   template: `
-    <a (click)="editTimeEntry()"
-       [title]="text.edit"
-       class="no-decoration-on-hover">
-      <op-icon icon-classes="icon-context icon-edit"></op-icon>
-    </a>
-    <a (click)="deleteTimeEntry()"
-       [title]="text.delete"
-       class="no-decoration-on-hover">
-      <op-icon icon-classes="icon-context icon-delete"></op-icon>
-    </a>
+    <button type="button"
+       opTooltip
+       [label]="text.edit"
+       (click)="editTimeEntry()"
+       class="button--link no-decoration-on-hover">
+      <op-icon icon-classes="icon-context icon-edit" />
+    </button>
+    <button type="button"
+       opTooltip
+       [label]="text.delete"
+       (click)="deleteTimeEntry()"
+       class="button--link no-decoration-on-hover">
+      <op-icon icon-classes="icon-context icon-delete" />
+    </button>
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     HalResourceEditingService,
-    TimeEntryEditService,
+    PathHelperService,
+    TurboRequestsService,
   ],
+  standalone: false,
 })
 export class TriggerActionsEntryComponent {
-  @InjectField() readonly timeEntryEditService:TimeEntryEditService;
+  readonly injector = inject(Injector);
 
-  @InjectField() readonly apiv3Service:APIV3Service;
+  readonly apiv3Service = inject(ApiV3Service);
 
-  @InjectField() readonly toastService:ToastService;
+  readonly toastService = inject(ToastService);
 
-  @InjectField() readonly elementRef:ElementRef;
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  @InjectField() i18n!:I18nService;
+  readonly i18n = inject(I18nService);
 
-  @InjectField() readonly cdRef:ChangeDetectorRef;
+  readonly cdRef = inject(ChangeDetectorRef);
+
+  readonly pathHelper = inject(PathHelperService);
+
+  readonly turboRequestService = inject(TurboRequestsService);
 
   public text = {
     edit: this.i18n.t('js.button_edit'),
@@ -51,21 +88,19 @@ export class TriggerActionsEntryComponent {
     areYouSure: this.i18n.t('js.text_are_you_sure'),
   };
 
-  constructor(readonly injector:Injector) {
-  }
-
   editTimeEntry() {
-    this.loadEntry()
-      .then((entry) => {
-        this.timeEntryEditService
-          .edit(entry)
-          .then(() => {
-            window.location.reload();
-          })
-          .catch(() => {
-            // User canceled the modal
-          });
+    void this.loadEntry().subscribe((entry:TimeEntryResource) => {
+      document.addEventListener('dialog:close', (event) => {
+        const { detail: { dialog, submitted } } = event;
+        if (dialog.id === 'time-entry-dialog' && submitted) {
+          window.location.reload();
+        }
       });
+      void this.turboRequestService.request(
+        this.pathHelper.timeEntryEditDialog(entry.id!),
+        { method: 'GET' },
+      );
+    });
   }
 
   deleteTimeEntry() {
@@ -74,27 +109,26 @@ export class TriggerActionsEntryComponent {
     }
 
     this.loadEntry()
-      .then((entry) => {
-        this
+      .pipe(
+        switchMap((entry) => this
           .apiv3Service
           .time_entries
           .id(entry)
-          .delete()
-          .subscribe(
-            () => window.location.reload(),
-            (error) => this.toastService.addError(error || this.text.error),
-          );
-      });
+          .delete()),
+      )
+      .subscribe(
+        () => window.location.reload(),
+        (error:HttpErrorResponse) => this.toastService.addError(error || this.text.error),
+      );
   }
 
-  protected loadEntry():Promise<TimeEntryResource> {
-    const timeEntryId = this.elementRef.nativeElement.dataset.entry;
+  protected loadEntry():Observable<TimeEntryResource> {
+    const timeEntryId = this.elementRef.nativeElement.dataset.entry!;
 
     return this
       .apiv3Service
       .time_entries
       .id(timeEntryId)
-      .get()
-      .toPromise();
+      .get();
   }
 }

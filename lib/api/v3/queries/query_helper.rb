@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/queries/query_representer'
+require "api/v3/queries/query_representer"
 
 module API
   module V3
@@ -57,34 +56,21 @@ module API
           # errors for invalid data (e.g. validation errors) are handled inside the form
           if api_errors.all? { |error| error.code == 422 }
             status 200
-            form_representer.new query, current_user: current_user, errors: api_errors
+            form_representer.new query, current_user:, errors: api_errors
           else
             fail ::API::Errors::MultipleErrors.create_if_many(api_errors)
           end
         end
 
-        def create_query(request_body, current_user)
-          rep = representer.new Query.new, current_user: current_user
-          query = rep.from_hash request_body
-          call = ::Queries::CreateService.new(user: current_user).call query
-
-          if call.success?
-            representer.new call.result, current_user: current_user, embed_links: true
-          else
-            fail ::API::Errors::ErrorBase.create_and_merge_errors(call.errors)
-          end
-        end
-
         def update_query(query, request_body, current_user)
-          rep = representer.new query, current_user: current_user
+          rep = representer.new(query, current_user:)
           query = rep.from_hash request_body
-          call = ::Queries::UpdateService.new(user: current_user).call query
 
-          if call.success?
-            representer.new call.result, current_user: current_user, embed_links: true
-          else
-            fail ::API::Errors::ErrorBase.create_and_merge_errors(call.errors)
+          call = raise_invalid_query_on_service_failure do
+            ::Queries::UpdateService.new(model: query, user: current_user).call query
           end
+
+          representer.new call.result, current_user:, embed_links: true
         end
 
         def representer
@@ -100,7 +86,7 @@ module API
         end
 
         def update_query_from_body_and_params(query)
-          representer = ::API::V3::Queries::QueryRepresenter.create query, current_user: current_user
+          representer = ::API::V3::Queries::QueryRepresenter.create(query, current_user:)
 
           # Update the query from the hash
           representer.from_hash(Hash(request_body)).tap do |parsed_query|

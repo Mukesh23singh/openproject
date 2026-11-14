@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,18 +31,22 @@ module Components
   module WorkPackages
     class SortBy
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
 
-      def sort_via_header(name, selector: nil, descending: false)
-        text = descending ? 'Sort descending' : 'Sort ascending'
+      def sort_via_header(name, button_name: name, descending: false)
+        text = descending ? "Sort descending" : "Sort ascending"
 
-        SeleniumHubWaiter.wait
-        open_table_column_context_menu(name, selector)
-        SeleniumHubWaiter.wait
+        SeleniumHubWaiter.wait unless using_cuprite?
+        page.document.synchronize(20) do
+          open_table_column_context_menu(name, button_name)
+          raise Capybara::ElementNotFound unless page.has_selector?(:menu, wait: 2)
 
-        within_column_context_menu do
-          click_button text
+          within_column_context_menu { find(:role, "menuitemradio", text:).click }
         end
+        SeleniumHubWaiter.wait unless using_cuprite?
+
+        wait_for_network_idle
       end
 
       def update_criteria(first, second = nil, third = nil)
@@ -67,8 +72,8 @@ module Components
           .each_with_index do |entry, i|
           column, direction = entry
           page.within(".modal-sorting-row-#{i}") do
-            expect(page).to have_selector("#modal-sorting-attribute-#{i} option", text: column)
-            checked_radio = (descending?(direction) ? 'Descending' : 'Ascending')
+            expect(page).to have_css("#modal-sorting-attribute-#{i} option", text: column)
+            checked_radio = (descending?(direction) ? "Descending" : "Ascending")
             expect(page.find_field(checked_radio)).to be_checked
           end
         end
@@ -79,48 +84,47 @@ module Components
       def update_nth_criteria(i, column, descending: false)
         page.within(".modal-sorting-row-#{i}") do
           select column, from: "modal-sorting-attribute-#{i}"
-          choose(descending ? 'Descending' : 'Ascending')
+          choose(descending ? "Descending" : "Ascending")
         end
       end
 
       def update_sorting_mode(mode)
-        if mode === 'manual'
-          choose('sorting_mode_switch', option: 'manual')
+        if mode === "manual"
+          choose("sorting_mode_switch", option: "manual")
         else
-          choose('sorting_mode_switch', option: 'automatic')
+          choose("sorting_mode_switch", option: "automatic")
         end
       end
 
       def open_modal
         modal = TableConfigurationModal.new
-        modal.open_and_switch_to 'Sort by'
+        modal.open_and_switch_to "Sort by"
       end
 
       def cancel_changes
-        page.within('.op-modal') do
-          click_on 'Cancel'
+        page.within(".spot-modal") do
+          click_on "Cancel"
         end
       end
 
       def apply_changes
-        page.within('.op-modal') do
-          click_on 'Apply'
+        page.within(".spot-modal") do
+          click_on "Apply"
         end
       end
 
       private
 
       def descending?(direction)
-        ['desc', 'descending'].include?(direction.to_s)
+        ["desc", "descending"].include?(direction.to_s)
       end
 
-      def open_table_column_context_menu(name, id)
-        id ||= name.downcase
-        page.find(".generic-table--sort-header ##{id}").click
+      def open_table_column_context_menu(name, button_name = name)
+        page.find(:columnheader, name).click_button(button_name)
       end
 
-      def within_column_context_menu(&block)
-        page.within('#column-context-menu', &block)
+      def within_column_context_menu(&)
+        page.within(:menu, &)
       end
     end
   end

@@ -1,52 +1,141 @@
-import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import {
+  WorkPackageResource,
+} from 'core-app/features/hal/resources/work-package-resource';
 import {
   DisplayFieldRenderer,
   editFieldContainerClass,
 } from 'core-app/shared/components/fields/display/display-field-renderer';
 import { Injector } from '@angular/core';
+import { WorkPackageTableConfiguration } from 'core-app/features/work-packages/components/wp-table/wp-table-configuration';
+import { isNavigableColumn, navigableCellClassName } from 'core-app/features/work-packages/components/wp-fast-table/handlers/state/keyboard/roving-tabindex';
 import { QueryColumn } from 'core-app/features/work-packages/components/wp-query/query-column';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { WorkPackageViewBaselineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
 
 export const tdClassName = 'wp-table--cell-td';
 export const editCellContainer = 'wp-table--cell-container';
 
 export class CellBuilder {
-  @InjectField(SchemaCacheService) schemaCache:SchemaCacheService;
+  @LazyInject(SchemaCacheService) schemaCache:SchemaCacheService;
 
-  public fieldRenderer = new DisplayFieldRenderer(this.injector, 'table');
+  @LazyInject(WorkPackageViewBaselineService) wpTableBaseline:WorkPackageViewBaselineService;
 
-  constructor(public injector:Injector) {
+  public fieldRenderer:DisplayFieldRenderer;
+
+  private readonly historicFieldRenderer:DisplayFieldRenderer;
+
+  constructor(public injector:Injector, private readonly configuration:WorkPackageTableConfiguration) {
+    const writable = configuration.inlineEditEnabled;
+    this.fieldRenderer = new DisplayFieldRenderer(this.injector, 'table', { tabbable: false, writable });
+    this.historicFieldRenderer = new DisplayFieldRenderer(this.injector, 'table', { tabbable: false, writable, historic: true });
   }
 
-  public build(workPackage:WorkPackageResource, column:QueryColumn) {
-    const td = document.createElement('td');
+  public build(workPackage:WorkPackageResource, column:QueryColumn, isRowHeader = false):HTMLTableCellElement {
+    const td = document.createElement(isRowHeader ? 'th' : 'td');
+    if (isRowHeader) td.scope = 'row';
     const attribute = column.id;
     td.classList.add(tdClassName, attribute);
+
+    if (isNavigableColumn(column, this.configuration)) {
+      td.classList.add(navigableCellClassName);
+    }
 
     if (attribute === 'subject') {
       td.classList.add('-max');
     }
 
-    const schema = this.schemaCache.of(workPackage).ofProperty(attribute);
-    if (schema && schema.type === 'User') {
+    if (['startDate', 'dueDate', 'duration'].includes(attribute)) {
+      td.classList.add('-no-ellipsis');
+    }
+
+    if (['estimatedTime', 'remainingTime'].includes(attribute)) {
+      td.classList.add('-min-200');
+    }
+
+    const schema = this.schemaCache.of(workPackage);
+    const fieldSchema = schema.ofProperty(attribute);
+    if (fieldSchema?.type === 'User') {
       td.classList.add('-contains-avatar');
     }
 
     const container = document.createElement('span');
-    container.classList.add(editCellContainer, editFieldContainerClass, attribute);
-    const displayElement = this.fieldRenderer.render(workPackage, attribute, null);
-
-    container.appendChild(displayElement);
     td.appendChild(container);
+    this.render(container, workPackage, attribute, td);
 
     return td;
   }
 
   public refresh(container:HTMLElement, workPackage:WorkPackageResource, attribute:string) {
+    container.innerHTML = '';
+    this.render(container, workPackage, attribute, container.parentElement as HTMLTableCellElement);
+  }
+
+  private render(
+    container:HTMLElement,
+    workPackage:WorkPackageResource,
+    attribute:string,
+    cell:HTMLTableCellElement,
+  ):void {
+    const schema = this.schemaCache.of(workPackage);
+    const mappedName = schema.mappedName(attribute);
+    const hasBaseline = attribute !== 'id' && this.wpTableBaseline.isChanged(workPackage, mappedName);
+    container.classList.add(editCellContainer, editFieldContainerClass, attribute);
+
     const displayElement = this.fieldRenderer.render(workPackage, attribute, null);
 
-    container.innerHTML = '';
+    if (attribute === 'subject' || attribute === 'id') {
+      const name = displayElement.textContent ?? '';
+      cell.dataset.rowHeaderName = name;
+    }
+
+    if (hasBaseline) {
+      displayElement.classList.add('op-table-baseline--field', 'op-table-baseline--new-field');
+      this.prependChanges(container, workPackage, mappedName);
+    }
+
     container.appendChild(displayElement);
+  }
+
+  private prependChanges(
+    container:HTMLElement,
+    workPackage:WorkPackageResource,
+    attribute:string,
+  ):void {
+    const base = (workPackage.attributesByTimestamp!)[0];
+    base.$links.schema = base.$links.schema ?? workPackage.$links.schema;
+    const span = this.historicFieldRenderer.render(base, attribute, null);
+    span.classList.add('op-table-baseline--field', 'op-table-baseline--old-field');
+    container.classList.add('op-table-baseline--container');
+    (container.parentElement as HTMLTableElement).classList.add('op-table-baseline--cell');
+    container.classList.remove(editCellContainer);
+    container.appendChild(span);
   }
 }

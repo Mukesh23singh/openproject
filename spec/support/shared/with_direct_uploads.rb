@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -37,9 +36,9 @@ class WithDirectUploads
 
   ##
   # We need this so calls to rspec mocks (allow, expect etc.) will work here as expected.
-  def method_missing(method, *args, &block)
+  def method_missing(method, *, &)
     if context.respond_to?(method)
-      context.send method, *args, &block
+      context.send(method, *, &)
     else
       super
     end
@@ -63,22 +62,12 @@ class WithDirectUploads
   end
 
   def around(example)
-    example.metadata[:driver] = :chrome_billy
-
-    csp_config = SecureHeaders::Configuration.instance_variable_get("@default_config").csp
-    csp_config.connect_src = ["'self'", "test-bucket.s3.amazonaws.com"]
-    csp_config.form_action = ["'self'", "test-bucket.s3.amazonaws.com"]
-
-    begin
-      example.run
-    ensure
-      csp_config.connect_src = %w('self')
-      csp_config.form_action = %w('self')
-    end
+    example.metadata[:javascript_driver] = example.metadata[:driver] = :chrome_billy
+    example.run
   end
 
   def mock_attachment
-    allow_any_instance_of(::Attachments::PrepareUploadService)
+    allow_any_instance_of(::Attachments::PrepareUploadService) # rubocop:disable RSpec/AnyInstance
       .to receive(:instance) do
       # We don't use create here because this would cause an infinite loop as FogAttachment's #create
       # uses the base class's #create which is what we are mocking here. All this is necessary to begin
@@ -86,57 +75,80 @@ class WithDirectUploads
       # is ever run and we need remote attachments using the FogFileUploader in this scenario.
       FogAttachment.new
     end
-
-    # This is so the uploaded callback works. Since we can't actually substitute the Attachment class
-    # used there we get a LocalFileUploader file for the attachment which is not readable when
-    # everything else is mocked to be remote.
-    allow_any_instance_of(FileUploader).to receive(:readable?).and_return true
   end
 
   def stub_frontend(redirect: false)
-    proxy.stub("https://" + OpenProject::Configuration.remote_storage_upload_host + ":443/", method: 'options').and_return(
+    stub_chrome_background_requests
+
+    # The stubbed S3 endpoint below accepts uploads without storing them, so the staged file
+    # the uploaded callback checks for never exists.
+    allow_any_instance_of(DirectFogUploader).to receive(:readable?).and_return(true) # rubocop:disable RSpec/AnyInstance
+
+    proxy.stub("https://#{OpenProject::Configuration.remote_storage_upload_host}:443/", method: "options").and_return(
       headers: {
-        'Access-Control-Allow-Methods' => 'POST',
-        'Access-Control-Allow-Origin' => '*'
+        "Access-Control-Allow-Methods" => "POST",
+        "Access-Control-Allow-Origin" => "*"
       },
       code: 200
     )
 
     if redirect
       stub_with_redirect
-    else # use status response instead of redirect by default
+    else
+      # use status response instead of redirect by default
       stub_with_status
     end
   end
 
   def stub_with_redirect
     proxy
-      .stub("https://" + OpenProject::Configuration.remote_storage_upload_host + ":443/", method: 'post')
+      .stub("https://#{OpenProject::Configuration.remote_storage_upload_host}:443/", method: "post")
       .and_return(Proc.new do |_params, _headers, body, _url, _method|
         key = body.scan(/key"\s*([^\s]+)\s/m).flatten.first
         redirect_url = body.scan(/success_action_redirect"\s*(http[^\s]+)\s/m).flatten.first
-        ok = body =~ /X-Amz-Signature/ # check that the expected post to AWS was made with the form fields
+        ok = body.include?("X-Amz-Signature") # check that the expected post to AWS was made with the form fields
 
         {
           code: ok ? 302 : 403,
           headers: {
-            'Location' => ok ? redirect_url + '?key=' + CGI.escape(key) : nil,
-            'Access-Control-Allow-Methods' => 'POST',
-            'Access-Control-Allow-Origin' => '*'
+            "Location" => ok ? append_key_query_param(redirect_url, key) : nil,
+            "Access-Control-Allow-Methods" => "POST",
+            "Access-Control-Allow-Origin" => "*"
           }
         }
       end)
   end
 
+  def stub_chrome_background_requests
+    [
+      %r{\Ahttp://clients2\.google\.com(?::80)?/},
+      %r{\Ahttps://accounts\.google\.com(?::443)?/},
+      %r{\Ahttps://www\.google\.com(?::443)?/},
+      %r{\Ahttps://content-autofill\.googleapis\.com(?::443)?/},
+      %r{\Ahttps://optimizationguide-pa\.googleapis\.com(?::443)?/},
+      %r{\Ahttps://update\.googleapis\.com(?::443)?/},
+      %r{\Ahttps://android\.clients\.google\.com(?::443)?/}
+    ].each do |url_pattern|
+      %w[get post].each do |method|
+        proxy.stub(url_pattern, method:).and_return(code: 204, headers: {})
+      end
+    end
+  end
+
+  def append_key_query_param(redirect_url, key)
+    delimiter = redirect_url.include?("?") ? "&" : "?"
+    "#{redirect_url}#{delimiter}key=#{CGI.escape(key)}"
+  end
+
   def stub_with_status
     proxy
-      .stub("https://" + OpenProject::Configuration.remote_storage_upload_host + ":443/", method: 'post')
+      .stub("https://#{OpenProject::Configuration.remote_storage_upload_host}:443/", method: "post")
       .and_return(Proc.new do |_params, _headers, body, _url, _method|
         {
-          code: body =~ /X-Amz-Signature/ ? 201 : 403, # check that the expected post to AWS was made with the form fields
+          code: body.include?("X-Amz-Signature") ? 201 : 403, # check that the expected post to AWS was made with the form fields
           headers: {
-            'Access-Control-Allow-Methods' => 'POST',
-            'Access-Control-Allow-Origin' => '*'
+            "Access-Control-Allow-Methods" => "POST",
+            "Access-Control-Allow-Origin" => "*"
           }
         }
       end)
@@ -145,15 +157,19 @@ class WithDirectUploads
   def stub_uploader
     creds = config[:fog][:credentials]
 
-    allow_any_instance_of(FogFileUploader).to receive(:fog_credentials).and_return creds
+    without_partial_double_verification do
+      # rubocop:disable RSpec/AnyInstance
+      allow_any_instance_of(FogFileUploader).to receive(:fog_credentials).and_return creds
 
-    allow_any_instance_of(FogFileUploader).to receive(:aws_access_key_id).and_return creds[:aws_access_key_id]
-    allow_any_instance_of(FogFileUploader).to receive(:aws_secret_access_key).and_return creds[:aws_secret_access_key]
-    allow_any_instance_of(FogFileUploader).to receive(:provider).and_return creds[:provider]
-    allow_any_instance_of(FogFileUploader).to receive(:region).and_return creds[:region]
-    allow_any_instance_of(FogFileUploader).to receive(:directory).and_return config[:fog][:directory]
+      allow_any_instance_of(FogFileUploader).to receive(:aws_access_key_id).and_return creds[:aws_access_key_id]
+      allow_any_instance_of(FogFileUploader).to receive(:aws_secret_access_key).and_return creds[:aws_secret_access_key]
+      allow_any_instance_of(FogFileUploader).to receive(:provider).and_return creds[:provider]
+      allow_any_instance_of(FogFileUploader).to receive(:region).and_return creds[:region]
+      allow_any_instance_of(FogFileUploader).to receive(:directory).and_return config[:fog][:directory]
 
-    allow(OpenProject::Configuration).to receive(:direct_uploads?).and_return(true)
+      allow(OpenProject::Configuration).to receive(:direct_uploads?).and_return(true)
+      # rubocop:enable RSpec/AnyInstance
+    end
   end
 
   def stub_config(example)
@@ -172,23 +188,28 @@ class WithDirectUploads
 end
 
 RSpec.configure do |config|
-  config.before(:each) do |example|
+  config.before do |example|
     next unless example.metadata[:with_direct_uploads]
 
     WithDirectUploads.new(self).before example
 
-    class FogAttachment < Attachment
-      # Remounting the uploader overrides the original file setter taking care of setting,
-      # among other things, the content type. So we have to restore that original
-      # method this way.
-      # We do this in a new, separate class, as to not interfere with any other specs.
-      alias_method :set_file, :file=
-      mount_uploader :file, FogFileUploader
-      alias_method :file=, :set_file
+    # Only define FogAttachment once. In CW 2.x, mount_uploader uses prepend,
+    # so re-opening the class and re-mounting would stack prepend modules and
+    # cause infinite recursion with the alias_method trick below.
+    unless defined?(FogAttachment)
+      class FogAttachment < Attachment
+        # Remounting the uploader overrides the original file setter taking care of setting,
+        # among other things, the content type. So we have to restore that original
+        # method this way.
+        # We do this in a new, separate class, as to not interfere with any other specs.
+        alias_method :set_file, :file=
+        mount_uploader :file, FogFileUploader
+        alias_method :file=, :set_file
+      end
     end
   end
 
-  config.around(:each) do |example|
+  config.around do |example|
     enabled = example.metadata[:with_direct_uploads]
 
     if enabled

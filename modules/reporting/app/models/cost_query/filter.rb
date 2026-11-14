@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require "set"
 
 class CostQuery::Filter < Report::Filter
   def self.all
@@ -49,9 +46,13 @@ class CostQuery::Filter < Report::Filter
       CostQuery::Filter::StartDate,
       CostQuery::Filter::StatusId,
       CostQuery::Filter::Subject,
+      CostQuery::Filter::Tmonth,
+      CostQuery::Filter::Tweek,
+      CostQuery::Filter::Tyear,
       CostQuery::Filter::TypeId,
       CostQuery::Filter::UpdatedOn,
       CostQuery::Filter::UserId,
+      CostQuery::Filter::LoggedById,
       CostQuery::Filter::PermissionFilter,
       *CostQuery::Filter::CustomFieldEntries.all
     ]

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -38,11 +37,11 @@ export function withLoadingIndicator<T>(indicator:LoadingIndicator, delayStopTim
     indicator.start();
 
     return source$.pipe(
-      tap(
-        () => indicator.delayedStop(delayStopTime),
-        () => indicator.stop(),
-        () => indicator.stop(),
-      ),
+      tap({
+        next: () => indicator.delayedStop(delayStopTime),
+        error: () => indicator.stop(),
+        complete: () => indicator.stop(),
+      }),
     );
   };
 }
@@ -52,29 +51,25 @@ export function withDelayedLoadingIndicator<T>(indicator:() => LoadingIndicator)
     setTimeout(() => indicator().start());
 
     return source$.pipe(
-      tap(
-        () => undefined,
-        () => indicator().stop(),
-        () => indicator().stop(),
-      ),
+      tap({
+        next: () => undefined,
+        error: () => indicator().stop(),
+        complete: () => indicator().stop(),
+      }),
     );
   };
 }
 
 export class LoadingIndicator {
   private indicatorTemplate =
-  `<div class="loading-indicator--background">
-      <div class="loading-indicator">
-        <div class="block-1"></div>
-        <div class="block-2"></div>
-        <div class="block-3"></div>
-        <div class="block-4"></div>
-        <div class="block-5"></div>
+    `<div class="loading-indicator--background">
+        <div class="op-loading-indicator">
+           <div></div><div></div>
+        </div>
       </div>
-    </div>
    `;
 
-  constructor(public indicator:JQuery) {
+  constructor(public indicator:HTMLElement) {
   }
 
   public set promise(promise:Promise<unknown>) {
@@ -91,7 +86,7 @@ export class LoadingIndicator {
   public start() {
     // If we're currently having an active indicator, remove that one
     this.stop();
-    this.indicator.prepend(this.indicatorTemplate);
+    this.indicator.insertAdjacentHTML('afterbegin', this.indicatorTemplate);
   }
 
   public delayedStop(time = 25) {
@@ -99,7 +94,7 @@ export class LoadingIndicator {
   }
 
   public stop() {
-    this.indicator.find('.loading-indicator--background').remove();
+    this.indicator.querySelector('.loading-indicator--background')?.remove();
   }
 }
 
@@ -125,7 +120,7 @@ export class LoadingIndicatorService {
   }
 
   // Return an indicator by name or element
-  public indicator(indicator:string|JQuery):LoadingIndicator {
+  public indicator(indicator:string|HTMLElement):LoadingIndicator {
     if (typeof indicator === 'string') {
       indicator = this.getIndicatorAt(indicator);
     }
@@ -133,7 +128,7 @@ export class LoadingIndicatorService {
     return new LoadingIndicator(indicator);
   }
 
-  private getIndicatorAt(name:string):JQuery {
-    return jQuery(indicatorLocationSelector).filter(`[data-indicator-name="${name}"]`);
+  private getIndicatorAt(name:string):HTMLElement {
+    return document.querySelector(`${indicatorLocationSelector}[data-indicator-name="${name}"]`)!;
   }
 }

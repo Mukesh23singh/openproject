@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,16 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class News::CommentsController < ApplicationController
   default_search_scope :news
-  model_object Comment, scope: [News => :commented]
-  before_action :find_object_and_scope
+
+  before_action :find_news_and_project
+  before_action :find_comment, only: [:destroy]
   before_action :authorize
 
   def create
@@ -41,11 +41,22 @@ class News::CommentsController < ApplicationController
       flash[:notice] = I18n.t(:label_comment_added)
     end
 
-    redirect_to news_path(@news)
+    redirect_to project_news_path(@project, @news), status: :see_other
   end
 
   def destroy
-    @comment.destroy
-    redirect_to news_path(@news)
+    @comment.destroy!
+    redirect_to project_news_path(@project, @news), status: :see_other
+  end
+
+  private
+
+  def find_comment
+    @comment = @news.comments.find(params[:id])
+  end
+
+  def find_news_and_project
+    @project = Project.visible.find(params[:project_id])
+    @news = @project.news.visible.find(params[:news_id])
   end
 end

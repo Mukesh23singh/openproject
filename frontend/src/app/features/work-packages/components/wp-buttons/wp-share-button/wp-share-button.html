@@ -1,0 +1,29 @@
+@let shareCount = shareCount$ | async;
+<button
+  class="button toolbar-icon"
+  data-test-selector="op-wp-share-button"
+  opTooltip
+  [label]="shareCount ? text.share + ' ' + shareCount : text.share"
+  (click)="openModal()"
+  >
+  <svg
+    share-android-icon
+    class="button--icon"
+    size="small"
+  ></svg>
+  @if (shareCount) {
+    <span class="button--text">
+      <span class="badge"
+      [textContent]="shareCount"></span>
+    </span>
+  }
+
+  @if (showEnterpriseIcon) {
+    <svg
+      op-enterprise-addons-icon
+      class="button--icon upsell-colored"
+      size="small"
+    ></svg>
+  }
+
+</button>

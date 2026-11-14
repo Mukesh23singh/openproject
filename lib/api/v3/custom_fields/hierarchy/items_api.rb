@@ -1,0 +1,113 @@
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module API
+  module V3
+    module CustomFields
+      module Hierarchy
+        class ItemsAPI < ::API::OpenProjectAPI
+          include Dry::Monads[:result]
+
+          helpers ::API::V3::CustomFields::ProjectSpecificValuesHelper
+
+          helpers do
+            def item_list(query)
+              hierarchy_root = get_hierarchy_root(query)
+
+              validation = GetItemsParameterContract.new(hierarchy_root:).call(params)
+              handle_validation_errors(validation) if validation.failure?
+
+              start_item = ::CustomField::Hierarchy::Item.find_by(id: validation[:parent]) || hierarchy_root
+              depth = validation[:depth] || -1
+              visible_ids = visible_value_ids(@custom_field)
+              raise ::API::Errors::NotFound if !start_item.root? && hidden_value?(start_item, visible_ids)
+
+              flat_tree(start_item, depth, visible_ids)
+            end
+
+            def flat_tree(item, depth, visible_ids)
+              ::CustomFields::Hierarchy::HierarchicalItemService
+                .new
+                .hashed_subtree(item:, depth:)
+                .either(
+                  ->(value) { ::CustomFields::Hierarchy::HierarchicalItemAggregator.flatten_tree_hash(value, visible_ids:) },
+                  ->(error) do
+                    msg = "#{I18n.t('api_v3.errors.code_500')} #{error}"
+                    raise ::API::Errors::SafeInternalError.new(msg)
+                  end
+                )
+            end
+
+            def get_hierarchy_root(query)
+              items = query.results.where(custom_field: @custom_field)
+              if items.count != 1
+                msg = "corrupt data found, invalid number of hierarchy roots for custom field"
+                raise ::API::Errors::SafeInternalError.new(msg)
+              end
+
+              items.first
+            end
+
+            def handle_validation_errors(validation)
+              message = ""
+              validation.errors(full: true).to_h.each_value do |value|
+                message += "#{value.join(', ')}\n"
+              end
+
+              raise ::API::Errors::InvalidQuery.new(message.chomp)
+            end
+          end
+
+          resource :items do
+            after_validation do
+              unless @custom_field.hierarchical_list?
+                message = "Hierarchy items not available for custom fields of type #{@custom_field.field_format}."
+                raise ::API::Errors::UnprocessableContent.new(message)
+              end
+            end
+
+            get do
+              query = ParamsToQueryService.new(::CustomField::Hierarchy::Item,
+                                               current_user,
+                                               query_class: ::Queries::CustomFields::Hierarchy::ItemQuery)
+                                          .call(params)
+
+              unless query.valid?
+                message = I18n.t("api_v3.errors.missing_or_malformed_parameter", parameter: "filters")
+                raise ::API::Errors::InvalidQuery.new(message)
+              end
+
+              self_link = api_v3_paths.custom_field_items(@custom_field.id, params[:parent], params[:depth],
+                                                          project: params[:project])
+              HierarchyItemCollectionRepresenter.new(item_list(query), self_link:, current_user:)
+            end
+          end
+        end
+      end
+    end
+  end
+end

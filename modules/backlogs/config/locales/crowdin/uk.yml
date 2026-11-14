@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -16,146 +16,591 @@
 #GNU General Public License for more details.
 #You should have received a copy of the GNU General Public License
 #along with this program; if not, write to the Free Software
-#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 uk:
   activerecord:
     attributes:
+      project:
+        allow_multiple_active_sprints: Дозволити кілька активних спринтів
+        backlog_excluded_types: Виключені типи пакетів робіт
+        estimation_unit: Одиниця
+        sprint_sharing: Спільний доступ до спринту
+        statuses_considered_closed: Статуси, що вважаються закритими
+      sprint:
+        duration: Тривалість
+        finish_date: Дата завершення
+        goal: Ціль спринту
+        name: Ім’я спринту
+        origin: Джерело
+        origin_host: Origin host
+        origin_id: Origin ID
+        origin_source: Origin source
+        origin_url: Origin URL
+        sharing: Надання доступу
+        statuses:
+          active: Активний
+          completed: Завершений
+          in_planning: На етапі планування
+        work_packages: Пакети робіт
+      sprint_goal:
+        text: Ціль спринту
       work_package:
-        position: "Позиція"
-        remaining_hours: "Залишилися години"
-        remaining_time: "Залишилися години"
-        story_points: "Точки історії"
-        backlogs_work_package_type: "Тип Backlog-у"
+        backlog_bucket: Сегмент беклогу
+        backlog_inbox: Вхідні беклогу
+        backlogs_work_package_type: Тип Backlog-у
+        position: Позиція
+        sprint: Спринт
+        story_points: Сторі-поінти
     errors:
+      messages:
+        cannot_start_while_receiving_shared_sprints: не можна розпочати, поки проєкт отримує спринти, до яких надано спільний доступ.
+        dates_required: Щоб запустити спринт, необхідно вказати дату початку й завершення.
+        must_be_in_planning: має бути на етапі планування, перш ніж його можна буде почати.
+        only_one_active_sprint_allowed: дозволяється лише один активний спринт для кожного проєкту.
       models:
+        project:
+          attributes:
+            allow_multiple_active_sprints:
+              locked_by_multiple_active_sprints: не можна змінювати, поки запущено кілька активних спринтів.
+              requires_no_sharing: 'можна вмикати, лише якщо для спринту вибрано таке налаштування спільного доступу: «Не надавати доступ».'
+            sprint_sharing:
+              active_or_borrowed_sprint_blocks_receiving: не може працювати в режимі отримання, оскільки в проєкті є активний або запозичений спринт. Спочатку закрийте пакети робіт чи скасуйте їх призначення.
+              locked_by_multiple_active_sprints: не можна змінювати, поки ввімкнено кілька активних спринтів.
+              share_all_projects_already_taken: не можна налаштувати, оскільки проєкт «%{name}» уже надає спільний доступ усім проєктам.
+              share_all_projects_already_taken_anonymous: не можна налаштувати, оскільки інший проєкт вже надає спільний доступ усім проєктам.
+              work_packages_still_linked_to_shared_sprints: не можна змінити, оскільки пакети робіт усе ще повʼязано зі спільними спринтами. Спочатку скасуйте їх призначення.
+          receiving_sprints: використовує спринти, до яких надано доступ. Власні спринти створювати не можна.
+        sprint:
+          attributes:
+            base:
+              format: "%{message}"
+              unfinished_work_packages:
+                one: У цьому спринті не завершено %{count} пакет робіт.
+                few: У цьому спринті не завершено %{count} пакети робіт.
+                many: У цьому спринті не завершено %{count} пакетів робіт.
+                other: У цьому спринті не завершено %{count} пакета робіт.
+            status:
+              not_active: не є активним, тому його не можна закрити.
+        sprint_goal:
+          project_already_has_goal: уже має ціль для цього спринту.
         work_package:
           attributes:
+            backlog_bucket:
+              backlog_bucket_from_another_project: має належати до того самого проєкту, що й пакет робіт.
             blocks_ids:
-              can_only_contain_work_packages_of_current_sprint: "може містити лише ідентифікатори робочих пакетів у поточному спринті."
-              must_block_at_least_one_work_package: "повинен містити ідентифікатор принаймні одного ticket-а."
-            parent_id:
-              parent_child_relationship_across_projects: "є недійсним, оскільки робочий пакет '%{work_package_name}' є завданням backlog-у і тому не може мати батька поза поточним проектом."
-              type_must_be_one_of_the_following: "Тип має бути одним з наступних: %{type_names}."
+              can_only_contain_work_packages_of_current_sprint: може містити лише ідентифікатори робочих пакетів у поточному спринті.
+              must_block_at_least_one_work_package: повинен містити ідентифікатор принаймні одного ticket-а.
+            sprint:
+              not_assignable: не можна призначити, оскільки його вже завершено або доступ до нього не надано цьому проєкту.
+              not_eligible_for_moving: не є активним спринтом у проєкті, який включає спринт, з якого переміщується пакет робіт.
             version_id:
-              task_version_must_be_the_same_as_story_version: "має бути така сама як батьківська версія історії."
-        sprint:
-          cannot_end_before_it_starts: "Спринт не може закінчитися, перш ніж він почне працювати."
+              task_version_must_be_the_same_as_story_version: має збігатись із версією батьківської історії.
+          backlog_bucket_xor_sprint: не можна призначити як спринту, так і сегменту беклогу.
+    models:
+      backlog_bucket:
+        one: Сегмент беклогу
+        few: Сегменти беклогу
+        many: Сегменти беклогу
+        other: Сегменти беклогу
+      sprint:
+        one: Спринт
+        few: Спринти
+        many: Спринти
+        other: Спринти
+      sprint_goal:
+        one: Ціль спринту
+        few: Цілі спринту
+        many: Цілі спринту
+        other: Цілі спринту
   backlogs:
-    add_new_story: "Новий сюжет"
-    any: "будь-який"
-    backlog_settings: "Налаштування Backlog"
-    burndown_graph: "Графік Burndown"
-    card_paper_size: "Розмір паперу для друку карт"
-    chart_options: "Параметри діаграми"
-    close: "Закрити"
-    column_width: "Ширина стовпця:"
-    date: "День"
-    definition_of_done: "Визначення завершено"
-    generating_chart: "Створення графіка..."
-    hours: "Години"
-    impediment: "Перешкода"
-    label_versions_default_fold_state: "Показати складені версії"
-    work_package_is_closed: "Робочий пакет виконується, коли"
-    label_is_done_status: "Стан %{status_name} означає виконано"
-    no_burndown_data: "Немає доступних даних. Необхідно встановити початкові та кінцеві дати спринту."
-    points: "Пункти"
-    positions_could_not_be_rebuilt: "Позиції не могли бути відновлені."
-    positions_rebuilt_successfully: "Позиції успішно відновлені."
-    properties: "Властивості"
-    rebuild: "Перебудувати"
-    rebuild_positions: "Перебудувати позиції"
-    remaining_hours: "Залишилися години"
-    remaining_hours_ideal: "Решта годин (ідеально)"
-    show_burndown_chart: "Графік Burndown"
-    story: "Історія"
-    story_points: "Точки історії"
-    story_points_ideal: "Пункти історії (ідеально)"
-    task: "Завдання"
-    task_color: "Колір завдання"
-    unassigned: "Не призначено"
-    x_more: "%{count} більше..."
-  backlogs_active: "активний"
-  backlogs_any: "будь-який"
-  backlogs_card_specification: "Типи міток для друку карт"
-  backlogs_inactive: "Проект не показує активності"
-  backlogs_points_burn_direction: "Бали спалюються вгору/вниз"
-  backlogs_product_backlog: "Backlog продукту"
-  backlogs_product_backlog_is_empty: "Backlog продукту порожній"
-  backlogs_product_backlog_unsized: "У верхній частині backlog-у продукту є нерозбиті історії"
-  backlogs_sizing_inconsistent: "Розміри історії відрізняються від її оцінок"
-  backlogs_sprint_notes_missing: "Закриті спринти без ретроспективних/оглядових приміток"
-  backlogs_sprint_unestimated: "Закриті або активні спринти з неоціненими історіями"
-  backlogs_sprint_unsized: "Проект має історії про активні або нещодавно закриті спринти, які не були розмірені"
-  backlogs_sprints: "Спринти"
-  backlogs_story: "Історія"
-  backlogs_story_type: "Тип історії"
-  backlogs_task: "Завдання"
-  backlogs_task_type: "Тип завдання"
-  backlogs_velocity_missing: "Для цього проекту швидкість не може бути розрахована"
-  backlogs_velocity_varies: "Швидкість істотно змінюється по спринтам"
-  backlogs_wiki_template: "Шаблон для спринтерської вікі-сторінки"
-  backlogs_empty_title: "Не визначено жодних версій для використання у backlogs"
-  backlogs_empty_action_text: "Щоб розпочати роботу з backlogs, створіть нову версію та призначте її у стовпці backlogs."
-  button_edit_wiki: "Редагувати wiki-сторінку"
-  error_backlogs_task_cannot_be_story: "The settings are invalid. The selected task type can not also be a story type."
-  error_intro_plural: "Сталися такі помилки:"
-  error_intro_singular: "Сталася така помилка:"
-  error_outro: "Виправте наведені вище помилки перед повторним поданням."
-  event_sprint_description: "%{summary}: %{url}\n%{description}"
-  event_sprint_summary: "%{project}: %{summary}"
-  ideal: "ідеальний"
-  inclusion: "не входить до списку"
-  label_back_to_project: "Повернутися до сторінки проекту"
-  label_backlog: "Backlog"
-  label_backlogs: "Backlogs"
-  label_backlogs_unconfigured: "Ви ще не настроїли Backlogs. Перейдіть на %{administration}>%{plugins}, потім натисніть посилання %{configure} для цього плагіна. Після того, як ви встановите поля, поверніться на цю сторінку, щоб розпочати використання інструмента."
-  label_blocks_ids: "Ідентифікатори заблокованих робочих пакетів"
-  label_burndown: "Знищувати"
-  label_column_in_backlog: "Стовпець у backlog-у"
-  label_hours: "годин(и)"
-  label_work_package_hierarchy: "Ієрархія робочого пакету"
-  label_master_backlog: "Майстер Backlog-у"
-  label_not_prioritized: "не є пріоритетними"
-  label_points: "точки"
-  label_points_burn_down: "Вниз"
-  label_points_burn_up: "Вгору"
-  label_product_backlog: "backlog продукту"
-  label_select_all: "Вибрати все"
-  label_sprint_backlog: "backlog спринта"
-  label_sprint_cards: "Експортувати картки"
-  label_sprint_impediments: "Перешкоди спринту"
-  label_sprint_name: "Спринт \"%{name}\""
-  label_sprint_velocity: "Швидкість %{velocity}, заснована на спринтах %{sprints} із середнім %{days} днями"
-  label_stories: "Iсторії"
-  label_stories_tasks: "Історії/Завдання"
-  label_task_board: "Дошка завдань"
-  label_version_setting: "Версії"
-  label_version: 'Версія'
-  label_webcal: "Веб-канал"
-  label_wiki: "Wiki"
-  permission_view_master_backlog: "Перегляд головного backlog-у"
-  permission_view_taskboards: "Перегляд панелі завдань"
-  permission_select_done_statuses: "Select done statuses"
-  permission_update_sprints: "Оновлення спринту"
-  points_accepted: "пунктів прийнято"
-  points_committed: "пунктів зафіксовано"
-  points_resolved: "вирішено зафіксованих пунктів"
-  points_to_accept: "пунктів не прийнято"
-  points_to_resolve: "пункти не вирішені"
-  project_module_backlogs: "Backlogs"
-  rb_label_copy_tasks: "Копіювання робочих пакетів"
-  rb_label_copy_tasks_all: "Всі"
-  rb_label_copy_tasks_none: "Жодного"
-  rb_label_copy_tasks_open: "Відкрити"
-  rb_label_link_to_original: "Включіть посилання на оригінальну історію"
-  remaining_hours: "залишилися години"
-  required_burn_rate_hours: "необхідна швидкість запису (години)"
-  required_burn_rate_points: "необхідна швидкість запису (пункти)"
-  todo_work_package_description: "%{summary}: %{url}\n%{description}"
-  todo_work_package_summary: "%{type}: %{summary}"
-  version_settings_display_label: "Стовпець у backlog-у"
-  version_settings_display_option_left: "зліва"
-  version_settings_display_option_none: "нічого"
-  version_settings_display_option_right: "праворуч"
+    add_existing_work_package_dialog_component:
+      title_without_container: Додати наявний пакет робіт
+    administration_blankslate:
+      text: Зараз ми переробляємо модуль невиконаних завдань (беклогів). Налаштування адміністратора для спринтів і беклогів з’являться тут найближчим часом. Налаштування на рівні проєктів залишаються доступними.
+      title: Ми змінюємо налаштування адміністратора в модулі беклогів
+    backlog_component:
+      button_new_backlog_bucket: Новий сегмент беклогу
+    backlog_filter_select_panel_component:
+      label_backlog_bucket_filter:
+        one: Сегмент беклогу
+        other: Сегменти беклогу
+        zero: Усі сегменти беклогу
+      label_sprint_filter:
+        one: Спринт
+        other: Спринти
+        zero: Усі спринти
+      select_panel_title: Вибрати елементи
+    blankslate_filtered_title: Жоден пакет робіт не відповідає критеріям фільтру.
+    bucket_component:
+      action_menu:
+        add_existing_work_package: Додати наявний пакет робіт
+        add_new_work_package: Додати новий пакет робіт
+        delete_backlog_bucket: Видалити сегмент беклогу
+        edit_backlog_bucket: Змінити сегмент беклогу
+      blankslate_description: Щоб додати елементи, перетягніть їх сюди
+      blankslate_title: Сегмент беклогу порожній
+      drop_zone_label: Щоб додати елемент, перетягніть його сюди
+      label_actions: Дії із сегментом беклогу
+    bucket_destroy_modal_component:
+      details: Сегмент беклогу «%{name}» буде видалено, а всі пакети робіт — переміщено у вхідні завдання беклогу. Пакети робіт не видаляться.
+      title: Видалити сегмент беклогу?
+    created_resolved_chart:
+      series:
+        created: Created
+        resolved: Resolved
+    estimation_unit: Одиниці
+    excluded_work_package_types_caption: 'Виберіть, які типи пакетів робіт слід приховати в беклогу. Елементи вибраних типів не відображатимуться в беклогу автоматично, що дає змогу зосередитися на завданнях своєї команди. Наприклад, ви можете приховати такі типи, як епіки чи віхи, якими керують на вищому рівні, щоб переглядати лише ті завдання, з якими можна працювати.
+
+      '
+    finish_sprint_dialog_component:
+      actions:
+        move_to_bottom_of_backlog: Перемістити їх униз беклогу
+        move_to_sprint: Перемістити їх в інший спринт
+        move_to_top_of_backlog: Перемістити їх угору беклогу
+      body: "%{message} Що б ви хотіли з ними зробити?"
+      button_complete_sprint: Завершити спринт
+      legend: Дія для незавершених пакетів робіт
+      select_sprint_label: Вибрати спринт
+      title: Є елементи, роботу над якими ще не завершено
+    inbox_component:
+      action_menu:
+        add_existing_work_package: Додати наявний пакет робіт
+        add_new_work_package: Додати новий пакет робіт
+      blankslate_description: Відкриті пакети робіт, які не включено в спринт чи сегмент беклогу, автоматично з’являються тут
+      blankslate_title: Немає вхідних завдань беклогу
+      drop_zone_label: Щоб додати елемент, перетягніть його сюди
+      label_actions: Дії з вхідними
+      show_more:
+        one: Show %{count} more item
+        few: Показати ще %{count} елементи
+        many: Показати ще %{count} елементів
+        other: Показати ще %{count} елемента
+      title: Вхідні
+    index_subheader_component:
+      label_search_by_subject: Пошук пакетів робіт за темою
+    label_burndown_chart: Діаграма згорання завдань
+    label_is_done_status: Стан %{status_name} означає виконано
+    label_sprint_board: Дошка спринту
+    label_sprint_report: Звіт про спринт
+    move_to_bucket_dialog_component:
+      title: Перемістити в сегмент беклогу
+    move_to_sprint_dialog_component:
+      label_sprint: Спринт
+      title: Перемістити в спринт
+    multiple_active_sprints: Кілька активних спринтів
+    points_label:
+      one: одиниця
+      few: одиниці
+      many: одиниць
+      other: одиниці
+    positions_could_not_be_rebuilt: Позиції не могли бути відновлені.
+    positions_rebuilt_successfully: Позиції успішно відновлені.
+    rebuild: Перебудувати
+    rebuild_positions: Перебудувати позиції
+    remaining_hours: Залишок роботи
+    selected_work_packages_component:
+      label:
+        one: "%{count} selected work package"
+        few: "%{count} selected work packages"
+        many: "%{count} selected work packages"
+        other: "%{count} selected work packages"
+    sharing: Спільний доступ до спринту
+    sprint_component:
+      action_menu:
+        add_existing_work_package: Додати наявний пакет робіт
+        add_new_work_package: Додати новий пакет робіт
+        edit_sprint: Змінити спринт
+      blankslate_description: Ще нічого не заплановано. Перетягніть елементи сюди, щоб додати їх.
+      blankslate_title: "%{name} нічого не містить"
+      drop_zone_label: Щоб додати елемент, перетягніть його сюди
+      label_actions: Дії зі спринтом
+      label_complete_sprint: Завершити спринт
+      label_start_sprint: Почати спринт
+      start_sprint_disabled_reason_active_sprint: Інший спринт уже розпочато.
+      start_sprint_disabled_reason_missing_dates: Щоб запустити спринт, необхідно вказати дату початку й завершення.
+      start_sprint_disabled_reason_receiving_shared_sprints: Власні спринти цього проєкту не можна розпочати, поки він отримує спринти, до яких надано спільний доступ.
+      start_sprint_disabled_reason_shared_sprint: Це спринт з іншого проєкту, який не підтримує використання кількох активних спринтів.
+    sprint_form:
+      goal_caption: Ціль спринту є унікальною для цього проєкту й не поширюється на інші проєкти, що використовують той самий спринт.
+      goal_for_this_project_label: "%{attribute} (для цього проєкту)"
+    sprint_form_component:
+      shared_sprint_info_banner: Це спільний спринт. Внесені зміни відображатимуться в усіх проєктах, які його використовують.
+      shared_sprint_warning_banner: Це спільний спринт. У вас немає необхідних прав для його редагування.
+    sprint_reports:
+      header_infoline_component:
+        planned_html: 'Planned: %{range}'
+      missing_dates_blankslate_component:
+        description: Sprint start and finish dates are necessary for the report to show.
+        heading: Missing sprint dates
+      navigation_component:
+        next: Наступний
+        previous: Попереднє
+      page_header_component:
+        breadcrumb: Звіт
+        title: Звіт про %{sprint}
+      widgets:
+        burndown_chart:
+          blankslate:
+            no_estimated_hours:
+              description: The burndown chart will appear here once the sprint has an open work package with work time estimate.
+              heading: No work to display
+            no_story_points:
+              description: The burndown chart will appear here once the sprint has an open work package with estimated story points.
+              heading: No work to display
+            not_started:
+              description: The burndown chart will appear here after the sprint starts.
+              heading: No work to display
+            too_long:
+              description: The sprint duration exceeded the 1-year limit of the burndown chart's timespan.
+              heading: No chart to display
+          series:
+            guideline: Guideline
+            projection:
+              story_points: Remaining story points (projection)
+              time: Remaining estimated time (projection)
+            remaining:
+              story_points: Remaining story points
+              time: Remaining estimated time
+          title: Burndown chart
+        burnup_chart:
+          blankslate:
+            no_estimated_hours:
+              description: The burnup chart will appear here once the sprint has received a work package with work time estimate.
+              heading: No work to display
+            no_story_points:
+              description: The burnup chart will appear here once the sprint has received a work package with estimated story points.
+              heading: No work to display
+            not_started:
+              description: The burnup chart will appear here after the sprint starts.
+              heading: No work to display
+            too_long:
+              description: The sprint duration exceeded the 1-year limit of the burnup chart's timespan.
+              heading: No chart to display
+          series:
+            completed: Completed work
+            guideline: Guideline
+            projection: Total work scope (projection)
+            scope: Total work scope
+          title: Burnup chart
+        created_resolved_chart:
+          blankslate:
+            no_work:
+              description: The created vs resolved chart will appear here once a work package has been created or resolved within the sprint.
+              heading: No work to display
+            too_long:
+              description: The sprint duration exceeded the 1-year limit of the created vs resolved chart's timespan.
+              heading: No chart to display
+          title: Created vs resolved work packages
+        epic_progress:
+          blankslate:
+            no_epics:
+              description: The epic progress chart will appear here once the sprint has received a work package tied to an epic.
+              heading: No epics to display
+            no_work:
+              description: The epic progress chart will appear here once the sprint has received a work package tied to an epic.
+              heading: No work to display
+          card:
+            progress:
+              story_points:
+                one: "%{resolved} / %{count} story point"
+                few: "%{resolved} / %{count} story points"
+                many: "%{resolved} / %{count} story points"
+                other: "%{resolved} / %{count} story points"
+              time: "%{resolved} / %{count}"
+              work_packages:
+                one: "%{resolved} / %{count} work package"
+                few: "%{resolved} / %{count} work packages"
+                many: "%{resolved} / %{count} work packages"
+                other: "%{resolved} / %{count} work packages"
+            progress_label:
+              story_points:
+                one: "%{epic}: %{resolved} of %{count} story point completed"
+                few: "%{epic}: %{resolved} of %{count} story points completed"
+                many: "%{epic}: %{resolved} of %{count} story points completed"
+                other: "%{epic}: %{resolved} of %{count} story points completed"
+              time: "%{epic}: %{resolved} of %{count} completed"
+              work_packages:
+                one: "%{epic}: %{resolved} of %{count} work package completed"
+                few: "%{epic}: %{resolved} of %{count} work packages completed"
+                many: "%{epic}: %{resolved} of %{count} work packages completed"
+                other: "%{epic}: %{resolved} of %{count} work packages completed"
+            work_package_completed: "(%{percentage})"
+          title: Epic progress
+        velocity_chart:
+          average:
+            one: 'Average of previous sprint:'
+            few: 'Average of previous %{count} sprints:'
+            many: 'Average of previous %{count} sprints:'
+            other: 'Average of previous %{count} sprints:'
+          average_legend: Average
+          committed: Committed
+          completed: Завершений
+          story_points: "%{value} SP"
+          summary:
+            story_points:
+              one: Bar chart of committed and completed story points of the last sprint.
+              few: Bar chart of committed and completed story points of the last %{count} sprints.
+              many: Bar chart of committed and completed story points of the last %{count} sprints.
+              other: Bar chart of committed and completed story points of the last %{count} sprints.
+            time:
+              one: Bar chart of committed and completed estimated time of the last sprint.
+              few: Bar chart of committed and completed estimated time of the last %{count} sprints.
+              many: Bar chart of committed and completed estimated time of the last %{count} sprints.
+              other: Bar chart of committed and completed estimated time of the last %{count} sprints.
+          summary_average: 'Average velocity: %{average}.'
+          title: Velocity chart
+          velocity: "%{sprint}:"
+          y_axis_title:
+            story_points: Сторі-поінти
+            time: Приблизний час
+        work_package_graph:
+          blankslate:
+            no_work:
+              description: The work package graph will appear here once the sprint has received a work package.
+              heading: No work to display
+          summary:
+            completed: 'Bar chart of the work packages in the sprint when it was completed, by status: %{description}.'
+            current: 'Bar chart of the work packages currently in the sprint, by status: %{description}.'
+          title: Графік пакетів робіт
+        work_package_overview:
+          blocks:
+            changed_after_start:
+              change_html: "+%{added} %{divider} -%{removed}"
+              heading: Зміна обсягу
+              story_points_change_html: "+%{added} %{divider} -%{removed} story points"
+            completed:
+              heading: Завершено
+            initially_planned:
+              heading: Спочатку заплановано
+            unfinished:
+              heading: Незавершено
+          breakdown_block:
+            blocks:
+              show_all: Переглянути всі
+              show_all_label: 'View all: %{heading}'
+          closed_work_packages: Закриті пакети робіт
+          completed_estimated_time: Completed estimated time
+          completed_story_points: Completed story points
+          progress_summary:
+            story_points:
+              one: "%{percentage} (%{resolved} of %{count} story point)"
+              few: "%{percentage} (%{resolved} of %{count} story points)"
+              many: "%{percentage} (%{resolved} of %{count} story points)"
+              other: "%{percentage} (%{resolved} of %{count} story points)"
+            time: "%{percentage} (%{resolved} of %{count})"
+            work_packages:
+              one: "%{percentage} (%{resolved} of %{count} work package)"
+              few: "%{percentage} (%{resolved} of %{count} work packages)"
+              many: "%{percentage} (%{resolved} of %{count} work packages)"
+              other: "%{percentage} (%{resolved} of %{count} work packages)"
+          title: Work packages within the sprint
+        work_package_table:
+          added:
+            blankslate:
+              empty:
+                description: Work packages that were added after the sprint start date will appear here.
+              not_started:
+                description: Added work packages will appear here after the sprint starts.
+            title: Scope increase after sprint start
+          blankslate:
+            heading: Немає пакетів робіт
+          completed:
+            blankslate:
+              empty:
+                description: Work packages that were completed in the sprint will appear here.
+              not_started:
+                description: Completed work packages will appear here after the sprint starts.
+            title: Completed work
+          removed:
+            blankslate:
+              empty:
+                description: Work packages that were removed after the sprint start date will appear here.
+              not_started:
+                description: Removed work packages will appear here after the sprint starts.
+            title: Scope decrease after sprint start
+          unfinished:
+            blankslate:
+              empty:
+                description: All work packages in this sprint are completed.
+                heading: Wow, all done!
+              not_started:
+                description: Unfinished work packages will appear here after the sprint starts.
+            title: Unfinished work
+    sprints:
+      date_cell_component:
+        planned: "(planned)"
+      row_component:
+        action_menu:
+          edit_sprint: Змінити спринт
+          sprint_report: Звіт про спринт
+    sprints_component:
+      blankslate:
+        create_and_manage_description_html: Щоб почати планувати спринт, створіть його тут або перейдіть у %{settings_link}, щоб отримати спринти з інших проєктів.
+        create_description_text: Щоб почати планувати спринт, створіть його тут.
+        manage_description_html: Щоб почати планувати спринт, перейдіть у %{settings_link}, щоб отримати спринти з інших проєктів.
+        no_actions_description_text: Ще немає спринтів, доступних для цього проєкту.
+        receive_and_manage_description_html: Цей проєкт може використовувати спринти з іншого проєкту. Щоб змінити параметри, перейдіть у %{settings_link}.
+        receive_description_text: Цей проєкт може використовувати спринти з іншого проєкту, до яких надано доступ. Однак зараз доступних спринтів немає.
+        settings_link_text: налаштування проєкту
+        title: Спринтів ще немає
+      button_new_sprint: Новий спринт
+    statuses_considered_closed_caption: 'Виберіть статуси, які відповідають закритому або завершеному стану у вашому робочому процесі. Вони оброблятимуться як статус «Закрито» у звітах (наприклад, щодо згорання завдань) і при плануванні спринтів. Наприклад, у вашому процесі такі статуси, як «Виконано», «Вирішено» або «Не буде виправлено» можуть означати закриті робочі елементи.
+
+      '
+    story_points:
+      one: "%{count} cторі-поінт"
+      few: "%{count} сторі-поінти"
+      many: "%{count} сторі-поінтів"
+      other: "%{count} сторі-поінта"
+    types_and_statuses: Типи й статуси
+    unassigned: Не призначено
+    user_preference:
+      button_update_backlogs: Оновити модуль невиконаних завдань
+      header_backlogs: Модуль невиконаних завдань
+    work_package_card_menu_component:
+      action_menu:
+        copy_work_package_id: Скопіювати ідентифікатор пакета робіт
+        move_menu: Перемістити в позицію
+        move_to_backlog_bucket: Перемістити в сегмент беклогу
+        move_to_inbox: Перемістити у вхідні беклогу
+        move_to_sprint: Перемістити в спринт
+        no_batch_actions: No actions available for the selected work packages.
+        stale_selection: The selection has changed. Refresh it before moving work packages.
+    work_package_is_closed: Робочий пакет виконується, коли
+    work_packages:
+      add_existing_dialog:
+        invalid_target: Ціль, яку ви намагаєтеся додати, недійсна.
+        target_not_found: Спринт або беклог, у який ви намагаєтеся додати елемент, не знайдено.
+      batch_update_service:
+        mixed_projects: Усі пакети робіт партії повинні належати до одного й того самого проєкту.
+        stale_batch: Під час підготовки до переміщення змінився принаймні один пакет робіт. Перевірте поточні позиції та спробуйте ще раз.
+        stale_predecessor: Пакет робіт, який слід вставити після цього, було переміщено в інше місце. Перевірте поточні позиції та спробуйте ще раз.
+        unavailable_target: Список призначення більше недоступний. Перезавантажте сторінку та спробуйте ще раз.
+        unexpected_failure: Пакети робіт вдалося перемістити. Спробуйте ще раз.
+      move:
+        moved_announcement: "%{label}: переміщено в список «%{list}» на позицію %{position} з %{total}"
+      move_to_bucket_dialog:
+        no_available_destinations: There are no available backlog buckets for these work packages.
+      move_to_sprint_dialog:
+        no_available_destinations: There are no available sprints for these work packages.
+      move_collection:
+        invalid_ids: Список пакетів робіт для переміщення є неприпустимим.
+        member_failed: "%{work_package}: %{reason}"
+        moved_announcement:
+          one: "%{count} work package moved to %{list}, position %{first} of %{total}"
+          few: Пакети робіт (%{count}) переміщено в список «%{list}», позиції з %{first} по %{last} з %{total}
+          many: Пакети робіт (%{count}) переміщено в список «%{list}», позиції з %{first} по %{last} з %{total}
+          other: Пакети робіт (%{count}) переміщено в список «%{list}», позиції з %{first} по %{last} з %{total}
+        too_many_work_packages: Максимальна кількість пакетів робіт для одночасного переміщення — %{max}.
+        work_packages_not_found: У цьому проєкті не вдалося знайти принаймні один пакет робіт.
+      update_service:
+        invalid_target_type: 'list_type має бути одним із таких значень: backlog_bucket із list_id, sprint із list_id або inbox без list_id.'
+        missing_target: Має бути вказано list_type або list_id.
+  ee:
+    features:
+      multiple_active_sprints: Кілька активних спринтів
+      sprint_report_pro_widgets: Full sprint report
+      sprint_sharing: Спільний доступ до спринту
+    upsell:
+      multiple_active_sprints:
+        description: Запускайте паралельно кілька спринтів для різних команд, що працюють над вашим проєктом, для більшого контролю й гнучкості.
+      sprint_report_pro_widgets:
+        description: Add more charts, customize your report and access in-depth data about planning your team’s work.
+      sprint_sharing:
+        description: Надавайте доступ до спринтів кільком проєктам, щоб узгоджувати й координувати роботу команд у конфігураціях Масштабованої гнучкої розробки (SAFe).
+  label_all_sprints: Усі спринти
+  label_backlog: Backlog
+  label_backlog_and_sprints: Беклог і спринти
+  label_backlog_bucket_edit: Змінити сегмент беклогу
+  label_backlog_bucket_new: Новий сегмент беклогу
+  label_backlogs: Backlogs
+  label_burndown_chart: Діаграма згорання завдань
+  label_inbox: Вхідні
+  label_points_burn_down: Вниз
+  label_points_burn_up: Вгору
+  label_sprint_board: Дошка спринту
+  label_sprint_edit: Редагувати спринт
+  label_sprint_new: Новий спринт
+  label_task_board: Дошка завдань
+  notice_successful_finish: Спринт завершено.
+  notice_successful_start: Спринт розпочато.
+  notice_unsuccessful_finish: Спринт не вдалося завершити.
+  notice_unsuccessful_finish_with_reason: 'Спринт не вдалося завершити: %{reason}'
+  notice_unsuccessful_start: Спринт не вдалося розпочати.
+  notice_unsuccessful_start_with_reason: 'Спринт не вдалося розпочати: %{reason}'
+  notice_work_package_invisible_after_move:
+    one: 'Пакет робіт було переміщено в беклог (%{backlog}), але він там не відображається, оскільки його тип або статус виключено з беклогу.
+
+      '
+    few: "%{count} пакети робіт було переміщено в беклог (%{backlog}), але він там не відображається, оскільки його тип або статус виключено з беклогу.\n"
+    many: "%{count} пакетів робіт було переміщено в беклог (%{backlog}), але він там не відображається, оскільки його тип або статус виключено з беклогу.\n"
+    other: "%{count} пакета робіт було переміщено в беклог (%{backlog}), але він там не відображається, оскільки його тип або статус виключено з беклогу.\n"
+  permission_create_sprints: Створення спринтів
+  permission_manage_backlogs_configuration: Manage backlogs configuration
+  permission_manage_backlogs_configuration_explanation: 'Allows configuring the backlogs module including: choosing which work package types to hide from the backlog, defining which statuses represent a closed or finished state in the project''s workflow and selecting the unit for velocity.
+
+    '
+  permission_manage_sprint_items: Керування елементами спринтів
+  permission_share_sprint: Надання доступу до спринтів
+  permission_start_complete_sprint: Початок/завершення спринтів
+  permission_view_sprints: Перегляд спринтів
+  plugin_openproject_backlogs:
+    description: Цей модуль додає функції, завдяки яким agile-команди можуть працювати над проєктами Scrum в OpenProject.
+    name: Невиконані завдання в OpenProject
+  project_module_backlogs: Невиконані завдання
+  projects:
+    copy:
+      backlog_buckets: Сегменти беклогу
+      sprints: Спринти
+    settings:
+      backlog_estimation_unit:
+        estimation_unit: Одиниця
+        options:
+          none:
+            caption: The number of work packages will be used as the default unit in charts. Some sprint report charts won't be displayed.
+            label: Немає
+          story_points:
+            caption: The cards and charts will display story points.
+            label: Сторі-поінти
+          time:
+            caption: The cards and charts will display work time estimates.
+            label: Work time estimate
+      backlog_sharing:
+        options:
+          no_sharing:
+            caption: Спринти, створені в цьому проєкті, будуть доступні й видимі лише для цього проєкту. Вони також не будуть видимі для підпроєктів.
+            label: Не надавати доступ
+          receive_shared:
+            caption: Цей проєкт може використовувати лише спринти, до яких надали доступ інші проєкти.
+            label: Отримувати доступ до спринтів
+            warning: Цей проєкт може використовувати лише спринти, до яких надали доступ інші проєкти. Невикористані спринти, створені в цьому проєкті в минулому, більше не будуть видимими.
+          share_all_projects:
+            caption: Спринти, створені в цьому проєкті, будуть доступні для всіх проєктів, наявних у цьому екземплярі. Якщо ви виберете цю опцію, вона більше не буде доступна для інших проєктів.
+            disabled_caption: Опція недоступна, оскільки проєкт «%{name}» зараз надає спільний доступ усім проєктам і це може робити лише один проєкт.
+            disabled_caption_anonymous: Опція недоступна, оскільки інший проєкт зараз надає спільний доступ усім проєктам і це може робити лише один проєкт.
+            label: Усі проєкти
+          share_subprojects:
+            caption: Спринти, створені в цьому проєкті, будуть доступні для всіх його підпроєктів.
+            info: Надавши спільний доступ до спринту, ви дозволяєте переглядати його назву, статус, а також дати початку й завершення в усіх проєктах. Ці дані не можна змінити в проєктах, які отримують доступ до таких спринтів і використовують їх.
+            label: Підпроєкти
+        sprint_sharing: Надання доступу до спринтів
+      backlogs:
+        estimation_unit_form_component:
+          description: Select the default unit of measuring effort, velocity and capacity that matches the workflow of your agile team. They will be shown in the backlog and sprint reports.
+          heading: Default unit of velocity, effort and capacity
+        multiple_active_sprints:
+          description: За замовчуванням у кожному проєкті може бути активний лише один спринт. Це можна змінити, щоб у цьому проєкті одночасно могли бути активними кілька спринтів.
+          heading: Кількість активних спринтів
+        multiple_active_sprints_component:
+          cannot_turn_off: Зараз активні кілька спринтів. Щоб повернутися до режиму, у якому одночасно може використовуватися лише один спринт, спочатку переконайтеся, що активний щонайбільше один спринт.
+          not_available_html: Неможливо одночасно використовувати кілька активних спринтів, коли ввімкнено <a href=%{sprint_sharing_url}>надання доступу</a> до спринту або його отримання.
+        sharing_form_component:
+          disabled_due_to_multiple_active_sprints: Спільний доступ до спринту неможливий, якщо ввімкнено кілька активних спринтів.
+          sharing_description: Цей проєкт може надавати доступ до власних спринтів, використовувати спринти, до яких надано доступ, або працювати зі спринтами самостійно (без спільного доступу).
+          sharing_fallback_description: Якщо немає корпоративного плану Enterprise, можливості спільного доступу обмежуються спринтами, які належать проєкту. Поточний активний параметр залишається активним.
+  query_fields:
+    backlog_inbox: Вхідні беклогу
+  remaining_hours: залишок роботи

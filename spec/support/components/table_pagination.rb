@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,26 +30,39 @@
 module Components
   class TablePagination
     include Capybara::DSL
+    include Capybara::RSpecMatchers
     include RSpec::Matchers
 
     def expect_range(from, to, total)
       within_pagination do
         expect(page)
-          .to have_selector('.op-pagination--range', text: "(#{from} - #{to}/#{total})")
+          .to have_css(".op-pagination--range", text: "(#{from} - #{to}/#{total})")
+      end
+    end
+
+    def go_to_page(number)
+      within_pagination do
+        within(".op-pagination--pages") { click_on number.to_s, exact: true }
+      end
+    end
+
+    def select_per_page(number)
+      within_pagination do
+        within(".op-pagination--options") { click_on number.to_s, exact: true }
       end
     end
 
     def expect_no_per_page_options
       within_pagination do
         expect(page)
-          .to have_no_selector('.op-pagination--options')
+          .to have_no_css(".op-pagination--options")
       end
     end
 
     protected
 
-    def within_pagination(&block)
-      within('.op-pagination', &block)
+    def within_pagination(&)
+      within(".op-pagination", &)
     end
   end
 end

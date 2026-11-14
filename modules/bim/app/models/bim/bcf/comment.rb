@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Bim::Bcf
-  class Comment < ActiveRecord::Base
+  class Comment < ApplicationRecord
     self.table_name = :bcf_comments
 
     include InitializeWithUuid
@@ -36,15 +35,15 @@ module Bim::Bcf
     UPDATE_ATTRIBUTES = %i[viewpoint reply_to].freeze
 
     belongs_to :journal
-    belongs_to :issue, foreign_key: :issue_id, class_name: "Bim::Bcf::Issue"
-    belongs_to :viewpoint, foreign_key: :viewpoint_id, class_name: "Bim::Bcf::Viewpoint", optional: true
+    belongs_to :issue, class_name: "Bim::Bcf::Issue"
+    belongs_to :viewpoint, class_name: "Bim::Bcf::Viewpoint", optional: true
     belongs_to :reply_to, foreign_key: :reply_to, class_name: "Bim::Bcf::Comment", optional: true
 
     validates_presence_of :uuid
     validates_uniqueness_of :uuid, scope: [:issue_id]
 
     def self.has_uuid?(uuid, issue_id)
-      exists?(uuid: uuid, issue_id: issue_id)
+      exists?(uuid:, issue_id:)
     end
   end
 end

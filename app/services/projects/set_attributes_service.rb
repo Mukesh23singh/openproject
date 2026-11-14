@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,71 +32,100 @@ module Projects
     private
 
     def set_attributes(params)
-      attributes = params.dup
-      status_attributes = attributes.delete(:status) || {}
+      super(set_attributes_params(params)).tap do
+        set_status_code(params[:status_code]) if status_code_provided?(params)
+      end
+    end
 
-      ret = super(attributes)
+    def set_attributes_params(params)
+      # Remove fields that cannot be directly set
+      filtered = params.except(:status_code)
 
-      update_status(status_attributes)
+      custom_field_value_params = filtered[:custom_field_values]
+      return filtered unless custom_field_value_params
 
-      ret
+      calculated_field_ids = model.all_available_custom_fields
+                                  .field_format_calculated_value
+                                  .pluck(:id)
+
+      filtered_cf_values = custom_field_value_params.reject do |id, _|
+        id.to_s.to_i.in?(calculated_field_ids)
+      end
+
+      filtered.merge(custom_field_values: filtered_cf_values)
     end
 
     def set_default_attributes(attributes)
       attribute_keys = attributes.keys.map(&:to_s)
 
-      set_default_public(attribute_keys.include?('public'))
-      set_default_module_names(attribute_keys.include?('enabled_module_names'))
-      set_default_types(attribute_keys.include?('types') || attribute_keys.include?('type_ids'))
+      set_default_public(attribute_keys.include?("public"))
+      set_default_wiki
+      set_default_module_names(attribute_keys.include?("enabled_module_names"))
+      set_default_types(attribute_keys.include?("project_types"))
+      set_default_show_work_package_attachments(attribute_keys.include?("deactivate_work_package_attachments"))
     end
 
     def set_default_public(provided)
       model.public = Setting.default_projects_public? unless provided
     end
 
+    def set_default_wiki
+      model.build_wiki(start_page: "Wiki", enabled: Setting.default_projects_wiki?) if model.wiki.nil?
+    end
+
     def set_default_module_names(provided)
       model.enabled_module_names = Setting.default_projects_modules if !provided && model.enabled_module_names.empty?
     end
 
+    def set_default_show_work_package_attachments(provided)
+      model.deactivate_work_package_attachments = !Setting.show_work_package_attachments? unless provided
+    end
+
     def set_default_types(provided)
-      model.types = ::Type.default if !provided && model.types.empty?
+      return if provided || model.project_types.any?
+
+      model.project_types = default_project_types
     end
 
-    def update_status(attributes)
-      with_hack_around_faulty_enum(attributes) do |safe_attributes|
-        if model.status
-          model.status.attributes = safe_attributes
-        else
-          model.build_status(safe_attributes)
-        end
+    def default_project_types
+      TypeVariant.enabled_in_new_projects.map do |variant|
+        ProjectType.new(type_id: variant.type_id, variant: variant)
       end
     end
 
-    # Hack around ArgumentError on faulty enum values
-    # https://github.com/rails/rails/issues/13971
-    def with_hack_around_faulty_enum(attributes)
-      faulty_code = if faulty_code?(attributes)
-                      attributes.delete(:code)
-                    end
+    def status_code_provided?(params)
+      params.key?(:status_code)
+    end
 
-      yield(attributes)
-
-      if faulty_code
+    def set_status_code(status_code)
+      if faulty_code?(status_code)
         # set an arbitrary status code first to get rails internal into correct state
-        model.status.code = first_not_set_code
+        model.status_code = first_not_set_code
         # hack into rails internals to set faulty code
-        code_attributes = model.status.instance_variable_get(:@attributes)['code']
-        code_attributes.instance_variable_set(:@value_before_type_cast, faulty_code)
-        code_attributes.instance_variable_set(:@value, faulty_code)
+        code_attributes = model.instance_variable_get(:@attributes)["status_code"]
+        code_attributes.instance_variable_set(:@value_before_type_cast, status_code)
+        code_attributes.instance_variable_set(:@value, status_code)
+      else
+        model.status_code = status_code
       end
     end
 
-    def faulty_code?(attributes)
-      attributes && attributes[:code] && !Projects::Status.codes.keys.include?(attributes[:code].to_s)
+    def faulty_code?(status_code)
+      status_code && Project.status_codes.keys.exclude?(status_code.to_s)
     end
 
     def first_not_set_code
-      (Projects::Status.codes.keys - [model.status.code]).first
+      (Project.status_codes.keys - [model.status_code]).first
+    end
+
+    def set_custom_values_to_validate(params)
+      # In case of new records, validate custom fields that are enabled for all projects
+      # and also required.
+      if model.new_record? && !contract_options[:skip_custom_field_validation]
+        set_custom_field_ids_to_validate(model.available_custom_fields.for_all.required.pluck(:id))
+      else
+        super
+      end
     end
   end
 end

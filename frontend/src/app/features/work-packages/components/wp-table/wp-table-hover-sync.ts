@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,57 +20,60 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { runCleanup } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
+
 const cssClassRowHovered = 'row-hovered';
 
 export class WpTableHoverSync {
+  private active = false;
+
+  private readonly frames = new Set<number>();
+
   private lastHoveredElement:Element | null = null;
 
   private eventListener = (evt:MouseEvent) => {
-    const target = evt.target as Element|null;
+    if (!this.active) return;
+    const target = evt.target as HTMLElement|null;
     if (target && target !== this.lastHoveredElement) {
       this.handleHover(target);
     }
     this.lastHoveredElement = target;
   };
 
-  constructor(private tableAndTimeline:JQuery) {
+  constructor(private tableAndTimeline:HTMLElement) {
   }
 
   activate() {
+    if (this.active) return;
+    this.active = true;
     window.addEventListener('mousemove', this.eventListener, { passive: true });
   }
 
   deactivate() {
-    window.removeEventListener('mousemove', this.eventListener);
-    this.removeAllHoverClasses();
+    this.active = false;
+    runCleanup(() => window.removeEventListener('mousemove', this.eventListener));
+    this.frames.forEach((id) => runCleanup(() => cancelAnimationFrame(id)));
+    this.frames.clear();
+    runCleanup(() => this.removeAllHoverClasses());
+    this.lastHoveredElement = null;
   }
 
-  private locateHoveredTableRow(child:JQuery):Element | null {
-    const parent = child.closest('tr');
-    if (parent.length === 0) {
-      return null;
-    }
-    return parent[0];
+  private locateHoveredTableRow(child:HTMLElement):HTMLTableRowElement | null {
+    return child.closest('tr');
   }
 
-  private locateHoveredTimelineRow(child:JQuery):Element | null {
-    const parent = child.closest('div.wp-timeline-cell');
-    if (parent.length === 0) {
-      return null;
-    }
-    return parent[0];
+  private locateHoveredTimelineRow(child:HTMLElement):HTMLElement | null {
+    return child.closest('div.wp-timeline-cell');
   }
 
-  private handleHover(element:Element) {
-    const $element = jQuery(element) as JQuery;
-    const parentTableRow = this.locateHoveredTableRow($element);
-    const parentTimelineRow = this.locateHoveredTimelineRow($element);
+  private handleHover(element:HTMLElement) {
+    const parentTableRow = this.locateHoveredTableRow(element);
+    const parentTimelineRow = this.locateHoveredTimelineRow(element);
 
     // remove all hover classes if cursor does not hover a row
     if (parentTableRow === null && parentTimelineRow === null) {
@@ -86,24 +89,26 @@ export class WpTableHoverSync {
   }
 
   private removeOldAndAddNewHoverClass(parentTableRow:Element | null, parentTimelineRow:Element | null) {
-    const hovered = parentTableRow !== null ? parentTableRow : parentTimelineRow;
+    const hovered = parentTableRow ?? parentTimelineRow;
     const wpId = this.extractWorkPackageId(hovered!);
 
-    const tableRow:JQuery = this.tableAndTimeline.find(`tr.wp-row-${wpId}`).first();
-    const timelineRow:JQuery = this.tableAndTimeline.find(`div.wp-row-${wpId}`).length
-      ? this.tableAndTimeline.find(`div.wp-row-${wpId}`).first()
-      : this.tableAndTimeline.find(`div.wp-ancestor-row-${wpId}`).first();
+    const tableRow = this.tableAndTimeline.querySelector(`tr.wp-row-${wpId}`);
+    const timelineRow = this.tableAndTimeline.querySelector(`div.wp-row-${wpId}`)
+      ?? this.tableAndTimeline.querySelector(`div.wp-ancestor-row-${wpId}`);
 
-    requestAnimationFrame(() => {
+    const id = requestAnimationFrame(() => {
+      this.frames.delete(id);
+      if (!this.active) return;
       this.removeAllHoverClasses();
-      timelineRow.addClass(cssClassRowHovered);
-      tableRow.addClass(cssClassRowHovered);
+      timelineRow?.classList.add(cssClassRowHovered);
+      tableRow?.classList.add(cssClassRowHovered);
     });
+    this.frames.add(id);
   }
 
   private removeAllHoverClasses() {
     this.tableAndTimeline
-      .find(`.${cssClassRowHovered}`)
-      .removeClass(cssClassRowHovered);
+      .querySelectorAll(`.${cssClassRowHovered}`)
+      .forEach((elem) => runCleanup(() => elem.classList.remove(cssClassRowHovered)));
   }
 }

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,42 +20,68 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
-
 <% permissions.each do |mod, mod_permissions| %>
-  <% global_prefix = showGlobalRole ? 'fieldset--global--' : 'fieldset--' %>
-  <% module_name = mod.blank? ? 'fieldset--global--' + Project.model_name.human.downcase.gsub(' ', '_') : global_prefix + l_or_humanize(mod, prefix: 'project_module_').downcase.gsub(' ', '_') %>
-  <fieldset class="form--fieldset -collapsible" id="<%= module_name %>">
-    <legend class="form--fieldset-legend">
-      <% if mod.blank? %>
-        <%= showGlobalRole ? t(:label_global) : Project.model_name.human %>
-      <% else %>
-        <%= l_or_humanize(mod, prefix: 'project_module_') %>
+  <% module_name = mod.blank? ? Project.model_name.param_key : l_or_humanize(mod, prefix: "project_module_").downcase.tr(" ", "_") %>
+  <% module_title = show_global_role && mod.blank? ? t(:label_global) : permission_header_for_project_module(mod) %>
+  <% section_id = "#{'global-' if show_global_role}#{module_name.parameterize}-section" %>
+
+  <%= render Primer::OpenProject::CollapsibleSection.new(id: section_id, display: :block, mb: 3) do |section| %>
+    <% section.with_title(tag: :h3) do %>
+      <%= module_title %>
+    <% end %>
+
+    <% if I18n.exists?("permission_header_explanation", scope: mod) %>
+      <% section.with_caption do %>
+        <%= I18n.t("permission_header_explanation", scope: mod) %>
       <% end %>
-    </legend>
-    <div class="form--toolbar">
-      <span class="form--toolbar-item">
-        (<%= check_all_links module_name %>)
-      </span>
-    </div>
-    <div class="-columns-2">
+    <% end %>
+
+    <% section.with_additional_information do %>
+      <%=
+        check_all_links section_id do |links|
+          links.with_check_all_button do |button|
+            button.with_tooltip(text: t(".section_check_all_label", module: module_title))
+            t(:button_check_all)
+          end
+
+          links.with_uncheck_all_button do |button|
+            button.with_tooltip(text: t(".section_uncheck_all_label", module: module_title))
+            t(:button_uncheck_all)
+          end
+        end
+      %>
+    <% end %>
+
+    <% section.with_collapsible_content(classes: "-columns-2", data: { controller: "checkable" }) do %>
       <% Array(mod_permissions).each do |permission| %>
+        <% next if permission.global? && !show_global_role %>
         <div class="form--field">
           <div class="form--field-container">
             <label class="form--label-with-check-box">
-              <%= styled_check_box_tag 'role[permissions][]', permission.name, (role.permissions && role.permissions.include?(permission.name)) %>
-              <%= l_or_humanize(permission.name, prefix: 'permission_') %>
+              <%= styled_check_box_tag "role[permissions][]",
+                                       permission.name,
+                                       (role.permissions && role.permissions.include?(permission.name)),
+                                       data: { checkable_target: "checkbox" } %>
+              <%= t(:"permission_#{permission.name}") %>
             </label>
+          </div>
+          <div class="form--field-instructions -labeled-checkbox">
+            <%= t(:"permission_#{permission.name}_explanation", default: nil) %>
+            <% if permission.name.in?(%i[add_project add_subprojects]) %>
+              <%= link_translate(
+                    :permission_project_identifier_visibility_caution,
+                    links: { project_identifier_visibility_url: %i[sysadmin_docs project_identifier_visibility] }
+                  ) %>
+            <% end %>
           </div>
         </div>
       <% end %>
-    </div>
-
-  </fieldset>
+    <% end %>
+  <% end %>
 <% end %>
-<%= hidden_field_tag 'role[permissions][]', '' %>
+<%= hidden_field_tag "role[permissions][]", "" %>

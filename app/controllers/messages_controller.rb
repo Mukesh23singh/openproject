@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,35 +30,22 @@
 class MessagesController < ApplicationController
   menu_item :forums
   default_search_scope :messages
-  model_object Message, scope: Forum
-  before_action :find_object_and_scope
+  before_action :find_project_and_forum
+  before_action :find_message, only: %i[show edit update destroy reply quote replies]
   before_action :authorize, except: %i[edit update destroy]
+  # Checked inside the method.
+  no_authorization_required! :edit, :update, :destroy
 
   include AttachmentsHelper
-  include PaginationHelper
-
-  REPLIES_PER_PAGE = 100 unless const_defined?(:REPLIES_PER_PAGE)
+  include OpTurbo::ComponentStream
 
   # Show a topic and its replies
   def show
     @topic = @message.root
+    load_thread(target_id: params[:r])
 
-    page = params[:page]
-    # Find the page of the requested reply
-    if params[:r] && page.nil?
-      offset = @topic.children.where(["#{Message.table_name}.id < ?", params[:r].to_i]).count
-      page = 1 + offset / REPLIES_PER_PAGE
-    end
-
-    @replies = @topic
-               .children
-               .includes(:author, :attachments, forum: :project)
-               .order(created_at: :asc)
-               .page(page)
-               .per_page(per_page_param)
-
-    @reply = Message.new(subject: "RE: #{@message.subject}", parent: @topic, forum: @topic.forum)
-    render action: 'show', layout: !request.xhr?
+    @reply = Message.new(parent: @topic, forum: @topic.forum)
+    render action: "show", layout: !request.xhr?
   end
 
   # new topic
@@ -72,17 +58,24 @@ class MessagesController < ApplicationController
       .result
   end
 
+  # Edit a message
+  def edit
+    return render_403 unless @message.editable_by?(User.current)
+
+    @message.attributes = permitted_params.message(@message.project)
+  end
+
   # Create a new topic
   def create
     call = create_message(@forum)
     @message = call.result
 
     if call.success?
-      call_hook(:controller_messages_new_after_save, params: params, message: @message)
+      call_hook(:controller_messages_new_after_save, params:, message: @message)
 
-      redirect_to topic_path(@message)
+      redirect_to project_forum_topic_path(@project, @forum, @message)
     else
-      render action: 'new'
+      render action: :new, status: :unprocessable_entity
     end
   end
 
@@ -94,16 +87,12 @@ class MessagesController < ApplicationController
     @reply = call.result
 
     if call.success?
-      call_hook(:controller_messages_reply_after_save, params: params, message: @reply)
+      call_hook(:controller_messages_reply_after_save, params:, message: @reply)
+      redirect_to helpers.message_anchor_path(@reply)
+    else
+      load_thread
+      render action: :show, status: :unprocessable_entity
     end
-    redirect_to topic_path(@topic, r: @reply)
-  end
-
-  # Edit a message
-  def edit
-    return render_403 unless @message.editable_by?(User.current)
-
-    @message.attributes = permitted_params.message(@message)
   end
 
   # Edit a message
@@ -116,9 +105,9 @@ class MessagesController < ApplicationController
     if call.success?
       flash[:notice] = t(:notice_successful_update)
       @message.reload
-      redirect_to topic_path(@message.root, r: (@message.parent_id && @message.id))
+      redirect_to project_forum_topic_path(@project, @forum, @message.root, r: @message.parent_id && @message.id)
     else
-      render action: 'edit'
+      render action: :edit, status: :unprocessable_entity
     end
   end
 
@@ -130,29 +119,53 @@ class MessagesController < ApplicationController
     @message.destroy
     flash[:notice] = t(:notice_successful_delete)
     redirect_target = if @message.parent.nil?
-                        { controller: '/forums', action: 'show', project_id: @project, id: @forum }
+                        project_forum_path(@project, @forum)
                       else
-                        { action: 'show', id: @message.parent, r: @message }
+                        project_forum_topic_path(@project, @forum, @message.parent, r: @message)
                       end
 
-    redirect_to redirect_target
+    redirect_to redirect_target, status: :see_other
   end
 
   def quote
-    user = @message.author
-    text = @message.content
-    subject = @message.subject.gsub('"', '\"')
-    subject = "RE: #{subject}" unless subject.starts_with?('RE:')
-    content = "#{ll(Setting.default_language, :text_user_wrote, user)}\n> "
-    content << text.to_s.strip.gsub(%r{<pre>(.+?)</pre>}m, '[...]').gsub('"', '\"').gsub(/(\r?\n|\r\n?)/, "\n> ") + "\n\n"
+    content = build_quote(author: @message.author, text: @message.content)
 
     respond_to do |format|
-      format.json { render json: { subject: subject, content: content } }
+      format.json { render json: { content: }, escape: true }
       format.any { head :not_acceptable }
     end
   end
 
+  def replies # rubocop:disable Metrics/AbcSize
+    topic = @message.root
+    segments = Messages::ThreadLayout.new(topic).gap_segments(after_id: params[:after], before_id: params[:before])
+    created_work_packages = Messages::CreatedWorkPackagesQuery.for_messages(replies_in(segments), user: current_user)
+    content = Messages::ThreadSegmentsComponent.new(topic:, segments:, created_work_packages:, focus_first: true)
+
+    turbo_streams << turbo_stream.replace(Messages::RepliesGapComponent.dom_id(params[:after], params[:before]), content)
+    respond_with_turbo_streams
+  end
+
   private
+
+  def load_thread(target_id: nil)
+    @segments = Messages::ThreadLayout.new(@topic).segments(target_id:)
+    @created_work_packages = Messages::CreatedWorkPackagesQuery.for_messages([@topic, *replies_in(@segments)],
+                                                                             user: current_user)
+  end
+
+  def replies_in(segments)
+    segments.grep(Messages::ThreadLayout::Replies).flat_map(&:messages)
+  end
+
+  def find_project_and_forum
+    @project = Project.visible.find(params[:project_id])
+    @forum = @project.forums.find(params[:forum_id])
+  end
+
+  def find_message
+    @message = @forum.messages.find(params[:id])
+  end
 
   def update_message(message)
     Messages::UpdateService
@@ -164,7 +177,7 @@ class MessagesController < ApplicationController
 
   def create_message(forum, message_params = permitted_params.message(forum.project))
     params = message_params
-               .merge(forum: forum)
+               .merge(forum:)
                .merge(attachment_params)
 
     Messages::CreateService
@@ -173,7 +186,16 @@ class MessagesController < ApplicationController
   end
 
   def create_reply(forum, parent)
-    create_message(forum, permitted_params.reply.merge(parent: parent))
+    create_message(forum, permitted_params.reply.merge(parent:, subject: "RE: #{parent.subject}".truncate(255)))
+  end
+
+  def build_quote(author:, text:)
+    attribution = I18n.t(:text_user_wrote, value: ERB::Util.html_escape(author), locale: Setting.default_language)
+    sanitized = text.to_s.strip
+                    .gsub(%r{<pre>(.+?)</pre>}m, "[...]")
+    quoted_text = sanitized.gsub(/(\r?\n|\r\n?)/, "\n> ")
+
+    "#{attribution}\n> #{quoted_text}\n\n"
   end
 
   def attachment_params

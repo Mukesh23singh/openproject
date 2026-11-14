@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/messages/base'
+require "support/pages/messages/base"
 
 module Pages::Messages
   class Index < ::Pages::Messages::Base
@@ -41,24 +42,22 @@ module Pages::Messages
     end
 
     def click_create_message
-      click_on 'Message'
+      click_on "Topic"
 
       ::Pages::Messages::Create.new(project.forums.first)
     end
 
     def expect_listed(subject:, replies: nil, last_message: nil)
-      subject = find('table tr td.subject', text: subject)
-
-      row = subject.find(:xpath, '..')
+      row = find("[data-test-selector^='topic-row-']", text: subject)
 
       within(row) do
-        expect(page).to have_selector('td.replies', text: replies) if replies
-        expect(page).to have_selector('td.last_message', text: last_message) if last_message
+        expect(page).to have_css(".replies_count", text: replies) if replies
+        expect(page).to have_css(".last_reply", text: last_message) if last_message
       end
     end
 
     def expect_num_replies(amount)
-      expect(page).to have_selector('td.replies', text: amount)
+      expect(page).to have_css("[data-test-selector^='topic-row-'] .replies_count", text: amount)
     end
   end
 end

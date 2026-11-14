@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 ##
 # Extracts sections of a BCF markup file
 # manually. If we want to extract the entire markup,
@@ -10,7 +39,7 @@ module OpenProject::Bim::BcfXml
 
     def initialize(entry)
       @markup = entry.get_input_stream.read
-      @doc = Nokogiri::XML markup, nil, 'UTF-8'
+      @doc = Nokogiri::XML markup, nil, "UTF-8"
     end
 
     def uuid
@@ -50,36 +79,36 @@ module OpenProject::Bim::BcfXml
     end
 
     def creation_date
-      extract_date_time '/Markup/Topic/CreationDate'
+      extract_date_time "/Markup/Topic/CreationDate"
     end
 
     def modified_date
-      extract_date_time '/Markup/Topic/ModifiedDate'
+      extract_date_time "/Markup/Topic/ModifiedDate"
     end
 
     def due_date
-      extract_date_time '/Markup/Topic/DueDate'
+      extract_date_time "/Markup/Topic/DueDate"
     rescue ArgumentError
       nil
     end
 
     def viewpoints
-      doc.xpath('/Markup/Viewpoints').map do |node|
+      doc.xpath("/Markup/Viewpoints").map do |node|
         {
-          uuid: node['Guid'],
-          viewpoint: extract_from_node('Viewpoint', node),
-          snapshot: extract_from_node('Snapshot', node)
+          uuid: node["Guid"],
+          viewpoint: extract_from_node("Viewpoint", node),
+          snapshot: extract_from_node("Snapshot", node)
         }.with_indifferent_access
       end
     end
 
     def comments
-      doc.xpath('/Markup/Comment').map do |node|
+      doc.xpath("/Markup/Comment").map do |node|
         {
-          uuid: node['Guid'],
+          uuid: node["Guid"],
           date: extract_date_time("Date", node),
-          author: extract_from_node('Author', node),
-          comment: extract_from_node('Comment', node),
+          author: extract_from_node("Author", node),
+          comment: extract_from_node("Comment", node),
           viewpoint_uuid: comment_viewpoint_uuid(node),
           modified_date: extract_date_time("ModifiedDate", node),
           modified_author: extract_from_node("ModifiedAuthor", node)
@@ -97,14 +126,14 @@ module OpenProject::Bim::BcfXml
     end
 
     def people
-      ([assignee, author] + comments.map { |comment| comment[:author] }).filter(&:present?).uniq
+      ([assignee, author] + comments.pluck(:author)).filter(&:present?).uniq
     end
 
     private
 
     def comment_viewpoint_uuid(node)
-      viewpoint_node = node.at('Viewpoint')
-      extract_from_node('@Guid', viewpoint_node, attribute: true) if viewpoint_node
+      viewpoint_node = node.at("Viewpoint")
+      extract_from_node("@Guid", viewpoint_node, attribute: true) if viewpoint_node
     end
 
     def extract_date_time(path, node = nil)
@@ -113,14 +142,14 @@ module OpenProject::Bim::BcfXml
       Time.iso8601(date_time) unless date_time.nil?
     end
 
-    def extract(path, prefix: '/Markup/Topic/'.freeze, attribute: false)
-      path = [prefix, path.to_s].join('')
-      extract_from_node(path, doc, attribute: attribute)
+    def extract(path, prefix: "/Markup/Topic/".freeze, attribute: false)
+      path = [prefix, path.to_s].join("")
+      extract_from_node(path, doc, attribute:)
     end
 
     def extract_from_node(path, node, attribute: false)
-      suffix = attribute ? '' : '/text()'.freeze
-      path = [path.to_s, suffix].join('')
+      suffix = attribute ? "" : "/text()".freeze
+      path = [path.to_s, suffix].join("")
       node.xpath(path).to_s.presence
     end
   end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,9 +38,9 @@ module Attachments
     end
 
     def set_prepared_attributes(params)
-      # We need to do it like this because `file` is an uploader which expects a File (not a string)
+      # We are assigning the file column directly because `file` is an uploader which expects a File (not a string)
       # to upload usually. But in this case the data has already been uploaded and we just point to it.
-      model[:file] = pending_direct_upload_filename(params[:filename])
+      model[:file] = filename(params)
 
       # Explicitly set the filesize from metadata
       # as the provided file is not actually uploaded
@@ -49,11 +48,20 @@ module Attachments
 
       model.extend(OpenProject::ChangedBySystem)
       model.change_by_system do
-        model.downloads = -1
+        model.status = :prepared
         # Set a preliminary content type as the file is not present
         # The content type will be updated by the FinishDirectUploadJob if necessary.
         model.content_type = params[:content_type].presence || OpenProject::ContentTypeDetector::SENSIBLE_DEFAULT
       end
+    end
+
+    # Returns the value for the attachment's file column.
+    # A blank filename is left for the contract to reject with a proper validation error instead of
+    # being sanitized here, as `CarrierWave::SanitizedFile#sanitize` cannot handle a nil value.
+    def filename(params)
+      return nil if params[:filename].blank?
+
+      pending_direct_upload_filename(params[:filename])
     end
 
     # The name has to be in the same format as what Carrierwave will produce later on. If they are different,

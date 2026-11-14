@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -42,12 +41,14 @@ module Users
         current_user.password = params[:new_password]
         current_user.password_confirmation = params[:new_password_confirmation]
         current_user.force_password_change = false
+        current_user.activate if current_user.invited?
 
         if current_user.save
+          ::Users::RevokePasswordSessionsService.call!(user: current_user, session:)
           log_success
           ::ServiceResult.new success: true,
                               result: current_user,
-                              **invalidate_session_result
+                              **update_message
         else
           log_failure
           ::ServiceResult.new success: false,
@@ -60,15 +61,10 @@ module Users
 
     private
 
-    def invalidate_session_result
+    def update_message
       update_message = I18n.t(:notice_account_password_updated)
-
-      if ::Sessions::DropOtherSessionsService.call(current_user, session)
-        expiry_message = I18n.t(:notice_account_other_session_expired)
-        { message_type: :info, message: "#{update_message} #{expiry_message}" }
-      else
-        { message: update_message }
-      end
+      expiration_message = I18n.t(:notice_account_other_session_expired)
+      { message_type: :info, message: "#{update_message} #{expiration_message}" }
     end
 
     def log_success

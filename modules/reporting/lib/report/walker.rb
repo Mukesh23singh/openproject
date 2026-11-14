@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,20 +32,20 @@ class Report::Walker
     @query = query
   end
 
-  def for_row(&block)
-    access_block(:row, &block)
+  def for_row(&)
+    access_block(:row, &)
   end
 
-  def for_final_row(&block)
-    access_block(:final_row, &block) || access_block(:row)
+  def for_final_row(&)
+    access_block(:final_row, &) || access_block(:row)
   end
 
-  def for_cell(&block)
-    access_block(:cell, &block)
+  def for_cell(&)
+    access_block(:cell, &)
   end
 
-  def for_empty_cell(&block)
-    access_block(:empty_cell, &block) || access_block(:cell)
+  def for_empty_cell(&)
+    access_block(:empty_cell, &) || access_block(:cell)
   end
 
   def access_block(name, &block)
@@ -59,7 +58,7 @@ class Report::Walker
     cell ? for_cell[cell] : for_empty_cell[nil]
   end
 
-  def headers(result = nil, &_block)
+  def headers(result = nil, &)
     @header_stack = []
     result ||= query.column_first
     sort result
@@ -87,7 +86,7 @@ class Report::Walker
   end
 
   def reverse_headers
-    fail 'call header first' unless @header_stack
+    fail "call header first" unless @header_stack
 
     first = true
     @header_stack.reverse_each do |list|
@@ -99,13 +98,13 @@ class Report::Walker
   end
 
   def headers_empty?
-    fail 'call header first' unless @header_stack
+    fail "call header first" unless @header_stack
 
     @header_stack.empty?
   end
 
   def sort_keys
-    @sort_keys ||= query.chain.map { |c| c.group_fields.map(&:to_s) if c.group_by? }.compact.flatten
+    @sort_keys ||= query.chain.filter_map { |c| c.group_fields.map(&:to_s) if c.group_by? }.flatten
   end
 
   def sort(result)
@@ -113,13 +112,13 @@ class Report::Walker
     result.sort!
   end
 
-  def body(result = nil, &block)
-    return [*body(result)].each(&block) if block_given?
+  def body(result = nil, &)
+    return [*body(result)].each(&) if block_given?
 
     result ||= query.result.tap { |r| sort(r) }
     if result.row?
       if result.final_row?
-        subresults = query.table.with_gaps_for(:column, result).map(&method(:walk_cell))
+        subresults = query.table.with_gaps_for(:column, result).map { |cell| walk_cell(cell) }
         for_final_row.call result, subresults
       else
         subresults = result.map { |r| body(r) }
@@ -127,7 +126,7 @@ class Report::Walker
       end
     else
       # you only get here if no rows are defined
-      result.each_direct_result.map(&method(:walk_cell))
+      result.each_direct_result.map { |cell| walk_cell(cell) }
     end
   end
 end

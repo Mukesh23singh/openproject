@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,93 +20,124 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
+
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { Injectable } from '@angular/core';
+import { HalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { Injectable, inject } from '@angular/core';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
 import { HookService } from 'core-app/features/plugins/hook-service';
 import { WorkPackageViewTimelineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-timeline.service';
 import { WorkPackageViewHierarchyIdentationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-hierarchy-indentation.service';
 import { WorkPackageViewDisplayRepresentationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-display-representation.service';
+import { sortContextMenuActions } from 'core-app/shared/components/op-context-menu/wp-context-menu/wp-static-context-menu-actions';
 
-export type WorkPackageAction = {
-  text:string;
+export interface WorkPackageAction {
+  text?:string;
   key:string;
   icon?:string;
   indexBy?:(actions:WorkPackageAction[]) => number,
   link?:string;
   href?:string;
-};
+  hidden?:boolean;
+  turboRequest?:boolean;
+}
 
 @Injectable()
 export class WorkPackageContextMenuHelperService {
-  private BULK_ACTIONS = [
+  private HookService = inject(HookService);
+  private UrlParamsHelper = inject(UrlParamsHelperService);
+  private wpViewRepresentation = inject(WorkPackageViewDisplayRepresentationService);
+  private wpViewTimeline = inject(WorkPackageViewTimelineService);
+  private wpViewIndent = inject(WorkPackageViewHierarchyIdentationService);
+  private PathHelper = inject(PathHelperService);
+
+  private BULK_ACTIONS:WorkPackageAction[] = [
     {
       text: I18n.t('js.work_packages.bulk_actions.edit'),
       key: 'edit',
       link: 'update',
-      href: `${this.PathHelper.staticBase}/work_packages/bulk/edit`,
+      href: this.PathHelper.workPackagesBulkEditPath(),
     },
     {
       text: I18n.t('js.work_packages.bulk_actions.move'),
       key: 'move',
       link: 'move',
-      href: `${this.PathHelper.staticBase}/work_packages/move/new`,
+      href: this.PathHelper.workPackagesBulkMovePath(),
     },
     {
-      text: I18n.t('js.work_packages.bulk_actions.copy'),
+      text: I18n.t('js.work_packages.bulk_actions.duplicate'),
       key: 'copy',
       link: 'copy',
-      href: `${this.PathHelper.staticBase}/work_packages/move/new?copy=true`,
+      href: this.PathHelper.workPackagesBulkDuplicatePath(),
     },
     {
       text: I18n.t('js.work_packages.bulk_actions.delete'),
       key: 'delete',
       link: 'delete',
-      href: `${this.PathHelper.staticBase}/work_packages/bulk?_method=delete`,
+      href: this.PathHelper.workPackagesBulkDeletePath(),
     },
   ];
 
-  constructor(private HookService:HookService,
-    private UrlParamsHelper:UrlParamsHelperService,
-    private wpViewRepresentation:WorkPackageViewDisplayRepresentationService,
-    private wpViewTimeline:WorkPackageViewTimelineService,
-    private wpViewIndent:WorkPackageViewHierarchyIdentationService,
-    private PathHelper:PathHelperService) {
-  }
-
-  public getPermittedActionLinks(workPackage:WorkPackageResource, permittedActionConstants:any, allowSplitScreenActions:boolean):WorkPackageAction[] {
-    const singularPermittedActions:any[] = [];
+  public getPermittedActionLinks(workPackage:WorkPackageResource, permittedActionConstants:WorkPackageAction[], allowSplitScreenActions:boolean):WorkPackageAction[] {
+    const singularPermittedActions:WorkPackageAction[] = [];
 
     let allowedActions = this.getAllowedActions(workPackage, permittedActionConstants);
 
     allowedActions = allowedActions.concat(this.getAllowedParentActions(workPackage));
 
+    // remove some actions on Gantt
+    if (this.wpViewTimeline.isVisible) {
+      allowedActions = allowedActions.filter((el) => {
+        const ganttNotAllowedActions = ['log_time', 'copy', 'copy_to_other_project', 'export-pdf', 'generate_pdf', 'export-atom', 'log_costs', 'allocate_resource'];
+        return !(ganttNotAllowedActions.includes(el.key));
+      });
+    }
+
     allowedActions = allowedActions.concat(this.getAllowedRelationActions(workPackage, allowSplitScreenActions));
 
-    _.each(allowedActions, (allowedAction) => {
+    sortContextMenuActions(allowedActions).forEach((allowedAction) => {
       singularPermittedActions.push({
         key: allowedAction.key,
         text: allowedAction.text,
         icon: allowedAction.icon,
-        link: allowedAction.link ? workPackage[allowedAction.link].href : undefined,
+        link: this.linkForAction(workPackage, allowedAction),
+        turboRequest: allowedAction.turboRequest,
       });
     });
 
     return singularPermittedActions;
   }
 
-  public getIntersectOfPermittedActions(workPackages:any) {
-    const bulkPermittedActions:any = [];
-    const possibleActions = this.BULK_ACTIONS.concat(this.HookService.call('workPackageBulkContextMenu'));
-    const permittedActions = _.filter(possibleActions, (action:any) => _.every(workPackages, (workPackage:WorkPackageResource) => this.isActionAllowed(workPackage, action)));
+  public linkForAction(workPackage:WorkPackageResource, action:WorkPackageAction):string|undefined {
+    let link:string|undefined;
+    switch (action.key) {
+      case 'copy_link_to_clipboard':
+        link = this.PathHelper.workPackageShortPath(workPackage.displayId);
+        break;
+      case 'view_markdown':
+        link = this.PathHelper.workPackageShortPath(workPackage.displayId, { format: 'md' });
+        break;
+      case 'log_time':
+        link = this.PathHelper.timeEntryWorkPackageDialog(workPackage.id!);
+        break;
+      default:
+        link = action.link ? (workPackage[action.link] as HalLink).href! : undefined;
+    }
 
-    _.each(permittedActions, (permittedAction:any) => {
+    return link;
+  }
+
+  public getIntersectOfPermittedActions(workPackages:WorkPackageResource[]) {
+    const bulkPermittedActions:WorkPackageAction[] = [];
+    const possibleActions:WorkPackageAction[] = this.BULK_ACTIONS.concat(this.HookService.call('workPackageBulkContextMenu'));
+    const permittedActions = possibleActions.filter((action) => workPackages.every((workPackage:WorkPackageResource) => this.isActionAllowed(workPackage, action)));
+
+    sortContextMenuActions(permittedActions).forEach((permittedAction) => {
       bulkPermittedActions.push({
         key: permittedAction.key,
         text: permittedAction.text,
@@ -118,35 +149,35 @@ export class WorkPackageContextMenuHelperService {
     return bulkPermittedActions;
   }
 
-  public getBulkActionLink(action:any, workPackages:any) {
+  public getBulkActionLink(action:WorkPackageAction, workPackages:WorkPackageResource[]) {
     const workPackageIdParams = {
-      'ids[]': workPackages.map((wp:any) => wp.id),
+      'ids[]': workPackages.map((wp) => wp.id),
     };
     const serializedIdParams = this.UrlParamsHelper.buildQueryString(workPackageIdParams);
 
-    const linkAndQueryString = action.href.split('?');
+    const linkAndQueryString = action.href!.split('?');
     const link = linkAndQueryString.shift();
-    const queryParts = linkAndQueryString.concat(new Array(serializedIdParams));
+    const queryParts = linkAndQueryString.concat(new Array<string>(serializedIdParams!));
 
     return `${link}?${queryParts.join('&')}`;
   }
 
   private isActionAllowed(workPackage:WorkPackageResource, action:WorkPackageAction):boolean {
-    return _.filter(this.getAllowedActions(workPackage, [action]), (a) => a === action).length >= 1;
+    return this.getAllowedActions(workPackage, [action]).filter((a) => a === action).length >= 1;
   }
 
   private getAllowedActions(workPackage:WorkPackageResource, actions:WorkPackageAction[]):WorkPackageAction[] {
     const allowedActions:WorkPackageAction[] = [];
 
-    _.each(actions, (action) => {
-      if (action.link && workPackage.hasOwnProperty(action.link)) {
+    actions.forEach((action) => {
+      if (action.link && workPackage[action.link] !== undefined) {
         action.text = action.text || I18n.t(`js.button_${action.key}`);
         allowedActions.push(action);
       }
     });
 
-    _.each(this.HookService.call('workPackageTableContextMenu'), (action) => {
-      if (workPackage.hasOwnProperty(action.link)) {
+    this.HookService.call('workPackageTableContextMenu').forEach((action:WorkPackageAction) => {
+      if (workPackage[action.link!] !== undefined) {
         const index = action.indexBy ? action.indexBy(allowedActions) : allowedActions.length;
         allowedActions.splice(index, 0, action);
       }
@@ -195,8 +226,16 @@ export class WorkPackageContextMenuHelperService {
       });
       allowedActions.push({
         key: 'relation-follows',
-        text: I18n.t('js.relation_buttons.add_follower'),
+        text: I18n.t('js.relation_buttons.add_successor'),
         link: 'addRelation',
+      });
+    }
+
+    if (this.wpViewTimeline.isVisible) {
+      allowedActions.push({
+        key: 'relations',
+        text: I18n.t('js.relation_buttons.show_relations'),
+        link: 'relations',
       });
     }
 
@@ -211,7 +250,7 @@ export class WorkPackageContextMenuHelperService {
     return allowedActions;
   }
 
-  public getPermittedActions(workPackages:WorkPackageResource[], permittedActionConstants:any, allowSplitScreenActions:boolean):WorkPackageAction[] {
+  public getPermittedActions(workPackages:WorkPackageResource[], permittedActionConstants:WorkPackageAction[], allowSplitScreenActions:boolean):WorkPackageAction[] {
     if (workPackages.length === 1) {
       return this.getPermittedActionLinks(workPackages[0], permittedActionConstants, allowSplitScreenActions);
     }

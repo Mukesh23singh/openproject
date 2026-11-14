@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +20,25 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { sortBy } from 'lodash-es';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { Injectable } from '@angular/core';
+import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
+import { Injectable, inject } from '@angular/core';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
 import { WorkPackageLinkedResourceCache } from 'core-app/features/work-packages/components/wp-single-view-tabs/wp-linked-resource-cache.service';
 import { TimezoneService } from 'core-app/core/datetime/timezone.service';
-import { ActivityEntryInfo } from './activity-entry-info';
 
 @Injectable()
 export class WorkPackagesActivityService extends WorkPackageLinkedResourceCache<HalResource[]> {
-  constructor(public ConfigurationService:ConfigurationService,
-    readonly timezoneService:TimezoneService) {
-    super();
-  }
+  ConfigurationService = inject(ConfigurationService);
+  readonly timezoneService = inject(TimezoneService);
+
 
   public get order() {
     return this.isReversed ? 'desc' : 'asc';
@@ -55,10 +54,10 @@ export class WorkPackagesActivityService extends WorkPackageLinkedResourceCache<
    * whose order depends on the 'commentsSortedInDescendingOrder' property.
    */
   protected load(workPackage:WorkPackageResource):Promise<HalResource[]> {
-    const aggregated:any[] = []; const
-      promises:Promise<any>[] = [];
+    const aggregated:HalResource[][] = []; const
+      promises:Promise<void>[] = [];
 
-    const add = function (data:any) {
+    const add = function (data:CollectionResource) {
       aggregated.push(data.elements);
     };
 
@@ -70,16 +69,12 @@ export class WorkPackagesActivityService extends WorkPackageLinkedResourceCache<
     return Promise.all(promises).then(() => this.sortedActivityList(aggregated));
   }
 
-  protected sortedActivityList(activities:HalResource[], attr = 'createdAt'):HalResource[] {
-    const sorted = _.sortBy(_.flatten(activities), attr);
+  protected sortedActivityList(activities:HalResource[][], attr = 'createdAt'):HalResource[] {
+    const sorted = sortBy(activities.flat(), attr);
 
     if (this.isReversed) {
       return sorted.reverse();
     }
     return sorted;
-  }
-
-  public info(activities:HalResource[], activity:HalResource, index:number) {
-    return new ActivityEntryInfo(this.timezoneService, this.isReversed, activities, activity, index);
   }
 }

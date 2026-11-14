@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,156 +31,156 @@ class HourlyRatesController < ApplicationController
   helper :users
   helper :sort
   include SortHelper
+  include OpTurbo::ComponentStream
+
   helper :hourly_rates
   include HourlyRatesHelper
 
-  before_action :find_user, only: %i[show edit update set_rate]
+  before_action :find_project, only: %i[show new create]
+  before_action :find_user, only: %i[show]
+  before_action :find_principal, only: %i[new]
+  before_action :find_rate, only: %i[edit update deletion_dialog destroy]
+  before_action :authorize_rate_management, only: %i[new edit deletion_dialog]
 
-  before_action :find_optional_project, only: %i[show edit update]
-  before_action :find_project, only: [:set_rate]
-
-  # #show, #edit have their own authorization
-  before_action :authorize, except: %i[show edit update]
+  # #show and the write actions authorize themselves against the rate
+  # contracts, which also cover the edit_own_hourly_rate case.
+  before_action :authorize, except: %i[show new create edit update deletion_dialog destroy]
+  no_authorization_required! :show, :new, :create, :edit, :update, :deletion_dialog, :destroy
 
   # TODO: this should be an index
   def show
-    if @project
-      return deny_access unless User.current.allowed_to?(:view_hourly_rates, @project, for: @user)
+    return deny_access if @project.nil?
+    return deny_access unless User.current.allowed_in_project?(:view_hourly_rates, @project)
 
-      @rates = HourlyRate.where(user_id: @user, project_id: @project)
-               .order("#{HourlyRate.table_name}.valid_from desc")
-    else
-      @rates = HourlyRate.history_for_user(@user)
-      @rates_default = @rates.delete(nil)
-    end
+    @rates = HourlyRate.for_principal(@user).in_project(@project).newest_first
+    @current_rate = @user.rate_at(Time.zone.today, @project, include_default: false)
+    @default_rate = @user.current_default_rate
+    @new_rate_url = new_rate_url_for(@user)
   end
 
-  def edit
-    # TODO: split into edit and update
-    # remove code where appropriate
-    if @project
-      # Hourly Rate
-      return deny_access unless User.current.allowed_to?(:edit_hourly_rates, @project)
-    else
-      # Default Hourly Rate
-      return deny_access unless User.current.admin?
-    end
-
-    if @project.nil?
-      @rates = DefaultHourlyRate.where(user_id: @user)
-               .order("#{DefaultHourlyRate.table_name}.valid_from desc")
-               .to_a
-      @rates << @user.default_rates.build(valid_from: Date.today) if @rates.empty?
-    else
-      @rates = @user.rates.select { |r| r.project_id == @project.id }.sort { |a, b| b.valid_from <=> a.valid_from }.to_a
-      @rates << @user.rates.build(valid_from: Date.today, project: @project) if @rates.empty?
-    end
-
-    render action: 'edit', layout: !request.xhr?
+  def new
+    @rate = HourlyRate.new(principal: @principal, project: @project, valid_from: Time.zone.today)
   end
 
-  current_menu_item :edit do
-    :budgets
+  def edit; end
+
+  def create
+    call = HourlyRates::CreateService
+             .new(user: current_user)
+             .call(rate_params.merge(project_id: @project.id))
+
+    respond_to_write(call, dialog_id: HourlyRates::RateDialogComponent::DIALOG_ID)
   end
 
   def update
-    # TODO: copied over from edit
-    # remove code where appropriate
-    if @project
-      # Hourly Rate
-      return deny_access unless User.current.allowed_to?(:edit_hourly_rates, @project)
-    else
-      # Default Hourly Rate
-      return deny_access unless User.current.admin?
-    end
+    call = HourlyRates::UpdateService
+             .new(user: current_user, model: @rate)
+             .call(rate_params)
 
-    if params.include? 'user'
-      update_rates @user,
-                   @project,
-                   permitted_params.user_rates[:new_rate_attributes],
-                   permitted_params.user_rates[:existing_rate_attributes]
-    else
-      delete_rates @user, @project
-    end
-
-    if @user.save
-      flash[:notice] = t(:notice_successful_update)
-      if @project.nil?
-        redirect_back_or_default(controller: 'users', action: 'edit', id: @user)
-      else
-        redirect_back_or_default(action: 'show', id: @user, project_id: @project)
-      end
-    else
-      if @project.nil?
-        @rates = @user.default_rates
-        @rates << @user.default_rates.build(valid_from: Date.today) if @rates.empty?
-      else
-        @rates = @user
-                 .rates
-                 .select { |r| r.project_id == @project.id }
-                 .sort { |a, b| b.valid_from || Date.today <=> a.valid_from || Date.today }
-        @rates << @user.rates.build(valid_from: Date.today, project: @project) if @rates.empty?
-      end
-      render action: 'edit', layout: !request.xhr?
-    end
+    respond_to_write(call, dialog_id: HourlyRates::RateDialogComponent::DIALOG_ID)
   end
 
-  def set_rate
-    today = Date.today
+  def deletion_dialog
+    respond_with_dialog(HourlyRates::DeleteDialogComponent.new(rate: @rate))
+  end
 
-    rate = @user.rate_at(today, @project)
-    rate = HourlyRate.new if rate.nil? || rate.valid_from != today
+  def destroy
+    call = HourlyRates::DeleteService.new(user: current_user, model: @rate).call
 
-    rate.tap do |hr|
-      hr.project    = @project
-      hr.user       = @user
-      hr.valid_from = today
-      hr.rate = parse_number_string_to_number(params[:rate])
-    end
-
-    if rate.save
-      if request.xhr?
-        render :update do |page|
-          page.replace_html "rate_for_#{@user.id}",
-                            link_to(number_to_currency(rate.rate), action: 'edit', id: @user, project_id: @project)
-        end
-      else
-        flash[:notice] = t(:notice_successful_update)
-        redirect_to action: 'index'
-      end
-    end
+    respond_to_write(call, dialog_id: HourlyRates::DeleteDialogComponent::DIALOG_ID)
   end
 
   private
 
-  def update_rates(user, project, added_rates, changed_rates)
-    user.add_rates(project, added_rates)
-    user.set_existing_rates(project, changed_rates)
+  def respond_to_write(call, dialog_id:)
+    @rate = call.result
+    @principal ||= @rate.principal
+
+    if call.success?
+      close_dialog_via_turbo_stream(dialog_id)
+      replace_via_turbo_stream(component: rate_table_component)
+      replace_via_turbo_stream(component: current_rate_component)
+    elsif dialog_id == HourlyRates::DeleteDialogComponent::DIALOG_ID
+      render_error_flash_message_via_turbo_stream(message: call.errors.full_messages.to_sentence)
+    else
+      update_via_turbo_stream(component: rate_form_component, status: :bad_request)
+    end
+
+    respond_with_turbo_streams
   end
 
-  def delete_rates(user, project)
-    if project.present?
-      user.rates.delete_all
+  def rate_table_component
+    HourlyRates::TableComponent.new(
+      project: @project,
+      rows: HourlyRate.for_principal(@principal).in_project(@project).newest_first,
+      current_rate: current_project_rate,
+      new_rate_url: new_rate_url_for(@principal)
+    )
+  end
+
+  def current_rate_component
+    HourlyRates::CurrentRateComponent.new(project: @project,
+                                          rate: current_project_rate,
+                                          fallback_rate: @principal.current_default_rate)
+  end
+
+  def current_project_rate
+    @current_project_rate ||= @principal.rate_at(Time.zone.today, @project, include_default: false)
+  end
+
+  def new_rate_url_for(principal)
+    return unless HourlyRates::BaseContract.can_manage?(user: current_user,
+                                                        principal_id: principal.id,
+                                                        project: @project)
+
+    new_projects_hourly_rate_path(project_id: @project, principal_id: principal.id)
+  end
+
+  def rate_form_component
+    HourlyRates::RateFormComponent.new(rate: @rate, form_url: rate_form_url)
+  end
+
+  def rate_form_url
+    if @rate.persisted?
+      hourly_rate_path(@rate)
     else
-      user.default_rates.delete_all
+      projects_hourly_rates_path(project_id: @project)
     end
   end
 
+  def rate_params
+    params.expect(rate: %i[valid_from rate user_id])
+  end
+
+  def find_principal
+    @principal = Principal.with_rates.in_project(@project).find(params.expect(:principal_id))
+  end
+
+  def find_rate
+    @rate = HourlyRate.find(params.expect(:id))
+    @project = @rate.project
+    @principal = @rate.principal
+  end
+
+  def authorize_rate_management
+    deny_access unless HourlyRates::BaseContract.can_manage?(user: current_user,
+                                                             principal_id: @principal.id,
+                                                             project: @project)
+  end
+
   def find_project
-    @project = Project.find(params[:project_id])
-  rescue ActiveRecord::RecordNotFound
-    render_404
+    @project = Project.visible.find(params.expect(:project_id))
   end
 
-  def find_optional_project
-    @project = params[:project_id].blank? ? nil : Project.find(params[:project_id])
-  rescue ActiveRecord::RecordNotFound
-    render_404
-  end
-
+  # Rates hang off users and placeholder users alike, so the lookup is over
+  # principals rather than users.
   def find_user
-    @user = params[:id] ? User.find(params[:id]) : User.current
-  rescue ActiveRecord::RecordNotFound
-    render_404
+    @user = if params[:id].blank?
+              User.current
+            elsif @project
+              Principal.with_rates.in_project(@project).find(params.expect(:id))
+            else
+              Principal.with_rates.find(params.expect(:id))
+            end
   end
 end

@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,39 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 @mixin wp-table--time-values
   display: inline-block
-  width: 48%
+  width: calc(50% - 0.5rem - 1px)
 
 @mixin wp-table--actual-time-values
   text-align: right
-  padding-right: 0.5rem
 
 @mixin wp-table--placeholder-time-values
   display: inline-block
   width: 100%
   text-align: center
+
+// READ value of display fields in wiki macros
+
+display-field
+  & .split-time-field
+    white-space: nowrap
+
+    .-separator
+      display: inline-block
+      width: 1rem
+      padding-left: 0.25rem
+      padding-right: 0.25rem
+      text-align: center
+
+.display-field--scheduling-icon
+  fill: var(--body-font-color)
+  margin-right: 0.25rem
 
 // READ value of edit fields
 .inline-edit--display-field
@@ -65,54 +80,106 @@
         max-width: 90%
         display: inline-block
         vertical-align: middle
-        line-height: 32px
+        // Inherit from Parent, e.g. strikethrough for baseline comparison
+        text-decoration: inherit
+
         &:first-of-type
           padding-right: 5px
 
+      .badge
+        height: 1rem
+
   &.split-time-field
+    display: inline-block
+    vertical-align: middle
     white-space: nowrap
 
     // Table specific styles
-    .wp-table--cell-container &
+    .wp-table--cell-container &,
+    .op-table-baseline--container &
+      width: 100%
+
       .-actual-value,
       .-derived-value
         @include wp-table--time-values
 
-      .-derived-value:not(.-with-actual-value)
-        margin-left: 48%
+    &.op-table-baseline--old-field
+      .-actual-value,
+      .-derived-value
+        // text-decoration doesn't propagate into inline-blocks
+        text-decoration: inherit
 
     .-actual-value
       @include wp-table--actual-time-values
 
-    .-derived-value
-      color: var(--gray-dark)
-      font-style: italic
-      font-weight: bold
+    .-separator
+      display: inline-block
+      width: 1rem
+      padding-left: 0.25rem
+      padding-right: 0.25rem
+      text-align: center
 
   &.spentTime .time-logging--value
     padding: 0 2px
 
+  &.combinedDate, &.date
+    .display-field--scheduling-icon
+      position: relative
+      top: 1px
+
+.op-labels-display-field .Label
+  background-color: var(--bgColor-muted)
+
+display-field .hierarchy-items,
+.inline-edit--display-field.hierarchy-items,
+  .path
+    & > span
+      margin-right: 0.25rem
+
+    & > span:last-child
+      margin-right: 0
+
+    &.-multiline
+      display: block
+
 .wp-table--cell-container
   .inline-edit--display-field.-placeholder,
-  &.estimatedTime
+  &.estimatedTime,
+  &.remainingTime
     width: 100%
 
     .-placeholder
       @include wp-table--placeholder-time-values
 
-.wp-table--cell-container .dueDate .icon-pin
+.wp-table--cell-container .dueDate .display-field--scheduling-icon
   display: none
 
-.wp-table--cell-container.startDate
-  padding-left: 24px
-
-  .icon-context
+.op-wp-single-card--content-dates
+  .display-field--scheduling-icon
+    fill: var(--fgColor-muted)
     position: relative
+    top: 1px
 
-  .icon-pin:before
+.wp-table--cell-container
+  &.duration,
+  &.startDate,
+  &.dueDate
+    overflow: visible
+
+.wp-table--cell-container.startDate
+  padding-left: $work-package--start-date-display-field-padding-left
+  position: relative
+
+  .display-field--scheduling-icon
     position: absolute
-    left: -24px
-    top: -8px
+    left: 4px
+    top: 6px
+    margin-right: 0
+
+  .-placeholder
+    // The special alignment of placeholders requires a special alignment of the icon
+    .display-field--scheduling-icon
+      top: 8px
 
 // Sums in wp table
 .wp-table--sum-container.split-time-field
@@ -126,13 +193,14 @@
   cursor: text
   border-color: transparent
   border-style: solid
-  border-radius: 2px
+  border-radius: var(--borderRadius-medium)
   border-width: 1px
-  line-height: normal
+  overflow-wrap: anywhere
+  word-break: normal
 
   &:hover,
   &:focus
-    border-color: var(--inplace-edit--border-color)
+    border-color: var(--borderColor-default)
 
     &.-multiline
       white-space: inherit
@@ -144,10 +212,10 @@
   cursor: not-allowed
 
   &:focus, &:hover
-    color: var(--inplace-edit--color--disabled)
-    background: var(--inplace-edit--bg-color--disabled)
+    color: var(--fgColor-disabled)
+    background: var(--bgColor-disabled)
 
-editable-attribute-field
+op-editable-attribute-field
   width: 100%
 
   .-minimal &

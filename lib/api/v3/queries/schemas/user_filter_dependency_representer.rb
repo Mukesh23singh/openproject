@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -41,13 +38,13 @@ module API
           private
 
           def filter_query
-            params = [{ type: { operator: '=',
+            params = [{ type: { operator: "=",
                                 values: %w[User Group PlaceholderUser] } },
-                      { status: { operator: '!',
+                      { status: { operator: "!",
                                   values: [Principal.statuses[:locked].to_s] } }]
 
             if filter.project
-              params << { member: { operator: '=', values: [filter.project.id.to_s] } }
+              params << { member: { operator: "=", values: [filter.project.id.to_s] } }
             end
 
             params

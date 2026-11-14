@@ -1,29 +1,32 @@
 <widget-header
-    [name]="widgetName"
-    [editable]="isEditable">
+  [headingId]="headingId"
+  [name]="widgetName"
+  [editable]="isEditable">
 
-  <widget-menu
-      slot="menu"
-      [resource]="resource">
-  </widget-menu>
+  <widget-menu slot="menu"
+    [resource]="resource" />
 </widget-header>
 
-<div class="grid--widget-content">
-  <no-results *ngIf="noEntries"
-              [title]="text.noResults">
-  </no-results>
-  <ng-container *ngFor="let document of entries">
+<div class="op-widget-box--body">
+  @if (noEntries) {
+    <op-no-results icon="note" [headingLevel]="4" [title]="text.noResults" />
+  }
+  @for (document of entries; track document.id) {
     <h4 class="document-category-elements--header">
       <a [href]="documentPath(document)"
-         [textContent]="document.title">
+        [textContent]="document.title">
       </a>
+      @if (!currentProject.identifier) {
+        <span>
+          ({{ text.project }}: {{ document.project.name }})
+        </span>
+      }
     </h4>
     <p class="document-category-elements--date">
       <em [textContent]="documentCreated(document)"></em>
     </p>
-
     <div class="wiki grid--widget-limited-text op-uc-container"
-         [innerHtml]="documentDescription(document)">
+      [innerHtml]="documentDescription(document)">
     </div>
-  </ng-container>
+  }
 </div>

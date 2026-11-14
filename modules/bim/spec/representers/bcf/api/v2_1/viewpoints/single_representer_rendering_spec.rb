@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-require_relative '../shared_examples'
+require_relative "../shared_examples"
 
-describe Bim::Bcf::API::V2_1::Viewpoints::SingleRepresenter, 'rendering' do
-  let(:viewpoint) { FactoryBot.build_stubbed(:bcf_viewpoint) }
+RSpec.describe Bim::Bcf::API::V2_1::Viewpoints::SingleRepresenter, "rendering" do
+  let(:viewpoint) { build_stubbed(:bcf_viewpoint) }
   let(:instance) { described_class.new(viewpoint) }
 
   subject { instance.to_json }
 
-  it 'renders only the json_viewpoint attribute (as root)' do
+  it "renders only the json_viewpoint attribute (as root)" do
     expect(subject)
-      .to be_json_eql(viewpoint.read_attribute_before_type_cast('json_viewpoint'))
+      .to be_json_eql(viewpoint.read_attribute_before_type_cast("json_viewpoint"))
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,34 +22,33 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Status, type: :model do
-  let(:stubbed_status) { FactoryBot.build_stubbed(:status) }
+RSpec.describe Status do
+  let(:stubbed_status) { build_stubbed(:status) }
 
-  describe 'default status' do
-    context 'when default exists' do
-      let!(:status) { FactoryBot.create(:default_status) }
+  describe "default status" do
+    context "when default exists" do
+      let!(:status) { create(:default_status) }
 
-      it 'returns that one' do
+      it "returns that one" do
         expect(described_class.default).to eq(status)
         expect(described_class.where_default.pluck(:id)).to eq([status.id])
       end
 
-      it 'can not be set read only (Regression #33750)', with_ee: %i[readonly_work_packages] do
+      it "can not be set read only (Regression #33750)", with_ee: %i[readonly_work_packages] do
         status.is_readonly = true
-        expect(status.save).to eq false
+        expect(status.save).to be false
         expect(status.errors[:is_readonly]).to include(I18n.t("activerecord.errors.models.status.readonly_default_exlusive"))
       end
 
-      it 'is removed from the existing default status upon creation of a new one' do
-        new_default = FactoryBot.create(:status)
+      it "is removed from the existing default status upon creation of a new one" do
+        new_default = create(:status)
         new_default.is_default = true
         new_default.save
 
@@ -56,26 +57,50 @@ describe Status, type: :model do
       end
     end
 
-    it 'is not true by default' do
-      status = described_class.new name: 'Status'
+    it "is not true by default" do
+      status = described_class.new name: "Status"
 
       expect(status)
         .not_to be_is_default
     end
   end
 
-  describe '#is_readonly' do
-    let!(:status) { FactoryBot.build(:status, is_readonly: true) }
+  describe ".visible" do
+    subject { described_class.visible(user) }
 
-    context 'when EE enabled', with_ee: %i[readonly_work_packages] do
-      it 'is still marked read only' do
+    let!(:status) { create(:status) }
+    let(:user) { create(:user) }
+    let(:permissions) { %i[view_work_packages] }
+
+    before do
+      create(:member, user:, roles: [create(:project_role, permissions: permissions)])
+    end
+
+    it "returns the same statuses as all" do
+      expect(subject.to_a).to match_array(described_class.all.to_a)
+    end
+
+    context "when the user has the wrong permission" do
+      let(:permissions) { %i[view_wikis] }
+
+      it "returns no statuses" do
+        expect(subject.to_a).to be_empty
+      end
+    end
+  end
+
+  describe "#is_readonly" do
+    let!(:status) { build(:status, is_readonly: true) }
+
+    context "when EE enabled", with_ee: %i[readonly_work_packages] do
+      it "is still marked read only" do
         expect(status.is_readonly).to be_truthy
         expect(status).to be_is_readonly
       end
     end
 
-    context 'when EE no longer enabled', with_ee: %i[] do
-      it 'is still marked read only' do
+    context "when EE no longer enabled", with_ee: false do
+      it "is still marked read only" do
         expect(status.is_readonly).to be_falsey
         expect(status).not_to be_is_readonly
 
@@ -86,56 +111,80 @@ describe Status, type: :model do
     end
   end
 
-  describe '#cache_key' do
-    it 'updates when the updated_at field changes' do
-      old_cache_key = stubbed_status.cache_key
+  describe "#cache_key_with_version" do
+    it "updates when the updated_at field changes" do
+      old_cache_key = stubbed_status.cache_key_with_version
 
-      stubbed_status.updated_at = Time.now
+      stubbed_status.updated_at = Time.zone.now
 
-      expect(stubbed_status.cache_key)
+      expect(stubbed_status.cache_key_with_version)
         .not_to eql old_cache_key
     end
   end
 
-  describe '.update_done_ratios' do
-    let(:status) { FactoryBot.create(:status, default_done_ratio: 50) }
-    let(:work_package) { FactoryBot.create(:work_package, status: status) }
-
-    context 'with Setting.work_package_done_ratio using the field', with_settings: { work_package_done_ratio: 'field' } do
-      it 'changes nothing' do
-        done_ratio_before = work_package.done_ratio
-        described_class.update_work_package_done_ratios
-
-        expect(work_package.reload.done_ratio)
-          .to eql done_ratio_before
-      end
-    end
-
-    context 'with Setting.work_package_done_ratio using the status', with_settings: { work_package_done_ratio: 'status' } do
-      it "updates all of the work package's done_ratios to match their status" do
-        described_class.update_work_package_done_ratios
-
-        expect(work_package.reload.done_ratio)
-          .to eql status.default_done_ratio
-      end
-    end
-  end
-
-  describe '#destroy' do
-    it 'cannot be destroyed if the status is in use' do
-      work_package = FactoryBot.create(:work_package)
+  describe "#destroy" do
+    it "cannot be destroyed if the status is in use" do
+      work_package = create(:work_package)
 
       expect { work_package.status.destroy }
         .to raise_error(RuntimeError, "Can't delete status")
     end
 
-    it 'cleans up the workflows' do
-      workflow = FactoryBot.create(:workflow)
+    it "cleans up the workflows" do
+      workflow = create(:workflow)
 
       expect { workflow.old_status.destroy }
-        .to change { Workflow.exists?(id: workflow.id) }
+        .to change { Workflows::StatusTransition.exists?(id: workflow.id) }
               .from(true)
               .to(false)
+    end
+  end
+
+  describe ".workflow_counts" do
+    let(:status) { create(:status) }
+    let(:other_status) { create(:status) }
+
+    it "returns an empty hash when given no statuses" do
+      expect(described_class.workflow_counts([])).to eq({})
+    end
+
+    it "omits a status no workflow transition references" do
+      expect(described_class.workflow_counts([status])).to eq({})
+    end
+
+    it "counts a workflow referencing the status as the old status" do
+      create(:status_transition, old_status: status)
+
+      expect(described_class.workflow_counts([status])).to eq(status.id => 1)
+    end
+
+    it "counts a workflow referencing the status as the new status" do
+      create(:status_transition, new_status: status)
+
+      expect(described_class.workflow_counts([status])).to eq(status.id => 1)
+    end
+
+    it "counts a workflow once even when several of its transitions touch the status" do
+      workflow = create(:named_workflow)
+      create(:status_transition, workflow:, old_status: status, new_status: other_status)
+      create(:status_transition, workflow:, old_status: other_status, new_status: status)
+
+      expect(described_class.workflow_counts([status])).to eq(status.id => 1)
+    end
+
+    it "counts each distinct workflow that references the status" do
+      create(:status_transition, old_status: status)
+      create(:status_transition, new_status: status)
+
+      expect(described_class.workflow_counts([status])).to eq(status.id => 2)
+    end
+
+    it "counts each requested status without leaking the transition's other end" do
+      create(:status_transition, old_status: status, new_status: other_status)
+
+      expect(described_class.workflow_counts([status])).to eq(status.id => 1)
+      expect(described_class.workflow_counts([status, other_status]))
+        .to eq(status.id => 1, other_status.id => 1)
     end
   end
 end

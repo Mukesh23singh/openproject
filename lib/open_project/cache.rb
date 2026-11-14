@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,50 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'cache/cache_key'
+require_relative "cache/cache_key"
 
 module OpenProject
+  ##
+  # A cache accessor that ensures cache keys expire after OpenProject version bumps.
+  # Using OpenProject::Cache should be preferred over using Rails.cache directly.
   module Cache
-    def self.fetch(*parts, &block)
-      Rails.cache.fetch(CacheKey.key(*parts), &block)
-    end
+    class << self
+      def fetch(*, **, &)
+        Rails.cache.fetch(CacheKey.key(*), **, &)
+      end
 
-    def self.clear
-      Rails.cache.clear
+      # Like .fetch, but caches the result in RequestStore for the
+      # lifetime of the current request.
+      # Useful when accessing many times during a request to avoid
+      # multiple cache round-trips.
+      def fetch_request_cached(*, **, &)
+        key = CacheKey.key(*)
+
+        RequestStore.fetch(key) do
+          Rails.cache.fetch(key, **, &)
+        end
+      end
+
+      def read(name, **)
+        Rails.cache.read(CacheKey.key(name), **)
+      end
+
+      def write(name, value, **)
+        Rails.cache.write(CacheKey.key(name), value, **)
+      end
+
+      def delete(*)
+        Rails.cache.delete(CacheKey.key(*))
+      end
+
+      def clear
+        Rails.cache.clear
+      end
     end
   end
 end

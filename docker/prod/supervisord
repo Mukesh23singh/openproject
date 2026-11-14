@@ -57,16 +57,29 @@ install_plugins() {
 	popd >/dev/null
 }
 
+stop_memcached_daemon() {
+	/etc/init.d/memcached stop >/dev/null 2>&1 || true
+	if command -v pkill >/dev/null 2>&1; then
+		pkill -x memcached >/dev/null 2>&1 || true
+	fi
+	rm -f /var/run/memcached/memcached.pid
+}
+
+start_memcached_daemon() {
+	stop_memcached_daemon
+	/etc/init.d/memcached start
+}
+
 migrate() {
 	wait_for_postgres
 	pushd $APP_PATH >/dev/null
-	/etc/init.d/memcached start
+	start_memcached_daemon
 	echo "-----> Running migrations..."
-	bundle exec rake db:migrate
+	$APP_PATH/docker/prod/migrate
 	# run seed as app user so created attachments (and folder) belong to app, not root
 	echo "-----> Seeding database..."
-	su app -c 'bundle exec rake db:seed'
-	/etc/init.d/memcached stop
+	su app -c "$APP_PATH/docker/prod/seeder --skip-migrate"
+	stop_memcached_daemon
 	popd >/dev/null
 }
 
@@ -96,6 +109,18 @@ configure_local_postgres() {
 	# remove any dangling pid
 	rm -f $PGDATA/postmaster.pid
 
+	if [ ! -d /etc/postgresql/$PGVERSION ]; then
+		echo "No cluster configuration found for postgres $PGVERSION. Creating configuration."
+		pg_createcluster $PGVERSION main
+
+		# remove config we will set further down
+		sed -i '/^port =/d' /etc/postgresql/$PGVERSION/main/postgresql.conf
+		sed -i '/^data_directory =/d' /etc/postgresql/$PGVERSION/main/postgresql.conf
+
+		# remove unused data directory
+		rm -rf /var/lib/postgresql/$PGVERSION/main
+	fi
+
 	# Set up pg defaults
 	echo "host all  all    0.0.0.0/0  md5" >> /etc/postgresql/$PGVERSION/main/pg_hba.conf
 	echo "listen_addresses='0.0.0.0'" >> "$PGCONF_FILE"
@@ -103,7 +128,7 @@ configure_local_postgres() {
 	echo "data_directory='$PGDATA'" >> "$PGCONF_FILE"
 }
 
-if [ "$dbhost" = "127.0.0.1" ]; then
+if [ -z "${DATABASE_URL}" ] || [ "$dbhost" = "127.0.0.1" ]; then
 	configure_local_postgres
 
 	# initialize cluster if it does not exist yet
@@ -128,6 +153,9 @@ fi
 
 echo "-----> Database setup finished."
 echo "       On first installation, the default admin credentials are login: admin, password: admin"
+
+# Ensure supervisord can manage memcached itself without a stale daemon keeping port 11211 busy.
+stop_memcached_daemon
 
 echo "-----> Launching supervisord..."
 erb -r uri $APP_PATH/docker/prod/supervisord.conf.erb > /etc/supervisor/supervisord.conf

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,7 +31,7 @@ module API
   module V3
     class WorkPackageCollectionFromQueryService
       include Utilities::PathHelper
-      include ::API::Utilities::PageSizeHelper
+      include ::API::Utilities::UrlPropsParsingHelper
 
       def initialize(query, user, scope: nil)
         self.query = query
@@ -41,12 +42,12 @@ module API
       def call(params = {}, valid_subset: false)
         update = UpdateQueryFromV3ParamsService
                  .new(query, current_user)
-                 .call(params, valid_subset: valid_subset)
+                 .call(params, valid_subset:)
 
         if update.success?
           representer = results_to_representer(params)
 
-          ServiceResult.new(success: true, result: representer)
+          ServiceResult.success(result: representer)
         else
           update
         end
@@ -62,7 +63,7 @@ module API
         end
 
         collection_representer(results_scope,
-                               params: params,
+                               params:,
                                project: query.project,
                                groups: generate_groups,
                                sums: generate_total_sums)
@@ -77,18 +78,11 @@ module API
       end
 
       def calculate_resulting_params(provided_params)
-        calculate_default_params.merge(provided_params.slice('offset', 'pageSize').symbolize_keys).tap do |params|
-          if query.manually_sorted?
-            params[:query_id] = query.id
-            params[:offset] = 1
-            # Force the setting value in all cases except when 0 is requested explictly. Fetching with pageSize = 0
-            # is done for performance reasons to simply get the query without the results.
-            params[:pageSize] = pageSizeParam(params) == 0 ? pageSizeParam(params) : Setting.forced_single_page_size
-          else
-            params[:offset] = to_i_or_nil(params[:offset])
-            params[:pageSize] = pageSizeParam(params)
-          end
-        end
+        params = calculate_default_params
+                 .merge(provided_params.symbolize_keys.slice(:offset, :pageSize))
+        handle_offset_paging_params(params)
+        handle_select_params(params, provided_params)
+        params
       end
 
       def calculate_default_params
@@ -105,7 +99,7 @@ module API
 
         results.work_package_count_by_group.map do |group, count|
           ::API::V3::WorkPackages::WorkPackageAggregationGroup.new(
-            group, count, query: query, sums: sums[group], current_user: current_user
+            group, count, query:, sums: sums[group], current_user:
           )
         end
       end
@@ -125,40 +119,68 @@ module API
       end
 
       def format_query_sums(sums)
-        OpenStruct.new(format_column_keys(sums).merge(available_custom_fields: WorkPackageCustomField.summable.to_a))
+        API::ParserStruct.new(format_column_keys(sums).merge(available_custom_fields: WorkPackageCustomField.summable.to_a))
       end
 
       def format_column_keys(hash_by_column)
-        ::Hash[
-          hash_by_column.map do |column, value|
-            match = /cf_(\d+)/.match(column.name.to_s)
+        hash_by_column.transform_keys do |column|
+          column_name(column)
+        end
+      end
 
-            column_name = if match
-                            "custom_field_#{match[1]}"
-                          else
-                            column.name.to_s
-                          end
+      def column_name(column)
+        custom_field_id = CustomField.id_from_column_name(column.name)
 
-            [column_name, value]
-          end
-        ]
+        if custom_field_id
+          "custom_field_#{custom_field_id}"
+        else
+          column.name.to_s
+        end
       end
 
       def collection_representer(work_packages, params:, project:, groups:, sums:)
         resulting_params = calculate_resulting_params(params)
 
-        ::API::V3::WorkPackages::WorkPackageCollectionRepresenter.new(
-          work_packages,
-          self_link: self_link(project),
-          project: project,
-          query: resulting_params,
-          page: resulting_params[:offset],
-          per_page: resulting_params[:pageSize],
-          groups: groups,
-          total_sums: sums,
-          embed_schemas: true,
-          current_user: current_user
-        )
+        if resulting_params[:select]
+          ::API::V3::Utilities::SqlRepresenterWalker
+            .new(work_packages,
+                 current_user:,
+                 self_path: self_link(project),
+                 url_query: resulting_params)
+            .walk(::API::V3::WorkPackages::WorkPackageSqlCollectionRepresenter)
+        else
+          ::API::V3::WorkPackages::WorkPackageCollectionRepresenter.new(
+            work_packages,
+            self_link: self_link(project),
+            project:,
+            query_params: resulting_params,
+            page: resulting_params[:offset],
+            per_page: resulting_params[:pageSize],
+            groups:,
+            total_sums: sums,
+            embed_schemas: true,
+            current_user:,
+            timestamps: query.timestamps,
+            query:
+          )
+        end
+      end
+
+      def handle_offset_paging_params(params)
+        if query.manually_sorted?
+          params[:query_id] = query.id
+          params[:offset] = 1
+          # Force the setting value in all cases except when 0 is requested explicitly. Fetching with pageSize = 0
+          # is done for performance reasons to simply get the query without the results.
+          params[:pageSize] = pageSizeParam(params) == 0 ? pageSizeParam(params) : Setting.forced_single_page_size
+        else
+          params[:offset] = to_i_or_nil(params[:offset])
+          params[:pageSize] = pageSizeParam(params)
+        end
+      end
+
+      def handle_select_params(params, provided_params)
+        params[:select] = nested_from_csv(provided_params["select"]) if provided_params["select"]
       end
 
       def to_i_or_nil(value)
@@ -171,7 +193,7 @@ module API
 
       def self_link(project)
         if project
-          api_v3_paths.work_packages_by_project(project.id)
+          api_v3_paths.work_packages_by_workspace(project.id)
         else
           api_v3_paths.work_packages
         end

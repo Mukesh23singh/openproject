@@ -1,9 +1,38 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import 'reflect-metadata';
+import { Injectable, OnDestroy } from '@angular/core';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
 import { ActionsService } from 'core-app/core/state/actions/actions.service';
 import { ActionCreator } from 'ts-action/action';
 import { Action } from 'ts-action';
 import { takeWhile } from 'rxjs/operators';
+import { Observable } from 'rxjs';
 
 /**
  * This interface specifies a constraint on the classes that can
@@ -16,9 +45,40 @@ export interface EffectClass {
   ngOnDestroy?():void;
 }
 
+
 const EffectHandlers = Symbol('EffectHandlers');
 
-type EffectHandlerItem = { callback:(action:Action) => void, action:ActionCreator };
+interface EffectHandlerItem { callback:(action:Action) => void, action:ActionCreator }
+
+interface DecoratedEffectClass {
+  [EffectHandlers]:Map<string, EffectHandlerItem>
+}
+
+export function registerEffectCallbacks(instance:EffectClass, untilDestroyed:(source:Observable<unknown>) => Observable<unknown>):void {
+  // Access the handlers registered in the @EffectCallback method decorator
+  // We're accessing a separate symbol on the base class that is not present
+  const handlers = (instance as unknown as DecoratedEffectClass)[EffectHandlers];
+  if (handlers) {
+    handlers.forEach((item:EffectHandlerItem, key:string) => {
+      debugLog(`[${instance.constructor.name}] Subscribing to effect ${key}`);
+
+      // Subscribe to the specified action for the duration of this service's life.
+      instance.actions$
+        .ofType(item.action)
+        .pipe(
+          untilDestroyed,
+        )
+        .subscribe((action) => {
+          // Wrap callback in a try-catch to avoid completing the subscription.
+          try {
+            item.callback.call(instance, action);
+          } catch (e) {
+            console.error(`Error thrown in effect callback ${key}: ${e as string}`);
+          }
+        });
+    });
+  }
+}
 
 /**
  * The EffectHandler decorates a class to be used for effects callbacks
@@ -37,41 +97,21 @@ type EffectHandlerItem = { callback:(action:Action) => void, action:ActionCreato
 /* The class decorator requires any[] args to it to function */
 
 /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-export function EffectHandler<T extends { new(...args:any[]):EffectClass }>(constructor:T):any {
-  return class extends constructor {
+export function EffectHandler<T extends new(...args:any[]) => EffectClass>(constructor:T):any {
+  @Injectable()
+  class EffectHandlerDecorator extends constructor implements OnDestroy {
     private serviceDestroyed = false;
 
-    /* The class decorator requires any[] args to it to function */
-    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
-    constructor(...args:any[]) {
-      super(...args);
-
-      // Access the handlers registered in the @EffectCallback method decorator
-      // We're accessing a separate symbol on the base class that is not present
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const handlers = constructor.prototype[EffectHandlers] as Map<string, EffectHandlerItem>;
-      if (handlers) {
-        handlers.forEach((item:EffectHandlerItem, key:string) => {
-          debugLog(`[${constructor.name}] Subscribing to effect ${key}`);
-
-          // Subscribe to the specified action for the duration of this service's life.
-          this.actions$
-            .ofType(item.action)
-            .pipe(
-              takeWhile(() => !this.serviceDestroyed),
-            )
-            .subscribe((instance) => {
-              // Wrap callback in a try-catch to avoid completing the subscription.
-              try {
-                item.callback.call(this, instance);
-              } catch (e) {
-                // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
-                console.error(`Error thrown in effect callback ${key}: ${e}`);
-              }
-            });
-        });
-      }
-    }
+    // Registered from a field initializer, not a constructor, on purpose: an
+    // explicit constructor on this @Injectable() subclass of a generic base
+    // (`extends constructor`) breaks the ngtsc AOT compiler, which cannot
+    // analyze the `super(...args)` injection parameters. With
+    // useDefineForClassFields:false this initializer still runs in the
+    // constructor body after super(), so the wrapped service (and its actions$)
+    // is fully constructed before effect callbacks bind to it.
+    private effectRegistration = (() => {
+      registerEffectCallbacks(this, takeWhile(() => !this.serviceDestroyed));
+    })();
 
     ngOnDestroy():void {
       this.serviceDestroyed = true;
@@ -79,7 +119,9 @@ export function EffectHandler<T extends { new(...args:any[]):EffectClass }>(cons
         super.ngOnDestroy();
       }
     }
-  };
+  }
+
+  return EffectHandlerDecorator;
 }
 
 /**
@@ -102,17 +144,14 @@ export function EffectHandler<T extends { new(...args:any[]):EffectClass }>(cons
  * }
  */
 export function EffectCallback(action:ActionCreator) {
-  // eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
   return (service:unknown, property:string, descriptor:PropertyDescriptor):void => {
     const target = service as { [EffectHandlers]:Map<string, EffectHandlerItem> };
     if (!target[EffectHandlers]) {
       // We're assigning the symbol property in the base class
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment,no-param-reassign
       target[EffectHandlers] = new Map();
     }
 
     // Here we just add some information that class decorator will use
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
     target[EffectHandlers].set(property, { action, callback: descriptor.value as (action:Action) => void });
   };
 }

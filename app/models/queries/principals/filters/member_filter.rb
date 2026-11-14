@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Queries::Principals::Filters::MemberFilter < Queries::Principals::Filters::PrincipalFilter
   def allowed_values
-    Project.active.all.map do |project|
-      [project.name, project.id]
-    end
+    Project.active.pluck(:name, :id)
   end
 
   def type
@@ -43,22 +40,25 @@ class Queries::Principals::Filters::MemberFilter < Queries::Principals::Filters:
     :member
   end
 
-  def scope
+  def apply_to(query_scope)
     case operator
-    when '='
-      Principal.in_project(values)
-    when '!'
-      Principal.not_in_project(values)
-    when '*'
-      member_included_scope.where.not(members: { id: nil })
-    when '!*'
-      member_included_scope.where.not(id: Member.distinct(:user_id).select(:user_id))
+    when "="
+      query_scope.visible.in_project(values)
+    when "!"
+      query_scope.visible.not_in_project(values)
+    when "*"
+      member_included_scope(query_scope).where.not(members: { id: nil })
+    when "!*"
+      member_included_scope(query_scope).where.not(id: Member.distinct(:user_id).select(:user_id))
     end
   end
 
   private
 
-  def member_included_scope
-    Principal.includes(:members)
+  def member_included_scope(scope)
+    scope
+      .visible
+      .includes(:members)
+      .merge(Member.of_any_project)
   end
 end

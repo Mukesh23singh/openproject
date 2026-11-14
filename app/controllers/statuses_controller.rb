@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,51 +22,54 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class StatusesController < ApplicationController
   include PaginationHelper
+  include OpTurbo::ComponentStream
+  include SortableLists::DropRequestValidation
 
-  layout 'admin'
+  configure_drop_request list_type: Status::SORTABLE_LIST_TYPE, list_id_scoped: false
+
+  layout "admin"
 
   before_action :require_admin
 
   def index
-    @statuses = Status.page(page_param)
-                .per_page(per_page_param)
-
-    render action: 'index', layout: false if request.xhr?
+    @query = load_query
+    @statuses = paginated_statuses
+    @page_args = page_args
   end
 
   def new
     @status = Status.new
   end
 
+  def edit
+    @status = Status.find(params[:id])
+  end
+
   def create
     @status = Status.new(permitted_params.status)
     if @status.save
       flash[:notice] = I18n.t(:notice_successful_create)
-      redirect_to action: 'index'
+      redirect_to action: "index"
     else
-      render action: 'new'
+      render action: :new, status: :unprocessable_entity
     end
-  end
-
-  def edit
-    @status = Status.find(params[:id])
   end
 
   def update
     @status = Status.find(params[:id])
     if @status.update(permitted_params.status)
+      recompute_progress_values
       flash[:notice] = I18n.t(:notice_successful_update)
-      redirect_to action: 'index'
+      redirect_to action: "index", status: :see_other
     else
-      render action: 'edit'
+      render action: :edit, status: :unprocessable_entity
     end
   end
 
@@ -78,32 +81,86 @@ class StatusesController < ApplicationController
       status.destroy
       flash[:notice] = I18n.t(:notice_successful_delete)
     end
-    redirect_to action: 'index'
+    redirect_to action: "index", status: :see_other
   rescue StandardError
     flash[:error] = I18n.t(:error_unable_delete_status)
-    redirect_to action: 'index'
+    redirect_to action: "index", status: :see_other
   end
 
-  def update_work_package_done_ratio
-    if Status.update_work_package_done_ratios
-      flash[:notice] = I18n.t(:notice_work_package_done_ratios_updated)
+  def move
+    status = Status.find(params.expect(:id))
+    moved = params.key?(:move_to) ? move_in_direction(status) : move_after_anchor(status)
+
+    if moved
+      render_move_success
     else
-      flash[:error] =  I18n.t(:error_work_package_done_ratios_not_updated)
+      error_key = params.key?(:move_to) ? "statuses.index.could_not_be_moved" : :error_invalid_list_move_anchor
+      render_error_flash_message_via_turbo_stream(message: I18n.t(error_key))
     end
-    redirect_to action: 'index'
+
+    respond_with_turbo_streams(status: moved ? :ok : :unprocessable_entity)
   end
 
   protected
 
-  def default_breadcrumb
-    if action_name == 'index'
-      t(:label_work_package_status_plural)
+  def render_move_success
+    @query = Queries::Statuses::StatusQuery.new(user: current_user)
+    render_success_flash_message_via_turbo_stream(message: I18n.t(:notice_successful_update))
+    update_via_turbo_stream(component: index_component, method: :morph)
+  end
+
+  def index_component
+    Statuses::IndexComponent.new(statuses: paginated_statuses, query: @query, page_args:)
+  end
+
+  def load_query
+    ParamsToQueryService.new(Status, current_user).call(params)
+  end
+
+  def paginated_statuses
+    @query.results.page(page_param).per_page(per_page_param)
+  end
+
+  def page_args
+    { page: page_param, per_page: per_page_param }
+  end
+
+  def move_in_direction(status)
+    move_to = params[:move_to]
+
+    move_to.in?(%w[highest higher lower lowest]) && status.update(move_to:)
+  end
+
+  def move_after_anchor(status)
+    return false unless valid_drop_request?
+
+    prev_id = drop_params[:prev_id]
+
+    if prev_id.blank? && page_param > 1
+      move_to_page_start(status)
     else
-      ActionController::Base.helpers.link_to(t(:label_work_package_status_plural), statuses_path)
+      status.move_after_anchor(prev_id, scope: Status.all)
     end
   end
 
-  def show_local_breadcrumb
-    true
+  def move_to_page_start(status)
+    statuses = Status.page(page_param).per_page(per_page_param)
+    return false if statuses.empty?
+
+    prev_id = Status.offset(statuses.offset - 1).pick(:id)
+    status.move_after_anchor(prev_id, scope: Status.all)
+  end
+
+  def recompute_progress_values
+    attributes_triggering_recomputing = ["excluded_from_totals"]
+    attributes_triggering_recomputing << "default_done_ratio" if WorkPackage.status_based_mode?
+    changes = @status.previous_changes.slice(*attributes_triggering_recomputing)
+    return if changes.empty?
+
+    WorkPackages::Progress::ApplyStatusesChangeJob
+      .perform_later(cause_type: "status_changed",
+                     status_name: @status.name,
+                     status_id: @status.id,
+                     changes:)
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,45 +20,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-require_relative '../support/pages/overview'
+require_relative "../support/pages/dashboard"
 
-describe 'Overview page on the fly creation if user lacks :mange_overview permission',
-         type: :feature, js: true, with_mail: false do
-  let!(:type) { FactoryBot.create :type }
-  let!(:project) { FactoryBot.create :project, types: [type] }
-  let!(:open_status) { FactoryBot.create :default_status }
+RSpec.describe "Dashboard page on the fly creation if user lacks :manage_dashboards permission", :js do
+  let!(:type) { create(:type) }
+  let!(:project) { create(:project, types: [type]) }
+  let!(:open_status) { create(:default_status) }
 
   let(:permissions) do
     %i[view_work_packages]
   end
 
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: permissions)
+    create(:user,
+           member_with_permissions: { project => permissions })
   end
-  let(:overview_page) do
-    Pages::Overview.new(project)
+  let(:dashboard_page) do
+    Pages::Dashboard.new(project)
   end
 
   before do
     login_as user
 
-    overview_page.visit!
+    dashboard_page.visit!
   end
 
-  it 'renders the default view, allows altering and saving' do
-    description_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(1)')
-    details_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(2)')
-    overview_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(3)')
+  it "renders the default view, allows altering and saving" do
+    description_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(1)")
+    details_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(2)")
+    overview_area = Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(3)")
 
     description_area.expect_to_exist
     details_area.expect_to_exist

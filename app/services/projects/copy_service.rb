@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,21 +37,30 @@ module Projects
         ::Projects::Copy::VersionsDependentService,
         ::Projects::Copy::CategoriesDependentService,
         ::Projects::Copy::WorkPackagesDependentService,
-        ::Projects::Copy::WorkPackageAttachmentsDependentService,
         ::Projects::Copy::WikiDependentService,
-        ::Projects::Copy::WikiPageAttachmentsDependentService,
         ::Projects::Copy::ForumsDependentService,
         ::Projects::Copy::QueriesDependentService,
         ::Projects::Copy::BoardsDependentService,
-        ::Projects::Copy::OverviewDependentService
+        ::Projects::Copy::OverviewDependentService,
+        ::Projects::Copy::PhasesDependentService,
+        ::Projects::Copy::StoragesDependentService
       ]
     end
 
-    ##
-    # In case a rollback is needed,
-    # destroy the copied project again.
-    def rollback
-      state.project&.destroy
+    # Project Folders and File Links aren't dependent services anymore,
+    #  so we need to amend the services for the form Representer
+    def self.copyable_dependencies
+      super + [{ identifier: "storage_project_folders",
+                 name_source: -> { I18n.t(:label_project_storage_project_folder) },
+                 count_source: ->(source, _) { source.storages.count } },
+
+               { identifier: "file_links",
+                 name_source: -> { I18n.t("projects.copy.work_package_file_links") },
+                 count_source: ->(source, _) { source.work_packages.joins(:file_links).count("file_links.id") } }]
+    end
+
+    def initialize(contract_options: {}, **)
+      super(contract_options: contract_options.reverse_merge(validate_model: true), **)
     end
 
     protected
@@ -64,70 +72,144 @@ module Projects
       !Copy::Dependency.should_copy?(params, dependency_cls.identifier.to_sym)
     end
 
-    def initialize_copy(source, params)
-      target = Project.new
+    def set_attributes_params(_params)
+      attributes = source_attributes.merge(
+        # Clear enabled modules
+        enabled_module_names: source_enabled_modules,
 
-      target.attributes = source.attributes.dup.except(*skipped_attributes)
-      # Clear enabled modules
-      target.enabled_modules = []
-      target.enabled_module_names = source.enabled_module_names - %w[repository]
-      target.types = source.types
-      target.work_package_custom_fields = source.work_package_custom_fields
+        # clear PIR settings
+        project_creation_wizard_artifact_work_package_id: nil
+      )
 
-      # Copy status object
-      target.status = source.status&.dup
+      clean_settings_attributes!(attributes[:settings])
 
-      # Take over the CF values for attributes
-      target.custom_field_values = source.custom_value_attributes
-
-      # Additional input target params
-      target_project_params = params[:target_project_params].with_indifferent_access
-
-      cleanup_target_project_params(source, target, target_project_params)
-      cleanup_target_project_attributes(source, target, target_project_params)
-
-      # Assign additional params from user
-      call = Projects::SetAttributesService
-        .new(user: user,
-             model: target,
-             contract_class: Projects::CopyContract,
-             contract_options: { copy_source: source, validate_model: true })
-        .with_state(state)
-        .call(target_project_params)
-
-      # Retain values after the set attributes service
-      retain_attributes(source, target, target_project_params)
-
-      # Retain the project in the state for other dependent
-      # copy services to use
-      state.project = target
-
-      call
+      only_allowed_parent_id(attributes)
+        .merge(source_custom_field_attributes)
+        .merge(source_project_types_attribute)
+        .merge(target_project_params)
     end
 
-    def retain_attributes(source, target, target_project_params)
+    # We need to reference the project instance
+    # before the contract validates it (to set/copy a variant)
+    # so we store it in the state.
+    def instance(_params)
+      state.project = super
+    end
+
+    def before_perform(service_call)
+      super.tap do |super_call|
+        # Retain values after the set attributes service
+        retain_attributes(source, super_call.result)
+      end
+    end
+
+    # The restrictions have to exist before the work packages are copied, as copying drops the
+    # custom values that are not usable in the copy.
+    def after_persist(call)
+      copy_custom_field_value_restrictions(call.result) if call.result&.persisted?
+
+      super
+    end
+
+    def after_perform(call)
+      super.tap do |super_call|
+        copy_activated_custom_fields(super_call)
+        copy_creation_wizard_flags(super_call.result)
+        update_calculated_value_custom_fields(super_call.result)
+      end
+    end
+
+    def clean_settings_attributes!(settings)
+      # We want to remove the PIR work package as that should be reset on copy
+      settings.delete("project_creation_wizard_artifact_work_package_id")
+    end
+
+    def copy_activated_custom_fields(call)
+      call.result.project_custom_field_ids = source.project_custom_field_ids
+    end
+
+    def copy_custom_field_value_restrictions(project)
+      rows = source.custom_field_value_restrictions.map do |restriction|
+        restriction.slice(:custom_field_id, :restriction, :custom_option_id, :hierarchy_item_id).merge(project_id: project.id)
+      end
+
+      CustomField::ProjectSpecificValueRestriction.insert_all(rows) if rows.any?
+    end
+
+    # Activating a custom field on the copy must not silently enable it for
+    # the creation wizard (PIR) - unless the source project already had it
+    # enabled, in which case we want to preserve that setting on the copy.
+    # This has to run after copy_activated_custom_fields, since that is what
+    # actually creates most of the mappings being adjusted here.
+    def copy_creation_wizard_flags(project)
+      source_flags = source.project_custom_field_project_mappings.pluck(:custom_field_id, :creation_wizard).to_h
+
+      project.project_custom_field_project_mappings.find_each do |mapping|
+        creation_wizard = source_flags[mapping.custom_field_id]
+        mapping.update_column(:creation_wizard, creation_wizard) unless creation_wizard.nil?
+      end
+    end
+
+    def retain_attributes(source, target)
       # Ensure we keep the public value of the source project
       # which might get overridden by the SetAttributesService
       # unless the user provided a different value
       target.public = source.public unless target_project_params.key?(:public)
     end
 
-    def cleanup_target_project_params(_source, _target, target_project_params)
-      if (parent_id = target_project_params[:parent_id]) && (parent = Project.find_by(id: parent_id)) && !user.allowed_to?(
-        :add_subprojects, parent
-      )
-        target_project_params.delete(:parent_id)
-      end
-    end
-
-    def cleanup_target_project_attributes(_source, target, _target_project_params)
-      if target.parent && !user.allowed_to?(:add_subprojects, target.parent)
-        target.parent = nil
-      end
-    end
-
     def skipped_attributes
-      %w[id created_at updated_at name identifier active templated lft rgt]
+      %w[id created_at updated_at name identifier active templated lft rgt wp_sequence_counter]
+    end
+
+    def source_attributes
+      source.attributes.dup.except(*skipped_attributes).with_indifferent_access
+    end
+
+    def source_enabled_modules
+      source.enabled_module_names - %w[repository]
+    end
+
+    def source_status
+      source.status&.attributes
+    end
+
+    def source_project_types_attribute
+      {
+        project_types: source.project_types.map { copied_project_type(it) }
+      }
+    end
+
+    ##
+    # If we copy a project type with a variant that is project-specific
+    # we need to also copy the variant itself, otherwise, this will result in a validation error.
+    def copied_project_type(project_type)
+      variant = project_type.variant
+
+      project_type.dup.tap { it.variant = duplicate_variant(variant) if variant.project_owned? }
+    end
+
+    def duplicate_variant(variant)
+      variant.dup.tap { it.project = state.project }
+    end
+
+    def source_custom_field_attributes
+      source
+        .custom_value_attributes
+        .transform_keys { |key| "custom_field_#{key}" }
+    end
+
+    # Additional input target params
+    def target_project_params
+      params[:target_project_params].with_indifferent_access
+    end
+
+    def only_allowed_parent_id(attributes)
+      if (parent_id = attributes[:parent_id]) && (parent = Project.find_by(id: parent_id)) &&
+        !user.allowed_in_project?(:add_subprojects, parent)
+        attributes.except(:parent_id)
+      else
+        attributes
+      end
     end
   end
 end

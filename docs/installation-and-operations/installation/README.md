@@ -6,19 +6,22 @@ sidebar_navigation:
 
 # Installing OpenProject
 
-OpenProject can be setup in three different ways:
+OpenProject can be setup in these different ways:
 
-| ----------- | :---------- |
-| [Installation with DEB/RPM packages](./packaged) | This is the recommended way to install OpenProject |
-| [Installation with docker](./docker) | This allows to setup OpenProject in an isolated manner using Docker |
-| [Installation with Univention Corporate Server](./univention) | OpenProject is available in the App Center and comes integrated with the identity management |
-| [Other](misc/) | Extra information on installing OpenProject on specific platforms such as Kubernetes. |
+| Topic                                                | Content                                                                               |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [Installation with Docker Compose](./docker-compose) | Recommended setup for OpenProject in an isolated manner using Docker Compose          | 
+| [Installation with DEB/RPM packages](./packaged)     | Install OpenProject using your package manager (limited supported distributions)      |
+| [Installation with single Docker container](./docker)| This allows to setup OpenProject in a single Docker container                         | 
+| [Installation with Helm charts](./helm-chart)        | This allows to setup OpenProject using Helm charts                                    |
+| [Other](misc/)                                       | Extra information on installing OpenProject on specific platforms such as Kubernetes. |
 
-**We recommend downloading the DEB/RPM package installation.**
+>[!NOTE]]
+> **We recommend using the Docker Compose installation for smaller instances and the Helm installation for larger instances.**
 
 ## Frequently asked questions (FAQ)
 
 ### Do you have a step-by-step guide to installing OpenProject Enterprise on-premises under Active Directory?
 
-We have a guide on [how to use OpenProject with your Active Directory](../../system-admin-guide/authentication/ldap-authentication/).
-In addition, with the Enterprise on-premises edition it is also possible to [link LDAP groups with groups in OpenProject](../../system-admin-guide/authentication/ldap-authentication/ldap-group-synchronization/).
+We have a guide on [how to use OpenProject with your Active Directory](../../system-admin-guide/authentication/ldap-connections/).
+In addition, with the Enterprise on-premises edition it is also possible to [link LDAP groups with groups in OpenProject](../../system-admin-guide/authentication/ldap-connections/ldap-group-synchronization/).

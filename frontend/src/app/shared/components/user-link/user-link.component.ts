@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,45 +20,47 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { ChangeDetectionStrategy, Component, Input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, inject } from '@angular/core';
 import { UserResource } from 'core-app/features/hal/resources/user-resource';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 
 @Component({
   selector: 'op-user-link',
   template: `
-    <a *ngIf="href"
-       [attr.href]="href"
-       [attr.title]="label"
-       [textContent]="name">
-    </a>
-    <ng-container *ngIf="!href">
+    @if (href) {
+      <a
+        data-hover-card-trigger-target="trigger"
+        [attr.data-hover-card-url]="hoverCardUrl"
+        [attr.href]="href"
+        [textContent]="name">
+      </a>
+    }
+    @else {
       {{ name }}
-    <ng-container>
+    }
   `,
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class UserLinkComponent {
+  readonly pathHelperService = inject(PathHelperService);
+
   @Input() user:UserResource;
 
-  constructor(readonly I18n:I18nService) {
-  }
-
   public get href() {
-    return this.user && this.user.showUserPath;
+    return this.user?.showUserPath;
   }
 
   public get name() {
-    return this.user && this.user.name;
+    return this.user?.name;
   }
 
-  public get label() {
-    return this.I18n.t('js.label_author', { user: this.name });
+  public get hoverCardUrl() {
+    return this.user?.id && this.pathHelperService.userHoverCardPath(this.user.id);
   }
 }

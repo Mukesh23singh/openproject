@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/plugins'
+require "open_project/plugins"
 
 module OpenProject::JobStatus
   class Engine < ::Rails::Engine
@@ -36,28 +33,38 @@ module OpenProject::JobStatus
 
     include OpenProject::Plugins::ActsAsOpEngine
 
-    register 'openproject-job_status',
-             author_url: 'https://www.openproject.org',
+    register "openproject-job_status",
+             author_url: "https://www.openproject.org",
              bundled: true
 
-    add_api_endpoint 'API::V3::Root' do
+    add_api_endpoint "API::V3::Root" do
       mount ::API::V3::JobStatus::JobStatusAPI
     end
 
-    add_api_path :job_status do |uuid|
-      "#{root}/job_statuses/#{uuid}"
+    add_api_resource_paths :job_status, only: :show
+
+    add_cron_jobs do
+      {
+        "JobStatus::Cron::ClearOldJobStatusJob": {
+          cron: "15 4 * * *", # runs at 4:15 nightly
+          class: ::JobStatus::Cron::ClearOldJobStatusJob.name
+        }
+      }
     end
 
-    initializer 'job_status.event_listener' do
+    config.to_prepare do
       # Extends the ActiveJob adapter in use (DelayedJob) by a Status which lives
-      # indenpendently from the job itself (which is deleted once successful or after max attempts).
+      # independently from the job itself (which is deleted once successful or after max attempts).
       # That way, the result of a background job is available even after the original job is gone.
       EventListener.register!
     end
 
-    config.to_prepare do
-      # Register the cron job to clear statuses periodically
-      ::Cron::CronJob.register! ::JobStatus::Cron::ClearOldJobStatusJob
+    config.after_initialize do
+      if Rails.application.config.reloading_enabled?
+        Rails.autoloaders.main.on_unload(EventListener.name) do |klass, _abspath|
+          klass.unsubscribe_all_to_prevent_duplicates_on_reload!
+        end
+      end
     end
   end
 end

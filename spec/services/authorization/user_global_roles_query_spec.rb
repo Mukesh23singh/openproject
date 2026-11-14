@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,107 +22,126 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Authorization::UserGlobalRolesQuery do
-  let(:user) { FactoryBot.build(:user) }
-  let(:anonymous) { FactoryBot.build(:anonymous) }
-  let(:project) { FactoryBot.build(:project, public: false) }
-  let(:project2) { FactoryBot.build(:project, public: false) }
-  let(:public_project) { FactoryBot.build(:project, public: true) }
-  let(:role) { FactoryBot.build(:role) }
-  let(:role2) { FactoryBot.build(:role) }
-  let(:anonymous_role) { FactoryBot.build(:anonymous_role) }
-  let(:non_member) { FactoryBot.build(:non_member) }
+RSpec.describe Authorization::UserGlobalRolesQuery do
+  let(:user) { build(:user) }
+  let(:anonymous) { build(:anonymous) }
+  let(:project) { build(:project, public: false) }
+  let(:project2) { build(:project, public: false) }
+  let(:public_project) { build(:project, public: true) }
+  let(:role) { build(:project_role) }
+  let(:role2) { build(:project_role) }
+  let(:anonymous_role) { build(:anonymous_role) }
+  let(:non_member) { build(:non_member) }
+  let(:standard_global) { build(:standard_global_role) }
   let(:member) do
-    FactoryBot.build(:member, project: project,
-                              roles: [role],
-                              principal: user)
+    build(:member, project:,
+                   roles: [role],
+                   principal: user)
   end
   let(:member2) do
-    FactoryBot.build(:member, project: project2,
-                              roles: [role2],
-                              principal: user)
+    build(:member, project: project2,
+                   roles: [role2],
+                   principal: user)
   end
-  let(:global_permission) { OpenProject::AccessControl.permissions.find { |p| p.global? } }
+  let(:global_permission) { OpenProject::AccessControl.permissions.find(&:global?) }
   let(:global_role) do
-    FactoryBot.build(:global_role,
-                     permissions: [global_permission.name])
+    build(:global_role,
+          permissions: [global_permission.name])
   end
   let(:global_member) do
-    FactoryBot.build(:global_member,
-                     principal: user,
-                     roles: [global_role])
+    build(:global_member,
+          principal: user,
+          roles: [global_role])
+  end
+  let(:work_package_permission) { [:edit_work_packages] }
+  let(:work_package_editor_role) { create(:work_package_role, permissions: work_package_permission) }
+  let(:work_package) { create(:work_package, project:) }
+  let(:work_package_member) do
+    build(:member, entity: work_package, project: work_package.project, roles: [work_package_editor_role], principal: user)
   end
 
-  describe '.query' do
+  describe ".query" do
     before do
       non_member.save!
       anonymous_role.save!
+      standard_global.save!
       user.save!
     end
 
-    it 'is a user relation' do
+    it "is a user relation" do
       expect(described_class.query(user, project)).to be_a ActiveRecord::Relation
     end
 
-    context 'w/ the user being a member in a project' do
+    context "with the user being a member in a project" do
       before do
         member.save!
       end
 
-      it 'is the member and non member role' do
-        expect(described_class.query(user)).to match_array [role, non_member]
+      it "is only the standard global role" do
+        expect(described_class.query(user)).to contain_exactly(standard_global)
       end
     end
 
-    context 'w/ the user being a member in two projects' do
+    context "with the user being a member in two projects" do
       before do
         member.save!
         member2.save!
       end
 
-      it 'is both member and the non member role' do
-        expect(described_class.query(user)).to match_array [role, role2, non_member]
+      it "is only the standard global role" do
+        expect(described_class.query(user)).to contain_exactly(standard_global)
       end
     end
 
-    context 'w/o the user being a member in a project' do
-      it 'is the non member role' do
-        expect(described_class.query(user)).to match_array [non_member]
+    context "without the user being a member in a project" do
+      it "is only the standard global role" do
+        expect(described_class.query(user)).to contain_exactly(standard_global)
       end
     end
 
-    context 'w/ the user being anonymous' do
-      it 'is the anonymous role' do
-        expect(described_class.query(anonymous)).to match_array [anonymous_role]
+    context "with the user being anonymous" do
+      it "is only the standard global role" do
+        expect(described_class.query(anonymous)).to contain_exactly(standard_global)
       end
     end
 
-    context 'w/ the user having a global role' do
+    context "with the user having a global role" do
       before do
         global_member.save!
       end
 
-      it 'is the global role and non member role' do
-        expect(described_class.query(user)).to match_array [global_role, non_member]
+      it "is the global role and the standard global role" do
+        expect(described_class.query(user)).to contain_exactly(global_role, standard_global)
       end
     end
 
-    context 'w/ the user having a global role and a member role' do
+    context "with the user having a global role and a member role" do
       before do
         member.save!
         global_member.save!
       end
 
-      it 'is the global role and non member role' do
-        expect(described_class.query(user)).to match_array [global_role, role, non_member]
+      it "is the global role and the standard global role" do
+        expect(described_class.query(user)).to contain_exactly(global_role, standard_global)
+      end
+    end
+
+    context "with the user having a global role, a member role and a work package role" do
+      before do
+        member.save!
+        global_member.save!
+        work_package_member.save!
+      end
+
+      it "is the global role and the standard global role" do
+        expect(described_class.query(user)).to contain_exactly(global_role, standard_global)
       end
     end
   end

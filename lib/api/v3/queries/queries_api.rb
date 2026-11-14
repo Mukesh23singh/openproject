@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'securerandom'
-require 'api/v3/queries/query_representer'
+require "securerandom"
+require "api/v3/queries/query_representer"
 
 module API
   module V3
@@ -47,8 +46,8 @@ module API
           helpers ::API::V3::Queries::QueryHelper
 
           helpers do
-            def authorize_by_policy(action, &block)
-              authorize_by_with_raise(-> { allowed_to?(action) }, &block)
+            def authorize_by_policy(action, &)
+              authorize_by_with_raise(-> { allowed_to?(action) }, &)
             end
 
             def allowed_to?(action)
@@ -57,7 +56,9 @@ module API
           end
 
           get do
-            authorize_any %i(view_work_packages manage_public_queries), global: true
+            authorize_in_any_work_package(:view_work_packages) do
+              authorize_in_any_project(:manage_public_queries)
+            end
 
             queries_scope = Query.all.includes(QueryRepresenter.to_eager_load)
 
@@ -66,41 +67,40 @@ module API
                                                                     params)
           end
 
-          namespace 'available_projects' do
+          namespace "available_projects" do
             after_validation do
-              authorize(:view_work_packages, global: true, user: current_user)
+              authorize_in_any_work_package(:view_work_packages)
             end
 
             get do
-              available_projects = Project.allowed_to(current_user, :view_work_packages)
+              available_projects = Project.with_visible_work_packages
               self_link = api_v3_paths.query_available_projects
 
               ::API::V3::Projects::ProjectCollectionRepresenter.new(available_projects,
-                                                                    self_link: self_link,
-                                                                    current_user: current_user)
+                                                                    self_link:,
+                                                                    current_user:)
             end
           end
 
-          namespace 'default' do
+          namespace "default" do
             params do
               optional :valid_subset, type: Boolean
             end
 
             get do
-              @query = Query.new_default(name: 'default',
-                                         user: current_user)
+              @query = Query.new_default(user: current_user)
 
-              authorize_by_policy(:show)
+              authorize_in_any_work_package(:view_work_packages)
 
               query_representer_response(@query, params, params.delete(:valid_subset))
             end
           end
 
-          post do
-            create_query request_body, current_user
-          end
+          post &::API::V3::Utilities::Endpoints::Create
+            .new(model: Query)
+            .mount
 
-          route_param :id, type: Integer, desc: 'Query ID' do
+          route_param :id, type: Integer, desc: "Query ID" do
             after_validation do
               @query = Query.find(params[:id])
 
@@ -111,9 +111,12 @@ module API
 
             mount API::V3::Queries::UpdateFormAPI
 
-            patch do
-              update_query @query, request_body, current_user
-            end
+            patch &::API::V3::Utilities::Endpoints::Update
+                     .new(model: Query,
+                          before_hook: ->(request:) {
+                            request.authorize_by_policy(:update)
+                          })
+                     .mount
 
             params do
               optional :valid_subset, type: Boolean
@@ -129,7 +132,7 @@ module API
               @query.valid_subset!
 
               # We do not ignore invalid params provided by the client
-              # unless explicily required by valid_subset
+              # unless explicitly required by valid_subset
               query_representer_response(@query, params, params.delete(:valid_subset))
             end
 
@@ -141,38 +144,25 @@ module API
               status 204
             end
 
-            patch :star do
-              authorize_by_policy(:star)
-
-              # Query name is not user-visible, but apparently used as CSS class. WTF.
-              # Normalizing the query name can result in conflicts and empty names in case all
-              # characters are filtered out. A random name doesn't have these problems.
-              query_menu_item = MenuItems::QueryMenuItem
-                                .find_or_initialize_by(navigatable_id: @query.id) do |item|
-                item.name  = SecureRandom.uuid
-                item.title = @query.name
-              end
-              query_menu_item.save!
-
-              @query.valid_subset!
-              query_representer_response(@query, {})
+            namespace :star do
+              patch &::API::V3::Utilities::Endpoints::Update
+                       .new(model: Query,
+                            params_modifier: ->(_params) {
+                              { starred: true }
+                            })
+                       .mount
             end
 
-            patch :unstar do
-              authorize_by_policy(:unstar)
-
-              @query.valid_subset!
-              representer = query_representer_response(@query, {})
-
-              query_menu_item = @query.query_menu_item
-              return representer if @query.query_menu_item.nil?
-
-              query_menu_item.destroy
-
-              @query.reload
-
-              representer
+            namespace :unstar do
+              patch &::API::V3::Utilities::Endpoints::Update
+                       .new(model: Query,
+                            params_modifier: ->(_params) {
+                              { starred: false }
+                            })
+                       .mount
             end
+
+            mount API::V3::Queries::ICalUrl::QueryIcalUrlAPI
 
             mount API::V3::Queries::Order::QueryOrderAPI
           end

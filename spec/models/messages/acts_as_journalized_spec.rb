@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,28 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Message, 'acts_as_journalized', type: :model do
-  let(:user) { FactoryBot.create(:user) }
-  let(:project) { FactoryBot.create(:project) }
+RSpec.describe Message, "acts_as_journalized" do
+  let(:user) { create(:user) }
+  let(:project) { create(:project) }
   let!(:forum) do
-    FactoryBot.create(:forum,
-                      project: project)
+    create(:forum,
+           project:)
   end
-  let(:attachment) { FactoryBot.create(:attachment, container: nil, author: user) }
+  let(:attachment) { create(:attachment, container: nil, author: user) }
 
-  context 'on creation' do
-    context 'attachments' do
+  context "on creation" do
+    context "attachments" do
       before do
-        Message.create! forum: forum, subject: 'Test message', content: 'Message body', attachments: [attachment]
+        Message.create! forum:, subject: "Test message", content: "Message body", attachments: [attachment]
       end
+
       let(:attachment_id) { "attachments_#{attachment.id}" }
       let(:filename) { attachment.filename }
 

@@ -1,0 +1,12 @@
+---
+extends: default
+
+rules:
+  comments:
+    min-spaces-from-content: 1
+    require-starting-space: false
+  key-ordering:
+    ignore: |
+      /docs/api/apiv3/**/*.yml
+  line-length: disable
+  new-line-at-end-of-file: enable

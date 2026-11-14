@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,30 +22,33 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::CreateService do
-  let(:user) { FactoryBot.build_stubbed(:admin) }
-  let(:query) { FactoryBot.build(:query, user: user) }
+RSpec.describe Queries::CreateService do
+  let(:user) { build_stubbed(:admin) }
 
-  let(:instance) { described_class.new(user: user) }
-  subject { instance.call(query).result }
+  let(:instance) { described_class.new(user:) }
 
-  describe 'ordered work packages' do
-    let!(:work_package) { FactoryBot.create :work_package }
+  subject { instance.call(params).result }
 
-    before do
-      query.ordered_work_packages.build(work_package_id: work_package.id, position: 0)
-      query.ordered_work_packages.build(work_package_id: 99999, position: 1)
+  describe "ordered work packages" do
+    let!(:work_package) { create(:work_package) }
+    let(:params) do
+      {
+        name: "My query",
+        ordered_work_packages: {
+          work_package.id => 0,
+          9999 => 1
+        }
+      }
     end
 
-    it 'removes items for which work packages do not exist' do
+    it "removes items for which work packages do not exist" do
       expect(subject).to be_valid
       expect(subject.ordered_work_packages.length).to eq 1
       expect(subject.ordered_work_packages.first.work_package_id).to eq work_package.id

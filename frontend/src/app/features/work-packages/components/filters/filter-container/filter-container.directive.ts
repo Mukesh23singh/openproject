@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +20,40 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Input, OnDestroy, OnInit, Output, inject } from '@angular/core';
 import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  Input,
-  OnDestroy,
-  OnInit,
-  Output,
-
-} from '@angular/core';
-import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
+  WorkPackageViewFiltersService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { DebouncedEventEmitter } from 'core-app/shared/helpers/rxjs/debounced-event-emitter';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
-import { Observable } from 'rxjs';
+import { from, merge, Observable } from 'rxjs';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 import { componentDestroyed } from '@w11k/ngx-componentdestroyed';
-import { WorkPackageFiltersService } from 'core-app/features/work-packages/components/filters/wp-filters/wp-filters.service';
+import {
+  WorkPackageFiltersService,
+} from 'core-app/features/work-packages/components/filters/wp-filters/wp-filters.service';
+import { WorkPackagesListService } from 'core-app/features/work-packages/components/wp-list/wp-list.service';
 
 @Component({
   templateUrl: './filter-container.directive.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  selector: 'filter-container',
+  selector: 'op-filter-container',
+  standalone: false,
 })
 export class WorkPackageFilterContainerComponent extends UntilDestroyedMixin implements OnInit, OnDestroy {
-  @Input('showFilterButton') showFilterButton = false;
+  readonly wpTableFilters = inject(WorkPackageViewFiltersService);
+  readonly cdRef = inject(ChangeDetectorRef);
+  readonly wpFiltersService = inject(WorkPackageFiltersService);
+  readonly wpListService = inject(WorkPackagesListService);
 
-  @Input('filterButtonText') filterButtonText:string = I18n.t('js.button_filter');
+  @Input() showFilterButton = false;
+
+  @Input() filterButtonText:string = I18n.t('js.button_filter');
 
   @Output() public filtersChanged = new DebouncedEventEmitter<QueryFilterInstanceResource[]>(componentDestroyed(this));
 
@@ -62,18 +63,22 @@ export class WorkPackageFilterContainerComponent extends UntilDestroyedMixin imp
 
   public loaded = false;
 
-  constructor(
-    readonly wpTableFilters:WorkPackageViewFiltersService,
-    readonly cdRef:ChangeDetectorRef,
-    readonly wpFiltersService:WorkPackageFiltersService,
-  ) {
+  public text = {
+    search_mode_label: I18n.t('js.global_search.search_mode'),
+    search_mode_text: I18n.t('js.work_packages.label_filter_by_text'),
+    search_mode_semantic: I18n.t('js.global_search.search_by_meaning'),
+  };
+
+  constructor() {
     super();
     this.visible$ = this.wpFiltersService.observeUntil(componentDestroyed(this));
   }
 
   ngOnInit():void {
-    this.wpTableFilters
-      .pristine$()
+    merge(
+      this.wpTableFilters.pristine$(),
+      from(this.wpListService.conditionallyLoadForm()),
+    )
       .pipe(
         this.untilDestroyed(),
       )

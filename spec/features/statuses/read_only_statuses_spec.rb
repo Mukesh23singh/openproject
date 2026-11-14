@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +22,47 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Read-only statuses affect work package editing',
-         with_ee: %i[readonly_work_packages],
-         type: :feature,
-         js: true do
-  let(:locked_status) { FactoryBot.create :status, name: 'Locked', is_readonly: true }
-  let(:unlocked_status) { FactoryBot.create :status, name: 'Unlocked', is_readonly: false }
-
-  let(:type) { FactoryBot.create :type_bug }
-  let(:project) { FactoryBot.create :project, types: [type] }
-  let!(:work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      status: unlocked_status
+RSpec.describe "Read-only statuses affect work package editing", :js, with_ee: %i[readonly_work_packages] do
+  let(:locked_status) { create(:status, name: "Locked", is_readonly: true) }
+  let(:unlocked_status) { create(:status, name: "Unlocked", is_readonly: false) }
+  let(:cf_all) do
+    create(:work_package_custom_field, is_for_all: true, field_format: "text")
   end
 
-  let(:role) { FactoryBot.create :role, permissions: %i[edit_work_packages view_work_packages] }
+  let(:type) { create(:type_bug, custom_fields: [cf_all]) }
+  let(:project) { create(:project, types: [type]) }
+  let!(:work_package) do
+    create(:work_package,
+           project:,
+           type:,
+           status: unlocked_status)
+  end
+
+  let(:role) { create(:project_role, permissions: %i[edit_work_packages view_work_packages]) }
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_through_role: role
+    create(:user, member_with_roles: { project => role })
   end
 
   let!(:workflow1) do
-    FactoryBot.create :workflow,
-                      type_id: type.id,
-                      old_status: unlocked_status,
-                      new_status: locked_status,
-                      role: role
+    create(:workflow,
+           type_id: type.id,
+           old_status: unlocked_status,
+           new_status: locked_status,
+           role:)
   end
   let!(:workflow2) do
-    FactoryBot.create :workflow,
-                      type_id: type.id,
-                      old_status: locked_status,
-                      new_status: unlocked_status,
-                      role: role
+    create(:workflow,
+           type_id: type.id,
+           old_status: locked_status,
+           new_status: unlocked_status,
+           role:)
   end
 
   let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
@@ -73,26 +72,36 @@ describe 'Read-only statuses affect work package editing',
     wp_page.visit!
   end
 
-  it 'locks the work package on a read only status' do
-    expect(page).to have_selector '.work-package--attachments--drop-box'
+  it "locks the work package on a read only status" do
+    wp_page.switch_to_tab(tab: "FILES")
+    expect(page).to have_test_selector "op-attachments--drop-box"
 
     subject_field = wp_page.edit_field :subject
     subject_field.activate!
     subject_field.cancel_by_escape
 
     status_field = wp_page.edit_field :status
-    status_field.expect_state_text 'Unlocked'
-    status_field.update 'Locked'
+    status_field.expect_state_text "Unlocked"
+    status_field.update "Locked"
 
-    wp_page.expect_and_dismiss_toaster(message: 'Successful update.')
+    wp_page.expect_and_dismiss_toaster(message: "Successful update.")
 
-    status_field.expect_state_text 'Locked'
+    status_field.expect_state_text "Locked"
 
     subject_field = wp_page.edit_field :subject
     subject_field.activate! expect_open: false
     subject_field.expect_read_only
 
     # Expect attachments not available
-    expect(page).to have_no_selector '.work-package--attachments--drop-box'
+    expect(page).not_to have_test_selector "op-attachments--drop-box"
+
+    # Expect labels to not activate field editing (Regression#45032)
+    assignee_field = wp_page.edit_field :assignee
+    assignee_field.label_element.click
+    assignee_field.expect_inactive!
+
+    custom_field = wp_page.edit_field cf_all.attribute_name.camelcase(:lower)
+    custom_field.label_element.click
+    custom_field.expect_inactive!
   end
 end

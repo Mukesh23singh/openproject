@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,35 +22,45 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Actions::Scopes::Default, type: :model do
+RSpec.describe Actions::Scopes::Default do
   subject(:scope) { Action.default }
 
-  describe '.default' do
+  describe ".default" do
     let(:expected) do
       # This complicated and programmatic way is chosen so that the test can deal with additional actions being defined
-      item = ->(permission, namespace, action, global, module_name) {
-        ["#{API::Utilities::PropertyNameConverter.from_ar_name(namespace.to_s.singularize).pluralize.underscore}/#{action}",
+      format_action = ->(namespace, action, permission, global, module_name) do
+        standardized_namespace = API::Utilities::PropertyNameConverter.from_ar_name(namespace.to_s.singularize)
+                                                                      .pluralize
+                                                                      .underscore
+        ["#{standardized_namespace}/#{action}",
          permission.to_s,
          global,
          module_name&.to_s]
-      }
+      end
 
       OpenProject::AccessControl
         .contract_actions_map
-        .map do |permission, v|
-          v[:actions].map { |vk, vv| vv.map { |vvv| item.call(permission, vk, vvv, v[:global], v[:module]) } }
-        end.flatten(2)
+        .flat_map do |permission, values|
+          values[:actions].flat_map do |namespace, actions|
+            actions.map do |action|
+              format_action.call(namespace,
+                                 action,
+                                 permission,
+                                 values[:global],
+                                 values[:module_name])
+            end
+          end
+        end
     end
 
-    it 'contains all actions' do
+    it "contains all actions" do
       expect(scope.pluck(:id, :permission, :global, :module))
         .to match_array(expected)
     end

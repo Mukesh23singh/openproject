@@ -1,129 +1,136 @@
 <div
   class="op-ian-item--row"
-  (click)="showDetails()"
->
-  <ng-container *ngIf="workPackage$ && (workPackage$ | async) as workPackage; else workPackageLoading">
+  tabindex="0"
+  role="button"
+  (click)="onClick()"
+  (keydown.enter)="$event.preventDefault(); onClick()"
+  (keydown.space)="$event.preventDefault(); onClick()"
+  (dblclick)="onDoubleClick()"
+  >
+  @if (workPackage$ | async; as workPackage) {
     <div
       class="op-ian-item--top-line"
-    >
+      >
       <div class="op-ian-item--status">
-        <op-in-app-notification-status [status]="workPackage.status"></op-in-app-notification-status>
+        <op-in-app-notification-status [status]="workPackage.status" />
       </div>
-
       <a
-        class="op-ian-item--work-package-id-link op-link"
-        [class.op-link_inactive]="isMobile()"
-        [attr.title]="workPackage.subject"
-        uiSref="work-packages.show"
-        [uiParams]="{workPackageId: workPackage.id}"
-        [textContent]="'#' + workPackage.id"
-      >
+        class="op-ian-item--work-package-id-link spot-link"
+        [class.spot-link_inactive]="isMobile()"
+        opTooltip
+        [description]="workPackage.subject"
+        [textContent]="workPackage.formattedId"
+        [attr.href]="pathHelper.workPackagePath(workPackage.displayId)"
+        (click)="onLinkClick($event)"
+        >
       </a>
-      <div
-        *ngIf="project"
-        class="op-ian-item--project"
-      >
-        - <a
-        class="op-ian-item--project-link"
-        [class.op-link_inactive]="isMobile()"
-        [href]="project.showUrl"
-        [textContent]="project.title"
-        (click)="projectClicked($event)"
-        target="_blank"
-      ></a> -
+      @if (project) {
+        <div
+          class="op-ian-item--project"
+          >
+          - <a
+          class="op-ian-item--project-link"
+          [class.spot-link_inactive]="isMobile()"
+          [href]="project.showUrl"
+          [textContent]="project.title"
+          (click)="projectClicked($event)"
+          target="_blank"
+        ></a> -
       </div>
-
-      <div
-        class="op-ian-item--reason-wrapper"
-      >
-      <span
-        class="op-ian-item--reason"
-        *ngFor="let item of translatedReasons | keyvalue; let first = first; let last = last"
-      >
-        {{ item.key }}<ng-container *ngIf="!last && first !== last">, </ng-container>
-      </span>
-      </div>
-
-      <span
-        *ngIf="!notification.readIAN"
-        class="op-ian-item--reason-count"
-        [textContent]="aggregatedNotifications.length"
-      ></span>
-
-      <div class="op-ian-item--buttons">
-        <i
-          *ngIf="!notification.readIAN"
-          data-qa-selector="mark-as-read-button"
-          class="op-ian-item--button icon-mark-read"
-          (click)="markAsRead($event, aggregatedNotifications)"
-          tabindex="0"
-        >
-        </i>
-        <i
-          class="op-ian-item--button op-ian-item--button_shown-on-focus icon-info1"
-          (keydown.enter)="showDetails()"
-          tabindex="0"
-        >
-        </i>
-      </div>
-    </div>
-
-    <div
-      class="op-ian-item--middle-line"
-    >
-      <span
-        [ngClass]="'op-ian-item--work-package-type __hl_inline_type_' + workPackage.type.id"
-        [textContent]="workPackage.type.name">
-      </span>
-      <span
-        [textContent]="workPackage.subject"
-        class="op-ian-item--work-package-subject"
-        [class.-read]="notification.readIAN"
-      >
-      </span>
-    </div>
-
-    <div
-      class="op-ian-item--bottom-line"
-    >
-      <div
-        class="op-ian-item--date"
-        [title]="fixedTime"
-        [textContent]="relativeTime$ | async"
-      ></div>
-      <div>
-        <op-principal
-          class="op-ian-item--actors"
-          [principal]="actors[0]"
-          [hideName]="false"
-          [hideAvatar]="true"
-          [link]="!isMobile()"
-        ></op-principal>
-        <span
-          *ngIf="actors.length > 1"
-        >
-          {{ text_for_additional_authors(actors.length - 1) }}
+    }
+    <div class="op-ian-item--reason-wrapper">
+      @for (item of translatedReasons | keyvalue; track item.key; let last = $last) {
+        <span class="op-ian-item--reason">
+          {{ item.key }}@if (!last) {, }
         </span>
-      </div>
+      }
     </div>
-  </ng-container>
-  <ng-template #workPackageLoading>
-    <div class="op-ian-item--loading">
+  @if (!notification.readIAN) {
+    <span class="op-ian-item--reason-count">
+      <primer-counter
+        [count]="aggregatedNotifications.length"
+        scheme="secondary"
+      ></primer-counter>
+    </span>
+  }
+  <div class="op-ian-item--buttons">
+    @if (!notification.readIAN) {
+      <i
+        data-test-selector="mark-as-read-button"
+        class="op-ian-item--button icon-mark-read"
+        tabindex="0"
+        role="button"
+        [title]="text.mark_as_read"
+        (click)="markAsRead($event, aggregatedNotifications)"
+        (keydown.enter)="$event.preventDefault(); markAsRead($event, aggregatedNotifications)"
+        (keydown.space)="$event.preventDefault(); markAsRead($event, aggregatedNotifications)"
+        >
+      </i>
+    }
+    <i
+      class="op-ian-item--button op-ian-item--button_shown-on-focus icon-info1"
+      (keydown.enter)="showDetails()"
+      tabindex="0"
+      >
+    </i>
+  </div>
+</div>
+<div
+  class="op-ian-item--middle-line"
+  >
+  <span
+    [ngClass]="'op-ian-item--work-package-type ' + typeHighlightingClass(workPackage)"
+    [textContent]="workPackage.type.name">
+  </span>
+  <span
+    [textContent]="workPackage.subject"
+    class="op-ian-item--work-package-subject"
+    [class.-read]="notification.readIAN"
+    >
+  </span>
+</div>
+<div
+  class="op-ian-item--bottom-line"
+  >
+  @if (hasReminderAlert) {
+    <op-in-app-notification-reminder-alert
+      [aggregatedNotifications]="aggregatedNotifications"
+      />
+  }
+  @if (!hasReminderAlert) {
+    @if (showDateAlert) {
+      <op-in-app-notification-date-alert [aggregatedNotifications]="aggregatedNotifications"
+       />
+    }
+    @if (!showDateAlert) {
+      <op-in-app-notification-actors-line [notification]="notification"
+        [aggregatedNotifications]="aggregatedNotifications"
+       />
+    }
+  }
+</div>
+} @else {
+  <div class="op-ian-item--loading">
+    @if (workPackageId) {
       <op-content-loader
-        *ngIf="workPackage$"
         class="op-ian-item--loading-indicator"
         viewBox="0 0 200 20"
-      >
+        >
         <svg:rect x="0" y="0" width="100%" height="5" rx="1" />
         <svg:rect x="0" y="7" width="100%" height="5" rx="1" />
         <svg:rect x="0" y="14" width="80%" height="5" rx="1" />
       </op-content-loader>
-
-      <span class="op-ian-item--reason-count"></span>
-      <div class="op-ian-item--buttons">
-        <i class="op-ian-item--button icon-mark-read">
-        </i>
-      </div>
+    }
+    <span class="op-ian-item--reason-count">
+      <primer-counter
+        [count]="null"
+        scheme="secondary"
+      ></primer-counter>
+    </span>
+    <div class="op-ian-item--buttons">
+      <i class="op-ian-item--button icon-mark-read">
+      </i>
     </div>
-  </ng-template>
+  </div>
+}
 </div>

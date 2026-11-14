@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,33 +22,32 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'work_package'
+require "spec_helper"
+require "work_package"
 
-describe ::OAuth::GrantsController, type: :controller do
-  let(:user) { FactoryBot.build_stubbed :user }
-  let(:application_stub) { instance_double(::Doorkeeper::Application, name: 'Foo', id: 1) }
+RSpec.describe OAuth::GrantsController do
+  let(:user) { build_stubbed(:user) }
+  let(:application_stub) { instance_double(Doorkeeper::Application, name: "Foo", id: 1) }
 
   before do
     login_as user
   end
 
-  describe '#revoke_application' do
-    context 'when not found' do
-      it 'renders 404' do
+  describe "#revoke_application" do
+    context "when not found" do
+      it "renders 404" do
         post :revoke_application, params: { application_id: 1234 }
         expect(flash[:notice]).to be_nil
         expect(response.response_code).to eq 404
       end
     end
 
-    context 'when found' do
+    context "when found" do
       before do
         allow(controller)
           .to receive(:find_application)
@@ -55,8 +56,8 @@ describe ::OAuth::GrantsController, type: :controller do
 
       it do
         post :revoke_application, params: { application_id: 1 }
-        expect(flash[:notice]).to include 'Foo'
-        expect(response).to redirect_to controller: '/my', action: :access_token
+        expect(flash[:notice]).to include "Foo"
+        expect(response).to redirect_to("/my/access_tokens")
       end
     end
   end

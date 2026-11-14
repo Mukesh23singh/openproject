@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,6 +30,8 @@ module API
     module Utilities
       class ParamsToQuery
         class << self
+          include ::API::Helpers::RaiseQueryErrors
+
           def collection_response(scope, current_user, params, representer: nil, self_link: nil)
             model = model_class(scope)
 
@@ -46,7 +47,7 @@ module API
                                        representer,
                                        self_link)
             else
-              raise ::API::Errors::InvalidQuery.new(query.errors.full_messages)
+              raise_query_errors(query)
             end
           end
 
@@ -68,7 +69,7 @@ module API
 
             representer.new(scope,
                             self_link: link,
-                            current_user: current_user)
+                            current_user:)
           end
 
           def paths
@@ -76,11 +77,11 @@ module API
           end
 
           def default_self_link(path, params)
-            [paths.send(path), params.to_query].reject(&:empty?).join('?')
+            [paths.send(path), params.to_query].reject(&:empty?).join("?")
           end
 
           def append_params_to_link(path, params)
-            [path, params.to_query].reject(&:empty?).join('?')
+            [path, params.to_query].reject(&:empty?).join("?")
           end
 
           def model_class(scope)

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Loggin (with brute force protection)', type: :feature do
-  let(:login) { 'my_user' }
+RSpec.describe "Login (with brute force protection)" do
+  let(:login) { "my_user" }
   let(:password) { "PassW0rd!!!" }
   let(:invalid_password) { password[0..-2] }
   let!(:user) do
-    FactoryBot.create(:user,
-                      login: login,
-                      password: password,
-                      password_confirmation: password)
+    create(:user,
+           login:,
+           password:,
+           password_confirmation: password)
   end
 
   def new_login_attempt(login_attempt, password_attempt)
     # The login name already provided is retained
     expect(page)
-      .to have_field 'Username', with: login_attempt
+      .to have_field "Username or email", with: login_attempt
 
     login_with(login_attempt, password_attempt)
   end
@@ -53,23 +54,23 @@ describe 'Loggin (with brute force protection)', type: :feature do
       .update_all(last_failed_login_on: time)
   end
 
-  it 'blocks login attempts after too many tries for the configured time',
+  it "blocks login attempts after too many tries for the configured time",
      with_settings: { brute_force_block_minutes: 5, brute_force_block_after_failed_logins: 2 } do
     login_with login, invalid_password
 
     expect(page)
-      .to have_content(I18n.t(:notice_account_invalid_credentials_or_blocked))
+      .to have_text(I18n.t(:notice_account_invalid_credentials_or_blocked))
 
     new_login_attempt(login, invalid_password)
 
     expect(page)
-      .to have_content(I18n.t(:notice_account_invalid_credentials_or_blocked))
+      .to have_text(I18n.t(:notice_account_invalid_credentials_or_blocked))
 
     new_login_attempt(login, password)
 
     # Too many attempts
     expect(page)
-      .to have_content(I18n.t(:notice_account_invalid_credentials_or_blocked))
+      .to have_text(I18n.t(:notice_account_invalid_credentials_or_blocked))
 
     # Pretend the user waited some time
     wait_time = 4.minutes.ago
@@ -79,7 +80,7 @@ describe 'Loggin (with brute force protection)', type: :feature do
     new_login_attempt(login, password)
 
     expect(page)
-      .to have_content(I18n.t(:notice_account_invalid_credentials_or_blocked))
+      .to have_text(I18n.t(:notice_account_invalid_credentials_or_blocked))
 
     # Pretend the user waited some time
     wait_time = 5.minutes.ago - 1.second
@@ -89,28 +90,28 @@ describe 'Loggin (with brute force protection)', type: :feature do
     new_login_attempt(login, password)
 
     expect(page)
-      .to have_current_path my_page_path
+      .to have_current_path home_path
 
     # resets the failed login count
     expect(User.where(id: user.id).pluck(:failed_login_count).first)
-      .to eql 0
+      .to be 0
   end
 
-  it 'does not block if brute force is disabled',
+  it "does not block if brute force is disabled",
      with_settings: { brute_force_block_minutes: 5, brute_force_block_after_failed_logins: 0 } do
     login_with login, invalid_password
 
     expect(page)
-      .to have_content(I18n.t(:notice_account_invalid_credentials))
+      .to have_text(I18n.t(:notice_account_invalid_credentials))
 
     new_login_attempt(login, invalid_password)
 
     expect(page)
-      .to have_content(I18n.t(:notice_account_invalid_credentials))
+      .to have_text(I18n.t(:notice_account_invalid_credentials))
 
     new_login_attempt(login, password)
 
     expect(page)
-      .to have_current_path my_page_path
+      .to have_current_path home_path
   end
 end

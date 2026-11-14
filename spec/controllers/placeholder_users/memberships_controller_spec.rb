@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,23 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'work_package'
+require "spec_helper"
+require "work_package"
 
-describe PlaceholderUsers::MembershipsController, type: :controller do
-  shared_let(:placeholder_user) { FactoryBot.create(:placeholder_user) }
-  shared_let(:anonymous) { FactoryBot.create(:anonymous) }
-  shared_let(:project) { FactoryBot.create(:project) }
-  shared_let(:role) { FactoryBot.create(:role) }
+RSpec.describe PlaceholderUsers::MembershipsController do
+  shared_let(:placeholder_user) { create(:placeholder_user) }
+  shared_let(:anonymous) { create(:anonymous) }
+  shared_let(:project) { create(:project) }
+  shared_let(:role) { create(:project_role) }
 
-  shared_examples 'update memberships flow' do
-    it 'works' do
+  shared_examples "update memberships flow" do
+    it "works" do
       # i.e. it should successfully add a placeholder user to a project's members
       post :create,
            params: {
@@ -47,21 +48,21 @@ describe PlaceholderUsers::MembershipsController, type: :controller do
              }
            }
 
-      expect(response).to redirect_to(controller: '/placeholder_users',
-                                      action: 'edit',
+      expect(response).to redirect_to(controller: "/placeholder_users",
+                                      action: "edit",
                                       id: placeholder_user.id,
-                                      tab: 'memberships')
+                                      tab: "memberships")
 
-      is_member = placeholder_user.reload.memberships.any? { |m|
+      is_member = placeholder_user.reload.memberships.any? do |m|
         m.project_id == project.id && m.role_ids.include?(role.id)
-      }
-      expect(is_member).to eql(true)
+      end
+      expect(is_member).to be(true)
     end
   end
 
-  shared_examples 'update memberships forbidden flow' do
-    describe 'POST create' do
-      it 'returns an error' do
+  shared_examples "update memberships forbidden flow" do
+    describe "POST create" do
+      it "returns an error" do
         post :create, params: {
           placeholder_user_id: placeholder_user.id,
           membership: {
@@ -70,55 +71,54 @@ describe PlaceholderUsers::MembershipsController, type: :controller do
           }
         }
 
-        expect(response.status).to eq 403
+        expect(response).to have_http_status :forbidden
       end
     end
 
-    describe 'PUT update' do
-      it 'returns an error' do
+    describe "PUT update" do
+      it "returns an error" do
         put :update, params: {
           placeholder_user_id: placeholder_user.id,
-          id: 1234
+          id: not_existing_id(Member)
         }
 
-        expect(response.status).to eq 404
+        expect(response).to have_http_status :not_found
       end
     end
 
-    describe 'DELETE destroy' do
-      it 'returns an error' do
+    describe "DELETE destroy" do
+      it "returns an error" do
         delete :destroy, params: {
           placeholder_user_id: placeholder_user.id,
-          id: 1234
+          id: not_existing_id(Member)
         }
 
-        expect(response.status).to eq 404
+        expect(response).to have_http_status :not_found
       end
     end
   end
 
-  context 'as admin' do
-    current_user { FactoryBot.create :admin }
+  context "as admin" do
+    current_user { create(:admin) }
 
-    it_behaves_like 'update memberships flow'
+    it_behaves_like "update memberships flow"
   end
 
-  context 'as user with global permission and manage_members' do
+  context "as user with global permission and manage_members" do
     current_user do
-      FactoryBot.create :user,
-                        member_in_project: project,
-                        member_with_permissions: %i[manage_members],
-                        global_permission: %i[manage_placeholder_user]
+      create(:user,
+             member_with_permissions: { project => %i[manage_members] },
+             global_permissions: %i[manage_placeholder_user])
     end
 
-    it_behaves_like 'update memberships flow'
+    it_behaves_like "update memberships flow"
   end
 
-  context 'as user with global permission but not project permission' do
-    current_user { FactoryBot.create :user, global_permission: %i[manage_placeholder_user] }
+  context "as user with global permission but not project permission" do
+    current_user { create(:user, global_permissions: %i[manage_placeholder_user]) }
 
-    describe 'POST create' do
-      it 'redirects but fails to create' do
+    describe "POST create" do
+      it "redirects but fails to create" do
         post :create, params: {
           placeholder_user_id: placeholder_user.id,
           membership: {
@@ -127,42 +127,42 @@ describe PlaceholderUsers::MembershipsController, type: :controller do
           }
         }
 
-        expect(response.status).to eq 302
+        expect(response).to have_http_status :see_other
         expect(placeholder_user.reload.memberships).to be_empty
       end
     end
 
-    context 'with a membership in another project that is invisible' do
-      shared_let(:project2) { FactoryBot.create :project }
-      shared_let(:membership) { FactoryBot.create :member, principal: placeholder_user, project: project2, roles: [role] }
+    context "with a membership in another project that is invisible" do
+      shared_let(:project2) { create(:project) }
+      shared_let(:membership) { create(:member, principal: placeholder_user, project: project2, roles: [role]) }
 
-      describe 'PUT update' do
-        it 'returns an error' do
+      describe "PUT update" do
+        it "returns an error" do
           put :update, params: {
             placeholder_user_id: placeholder_user.id,
             id: membership.id
           }
 
-          expect(response.status).to eq 404
+          expect(response).to have_http_status :not_found
         end
       end
 
-      describe 'DELETE destroy' do
-        it 'returns an error' do
+      describe "DELETE destroy" do
+        it "returns an error" do
           delete :destroy, params: {
             placeholder_user_id: placeholder_user.id,
             id: membership.id
           }
 
-          expect(response.status).to eq 404
+          expect(response).to have_http_status :not_found
         end
       end
     end
   end
 
-  context 'as user without global permission' do
-    current_user { FactoryBot.create :user }
+  context "as user without global permission" do
+    current_user { create(:user) }
 
-    it_behaves_like 'update memberships forbidden flow'
+    it_behaves_like "update memberships forbidden flow"
   end
 end

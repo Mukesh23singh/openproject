@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +20,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json'
-require 'roar/json/collection'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json"
+require "roar/json/collection"
+require "roar/json/hal"
 
 module API
   module V3
     module Projects
       class ProjectCollectionRepresenter < ::API::Decorators::OffsetPaginatedCollection
-        self.to_eager_load = ::API::V3::Projects::ProjectRepresenter.to_eager_load
         self.checked_permissions = ::API::V3::Projects::ProjectRepresenter.checked_permissions
-
-        def initialize(represented, self_link:, current_user:, query: {}, page: nil, per_page: nil, groups: nil)
-          super
-
-          @represented = ::API::V3::Projects::ProjectEagerLoadingWrapper.wrap(represented)
-        end
 
         links :representations do
           [
@@ -53,9 +43,11 @@ module API
           ]
         end
 
+        protected
+
         def representation_format(format, mime_type:)
           {
-            href: url_for(controller: :projects, action: :index, format: format, **query_params),
+            href: url_for(controller: :projects, action: :index, format:, **query_params),
             identifier: format,
             type: mime_type,
             title: I18n.t("export.format.#{format}")
@@ -63,13 +55,17 @@ module API
         end
 
         def representation_format_xls
-          representation_format 'xls',
-                                mime_type: 'application/vnd.ms-excel'
+          representation_format "xls",
+                                mime_type: "application/vnd.ms-excel"
         end
 
         def representation_format_csv
-          representation_format 'csv',
-                                mime_type: 'text/csv'
+          representation_format "csv",
+                                mime_type: "text/csv"
+        end
+
+        def eager_loaded_paged_models(models)
+          ::API::V3::Projects::ProjectEagerLoadingWrapper.wrap(models)
         end
       end
     end

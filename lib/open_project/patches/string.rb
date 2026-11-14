@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +20,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module OpenProject
   module Patches
-    module String #:nodoc:
+    module String # :nodoc:
       # Parses hours format and returns a float
       def to_hours
         s = dup
@@ -39,18 +36,17 @@ module OpenProject
           s = $1
         else
           # 230: 2.5
-          s.gsub!(%r{^(\d+):(\d+)$}) { $1.to_i + $2.to_i / 60.0 }
+          s.gsub!(%r{^(\d+):(\d+)$}) { $1.to_i + ($2.to_i / 60.0) }
           # 2h30, 2h, 30m => 2.5, 2, 0.5
-          s.gsub!(%r{^((\d+)\s*(h|hours?))?\s*((\d+)\s*(m|min)?)?$}) { |m| $1 || $4 ? ($2.to_i + $5.to_i / 60.0) : m[0] }
+          s.gsub!(%r{^((\d+)\s*(h|hours?))?\s*((\d+)\s*(m|min)?)?$}) { |m| $1 || $4 ? ($2.to_i + ($5.to_i / 60.0)) : m[0] }
         end
         # 2,5 => 2.5
-        s.gsub!(',', '.')
-        begin; Kernel.Float(s); rescue StandardError; nil; end
+        s.tr!(",", ".")
+        Kernel.Float(s, exception: false)
       end
 
-      # TODO: Check if this can be deleted
       def with_leading_slash
-        starts_with?('/') ? self : "/#{self}"
+        starts_with?("/") ? self : "/#{self}"
       end
     end
   end

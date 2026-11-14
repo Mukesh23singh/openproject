@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -45,16 +44,7 @@ module Sessions
       # @return [Hash] The saved session data (user_id, updated_at, etc.) or nil if no session was found.
       def lookup_data(session_id)
         rack_session = Rack::Session::SessionId.new(session_id)
-        if Rails.application.config.session_store == ActionDispatch::Session::ActiveRecordStore
-          find_by_session_id(rack_session.private_id)&.data
-        else
-          session_store = Rails.application.config.session_store.new nil, {}
-          _id, data = session_store.instance_eval do
-            find_session({}, rack_session)
-          end
-
-          data.presence
-        end
+        find_by_session_id(rack_session.private_id)&.data
       end
 
       def connection_pool
@@ -82,50 +72,46 @@ module Sessions
       end
     end
 
-    ##
-    # Also destroy any other session when this one is actively destroyed
-    def destroy
-      delete_user_sessions
-      super
-    end
-
     private
 
     def user_id
-      id = data.with_indifferent_access['user_id'].to_i
+      id = data.with_indifferent_access["user_id"].to_i
       id > 0 ? id : nil
     end
 
     def insert!
       @new_record = false
-      connection.update <<~SQL, 'Create session'
-         INSERT INTO sessions (session_id, data, user_id, updated_at)
-         VALUES (
-           #{connection.quote(session_id)},
-           #{connection.quote(self.class.serialize(data))},
-           #{connection.quote(user_id)},
-           (now() at time zone 'utc')
-        )
-      SQL
+      sql = OpenProject::SqlSanitization.sanitize(
+        <<~SQL.squish,
+          INSERT INTO sessions (session_id, data, user_id, updated_at)
+          VALUES (?, ?, ?, (now() at time zone 'utc'))
+        SQL
+        session_id,
+        self.class.serialize(data),
+        user_id
+      )
+
+      connection.update sql, "Create session"
     end
 
     def update!
-      connection.update <<~SQL, 'Update session'
-        UPDATE sessions
-        SET
-          data=#{connection.quote(self.class.serialize(data))},
-          session_id=#{connection.quote(session_id)},
-          user_id=#{connection.quote(user_id)},
-          updated_at=(now() at time zone 'utc')
-        WHERE session_id=#{connection.quote(@retrieved_by)}
-      SQL
-    end
+      sql = OpenProject::SqlSanitization.sanitize(
+        <<~SQL.squish,
+          UPDATE sessions
+          SET
+            data = ?,
+            session_id = ?,
+            user_id = ?,
+            updated_at = (now() at time zone 'utc')
+          WHERE session_id = ?
+        SQL
+        self.class.serialize(data),
+        session_id,
+        user_id,
+        @retrieved_by
+      )
 
-    def delete_user_sessions
-      uid = user_id
-      return unless uid && OpenProject::Configuration.drop_old_sessions_on_logout?
-
-      ::Sessions::UserSession.for_user(uid).delete_all
+      connection.update sql, "Update session"
     end
   end
 end

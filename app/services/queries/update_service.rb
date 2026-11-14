@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,62 +22,9 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Queries::UpdateService < Queries::BaseService
-  def initialize(**args)
-    super(**args)
-
-    self.contract_class = Queries::UpdateContract
-  end
-
-  def call(query)
-    result, errors = update query
-
-    service_result result, errors, query
-  end
-
-  private
-
-  def update(query)
-    menu_item = prepare_menu_item query
-
-    result = nil
-    errors = nil
-
-    query.transaction do
-      result, errors = validate_and_save(query, user)
-
-      if !result
-        raise ActiveRecord::Rollback
-      elsif menu_item && !menu_item.save
-        result = false
-        merge_errors(errors, menu_item)
-      end
-    end
-
-    [result, errors]
-  end
-
-  def prepare_menu_item(query)
-    if query.changes.include?('name') &&
-       query.query_menu_item
-
-      menu_item = query.query_menu_item
-
-      menu_item.title = query.name
-
-      menu_item
-    end
-  end
-
-  def merge_errors(errors, menu_item)
-    menu_item.errors.each do |sym, message|
-      errors.add(sym, message)
-    end
-  end
-end
+class Queries::UpdateService < BaseServices::Update; end

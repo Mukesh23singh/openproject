@@ -1,6 +1,15 @@
-# OpenProject Avatars plugin
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
 #
-# Copyright (C) 2017 OpenProject GmbH
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License
@@ -13,8 +22,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
 module OpenProject::Avatars
   class Engine < ::Rails::Engine
@@ -22,49 +33,29 @@ module OpenProject::Avatars
 
     include OpenProject::Plugins::ActsAsOpEngine
 
-    register 'openproject-avatars',
-             author_url: 'https://www.openproject.org',
+    register "openproject-avatars",
+             author_url: "https://www.openproject.org",
              settings: {
                default: {
-                 enable_gravatars: true,
-                 enable_local_avatars: true
+                 enable_gravatars: !Rails.env.test?,
+                 enable_local_avatars: !Rails.env.test?
                },
-               partial: 'settings/openproject_avatars',
+               partial: "settings/openproject_avatars",
+               breadcrumb_elements: -> { [{ href: admin_settings_users_path, text: I18n.t(:label_user_and_permission) }] },
                menu_item: :user_avatars
              },
-             name: :label_avatar_plural,
-             bundled: true do
-      add_menu_item :my_menu, :avatar,
-                    { controller: '/avatars/my_avatar', action: 'show' },
-                    caption: ->(*) { I18n.t('avatars.label_avatar') },
-                    if: ->(*) { ::OpenProject::Avatars::AvatarManager::avatars_enabled? },
-                    icon: 'icon2 icon-image1'
-    end
+             bundled: true
 
-    config.to_prepare do
-      require_dependency 'project'
-    end
-
-    add_api_endpoint 'API::V3::Users::UsersAPI', :id do
+    add_api_endpoint "API::V3::Users::UsersAPI", :id do
       mount ::API::V3::Users::UserAvatarAPI
     end
 
-    add_tab_entry :user,
-                  name: 'avatar',
-                  partial: 'avatars/users/avatar_tab',
-                  path: ->(params) { edit_user_path(params[:user], tab: :avatar) },
-                  label: :label_avatar,
-                  only_if: ->(*) { User.current.admin? && ::OpenProject::Avatars::AvatarManager.avatars_enabled? }
-
-    initializer 'patch avatar helper' do
-      # This is required to be an initializer,
-      # since the helpers are included as soon as the ApplicationController
-      # gets autoloaded, which is BEFORE config.to_prepare.
-      Rails.autoloaders.main.ignore(config.root.join('lib/open_project/avatars/patches/avatar_helper_patch.rb'))
-
-      require_relative './patches/avatar_helper_patch'
+    add_api_endpoint "API::V3::Groups::GroupsAPI", :id do
+      mount ::API::V3::Groups::GroupAvatarAPI
     end
 
-    patches %i[User]
+    config.to_prepare do
+      OpenProject::Avatars::Hooks
+    end
   end
 end

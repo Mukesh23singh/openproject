@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +20,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::TimeEntries::Filters::UserFilter, type: :model do
-  let(:user1) { FactoryBot.build_stubbed(:user) }
-  let(:user2) { FactoryBot.build_stubbed(:user) }
+RSpec.describe Queries::TimeEntries::Filters::UserFilter do
+  let(:user1) { build_stubbed(:user) }
+  let(:user2) { build_stubbed(:user) }
 
   before do
     allow(Principal)
@@ -41,13 +38,13 @@ describe Queries::TimeEntries::Filters::UserFilter, type: :model do
       .and_return([user1.id, user2.id])
   end
 
-  it_behaves_like 'basic query filter' do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :user_id }
     let(:type) { :list_optional }
     let(:name) { TimeEntry.human_attribute_name(:user) }
 
-    describe '#allowed_values' do
-      it 'is a list of the possible values' do
+    describe "#allowed_values" do
+      it "is a list of the possible values" do
         expected = [[user1.id, user1.id.to_s], [user2.id, user2.id.to_s]]
 
         expect(instance.allowed_values).to match_array(expected)
@@ -55,7 +52,7 @@ describe Queries::TimeEntries::Filters::UserFilter, type: :model do
     end
   end
 
-  it_behaves_like 'list_optional query filter' do
+  it_behaves_like "list_optional query filter" do
     let(:attribute) { :user_id }
     let(:model) { TimeEntry }
     let(:instance_key) { :user_id }

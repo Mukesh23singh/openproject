@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -39,7 +38,7 @@ table
         padding-right: 1em
     span
       &.name
-        font-weight: bold
+        font-weight: var(--base-text-weight-bold)
       &.description, &.url
         @include text-shortener
         display: block
@@ -53,56 +52,8 @@ table
         font-style: normal
       &.total
         font-style: normal
-        font-weight: bold
+        font-weight: var(--base-text-weight-bold)
         background-color: #EEEEEE
-    .hours-dec
-      font-size: 0.9em
-
-#workflow_form
-  .generic-table--results-container
-    position: relative
-
-  .workflow-table.generic-table
-    // Let space for the turned header
-    margin-left: 30px
-    width: calc(100% - 30px)
-
-    .workflow-table--current-status
-      font-weight: bold
-      text-transform: uppercase
-      font-size: 0.875rem
-
-    tbody
-      span.workflow-table--turned-header
-        white-space: nowrap
-        transform: rotate(270deg)
-        position: absolute
-        top: 235px
-        left: 0px
-        transform-origin: 0 0
-        text-transform: uppercase
-        font-weight: bold
-        max-width: 220px
-        @include text-shortener
-
-    thead
-      th
-        padding: 0 6px
-      .workflow-table--header
-        text-align: right
-        display: flex
-        span
-          flex-basis: 50%
-      .workflow-table--check-all
-        font-size: 12px
-        font-style: italic
-        text-transform: none
-        a:hover
-          text-decoration: underline
-
-    .generic-table--sort-header-outer:hover
-      background: none
-
 tr
   div.expander
     cursor: pointer
@@ -139,28 +90,47 @@ tr
 
   &.user
     &.locked, &.registered, &.locked a, &.registered a
-      color: #aaa
+      color: var(--fgColor-muted)
 
-td.hours
-  font-weight: bold
-  .hours-dec
-    font-size: 0.9em
+td
+  &.hours
+    font-weight: var(--base-text-weight-bold)
+  .date
+    .spot-drop-modal
+      display: block
 
 th.hidden
   display: none
 
 tr.context-menu-selection,
 tr.-checked
-  background-color: var(--table-row-highlighting-color) !important
-  &[class*=__hl_background]
-    outline: var(--table-row-highlighting-outline-color) solid 2px
+  background-color: var(--box-list-item-selected-bg-color) !important
+  border-bottom: 1px solid var(--box-list-item-selected-border-color) !important
+  &.__hl_background
+    outline: var(--bgColor-accent-emphasis) solid 2px
+
+  &:hover
+    background-color: var(--box-list-item-selected-bg-hover-color) !important
 
   td
-    border-top: 1px solid var(--table-row-highlighting-color) !important
-    border-bottom: 1px solid var(--table-row-highlighting-color) !important
     color: var(--body-font-color) !important
     a
       color: var(--body-font-color) !important
+
+tr.-pressed
+  border-bottom: 1px solid var(--box-list-item-pressed-border-color) !important
+
+tr:not(.-pressed):has(+ tr.-checked)
+  border-bottom: 1px solid var(--box-list-item-selected-border-color) !important
+
+tr:not(.-pressed):has(+ tr.-pressed)
+  border-bottom: 1px solid var(--box-list-item-pressed-border-color) !important
+
+thead:has(+ tbody > tr:first-child.-checked) th
+  border-bottom-color: var(--box-list-item-selected-border-color) !important
+
+thead:has(+ tbody > tr:first-child.-pressed) th
+  border-bottom-color: var(--box-list-item-pressed-border-color) !important
 
 #custom-options-table
   .custom-option-value

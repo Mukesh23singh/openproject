@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,28 +20,25 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-$filters--background-color: $gray-light !default
-$filters--border-color: $gray !default
+$filters--border-color: var(--borderColor-default) !default
 
 %filters--container
-  background-color: $filters--background-color
   border: 1px solid $filters--border-color
 
   legend
-    @extend .hidden-for-sighted
+    @extend .sr-only
 
 %filters-grid
   display:          grid
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr))
   grid-gap:         10px 40px
   list-style-type:  none
-  margin:           10px 0 0 0
+  margin:           var(--base-size-32) 0 0 0
 
 .simple-filters--container
   @extend %filters--container
@@ -62,9 +59,8 @@ $filters--border-color: $gray !default
 
   .simple-filters--close
     position: absolute
-    top: 5px
-    right: 5px
-    width: 1rem
+    top: var(--stack-padding-condensed)
+    right: var(--stack-padding-condensed)
     z-index: 2
 
 .simple-filters--filters
@@ -95,7 +91,7 @@ $filters--border-color: $gray !default
     @include text-shortener
     margin: auto 0
 
-@include breakpoint(680px down)
+@media screen and (max-width: $breakpoint-sm)
   .simple-filters--filter:not(.-with-radio-buttons)
     .simple-filters--filter-value
       grid-column: 1 / -1

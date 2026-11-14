@@ -1,39 +1,45 @@
-import {
-  demoProjectName,
-  preventClickHandler,
-  scrumDemoProjectName,
-} from 'core-app/core/setup/globals/onboarding/helpers';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { OnboardingStep } from 'core-app/core/setup/globals/onboarding/onboarding_tour';
 
 export function homescreenOnboardingTourSteps():OnboardingStep[] {
   return [
     {
       'next .op-app-header': I18n.t('js.onboarding.steps.welcome'),
-      skipButton: { className: 'enjoyhint_btn-transparent', text: I18n.t('js.onboarding.buttons.skip') },
+      skipButton: { className: 'enjoyhint_btn-secondary', text: I18n.t('js.onboarding.buttons.skip') },
       nextButton: { text: I18n.t('js.onboarding.buttons.next') },
       containerClass: '-hidden-arrow',
       bottom: 7,
     },
     {
-      description: I18n.t('js.onboarding.steps.project_selection'),
-      selector: '.widget-box.welcome',
-      event: 'custom',
-      showSkip: false,
       containerClass: '-dark -hidden-arrow',
-      clickable: true,
       onBeforeStart() {
-        // Handle the correct project selection and redirection
-        // This will be removed once the project selection is implemented
-        jQuery(`.widget-box.welcome a:contains(${scrumDemoProjectName})`).click(function (this:HTMLAnchorElement) {
-          window.onboardingTourInstance.trigger('next');
-          window.location.href = `${this.href}/?start_scrum_onboarding_tour=true`;
-        });
-        jQuery(`.widget-box.welcome a:contains(${demoProjectName})`).click(function (this:HTMLAnchorElement) {
-          window.onboardingTourInstance.trigger('next');
-          window.location.href = `${this.href}/work_packages/?start_onboarding_tour=true`;
-        });
-        // Disable clicks on other links
-        jQuery('.widget-box.welcome a').addClass('-disabled').bind('click', preventClickHandler);
+        window.location.href = `${window.location.origin}/projects/demo-project/work_packages?start_onboarding_tour=true`;
       },
     },
   ];

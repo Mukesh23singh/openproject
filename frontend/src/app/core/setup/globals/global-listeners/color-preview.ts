@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -33,35 +32,39 @@
  * this needs changes
  */
 export function makeColorPreviews() {
-  jQuery('.color--preview').each(function () {
-    const preview = jQuery(this);
-    let input:any;
-    const target = preview.data('target');
+  document.querySelectorAll<HTMLElement>('.color--preview').forEach(function (preview) {
+    let input:HTMLInputElement|null = null;
+    const target = preview.dataset.target;
 
     if (target) {
-      input = jQuery(target);
+      input = document.querySelector<HTMLInputElement>(target);
     } else {
-      input = preview.next('input');
+      const next = preview.nextElementSibling;
+      if (next && next instanceof HTMLInputElement) {
+        input = next;
+      }
     }
 
-    if (input.length === 0) {
+    if (input === null) {
       return;
     }
 
-    const func = function () {
+    const listener = function () {
       let previewColor = '';
 
-      if (input.val() && input.val().length > 0) {
-        previewColor = input.val();
-      } else if (input.attr('placeholder')
-        && input.attr('placeholder').length > 0) {
-        previewColor = input.attr('placeholder');
+      if (input.value && input.value.length > 0) {
+        previewColor = input.value;
+      } else if (input.getAttribute('placeholder')
+        && input.getAttribute('placeholder')!.length > 0) {
+        previewColor = input.getAttribute('placeholder')!;
       }
 
-      preview.css('background-color', previewColor);
+      preview.style.backgroundColor = previewColor;
     };
 
-    input.keyup(func).change(func).focus(func);
-    func();
+    input.addEventListener('keyup', listener);
+    input.addEventListener('change', listener);
+    input.addEventListener('focus', listener);
+    listener();
   });
 }

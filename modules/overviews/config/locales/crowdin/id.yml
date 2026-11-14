@@ -1,4 +1,10 @@
+---
 id:
+  activerecord:
+    models:
+      grids/overview:
+        other: Overviews
   overviews:
-    label: 'Tinjauan'
-  permission_manage_overview: 'Manage overview page'
+    label_dashboard: Dasbor
+    label_home: "%{workspace_type} home"
+    label_overview: Tinjauan

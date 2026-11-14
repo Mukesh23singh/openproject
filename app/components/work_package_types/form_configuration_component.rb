@@ -1,0 +1,97 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module WorkPackageTypes
+  class FormConfigurationComponent < ApplicationComponent
+    include OpTurbo::Streamable
+    include OpPrimer::ComponentHelpers
+
+    def initialize(context:, form_attributes:, no_filter_query:)
+      super(context.form_configuration)
+      @context = context
+      @form_attributes = form_attributes
+      @no_filter_query = no_filter_query
+    end
+
+    delegate :readonly?, to: :@context
+
+    def exclusion_state = @context.exclusions
+
+    def ee_available?
+      EnterpriseToken.allows_to?(:edit_attribute_groups)
+    end
+
+    def inactive_attributes
+      @form_attributes[:inactives]
+    end
+
+    def active_groups
+      @form_attributes[:actives].reject { |g| g[:key].to_s == "__empty" }
+    end
+
+    def wrapper_data
+      return {} if readonly?
+
+      {
+        controller: "admin--type-form-configuration--main sortable-lists",
+        action: "sortable-lists:before-move->admin--type-form-configuration--main#confirmDiscardingEdit " \
+                "turbo:morph-element->admin--type-form-configuration--main#reapplyInactiveFilter",
+        "admin--type-form-configuration--main-no-filter-query-value": @no_filter_query,
+        "admin--type-form-configuration--main-add-group-url-value": @context.group_path(:add_group),
+        sortable_lists_move_url_templates_value: @context.move_url_templates.to_json,
+        sortable_lists_sortable_lists__list_outlet: "##{wrapper_key} [data-controller~='sortable-lists--list']",
+        sortable_lists_sortable_lists__item_outlet: "##{wrapper_key} [data-controller~='sortable-lists--item']",
+        sortable_lists_sortable_lists__scrollable_outlet: "##{wrapper_key} [data-controller~='sortable-lists--scrollable']"
+      }
+    end
+
+    def scrollable_data
+      readonly? ? {} : { controller: "sortable-lists--scrollable" }
+    end
+
+    def main_content_component
+      groups = active_groups
+      group_components = groups.map.with_index do |group, i|
+        WorkPackageTypes::FormConfiguration::GroupComponent.new(
+          group:,
+          context: @context,
+          ee_available: ee_available?,
+          first: i == 0,
+          last: i == groups.length - 1
+        )
+      end
+
+      WorkPackageTypes::FormConfiguration::MainContentComponent.new(
+        context: @context,
+        group_components:,
+        ee_available: ee_available?
+      )
+    end
+  end
+end

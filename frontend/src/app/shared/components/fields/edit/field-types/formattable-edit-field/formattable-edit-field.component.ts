@@ -1,5 +1,6 @@
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2020 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -19,15 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
-// ++
+//++
 
-import {
-  ChangeDetectionStrategy, Component, OnInit, ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, ViewChild } from '@angular/core';
 import { EditFieldComponent } from 'core-app/shared/components/fields/edit/edit-field.component';
 import { OpCkeditorComponent } from 'core-app/shared/components/editor/components/ckeditor/op-ckeditor.component';
 import {
@@ -39,11 +37,12 @@ import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
 @Component({
   templateUrl: './formattable-edit-field.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
-export class FormattableEditFieldComponent extends EditFieldComponent implements OnInit {
+export class FormattableEditFieldComponent extends EditFieldComponent implements OnInit, OnDestroy {
   public readonly field = this;
 
-  // Detect when inner component could not be initalized
+  // Detect when inner component could not be initialized
   public initializationError = false;
 
   @ViewChild(OpCkeditorComponent, { static: true }) editor:OpCkeditorComponent;
@@ -53,28 +52,43 @@ export class FormattableEditFieldComponent extends EditFieldComponent implements
 
   public previewHtml = '';
 
+  private cancelled = false;
+
   public text:Record<string, string> = {};
 
   public initialContent:string;
 
   public ckEditorContext:ICKEditorContext = {
     resource: this.change.pristineResource,
+    field: this.field.name,
     macros: 'none' as const,
     previewContext: this.previewContext,
-    options: { rtl: this.schema.options && this.schema.options.rtl },
+    options: { rtl: this.schema.options?.rtl },
     type: 'constrained',
-    ...this.resource.getEditorContext(this.field.name),
-  };
+    ...(this.resource.getEditorContext(this.field.name) as Partial<ICKEditorContext>),
+  } as ICKEditorContext;
 
   ngOnInit():void {
     super.ngOnInit();
 
-    this.handler.registerOnSubmit(() => this.getCurrentValue());
+    this.handler.registerOnSubmit(() => Promise.resolve(this.getCurrentValue()));
     this.text = {
       attachmentLabel: this.I18n.t('js.label_formattable_attachment_hint'),
       save: this.I18n.t('js.inplace.button_save', { attribute: this.schema.name }),
       cancel: this.I18n.t('js.inplace.button_cancel', { attribute: this.schema.name }),
     };
+  }
+
+  ngOnDestroy():void {
+    super.ngOnDestroy();
+
+    if (!this.cancelled) {
+      try {
+        this.rawValue = this.editor?.getRawData();
+      } catch (e) {
+        console.error(`Failed to save CKEditor state on destroy: ${e as string}.`);
+      }
+    }
   }
 
   public onCkeditorSetup(editor:ICKEditorInstance):void {
@@ -83,12 +97,8 @@ export class FormattableEditFieldComponent extends EditFieldComponent implements
     }
   }
 
-  public getCurrentValue():Promise<void> {
-    return this.editor
-      .getTransformedContent()
-      .then((val) => {
-        this.rawValue = val;
-      });
+  public getCurrentValue():void {
+    this.rawValue = this.editor.getTransformedContent();
   }
 
   public onContentChange(value:string):void {
@@ -100,12 +110,15 @@ export class FormattableEditFieldComponent extends EditFieldComponent implements
   }
 
   public handleUserSubmit():boolean {
-    this.getCurrentValue()
-      .then(() => {
-        this.handler.handleUserSubmit();
-      });
+    this.getCurrentValue();
+    void this.handler.handleUserSubmit();
 
     return false;
+  }
+
+  public handleUserCancel():void {
+    this.cancelled = true;
+    this.handler.handleUserCancel();
   }
 
   private get previewContext() {
@@ -113,7 +126,7 @@ export class FormattableEditFieldComponent extends EditFieldComponent implements
   }
 
   public reset():void {
-    if (this.editor && this.editor.initialized) {
+    if (this.editor?.initialized) {
       this.editor.content = this.rawValue;
 
       this.cdRef.markForCheck();
@@ -121,8 +134,9 @@ export class FormattableEditFieldComponent extends EditFieldComponent implements
   }
 
   public get rawValue():string {
-    if (this.value && this.value.raw) {
-      return this.value.raw;
+    const value = this.value as api.v3.Formattable|null|undefined;
+    if (value?.raw) {
+      return value.raw;
     }
     return '';
   }
@@ -132,7 +146,7 @@ export class FormattableEditFieldComponent extends EditFieldComponent implements
   }
 
   public isEmpty():boolean {
-    return !(this.value && this.value.raw);
+    return !((this.value as api.v3.Formattable|null|undefined)?.raw);
   }
 
   protected initialize():void {

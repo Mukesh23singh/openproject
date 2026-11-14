@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,46 +20,40 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { StateService } from '@uirouter/core';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { Injectable, Injector } from '@angular/core';
+import { Injectable, Injector, inject } from '@angular/core';
 import { LoadingIndicatorService } from 'core-app/core/loading-indicator/loading-indicator.service';
-import { ToastService } from 'core-app/shared/components/toaster/toast.service';
+import { IToast, ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
 import { ErrorResource } from 'core-app/features/hal/resources/error-resource';
 import { HalError } from 'core-app/features/hal/services/hal-error';
 
 @Injectable()
 export class HalResourceNotificationService {
-  @InjectField() protected I18n:I18nService;
+  injector = inject(Injector);
 
-  @InjectField() protected $state:StateService;
+  protected readonly I18n = inject(I18nService);
 
-  @InjectField() protected halResourceService:HalResourceService;
+  protected readonly halResourceService = inject(HalResourceService);
 
-  @InjectField() protected ToastService:ToastService;
+  protected readonly ToastService = inject(ToastService);
 
-  @InjectField() protected loadingIndicator:LoadingIndicatorService;
+  protected readonly loadingIndicator = inject(LoadingIndicatorService);
 
-  @InjectField() protected schemaCache:SchemaCacheService;
-
-  constructor(public injector:Injector) {
-  }
+  protected readonly schemaCache = inject(SchemaCacheService);
 
   public showSave(resource:HalResource, isCreate = false) {
-    const message:any = {
+    const message = {
       message: this.I18n.t(`js.notice_successful_${isCreate ? 'create' : 'update'}`),
-    };
+    } as IToast;
 
     this.ToastService.addSuccess(message);
   }
@@ -120,10 +114,10 @@ export class HalResourceNotificationService {
     return this.I18n.t('js.error.internal');
   }
 
-  public retrieveError(response:unknown):ErrorResource|unknown {
+  public retrieveError(response:unknown):unknown {
     // we try to detect what we got, this may either be an HttpErrorResponse,
     // some older XHR response object or a string
-    let errorBody:any = response;
+    let errorBody:unknown = response;
 
     // Angular http response have an error body attribute
     if (response instanceof HttpErrorResponse) {
@@ -131,20 +125,20 @@ export class HalResourceNotificationService {
     }
 
     // Some older response may have a data attribute
-    if (_.get(response, 'data._type') === 'Error') {
-      errorBody = (response as any).data;
+    if ((response as { data?:{ _type?:string } } | null)?.data?._type === 'Error') {
+      errorBody = (response as { data:unknown }).data;
     }
 
-    if (errorBody && errorBody._type === 'Error') {
+    if ((errorBody as { _type?:string }|null|undefined)?._type === 'Error') {
       return this.halResourceService.createHalResourceOfClass(ErrorResource, errorBody);
     }
 
     return errorBody;
   }
 
-  protected handleErrorResponse(errorResource:any, resource?:HalResource) {
+  protected handleErrorResponse(errorResource:unknown, resource?:HalResource) {
     if (errorResource instanceof HalError && resource) {
-      return this.showError(errorResource.resource, resource);
+      return this.showError(errorResource.resource!, resource);
     }
 
     if (!(errorResource instanceof ErrorResource)) {
@@ -158,15 +152,15 @@ export class HalResourceNotificationService {
     return this.showApiErrorMessages(errorResource);
   }
 
-  public showError(errorResource:any, resource:HalResource) {
+  public showError(errorResource:ErrorResource, resource:HalResource) {
     this.showCustomError(errorResource, resource) || this.showApiErrorMessages(errorResource);
   }
 
   public showGeneralError(message?:unknown) {
     let error = this.I18n.t('js.error.internal');
 
-    if (typeof (message) === 'string' || _.has(message, 'toString')) {
-      error += ` ${(message as any).toString()}`;
+    if (typeof (message) === 'string' || (message != null && Object.hasOwn(message, 'toString'))) {
+      error += ` ${(message as { toString():string }).toString()}`;
     }
 
     this.ToastService.addError(error);
@@ -179,14 +173,14 @@ export class HalResourceNotificationService {
     ));
   }
 
-  protected showCustomError(errorResource:any, resource:HalResource) {
+  protected showCustomError(errorResource:ErrorResource, resource:HalResource) {
     if (errorResource.errorIdentifier === 'urn:openproject-org:api:v3:errors:PropertyFormatError') {
       const schema = this.schemaCache.of(resource).ofProperty(errorResource.details.attribute);
       const attributeName = schema.name;
       const attributeType = schema.type.toLowerCase();
       const i18nString = `js.hal.error.format.${attributeType}`;
 
-      if (this.I18n.lookup(i18nString) === undefined) {
+      if (this.I18n.t(i18nString, { default: '[not found]' }) === '[not found]') {
         return false;
       }
 
@@ -198,7 +192,7 @@ export class HalResourceNotificationService {
     return false;
   }
 
-  protected showApiErrorMessages(errorResource:any) {
+  protected showApiErrorMessages(errorResource:ErrorResource) {
     const messages = errorResource.errorMessages;
 
     if (messages.length > 1) {

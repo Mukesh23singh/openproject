@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 ActionController::Renderers.add :csv do |obj, options|
-  filename = options[:filename] || 'data'
+  filename = options[:filename] || "data"
   str = obj.respond_to?(:to_csv) ? obj.to_csv : obj.to_s
   charset = "charset=#{I18n.t(:general_csv_encoding).downcase}"
 
@@ -40,7 +39,7 @@ ActionController::Renderers.add :csv do |obj, options|
   # For some reasons, the content-type header
   # does only contain the charset if the response
   # is manipulated like this.
-  response.content_type += ''
+  response.content_type += ""
 
   data
 end

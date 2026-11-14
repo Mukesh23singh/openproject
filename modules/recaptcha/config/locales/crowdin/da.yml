@@ -1,18 +1,26 @@
-#English strings go here for Rails i18n
+---
 da:
+  plugin_openproject_recaptcha:
+    description: Modulet giver reCAPTCHA-kontrol ved login.
+    name: OpenProject ReCaptcha
   recaptcha:
-    label_recaptcha: "reCAPTCHA"
-    button_please_wait: 'Please wait ...'
-    verify_account: "Verify your account"
-    error_captcha: "Your account could not be verified. Please contact an administrator."
+    button_please_wait: Vent ...
+    error_captcha: Din konto kunne ikke verificeres. Kontakt en administrator.
+    label_recaptcha: reCAPTCHA
     settings:
-      website_key: 'Website key'
-      website_key_text: 'Enter the website key you created on the reCAPTCHA admin console for this domain.'
-      secret_key: 'Secret key'
-      secret_key_text: 'Enter the secret key you created on the reCAPTCHA admin console.'
-      type: 'Use reCAPTCHA'
-      type_disabled: 'Disable reCAPTCHA'
-      type_v2: 'reCAPTCHA v2'
-      type_v3: 'reCAPTCHA v3'
-      recaptcha_description_html: >
-        reCAPTCHA is a free service by Google that can be enabled for your OpenProject instance. If enabled, a captcha form will be rendered upon login for all users that have not verified a captcha yet. <br/> Please see the following link for more details on reCAPTCHA and their versions, and how to create the website and secret keys: %{recaptcha_link}
+      captcha_description_html: 'reCAPTCHA er en gratis tjeneste fra Google, som kan slås til i din OpenProject-installation. Når den er slået til, vises en captcha ved login for alle brugere, der endnu ikke har bestået en captcha. <br/> Følg dette link for at få flere oplysninger om reCAPTCHA og versionerne, og om hvordan du opretter webstedsnøglen og den hemmelige nøgle: %{recaptcha_link} <br/> HCaptcha er et alternativ uden Google, som du kan bruge, hvis du ikke vil bruge reCAPTCHA. Følg dette link for at få flere oplysninger: %{hcaptcha_link} <br/> Cloudflare Turnstile™ er endnu et alternativ, som er mere bekvemt for brugerne og giver samme sikkerhed. Følg dette link for at få flere oplysninger: %{turnstile_link}
+
+        '
+      response_limit: Grænse for svar fra HCaptcha
+      response_limit_text: Det maksimale antal tegn, et svar fra HCaptcha må have for at blive betragtet som gyldigt.
+      secret_key: Hemmelig nøgle
+      secret_key_text: Angiv den hemmelige nøgle, som du har oprettet i administrationskonsollen til reCAPTCHA.
+      type: Brug reCAPTCHA
+      type_disabled: Deaktiver reCAPTCHA
+      type_hcaptcha: HCaptcha
+      type_turnstile: Cloudflare Turnstile™
+      type_v2: reCAPTCHA v2
+      type_v3: reCAPTCHA v3
+      website_key: Webstedsnøgle (kaldes også "Site key")
+      website_key_text: Angiv den webstedsnøgle, som du har oprettet til domænet i administrationskonsollen til reCAPTCHA.
+    verify_account: Bekræft din konto

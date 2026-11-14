@@ -1,8 +1,51 @@
-#English strings go here
+---
 da:
-  permission_show_board_views: "View boards"
-  permission_manage_board_views: "Manage boards"
-  project_module_board_view: "Boards"
+  activerecord:
+    models:
+      boards/grid:
+        one: Tavle
+        other: Tavler
   boards:
-    label_board: "Board"
-    label_boards: "Boards"
+    board_type_attributes:
+      assignee: Tildelt
+      basic: Grundlæggende
+      status: Kanban
+      subproject: Underprojekt
+      subtasks: Overordnet-underordnet
+      version: Version
+    board_type_descriptions:
+      assignee: 'Tavle med automatiske kolonner ud fra tildelte brugere. Velegnet til at fordele arbejdspakker.
+
+        '
+      basic: 'Begynd med en tom tavle, og tilføj selv kort og kolonner.
+
+        '
+      status: 'Grundlæggende kanbantavle med kolonner til status som To Do, I gang, Udført.
+
+        '
+      subproject: 'Tavle med automatiske kolonner til underprojekter. Når du trækker arbejdspakker til andre lister, opdateres (under)projektet tilsvarende.
+
+        '
+      subtasks: 'Tavle med automatiske kolonner til underelementer. Når du trækker arbejdspakker til andre lister, opdateres den overordnede tilsvarende.
+
+        '
+      version: 'Tavle med automatiske kolonner ud fra attributten Version. Velegnet til at planlægge produktudvikling.
+
+        '
+    board_types:
+      action: Handlingstavle (%{attribute})
+      free: Grundlæggende
+    label_board: Tavle
+    label_board_type: Tavletype
+    label_boards: Tavler
+    label_create_new_board: Opret ny tavle
+  ee:
+    upsell:
+      board_view:
+        description: Vil du automatisere dine arbejdsgange med tavler? Avancerede tavler er en tilføjelse til Enterprise-udgaven. Opgrader til et betalt abonnement.
+  permission_manage_board_views: Administrer tavler
+  permission_show_board_views: Vis tavler
+  plugin_openproject_boards:
+    description: Giver tavlevisninger.
+    name: OpenProject-tavler
+  project_module_board_view: Tavler

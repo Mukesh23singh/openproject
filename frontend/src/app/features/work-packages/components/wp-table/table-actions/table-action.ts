@@ -1,16 +1,46 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { lazyInject } from 'core-app/shared/helpers/angular/lazy-inject';
 
 export type OpTableActionFactory = (i:Injector, wp:WorkPackageResource) => OpTableAction;
 export const contextMenuTdClassName = 'wp-table--context-menu-td';
 export const contextMenuSpanClassName = 'wp-table--context-menu-span';
 export const contextMenuLinkClassName = 'wp-table-context-menu-link';
 export const contextColumnIcon = 'wp-table-context-menu-icon';
+export const destructiveControlAttribute = 'data-wp-table-destructive';
+/** The classes `Primer::Beta::IconButton` renders for `scheme: :invisible, size: :small`. */
+export const invisibleIconButtonClasses = ['Button', 'Button--iconOnly', 'Button--invisible', 'Button--small'] as const;
 
 export abstract class OpTableAction {
-  @InjectField() I18n!:I18nService;
+  readonly I18n = lazyInject(I18nService, { injector: () => this.injector });
 
   constructor(readonly injector:Injector,
     readonly workPackage:WorkPackageResource) {
@@ -20,5 +50,5 @@ export abstract class OpTableAction {
   public abstract readonly identifier:string;
 
   /** The actual action factory to return the action element, if it can be rendered */
-  public abstract buildElement():HTMLElement|null;
+  public abstract buildElement():HTMLElement|DocumentFragment|null;
 }

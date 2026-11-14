@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 class Backup < Export
   class << self
     def permission
@@ -5,7 +34,7 @@ class Backup < Export
     end
 
     def include_attachments?
-      val = OpenProject::Configuration.backup_include_attachments
+      val = Setting.backup_include_attachments
 
       val.nil? ? true : val.to_s.to_bool # default to true
     end
@@ -14,12 +43,13 @@ class Backup < Export
     # Don't include attachments in archive if they are larger than
     # this value combined.
     def attachment_size_max_sum_mb
-      (OpenProject::Configuration.backup_attachment_size_max_sum_mb.presence || 1024).to_i
+      (Setting.backup_attachment_size_max_sum_mb.presence || 1024).to_i
     end
 
     def attachments_query
       Attachment
         .not_pending_direct_upload
+        .not_incomplete_import
         .where.not(container_type: nil)
         .where.not(container_type: Export.name)
     end
@@ -28,7 +58,7 @@ class Backup < Export
       attachments_query.pluck(:filesize).sum / 1024.0 / 1024.0
     end
 
-    def attachments_size_in_bounds?(attachments_query = self.attachments_query, max: self.attachment_size_max_sum_mb)
+    def attachments_size_in_bounds?(attachments_query = self.attachments_query, max: attachment_size_max_sum_mb)
       attachments_size_in_mb(attachments_query) <= max
     end
   end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -90,7 +87,7 @@ module API
           errors.attribute_names.each do |attribute|
             api_attribute_name = ::API::Utilities::PropertyNameConverter.from_ar_name(attribute)
 
-            errors.symbols_and_messages_for(attribute).each do |symbol, message|
+            symbols_and_messages_for(errors, attribute).each do |symbol, message|
               api_errors << if symbol == :error_readonly
                               ::API::Errors::UnwritableProperty.new(api_attribute_name, message)
                             else
@@ -101,13 +98,20 @@ module API
 
           api_errors
         end
+
+        def symbols_and_messages_for(errors, attribute)
+          symbols = errors.details[attribute].pluck(:error)
+          messages = errors.full_messages_for(attribute)
+
+          symbols.zip(messages)
+        end
       end
 
       def initialize(message, **)
         @message = message
         @errors = []
 
-        super message: message
+        super(message:)
       end
     end
   end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +20,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module JobStatus
   module Cron
-    class ClearOldJobStatusJob < ::Cron::CronJob
-      # runs at 4:15 nightly
-      self.cron_expression = '15 4 * * *'
-
+    class ClearOldJobStatusJob < ApplicationJob
       RETENTION_PERIOD = 2.days.freeze
 
       def perform
         ::JobStatus::Status
-          .where(::JobStatus::Status.arel_table[:updated_at].lteq(Time.now - RETENTION_PERIOD))
+          .where(::JobStatus::Status.arel_table[:updated_at].lteq(Time.zone.now - RETENTION_PERIOD))
           .destroy_all
       end
     end

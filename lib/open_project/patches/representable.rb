@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'representable'
-require 'open_project/patches'
+require "representable"
+require "open_project/patches"
 
 module OpenProject::Patches::Representable
   module DecoratorPatch
     def self.included(base)
       base.class_eval do
         def self.as_strategy=(strategy)
-          raise 'The :as_strategy option should respond to #call?' unless strategy.respond_to?(:call)
+          raise "The :as_strategy option should respond to #call?" unless strategy.respond_to?(:call)
 
           @as_strategy = strategy
         end
@@ -43,7 +42,9 @@ module OpenProject::Patches::Representable
           @as_strategy
         end
 
-        def self.property(name, options = {}, &block)
+        def self.property(name, options = {}, &)
+          # Note: `:writeable` is required by declarative gem
+          options[:writeable] = options.delete :writable if options.has_key?(:writable)
           options = { as: as_strategy.call(name.to_s) }.merge(options) if as_strategy
 
           super
@@ -70,7 +71,7 @@ module OpenProject::Patches::Representable
   end
 end
 
-OpenProject::Patches.patch_gem_version 'representable', '3.1.1' do
+OpenProject::Patches.patch_gem_version "representable", "3.3.1" do
   unless Representable::Decorator.included_modules.include?(OpenProject::Patches::Representable::DecoratorPatch)
     Representable::Decorator.include OpenProject::Patches::Representable::DecoratorPatch
   end

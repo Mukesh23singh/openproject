@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,7 +30,7 @@
 module API
   module Helpers
     module AttachmentRenderer
-      def self.content_endpoint(&block)
+      def self.content_endpoint(&)
         ->(*) {
           helpers ::API::Helpers::AttachmentRenderer
 
@@ -42,7 +39,7 @@ module API
           end
 
           get do
-            attachment = instance_exec(&block)
+            attachment = instance_exec(&)
             respond_with_attachment attachment, cache_seconds: fog_cache_seconds
           end
         }
@@ -58,16 +55,42 @@ module API
       # @param cache_seconds [integer] Time in seconds the cache headers signal the browser to cache the attachment.
       #                                Defaults to no cache headers.
       def respond_with_attachment(attachment, cache_seconds: nil)
-        prepare_cache_headers(cache_seconds) if cache_seconds
+        validate_attachment_access!(attachment)
 
-        if attachment.external_storage?
+        if attachment.incomplete_import?
+          raise ::API::Errors::NotFound.new
+        elsif attachment.prepared?
+          redirect_to_staged_upload(attachment)
+        elsif attachment.external_storage?
+          prepare_cache_headers(cache_seconds) if cache_seconds
           redirect_to_external_attachment(attachment, cache_seconds)
         else
+          prepare_cache_headers(cache_seconds) if cache_seconds
           send_attachment(attachment)
         end
       end
 
       private
+
+      # Only the author may access the staged file.
+      # It is removed once the upload is finished, so this redirect must not be cached.
+      def redirect_to_staged_upload(attachment)
+        raise ::API::Errors::NotFound.new if attachment.author != current_user
+
+        redirect DirectFogUploader.for_attachment(attachment).download_url(attachment.external_url_options)
+      end
+
+      def validate_attachment_access!(attachment)
+        if attachment.status_quarantined?
+          raise ::API::Errors::Unauthorized.new(message: I18n.t("antivirus_scan.quarantined_message",
+                                                                filename: attachment.filename))
+        end
+
+        if attachment.author != current_user && attachment.pending_virus_scan?
+          raise ::API::Errors::Unauthorized.new(message: I18n.t("antivirus_scan.not_processed_yet_message",
+                                                                filename: attachment.filename))
+        end
+      end
 
       def redirect_to_external_attachment(attachment, cache_seconds)
         set_cache_headers!
@@ -75,10 +98,21 @@ module API
       end
 
       def send_attachment(attachment)
-        content_type attachment.content_type
-        header['Content-Disposition'] = attachment.content_disposition
-        env['api.format'] = :binary
+        if attachment.diskfile.nil?
+          raise ::API::Errors::NotFound.new
+        end
+
+        content_type attachment_content_type(attachment)
+        header["Content-Disposition"] = attachment.content_disposition
+        # Ensure we set nosniff on attachments served from our app
+        # so that browsers do not reinterpret the content
+        header["X-Content-Type-Options"] = "nosniff"
+        env["api.format"] = :binary
         sendfile attachment.diskfile.path
+      end
+
+      def attachment_content_type(attachment)
+        attachment.served_content_type
       end
 
       def set_cache_headers
@@ -106,7 +140,7 @@ module API
       end
 
       def avatar_link_expires_in
-        seconds = avatar_link_expiry_seconds
+        seconds = avatar_link_expiration_seconds
 
         if seconds == 0
           nil
@@ -115,8 +149,8 @@ module API
         end
       end
 
-      def avatar_link_expiry_seconds
-        @avatar_link_expiry_seconds ||= OpenProject::Configuration.avatar_link_expiry_seconds.to_i
+      def avatar_link_expiration_seconds
+        @avatar_link_expiration_seconds ||= OpenProject::Configuration.avatar_link_expiration_seconds.to_i
       end
     end
   end

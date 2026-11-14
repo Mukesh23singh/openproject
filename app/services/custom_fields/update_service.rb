@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module CustomFields
   class UpdateService < ::BaseServices::Update
+    protected
+
+    def after_perform(service_call)
+      super.tap do
+        enqueue_recalculate_values if recalculate_values?
+        model.project_specific_value_restrictions.delete_all if model.project_specific_value_restriction_previously_changed?
+      end
+    end
+
+    private
+
+    def set_attributes_params(params)
+      super.except(:field_format)
+    end
+
+    def enqueue_recalculate_values
+      CustomFields::RecalculateValuesJob.perform_later(
+        user: User.current,
+        custom_field_id: model.id
+      )
+    end
+
+    def recalculate_values?
+      case model.field_format
+      when "calculated_value"
+        model.formula_previously_changed? || (model.is_required_previously_changed? && model.is_required?)
+      when "weighted_item_list"
+        model.multi_value_previously_changed? && CustomField.with_formula_referencing(model.id).any?
+      else
+        false
+      end
+    end
   end
 end

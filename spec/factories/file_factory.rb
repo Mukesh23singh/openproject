@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,34 +35,34 @@ FactoryBot.define do
     # try to call #save! on any created object.
     skip_create
 
-    name { 'textfile.txt' }
+    name { "textfile.txt" }
 
     initialize_with do
-      new "#{Rails.root}/spec/fixtures/files/#{name}"
+      new "#{Rails.root.join("spec/fixtures/files/#{name}")}"
     end
   end
 
-  factory :uploaded_file, class: 'Rack::Multipart::UploadedFile' do
+  factory :uploaded_file, class: "Rack::Multipart::UploadedFile" do
     skip_create
 
-    name { 'test.txt' }
-    content { 'test content' }
-    content_type { 'text/plain' }
+    name { "test.txt" }
+    content { "test content" }
+    content_type { "text/plain" }
     binary { false }
 
     initialize_with do
       FileHelpers.mock_uploaded_file(
-        name: name,
-        content: content,
-        content_type: content_type,
-        binary: binary
+        name:,
+        content:,
+        content_type:,
+        binary:
       )
     end
 
     factory :uploaded_jpg do
-      name { 'test.jpg' }
+      name { "test.jpg" }
       content { "\xFF\xD8\xFF\xE0\u0000\u0010JFIF\u0000\u0001\u0001\u0001\u0000H" }
-      content_type { 'image/jpeg' }
+      content_type { "image/jpeg" }
       binary { true }
     end
   end

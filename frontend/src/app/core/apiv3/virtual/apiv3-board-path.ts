@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -30,11 +29,11 @@ import { Board } from 'core-app/features/boards/board/board';
 import { Observable } from 'rxjs';
 import { map, switchMap, tap } from 'rxjs/operators';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
-import { CachableAPIV3Resource } from 'core-app/core/apiv3/cache/cachable-apiv3-resource';
+import { ApiV3Resource } from 'core-app/core/apiv3/cache/cachable-apiv3-resource';
 import { StateCacheService } from 'core-app/core/apiv3/cache/state-cache.service';
-import { Apiv3BoardsPaths } from 'core-app/core/apiv3/virtual/apiv3-boards-paths';
+import { ApiV3BoardsPaths } from 'core-app/core/apiv3/virtual/apiv3-boards-paths';
 
-export class APIv3BoardPath extends CachableAPIV3Resource<Board> {
+export class ApiV3BoardPath extends ApiV3Resource<Board> {
   /**
    * Perform a request to the HalResourceService with the current path
    */
@@ -100,6 +99,6 @@ export class APIv3BoardPath extends CachableAPIV3Resource<Board> {
   }
 
   protected createCache():StateCacheService<Board> {
-    return (this.parent as Apiv3BoardsPaths).cache;
+    return (this.parent as ApiV3BoardsPaths).cache;
   }
 }

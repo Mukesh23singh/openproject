@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,12 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { sortBy } from 'lodash-es';
 import { Injectable } from '@angular/core';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
@@ -34,13 +34,10 @@ export class HalResourceSortingService {
   /**
    * List of sortable properties by HAL type
    */
-  private config:{ [typeName:string]:string } = {
+  private config:Record<string, string> = {
     user: 'name',
     project: 'name',
   };
-
-  constructor() {
-  }
 
   /**
    * Sort the given HalResource based on its type.
@@ -62,7 +59,7 @@ export class HalResourceSortingService {
 
     const property = this.sortingProperty(halType);
     if (property) {
-      return _.sortBy<T>(elements, (v) => v[property].toLowerCase());
+      return sortBy<T>(elements, (v) => (v[property] as string).toLowerCase());
     }
     return elements;
   }

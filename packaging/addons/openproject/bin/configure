@@ -9,7 +9,7 @@ input_start() {
   if [ "$server_autoinstall" = "skip" ] ; then
     STATE="input_hostname"
   else
-    STATE="done"
+    STATE="input_admin_mail"
   fi
 }
 
@@ -32,9 +32,38 @@ input_hostname_params() {
 input_protocol_params() {
   wiz_put "server/ssl"
   if wiz_ask ; then
-    STATE="done"
+    STATE="input_admin_mail"
   else
     STATE="input_hostname"
+  fi
+}
+
+input_admin_mail() {
+  if wiz_get "smtp/admin_email" &>/dev/null ; then
+    STATE="input_default_language"
+    return
+  fi
+
+  wiz_put "openproject/admin_email"
+  if wiz_ask ; then
+    STATE="input_default_language"
+  else
+    STATE="start"
+  fi
+}
+
+input_default_language() {
+  # if legacy existing install, or when reconfiguring an existing install, we do not ask for default language again
+  if ${APP_NAME} config:get HOST &>/dev/null ; then
+    STATE="done"
+    return
+  fi
+
+  wiz_put "openproject/default_language"
+  if wiz_ask ; then
+    STATE="done"
+  else
+    STATE="start"
   fi
 }
 
@@ -48,6 +77,12 @@ state_machine() {
       ;;
     "input_protocol")
       input_protocol_params
+      ;;
+    "input_admin_mail")
+      input_admin_mail
+      ;;
+    "input_default_language")
+      input_default_language
       ;;
     "done")
       echo "DONE"

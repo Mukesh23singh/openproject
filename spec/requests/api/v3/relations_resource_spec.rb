@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,51 +22,48 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Relation resource', type: :request do
+RSpec.describe "API v3 Relation resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.create(:project_with_types) }
+  let(:project) { create(:project_with_types) }
   let(:current_user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
   let(:permissions) { [] }
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:role) { create(:project_role, permissions:) }
 
   let(:work_package) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      type: project.types.first)
+    create(:work_package,
+           project:,
+           type: project.enabled_types.first)
   end
   let(:visible_work_package) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      type: project.types.first)
+    create(:work_package,
+           project:,
+           type: project.enabled_types.first)
   end
   let(:invisible_work_package) do
     # will be inside another project
-    FactoryBot.create(:work_package)
+    create(:work_package)
   end
   let(:visible_relation) do
-    FactoryBot.create(:relation,
-                      from: work_package,
-                      to: visible_work_package)
+    create(:relation,
+           from: work_package,
+           to: visible_work_package)
   end
   let(:invisible_relation) do
-    FactoryBot.create(:relation,
-                      from: work_package,
-                      to: invisible_work_package)
+    create(:relation,
+           from: work_package,
+           to: invisible_work_package)
   end
 
   before do
@@ -73,10 +72,10 @@ describe 'API v3 Relation resource', type: :request do
 
   subject(:response) { last_response }
 
-  describe '#get' do
+  describe "#get" do
     let(:path) { api_v3_paths.work_package_relations(work_package.id) }
 
-    context 'when having the view_work_packages permission' do
+    context "when having the view_work_packages permission" do
       let(:permissions) { [:view_work_packages] }
 
       before do
@@ -86,18 +85,20 @@ describe 'API v3 Relation resource', type: :request do
         get path
       end
 
-      it_behaves_like 'API V3 collection response', 1, 1, 'Relation'
+      it_behaves_like "redirect response", 308 do
+        let(:location) { "/api/v3/relations?filters=%5B%7B%22involved%22%3A%7B%22operator%22%3A%22%3D%22%2C%22values%22%3A%5B%22#{work_package.id}%22%5D%7D%7D%5D" } # rubocop:disable Layout/LineLength
+      end
     end
 
-    context 'when not having view_work_packages' do
+    context "when not having view_work_packages" do
       let(:permissions) { [] }
 
       before do
         get path
       end
 
-      it_behaves_like 'not found',
-                      I18n.t('api_v3.errors.not_found.work_package')
+      it_behaves_like "not found",
+                      I18n.t("api_v3.errors.not_found.work_package")
     end
   end
 end

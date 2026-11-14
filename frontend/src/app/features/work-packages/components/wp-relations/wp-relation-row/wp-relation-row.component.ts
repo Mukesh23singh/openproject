@@ -1,28 +1,71 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import {
-  ChangeDetectorRef, Component, ElementRef, Input, OnInit, ViewChild,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, OnInit, ViewChild, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { HalEventsService } from 'core-app/features/hal/services/hal-events.service';
 import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { RelationResource } from 'core-app/features/hal/resources/relation-resource';
 import { WorkPackageRelationsService } from '../wp-relations.service';
+import { Highlighting } from 'core-app/features/work-packages/components/wp-fast-table/builders/highlighting/highlighting.functions';
+import { EditFieldControl } from 'core-app/shared/components/fields/edit/field-controls/edit-field-controls.component';
+import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
+
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-relation-row',
   templateUrl: './wp-relation-row.template.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class WorkPackageRelationRowComponent extends UntilDestroyedMixin implements OnInit {
+  protected apiV3Service = inject(ApiV3Service);
+  protected notificationService = inject(WorkPackageNotificationService);
+  protected wpRelations = inject(WorkPackageRelationsService);
+  protected halEvents = inject(HalEventsService);
+  protected I18n = inject(I18nService);
+  protected cdRef = inject(ChangeDetectorRef);
+  protected PathHelper = inject(PathHelperService);
+
   @Input() public workPackage:WorkPackageResource;
 
   @Input() public relatedWorkPackage:WorkPackageResource;
 
   @Input() public groupByWorkPackageType:boolean;
 
-  @ViewChild('relationDescriptionTextarea') readonly relationDescriptionTextarea:ElementRef;
+  @ViewChild('relationDescriptionTextarea') readonly relationDescriptionTextarea:ElementRef<HTMLTextAreaElement>;
 
   public relationType:string;
 
@@ -41,13 +84,7 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
     showRelationInfo: false,
   };
 
-  // Create a quasi-field object
-  public fieldController = {
-    handler: {
-      active: true,
-    },
-    required: false,
-  };
+  public fieldController:EditFieldControl = { required: false };
 
   public relation:RelationResource;
 
@@ -55,7 +92,6 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
     cancel: this.I18n.t('js.button_cancel'),
     save: this.I18n.t('js.button_save'),
     removeButton: this.I18n.t('js.relation_buttons.remove'),
-    description_label: this.I18n.t('js.relation_buttons.update_description'),
     toggleDescription: this.I18n.t('js.relation_buttons.toggle_description'),
     updateRelation: this.I18n.t('js.relation_buttons.update_relation'),
     placeholder: {
@@ -63,23 +99,12 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
     },
   };
 
-  constructor(protected apiV3Service:APIV3Service,
-    protected notificationService:WorkPackageNotificationService,
-    protected wpRelations:WorkPackageRelationsService,
-    protected halEvents:HalEventsService,
-    protected I18n:I18nService,
-    protected cdRef:ChangeDetectorRef,
-    protected PathHelper:PathHelperService) {
-    super();
-  }
-
   ngOnInit() {
-    this.relation = this.relatedWorkPackage.relatedBy as RelationResource;
+    this.relation = this.relatedWorkPackage.relatedBy!;
 
     this.userInputs.newRelationText = this.relation.description || '';
     this.availableRelationTypes = RelationResource.LOCALIZED_RELATION_TYPES(false);
-    this.selectedRelationType = _.find(this.availableRelationTypes,
-      { name: this.relation.normalizedType(this.workPackage) })!;
+    this.selectedRelationType = this.availableRelationTypes.find((relationType) => relationType.name === this.relation.normalizedType(this.workPackage))!;
 
     this
       .apiV3Service
@@ -90,6 +115,7 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
         this.untilDestroyed(),
       ).subscribe((wp) => {
         this.relatedWorkPackage = wp;
+        this.cdRef.markForCheck();
       });
   }
 
@@ -103,24 +129,24 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
   }
 
   public get relationReady() {
-    return this.relatedWorkPackage && this.relatedWorkPackage.$loaded;
+    return this.relatedWorkPackage?.$loaded;
   }
 
   public startDescriptionEdit() {
     this.userInputs.showDescriptionEditForm = true;
     setTimeout(() => {
-      const textarea = jQuery(this.relationDescriptionTextarea.nativeElement);
-      const textlen = (textarea.val() as string).length;
+      const textarea = this.relationDescriptionTextarea.nativeElement;
+      const textlen = textarea.value.length;
       // Focus and set cursor to end
       textarea.focus();
 
-      textarea.prop('selectionStart', textlen);
-      textarea.prop('selectionEnd', textlen);
+      textarea.selectionStart = textlen;
+      textarea.selectionEnd = textlen;
     });
   }
 
-  public handleDescriptionKey($event:JQuery.TriggeredEvent) {
-    if ($event.which === 27) {
+  public handleDescriptionKey(event:KeyboardEvent) {
+    if (event.key === 'Escape') {
       this.cancelDescriptionEdit();
     }
   }
@@ -154,7 +180,7 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
     }
   }
 
-  public cancelRelationTypeEditOnEscape(evt:JQuery.TriggeredEvent) {
+  public cancelRelationTypeEditOnEscape() {
     this.userInputs.showRelationTypesForm = false;
   }
 
@@ -173,7 +199,7 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
         this.userInputs.showRelationTypesForm = false;
         this.cdRef.detectChanges();
       })
-      .catch((error:any) => this.notificationService.handleRawError(error, this.workPackage));
+      .catch((error:unknown) => this.notificationService.handleRawError(error, this.workPackage));
   }
 
   public toggleUserDescriptionForm() {
@@ -195,9 +221,24 @@ export class WorkPackageRelationRowComponent extends UntilDestroyedMixin impleme
           .cache
           .updateWorkPackage(this.relatedWorkPackage);
 
+        this.wpRelations.updateCounter(this.workPackage);
+
         this.notificationService.showSave(this.relatedWorkPackage);
       })
-      .catch((err:any) => this.notificationService.handleRawError(err,
+      .catch((err:unknown) => this.notificationService.handleRawError(err,
         this.relatedWorkPackage));
+  }
+
+  public highlightingClassForWpType():string {
+    return Highlighting.typeClass(this.relatedWorkPackage.type.id!);
+  }
+
+  public get relatedWorkPackagePath():string {
+    const relatedProject = this.relatedWorkPackage.project as ProjectResource;
+    return this.PathHelper.genericWorkPackagePath(
+      relatedProject.identifier,
+      this.relatedWorkPackage.displayId,
+      'relations',
+    );
   }
 }

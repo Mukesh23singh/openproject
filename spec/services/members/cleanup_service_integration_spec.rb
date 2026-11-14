@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,48 +22,47 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Members::CleanupService, 'integration', type: :model do
+RSpec.describe Members::CleanupService, "integration", type: :model do
   subject(:service_call) { instance.call }
 
-  let(:user) { FactoryBot.create(:user) }
+  let(:user) { create(:user) }
   let(:users) { [user] }
-  let(:project) { FactoryBot.create(:project) }
-  let(:projects) { [project]}
+  let(:project) { create(:project) }
+  let(:projects) { [project] }
   let(:instance) do
     described_class.new(users, projects)
   end
 
-  describe 'category unassignment' do
+  describe "category unassignment" do
     let!(:category) do
-      FactoryBot.build(:category, project: project, assigned_to: user).tap do |c|
+      build(:category, project:, assigned_to: user).tap do |c|
         c.save(validate: false)
       end
     end
 
-    it 'sets assigned_to to nil' do
+    it "sets assigned_to to nil" do
       service_call
 
       expect(category.reload.assigned_to)
         .to be_nil
     end
 
-    context 'with the user having a membership with an assignable role' do
+    context "with the user having a membership with an assignable role" do
       before do
-        FactoryBot.create(:member,
-                          principal: user,
-                          project: project,
-                          roles: [FactoryBot.create(:role, assignable: true)])
+        create(:member,
+               principal: user,
+               project:,
+               roles: [create(:project_role, permissions: %i[work_package_assigned])])
       end
 
-      it 'keeps assigned_to to the user' do
+      it "keeps assigned_to to the user" do
         service_call
 
         expect(category.reload.assigned_to)
@@ -69,15 +70,16 @@ describe Members::CleanupService, 'integration', type: :model do
       end
     end
 
-    context 'with the user having a membership with an unassignable role' do
+    context "with the user having a membership with an unassignable role" do
       before do
-        FactoryBot.create(:member,
-                          principal: user,
-                          project: project,
-                          roles: [FactoryBot.create(:role, assignable: false)])
+        create(:member,
+               principal: user,
+               project:,
+               # Lacking work_package_assigned
+               roles: [create(:project_role, permissions: [])])
       end
 
-      it 'sets assigned_to to nil' do
+      it "sets assigned_to to nil" do
         service_call
 
         expect(category.reload.assigned_to)
@@ -86,35 +88,35 @@ describe Members::CleanupService, 'integration', type: :model do
     end
   end
 
-  describe 'watcher pruning' do
+  describe "watcher pruning" do
     let(:work_package) do
-      FactoryBot.create :work_package,
-                        project: project
+      create(:work_package,
+             project:)
     end
     let!(:watcher) do
-      FactoryBot.build(:watcher,
-                       watchable: work_package,
-                       user: user) do |w|
+      build(:watcher,
+            watchable: work_package,
+            user:) do |w|
         w.save(validate: false)
       end
     end
 
-    it 'removes the watcher' do
+    it "removes the watcher" do
       service_call
 
       expect { watcher.reload }
         .to raise_error ActiveRecord::RecordNotFound
     end
 
-    context 'with the user having a membership granting the right to view the watchable' do
+    context "with the user having a membership granting the right to view the watchable" do
       before do
-        FactoryBot.create(:member,
-                          principal: user,
-                          project: project,
-                          roles: [FactoryBot.create(:role, permissions: [:view_work_packages])])
+        create(:member,
+               principal: user,
+               project:,
+               roles: [create(:project_role, permissions: [:view_work_packages])])
       end
 
-      it 'keeps the watcher' do
+      it "keeps the watcher" do
         service_call
 
         expect { watcher.reload }
@@ -122,15 +124,15 @@ describe Members::CleanupService, 'integration', type: :model do
       end
     end
 
-    context 'with the user having a membership not granting the right to view the watchable' do
+    context "with the user having a membership not granting the right to view the watchable" do
       before do
-        FactoryBot.create(:member,
-                          principal: user,
-                          project: project,
-                          roles: [FactoryBot.create(:role, permissions: [])])
+        create(:member,
+               principal: user,
+               project:,
+               roles: [create(:project_role, permissions: [])])
       end
 
-      it 'keeps the watcher' do
+      it "keeps the watcher" do
         service_call
 
         expect { watcher.reload }

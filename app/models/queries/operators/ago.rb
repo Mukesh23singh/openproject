@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,24 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Operators
   class Ago < Base
-    label 'ago'
-    set_symbol 't-'
+    label "ago"
+    set_symbol "t-"
 
     extend DateRangeClauses
 
     def self.sql_for_field(values, db_table, db_field)
-      relative_date_range_clause(db_table,
-                                 db_field,
-                                 - values.first.to_i,
-                                 - values.first.to_i)
+      days = values.first.to_i
+
+      relative_date_range_clause(db_table, db_field, -days, -days)
     end
   end
 end

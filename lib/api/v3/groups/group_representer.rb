@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,10 +32,19 @@ module API
     module Groups
       class GroupRepresenter < ::API::V3::Principals::PrincipalRepresenter
         include API::Decorators::LinkedResource
+        extend ::API::V3::Utilities::CustomFieldInjector::RepresenterClass
 
         def _type
-          'Group'
+          "Group"
         end
+
+        property :organizational_unit,
+                 render_nil: true
+
+        associated_resource :parent,
+                            v3_path: :group,
+                            representer: GroupRepresenter,
+                            skip_render: ->(*) { represented.parent_id.nil? }
 
         link :delete,
              cache_if: -> { current_user.admin? } do
@@ -56,7 +64,12 @@ module API
 
         associated_resources :users,
                              as: :members,
-                             skip_render: -> { !current_user.allowed_to_globally?(:manage_members) }
+                             skip_render: -> { !current_user.allowed_in_any_project?(:manage_members) },
+                             uncacheable_link: true,
+                             setter: ->(fragment:, **) do
+                               ids = parse_link_ids_from_fragment(fragment, :user)
+                               represented[:replace_user_ids] = ids
+                             end
       end
     end
   end

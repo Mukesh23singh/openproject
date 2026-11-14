@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,23 +31,26 @@ module Queries
   class CopyService < ::BaseServices::Copy
     def self.copy_dependencies
       [
-        ::Queries::Copy::MenuItemDependentService,
+        ::Queries::Copy::ViewsDependentService,
         ::Queries::Copy::OrderedWorkPackagesDependentService
       ]
     end
 
     protected
 
-    def initialize_copy(source, _params)
-      new_query = ::Query.new source.attributes.dup.except(*skipped_attributes)
+    def set_attributes(_params)
+      new_query = copied_query
       new_query.sort_criteria = source.sort_criteria if source.sort_criteria
-      new_query.project = state.project || source.project
 
       ::Queries::Copy::FiltersMapper
-        .new(state, new_query.filters)
-        .map_filters!
+        .new(state)
+        .map_query!(new_query)
 
-      ServiceResult.new(success: new_query.save, result: new_query)
+      ServiceResult.new(success: new_query.valid?, result: new_query)
+    end
+
+    def copied_query
+      ::Query.new source.attributes.dup.except(*skipped_attributes).merge(project: state.project || source.project)
     end
 
     def skipped_attributes

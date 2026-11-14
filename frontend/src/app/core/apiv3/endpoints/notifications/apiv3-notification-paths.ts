@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +20,19 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { APIv3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { ApiV3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
 import { Observable } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { InAppNotification } from 'core-app/core/state/in-app-notifications/in-app-notification.model';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { INotification } from 'core-app/core/state/in-app-notifications/in-app-notification.model';
 
-export class Apiv3NotificationPaths extends APIv3GettableResource<InAppNotification> {
-  @InjectField() http:HttpClient;
+export class ApiV3NotificationPaths extends ApiV3GettableResource<INotification> {
+  @LazyInject() http:HttpClient;
 
   public markRead():Observable<unknown> {
     return this

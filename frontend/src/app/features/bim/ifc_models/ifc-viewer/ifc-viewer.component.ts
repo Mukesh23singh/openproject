@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,38 +20,40 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  AfterViewInit,
-  ChangeDetectionStrategy,
-  Component,
-  ElementRef,
-  HostListener,
-  OnDestroy,
-  OnInit,
-  ViewChild,
-} from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, HostListener, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
 import { IFCViewerService } from 'core-app/features/bim/ifc_models/ifc-viewer/ifc-viewer.service';
 import { IfcModelsDataService } from 'core-app/features/bim/ifc_models/pages/viewer/ifc-models-data.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { CurrentUserService } from 'core-app/core/current-user/current-user.service';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
-import { BehaviorSubject, combineLatest, Subject } from 'rxjs';
-import { take } from 'rxjs/operators';
+import {
+  BehaviorSubject,
+  combineLatest,
+  Subject, Subscription,
+} from 'rxjs';
+import { filter, take } from 'rxjs/operators';
+import invariant from 'tiny-invariant';
 
 @Component({
   selector: 'op-ifc-viewer',
   templateUrl: './ifc-viewer.component.html',
   styleUrls: ['./ifc-viewer.component.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class IFCViewerComponent implements OnInit, OnDestroy, AfterViewInit {
-  private viewInitialized$ = new Subject();
+  ifcData = inject(IfcModelsDataService);
+  private I18n = inject(I18nService);
+  private ifcViewerService = inject(IFCViewerService);
+  private currentUserService = inject(CurrentUserService);
+  private currentProjectService = inject(CurrentProjectService);
+
+  private viewInitialized$ = new Subject<void>();
 
   modelCount:number = this.ifcData.models.length;
 
@@ -67,25 +69,19 @@ export class IFCViewerComponent implements OnInit, OnDestroy, AfterViewInit {
 
   inspectorVisible$:BehaviorSubject<boolean> = this.ifcViewerService.inspectorVisible$;
 
-  @ViewChild('outerContainer') outerContainer:ElementRef;
+  @ViewChild('outerContainer') outerContainer:ElementRef<HTMLElement>;
 
-  @ViewChild('viewerContainer') viewerContainer:ElementRef;
+  @ViewChild('viewerContainer') viewerContainer:ElementRef<HTMLElement>;
 
-  @ViewChild('modelCanvas') modelCanvas:ElementRef;
+  @ViewChild('modelCanvas') modelCanvas:ElementRef<HTMLCanvasElement>;
 
-  @ViewChild('navCubeCanvas') navCubeCanvas:ElementRef;
+  @ViewChild('navCubeCanvas') navCubeCanvas:ElementRef<HTMLCanvasElement>;
 
-  @ViewChild('toolbar') toolbarElement:ElementRef;
+  @ViewChild('toolbar') toolbarElement:ElementRef<HTMLElement>;
 
-  @ViewChild('inspectorPane') inspectorElement:ElementRef;
+  @ViewChild('inspectorPane') inspectorElement:ElementRef<HTMLElement>;
 
-  constructor(private I18n:I18nService,
-    private elementRef:ElementRef,
-    public ifcData:IfcModelsDataService,
-    private ifcViewerService:IFCViewerService,
-    private currentUserService:CurrentUserService,
-    private currentProjectService:CurrentProjectService) {
-  }
+  @ViewChild('xeokitToolbarIcons') xeokitToolbarIcons:ElementRef<HTMLElement>;
 
   ngOnInit():void {
     if (this.modelCount === 0) {
@@ -94,33 +90,71 @@ export class IFCViewerComponent implements OnInit, OnDestroy, AfterViewInit {
 
     // we have to wait until view is initialized before constructing the ifc viewer,
     // as it needs all view children ready and rendered
-    combineLatest(
-      this.currentUserService
+    combineLatest([
+      this
+        .currentUserService
         .hasCapabilities$(
           [
             'ifc_models/create',
             'ifc_models/update',
             'ifc_models/destroy',
           ],
-          this.currentProjectService.id as string,
+          this.currentProjectService.id,
         ),
       this.viewInitialized$,
-    )
+    ])
       .pipe(take(1))
       .subscribe(([manageIfcModelsAllowed]) => {
+        const explorerElement = document.querySelector<HTMLElement>('.op-ifc-viewer--tree-panel');
+        invariant(explorerElement, 'Expected IFC viewer tree panel element to be present');
+
         this.ifcViewerService.newViewer(
           {
-            canvasElement: this.modelCanvas.nativeElement as HTMLElement,
-            explorerElement: document.getElementsByClassName('op-ifc-viewer--tree-panel')[0] as HTMLElement, // Left panel
-            toolbarElement: this.toolbarElement.nativeElement as HTMLElement,
-            inspectorElement: this.inspectorElement.nativeElement as HTMLElement,
-            navCubeCanvasElement: this.navCubeCanvas.nativeElement as HTMLElement,
-            busyModelBackdropElement: this.viewerContainer.nativeElement as HTMLElement,
-            keyboardEventsElement: this.modelCanvas.nativeElement as HTMLElement,
+            canvasElement: this.modelCanvas.nativeElement,
+            explorerElement, // Left panel
+            toolbarElement: this.toolbarElement.nativeElement,
+            inspectorElement: this.inspectorElement.nativeElement,
+            navCubeCanvasElement: this.navCubeCanvas.nativeElement,
+            busyModelBackdropElement: this.viewerContainer.nativeElement,
+            keyboardEventsElement: this.modelCanvas.nativeElement,
             enableEditModels: manageIfcModelsAllowed,
+            enableMeasurements: false,
           },
           this.ifcData.projects,
-        );
+        ).catch((error:unknown) => {
+          // The viewer chunk is loaded on demand; surface a download/init failure.
+          console.error('Failed to initialize the IFC viewer:', error);
+        });
+      });
+
+    this.insertXeokitToolbarIcons();
+  }
+
+  /**
+   * Inserts xeokit toolbar icons into each element. We need to render buttons with the octicon svg, hide the button
+   * container and insert the rendered SVG into the toolbar elements.
+   * This is necessary, as we do not use the xeokit icon font, but want to have a consistent look and feel of
+   * interaction elements with icons.
+   * @private
+   */
+  private insertXeokitToolbarIcons():Subscription {
+    return this.ifcViewerService.viewerVisible$
+      .pipe(
+        filter((visible) => visible),
+        take(1),
+      )
+      .subscribe(() => {
+        const toolbarIcons = this.xeokitToolbarIcons.nativeElement;
+        const toolbar = this.toolbarElement.nativeElement;
+
+        for (const replacer of toolbarIcons.children) {
+          const target = replacer.id.replace('xeokit-replace-', '');
+
+          const targetElement = toolbar.querySelector(`.xeokit-btn.xeokit-${target}`);
+          if (targetElement !== null) {
+            targetElement.insertAdjacentHTML('afterbegin', replacer.innerHTML);
+          }
+        }
       });
   }
 
@@ -141,7 +175,6 @@ export class IFCViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   @HostListener('keydown', ['$event'])
   @HostListener('keyup', ['$event'])
   @HostListener('keypress', ['$event'])
-  // eslint-disable-next-line class-methods-use-this
   cancelAllKeyEvents($event:KeyboardEvent):void {
     $event.stopPropagation();
   }
@@ -155,18 +188,22 @@ export class IFCViewerComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   @HostListener('window:mousedown', ['$event.target'])
-  disableKeyboard(target:Element):void {
-    if (this.modelCount && !(this.outerContainer.nativeElement as HTMLElement).contains(target)) {
+  disableKeyboard(target:EventTarget|null):void {
+    if (this.modelCount && target instanceof Element && !this.outerContainer.nativeElement.contains(target)) {
       this.keyboardEnabled = false;
       this.ifcViewerService.setKeyboardEnabled(false);
     }
   }
 
   enableFromIcon(event:MouseEvent):boolean {
+    if (this.keyboardEnabled) {
+      return false;
+    }
+
     this.enableKeyBoard();
 
     // Focus on the canvas
-    (this.modelCanvas.nativeElement as HTMLElement).focus();
+    this.modelCanvas.nativeElement.focus();
 
     // Ensure we don't bubble this event to the window:mousedown handler
     // as the target will already be removed from the DOM by angular

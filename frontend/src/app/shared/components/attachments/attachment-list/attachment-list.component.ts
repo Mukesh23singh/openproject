@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,125 +20,38 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef, Component, ElementRef, Input, OnInit,
-} from '@angular/core';
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { filter } from 'rxjs/operators';
-import { States } from 'core-app/core/states/states.service';
-import { trackByHref } from 'core-app/shared/helpers/angular/tracking-functions';
+import { ChangeDetectionStrategy, Component, EventEmitter, Input, Output, inject } from '@angular/core';
+import { IAttachment } from 'core-app/core/state/attachments/attachment.model';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import { AttachmentsResourceService } from 'core-app/core/state/attachments/attachments.service';
 
 @Component({
-  selector: 'attachment-list',
-  templateUrl: './attachment-list.html',
+  selector: 'op-attachment-list',
+  templateUrl: './attachment-list.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
-export class AttachmentListComponent extends UntilDestroyedMixin implements OnInit {
-  @Input() public resource:HalResource;
+export class OpAttachmentListComponent extends UntilDestroyedMixin {
+  private readonly attachmentsResourceService = inject(AttachmentsResourceService);
 
-  @Input() public destroyImmediately = true;
+  @Input() public attachments:IAttachment[] = [];
 
-  trackByHref = trackByHref;
+  @Input() public collectionKey:string;
 
-  attachments:HalResource[] = [];
+  @Input() public showTimestamp = true;
 
-  deletedAttachments:HalResource[] = [];
+  @Input() public showDelete = true;
 
-  public $element:JQuery;
+  @Output() public attachmentRemoved = new EventEmitter<void>();
 
-  public $formElement:JQuery;
-
-  constructor(protected elementRef:ElementRef,
-    protected states:States,
-    protected cdRef:ChangeDetectorRef,
-    protected halResourceService:HalResourceService) {
-    super();
-  }
-
-  ngOnInit() {
-    this.$element = jQuery(this.elementRef.nativeElement);
-
-    this.updateAttachments();
-    this.setupResourceUpdateListener();
-
-    if (!this.destroyImmediately) {
-      this.setupAttachmentDeletionCallback();
-    }
-  }
-
-  public setupResourceUpdateListener() {
-    this.states.forResource(this.resource)!
-      .values$()
-      .pipe(
-        this.untilDestroyed(),
-        filter((newResource) => !!newResource),
-      )
-      .subscribe((newResource:HalResource) => {
-        this.resource = newResource || this.resource;
-
-        this.updateAttachments();
-        this.cdRef.detectChanges();
-      });
-  }
-
-  ngOnDestroy():void {
-    super.ngOnDestroy();
-    if (!this.destroyImmediately) {
-      this.$formElement.off('submit.attachment-component');
-    }
-  }
-
-  public removeAttachment(attachment:HalResource) {
-    this.deletedAttachments.push(attachment);
-    // Keep the same object as we would otherwise loose the connection to the
-    // resource's attachments array. That way, attachments added after removing one would not be displayed.
-    // This is bad design.
-    const newAttachments = this.attachments.filter((el) => el !== attachment);
-    this.attachments.length = 0;
-    this.attachments.push(...newAttachments);
-
-    this.cdRef.detectChanges();
-  }
-
-  private get attachmentsUpdatable() {
-    return (this.resource.attachments && this.resource.attachmentsBackend);
-  }
-
-  public setupAttachmentDeletionCallback() {
-    this.$formElement = this.$element.closest('form');
-    this.$formElement.on('submit.attachment-component', () => {
-      this.destroyRemovedAttachments();
+  public removeAttachment(attachment:IAttachment):void {
+    this.attachmentsResourceService.removeAttachment(this.collectionKey, attachment).subscribe(() => {
+      this.attachmentRemoved.emit();
     });
-  }
-
-  private destroyRemovedAttachments() {
-    this.deletedAttachments.forEach((attachment) => {
-      this
-        .resource
-        .removeAttachment(attachment);
-    });
-  }
-
-  private updateAttachments() {
-    if (!this.attachmentsUpdatable) {
-      this.attachments = this.resource.attachments.elements;
-      return;
-    }
-
-    this
-      .resource
-      .attachments
-      .updateElements()
-      .then(() => {
-        this.attachments = this.resource.attachments.elements;
-        this.cdRef.detectChanges();
-      });
   }
 }

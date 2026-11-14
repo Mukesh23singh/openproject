@@ -7,17 +7,33 @@
   height: var(--header-height)
   padding: 0
   position: relative
-  z-index: 22
+  @include spot-z-index("header")
   border-bottom-style: solid
   border-bottom-width: var(--header-border-bottom-width)
   border-bottom-color: var(--header-border-bottom-color)
   width: 100vw
 
-  @media screen and (max-width: 679px)
+  @media screen and (max-width: $breakpoint-md)
+    grid-template-columns: minmax(0, auto) 1fr auto
+
+    .op-app-header--start
+      min-width: 0
+      overflow: hidden
+
+      .op-app-menu,
+      .op-logo
+        min-width: 0
+
+  @media screen and (max-width: $breakpoint-sm)
     position: fixed
     top: 0
     left: 0
     right: 0
+
+    .op-app-header--start
+      padding-left: 6px
+    .op-app-header--end
+      padding-right: 6px
 
   @at-root .zen-mode &
     display: none
@@ -31,35 +47,50 @@
   &--start
     grid-area: start
     justify-content: flex-start
+    padding-left: 4px
 
   &--center
     grid-area: center
     justify-content: center
 
+  &--center_mobile-end
+    @media screen and (max-width: $breakpoint-md)
+      justify-content: flex-end
+
   &--end
     grid-area: end
     justify-content: flex-end
+    padding-right: 14px
+
+    .op-app-menu--item
+      padding: 0 var(--controlStack-large-gap-spacious)
 
   &--avatar
     border: 1px solid var(--header-item-font-color)
 
+  &--modules-menu-header
+    .op-logo
+      display: block
+      height: 32px
+      width: 130px
 
   ._header-scrolled &
-    @media screen and (max-width: 679px)
+    @media screen and (max-width: $breakpoint-sm)
       // Slide header in and out on scroll (see also: _base_mobile.sass)
       margin-top: calc(0px - #{var(--header-height)})
       transition: margin-top .4s
 
   &_search-open
-    @media screen and (max-width: 679px)
+    @media screen and (max-width: $breakpoint-md)
       display: flex
 
       .op-app-header--start,
-      .op-app-header--center
+      .op-app-header--end
         display: none
 
-      .op-app-header--end
+      .op-app-header--center
         flex-grow: 1
+        padding-right: 6px
 
       .op-app-search
         flex-grow: 1
@@ -80,3 +111,6 @@
 
       .top-menu-search
         padding-right: 1rem
+
+  &.op-app-header_development
+    background-image: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='20'><text x='0' y='1em' fill='rgba(0, 0, 0, 0.5)'>development</text></svg>")

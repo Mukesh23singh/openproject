@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,46 +22,108 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Principals::Scopes::Visible, type: :model do
-  describe '.visible' do
-    shared_let(:project) { FactoryBot.create :project }
-    shared_let(:other_project) { FactoryBot.create :project }
-    shared_let(:role) { FactoryBot.create :role, permissions: %i[manage_members] }
+RSpec.describe Principals::Scopes::Visible do
+  describe ".visible" do
+    shared_let(:role) { create(:project_role, permissions: %i[manage_members]) }
 
-    shared_let(:other_project_user) { FactoryBot.create :user, member_in_project: other_project, member_through_role: role }
-    shared_let(:global_user) { FactoryBot.create :user }
+    shared_let(:anonymous_user) { User.anonymous }
+    shared_let(:system_user) { User.system }
 
-    subject { ::Principal.visible.to_a }
+    shared_let(:project) { create(:project) }
+    shared_let(:project_user) do
+      create(:user, firstname: "project user",
+                    member_with_roles: { project => role })
+    end
+    shared_let(:project_group) do
+      create(:group, firstname: "project group",
+                     member_with_roles: { project => role })
+    end
+    shared_let(:project_placeholder_user) do
+      create(:placeholder_user, firstname: "project placeholder user",
+                                member_with_roles: { project => role })
+    end
 
-    context 'when user has manage_members permission' do
-      current_user { FactoryBot.create :user, member_in_project: project, member_through_role: role }
+    # The 'other project' is here to ensure their members are not visible from
+    # the outside for people lacking manage_members or manage_user permissions
+    shared_let(:other_project) { create(:project) }
+    shared_let(:other_project_user) do
+      create(:user, firstname: "other project user",
+                    member_with_roles: { other_project => role })
+    end
+    shared_let(:other_project_group) do
+      create(:group, firstname: "other project group",
+                     member_with_roles: { other_project => role })
+    end
+    shared_let(:other_placeholder_user) do
+      create(:placeholder_user, firstname: "other project placeholder user",
+                                member_with_roles: { other_project => role })
+    end
 
-      it 'sees all users' do
-        expect(subject).to match_array [current_user, other_project_user, global_user]
+    shared_let(:global_user) { create(:user, firstname: "global user") }
+    shared_let(:global_group) { create(:group, firstname: "global group") }
+    shared_let(:global_placeholder_user) { create(:placeholder_user, firstname: "global placeholder") }
+
+    subject { Principal.visible.to_a }
+
+    shared_examples "sees all principals" do
+      it "sees all users, groups, and placeholder users" do
+        expect(subject).to contain_exactly(anonymous_user, system_user, current_user, project_user, other_project_user,
+                                           global_user, project_group, other_project_group, global_group, project_placeholder_user, other_placeholder_user, global_placeholder_user)
       end
     end
 
-    context 'when user has no manage_members permission, but it is in other project' do
-      current_user { FactoryBot.create :user, member_in_project: other_project, member_with_permissions: %i[view_work_packages] }
-
-      it 'sees the other user in the same project' do
-        expect(subject).to match_array [current_user, other_project_user]
+    shared_examples "sees principals in same projects and groups" do
+      it "sees only the users, groups, and placeholder users in the same project" do
+        expect(subject).to contain_exactly(current_user, project_user, project_group, project_placeholder_user)
       end
     end
 
-    context 'when user has no permission' do
-      current_user { FactoryBot.create :user }
+    context "when user has manage_members project permission" do
+      current_user do
+        create(:user, firstname: "current user",
+                      member_with_roles: { project => role })
+      end
 
-      it 'sees only herself' do
-        expect(subject).to match_array [current_user]
+      include_examples "sees principals in same projects and groups"
+    end
+
+    context "when user has no manage_members project permission, and is member of a project" do
+      current_user do
+        create(:user, firstname: "current user",
+                      member_with_permissions: { project => %i[view_work_packages] })
+      end
+
+      include_examples "sees principals in same projects and groups"
+    end
+
+    context "when user has view_all_principals global permission" do
+      current_user { create(:user, firstname: "current user", global_permissions: %i[view_all_principals]) }
+
+      include_examples "sees all principals"
+    end
+
+    context "when user is an admin" do
+      current_user { create(:admin, firstname: "current user") }
+
+      include_examples "sees all principals"
+    end
+
+    context "when user has no permission" do
+      current_user { create(:user, firstname: "current user") }
+
+      let!(:current_user_group) do
+        create(:group, firstname: "current user group", members: [current_user])
+      end
+
+      it "sees only themself and groups they belong to" do
+        expect(subject).to contain_exactly(current_user, current_user_group)
       end
     end
   end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,42 +35,43 @@ module MeetingsHelper
         .reject { |p| p.user.nil? }
         .map { |p| link_to_user p.user }
 
-      safe_join(user_links, '; ')
+      safe_join(user_links, "; ")
     else
-      t('placeholders.default')
+      t("placeholders.default")
     end
   end
 
-  def render_meeting_journal(model, journal, options = {})
-    return '' if journal.initial?
-
-    journal_content = render_journal_details(journal, :label_updated_time_by, model, options)
-    content_tag 'div', journal_content,  id: "change-#{journal.id}", class: 'journal'
+  def global_meeting_create_context?
+    global_new_meeting_action? || global_create_meeting_action?
   end
 
-  # This renders a journal entry with a header and details
-  def render_journal_details(journal, header_label = :label_updated_time_by, _model = nil, options = {})
-    header = <<-HTML
-      <div class="profile-wrap">
-        #{avatar(journal.user)}
-      </div>
-      <h4>
-        <div class="journal-link" style="float:right;">#{link_to "##{journal.anchor}", anchor: "note-#{journal.anchor}"}</div>
-        #{authoring journal.created_at, journal.user, label: header_label}
-        #{content_tag('a', '', name: "note-#{journal.anchor}")}
-      </h4>
-    HTML
+  def global_new_meeting_action?
+    request.path == new_meeting_path
+  end
 
-    if journal.details.any?
-      details = content_tag 'ul', class: 'details journal-attributes' do
-        journal.details.map do |detail|
-          if d = journal.render_detail(detail, cache: options[:cache])
-            content_tag('li', d.html_safe)
-          end
-        end.compact.join(' ').html_safe
-      end
+  def global_create_meeting_action?
+    request.path == meetings_path && @project.nil?
+  end
+
+  def copy_meeting_participants?
+    params[:meeting][:copy_participants] == "1"
+  end
+
+  def create_participants
+    @converted_params[:participants_attributes] = @copy_from.participants.map do |p|
+      {
+        "attended" => false,
+        "invited" => p.invited ? "1" : false,
+        "user_id" => p.user_id.to_s
+      }
     end
+  end
 
-    content_tag('div', "#{header}#{details}".html_safe, id: "change-#{journal.id}", class: 'journal')
+  def force_defaults
+    @converted_params[:participants_attributes].each { |p| p.reverse_merge! attended: false, invited: false }
+  end
+
+  def copy_param(key)
+    params[key.to_sym] == "1" || params.dig(:meeting, key.to_sym) == "1"
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,47 +20,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require_dependency 'journal_formatter/base'
 
 class OpenProject::JournalFormatter::Diff < JournalFormatter::Base
   include OpenProject::StaticRouting::UrlHelpers
 
   def render(key, values, options = {})
     merge_options = { only_path: true,
-                      no_html: false }.merge(options)
+                      html: true }.merge(options)
 
     render_ternary_detail_text(key, values.last, values.first, merge_options)
   end
 
   private
 
-  def label(key, no_html = false)
-    label = super key
+  def label(key, html: true)
+    label = super(key)
 
-    if no_html
-      label
+    if html
+      content_tag("strong", label)
     else
-      content_tag('strong', label)
+      label
     end
   end
 
   def render_ternary_detail_text(key, value, old_value, options)
     link = link(key, options)
 
-    label = label(key, options[:no_html])
+    label = label(key, html: options[:html])
 
     if value.blank?
-      I18n.t(:text_journal_deleted_with_diff, label: label, link: link)
+      I18n.t(:text_journal_deleted_with_diff, label:, link:)
     elsif old_value.present?
-      I18n.t(:text_journal_changed_with_diff, label: label, link: link)
+      I18n.t(:text_journal_changed_with_diff, label:, link:)
     else
-      I18n.t(:text_journal_set_with_diff, label: label, link: link)
+      I18n.t(:text_journal_set_with_diff, label:, link:)
     end
   end
 
@@ -71,18 +68,26 @@ class OpenProject::JournalFormatter::Diff < JournalFormatter::Base
   end
 
   def link(key, options)
-    url_attr = default_attributes(options).merge(controller: '/journals',
-                                                 action: 'diff',
-                                                 id: @journal.id,
-                                                 field: key.downcase)
+    url_attr = url_attr(key, options)
 
-    if options[:no_html]
-      url_for url_attr
-    else
+    if options[:html]
       link_to(I18n.t(:label_details),
               url_attr,
-              class: 'description-details')
+              target: "_top",
+              class: "diff-details")
+    else
+      url_for url_attr
     end
+  end
+
+  def url_attr(key, options)
+    default_attributes(options)
+    .merge(controller: "/journals",
+           action: "diff",
+           id: @journal.id,
+           field: key.downcase,
+           activity_page: options[:activity_page])
+  .compact
   end
 
   def default_attributes(options)

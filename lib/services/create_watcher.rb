@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,10 +30,11 @@ class Services::CreateWatcher
     @work_package = work_package
     @user = user
 
-    @watcher = Watcher.new(user: user, watchable: work_package)
+    @watcher = Watcher.new(user:, watchable: work_package)
   end
 
-  def run(send_notifications: true, success: ->(*) {}, failure: ->(*) {})
+  def run(send_notifications: nil, success: ->(*) {}, failure: ->(*) {})
+    send_notifications = Journal::NotificationConfiguration.active? if send_notifications.nil?
     if @work_package.watcher_users.include?(@user)
       success.(created: false)
     elsif @watcher.valid?
@@ -43,7 +43,7 @@ class Services::CreateWatcher
       OpenProject::Notifications.send(OpenProject::Events::WATCHER_ADDED,
                                       watcher: @watcher,
                                       watcher_setter: User.current,
-                                      send_notifications: send_notifications)
+                                      send_notifications:)
     else
       failure.(@watcher)
     end

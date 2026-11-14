@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -19,55 +19,123 @@
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 uk:
   activerecord:
     attributes:
       budget:
-        author: "Автор"
-        available: "Доступно"
-        budget: "Планується"
-        budget_ratio: "Витрачено (співвідношення)"
-        description: "Опис"
-        spent: "Витрачений"
-        status: "Статус"
-        subject: "Тема"
-        type: "Тип вартості"
-        labor_budget: "Планові витрати праці"
-        material_budget: "Планові витрати на одиницю продукції"
+        author: Автор
+        available: Доступно
+        base_amount: Базова сума
+        budget: Заплановано
+        budget_ratio: Витрачено (співвідношення)
+        description: Опис
+        labor_budget: Планові витрати на працю
+        labor_budget_items: Планові витрати на працю
+        material_budget: Планові витрати на одиницю продукції
+        spent: Витрачено
+        status: Статус
+        subject: Тема
+        type: Тип вартості
       work_package:
-        budget_subject: "Назва бюджету"
+        budget_subject: Назва бюджету
+    errors:
+      models:
+        labor_budget_item:
+          attributes:
+            principal:
+              not_a_member_of_budget_project: не є учасником проєкту бюджету
     models:
-      budget: "Бюджет"
-      material_budget_item: "Одиниця"
+      budget:
+        one: Бюджет
+        few: Бюджети
+        many: Бюджети
+        other: Бюджети
+      labor_budget_item:
+        one: Планові витрати на працю
+        few: Планові витрати на працю
+        many: Планові витрати на працю
+        other: Планові витрати на працю
+      material_budget_item:
+        one: Одиниця
+        few: Одиниці
+        many: Одиниці
+        other: Одиниці
+  activity:
+    filter:
+      budget: Бюджети
   attributes:
-    budget: "Бюджет"
-  button_add_budget_item: "Додайте планові витрати"
-  button_add_budget: "Додайте бюджет"
-  button_add_cost_type: "Додати тип витрат"
-  button_cancel_edit_budget: "Скасувати редагування бюджету"
-  button_cancel_edit_costs: "Скасування  редагування витрат "
-  caption_labor: "Праця"
-  caption_labor_costs: "Фактичні витрати на оплату праці"
-  caption_material_costs: "Фактичні витрати на одиницю"
-  budgets_title: "Бюджети"
+    budget: Бюджет
+  budgets:
+    labor_budget_items:
+      no_rate_at_fixed_date: 'Не вказано погодинну ставку для цієї дати: %{date}'
+    widgets:
+      budget_by_cost_type:
+        blankslate:
+          description: Переглядайте свої бюджети й витрати, щоб ефективно відстежувати стан проєкту
+          heading: Почніть контролювати роботу над проєктом
+        blankslate_zero:
+          description: Додайте інформацію про запланований бюджет, щоб побачити дані тут
+          heading: Немає інформації про бюджет
+        count_caption:
+          one: Дані, агреговані з %{count} бюджету
+          other: Дані, агреговані з %{count} бюджетів
+          zero: Немає даних про бюджет.
+        count_caption_with_subitems:
+          portfolio:
+            one: Дані, агреговані з %{count} бюджету, включено в цей портфель і його піделементи.
+            other: Дані, агреговані з %{count} бюджетів, включено в цей портфель і його піделементи.
+            zero: Немає даних про бюджет.
+          program:
+            one: Дані, агреговані з %{count} бюджету, включено в цю програму і її піделементи.
+            other: Дані, агреговані з %{count} бюджетів, включено в цю програму і її піделементи.
+            zero: Немає даних про бюджет.
+          project:
+            one: Дані, агреговані з %{count} бюджету, включено в цей проєкт і його піделементи.
+            other: Дані, агреговані з %{count} бюджетів, включено в цей проєкт і його піделементи.
+            zero: Немає даних про бюджет.
+        title: Бюджет за типом витрат
+        view_details: Переглянути інформацію про бюджет
+      budget_totals:
+        remaining_budget: Залишок бюджету
+        spent_budget: Витрачений бюджет
+        title: Загальні суми бюджету
+        total_actual_costs: Загальна сума фактичних витрат
+        total_planned_budget: Загальна сума запланованого бюджету
+  budgets_title: Бюджети
+  button_add_budget: Додати бюджет
+  button_add_budget_item: Додайте планові витрати
+  button_add_cost_type: Додати тип витрат
+  button_cancel_edit_budget: Скасувати редагування бюджету
+  button_cancel_edit_costs: 'Скасування  редагування витрат '
+  caption_labor: Праця
+  caption_labor_costs: Фактичні витрати на оплату праці
+  caption_material_costs: Фактичні витрати на одиницю
   events:
-    budget: "Бюджет відредаговано"
-  help_click_to_edit: "Натисніть тут, щоб редагувати."
-  help_currency_format: "Формат відображених валютних значень. %n замінюється на вартість валюти, %u це замінюється грошовою одиницею."
-  help_override_rate: "Введіть тут значення, щоб змінити стандартну швидкість."
-  label_budget: "Бюджет"
-  label_budget_new: "Новий бюджет"
-  label_budget_plural: "Бюджети"
-  label_budget_id: "Бюджет  #%{id}"
-  label_deliverable: "Бюджет"
-  label_example_placeholder: 'e.g., %{decimal}'
-  label_view_all_budgets: "Переглянути всі бюджети"
-  label_yes: "Так"
-  notice_budget_conflict: "Робочі пакети повинні бути одного проекту."
-  notice_no_budgets_available: "Немає доступних бюджетів."
-  permission_edit_budgets: "Редагувати бюджети"
-  permission_view_budgets: "Переглянути бюджети"
-  project_module_budgets: "Бюджети"
-  text_budget_reassign_to: "Reassign them to this budget:"
-  text_budget_delete: "Delete the budget from all work packages"
-  text_budget_destroy_assigned_wp: "There are %{count} work packages assigned to this budget. What do you want to do?"
+    budget: Бюджет відредаговано
+  help_click_to_edit: Натисніть тут, щоб редагувати.
+  help_currency_format: Format of displayed currency values. %n is replaced with the currency value, %u is replaced with the currency unit.
+  help_override_rate: Введіть тут значення, щоб змінити стандартну швидкість.
+  label_budget_available: Доступний бюджет
+  label_budget_details: Деталі бюджету
+  label_budget_id: 'Бюджет #%{id}'
+  label_budget_new: Новий бюджет
+  label_budget_planned: Запланований бюджет
+  label_budget_plural: Бюджети
+  label_budget_spent: Витрачений бюджет
+  label_budget_spent_ratio: Коефіцієнт використання бюджету
+  label_budget_totals: Загальні суми
+  label_deliverable: Бюджет
+  label_example_placeholder: наприклад, %{decimal}
+  label_view_all_budgets: Переглянути всі бюджети
+  label_yes: Так
+  notice_budget_conflict: Робочі задачі повинні бути з одного проекту.
+  notice_no_budgets_available: Немає доступних бюджетів.
+  permission_edit_budgets: Редагувати бюджети
+  permission_view_budgets: Переглянути бюджети
+  plugin_budgets_engine:
+    name: Бюджети
+  project_module_budgets: Бюджети
+  text_budget_delete: Видалити цей бюджет з усіх пакетів робіт
+  text_budget_destroy_assigned_wp: Цьому бюджету призначено кілька (%{count}) пакетів робіт. Що потрібно зробити?
+  text_budget_reassign_to: 'Перепризначити їх для цього бюджету:'

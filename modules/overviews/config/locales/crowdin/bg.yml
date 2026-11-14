@@ -1,4 +1,11 @@
+---
 bg:
+  activerecord:
+    models:
+      grids/overview:
+        one: Overview
+        other: Overviews
   overviews:
-    label: 'Общ преглед'
-  permission_manage_overview: 'Управление на страницата с общ преглед'
+    label_dashboard: Табло
+    label_home: "%{workspace_type} home"
+    label_overview: Общ преглед

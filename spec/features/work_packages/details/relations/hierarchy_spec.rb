@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,25 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples 'work package relations tab', js: true, selenium: true do
-  include_context 'ng-select-autocomplete helpers'
+RSpec.shared_examples "work package relations tab", :js, :with_cuprite do
+  include_context "ng-select-autocomplete helpers"
 
-  let(:user) { FactoryBot.create :admin }
+  let(:user) { create(:admin) }
 
-  let(:project) { FactoryBot.create(:project) }
-  let(:work_package) { FactoryBot.create(:work_package, project: project) }
-  let(:relations) { ::Components::WorkPackages::Relations.new(work_package) }
-  let(:tabs) { ::Components::WorkPackages::Tabs.new(work_package) }
-
-  let(:relations_tab) { find('.op-tab-row--link_selected', text: 'RELATIONS') }
+  let(:project) { create(:project) }
+  let(:work_package) { create(:work_package, project:) }
+  let(:relations) { Components::WorkPackages::Relations.new(work_package) }
 
   let(:visit) { true }
 
@@ -51,212 +49,130 @@ shared_examples 'work package relations tab', js: true, selenium: true do
   end
 
   def visit_relations
-    wp_page.visit_tab!('relations')
+    wp_page.visit_tab!("relations")
     expect_angular_frontend_initialized
     wp_page.expect_subject
     loading_indicator_saveguard
   end
 
-  describe 'as admin' do
-    let!(:parent) { FactoryBot.create(:work_package, project: project, subject: 'Parent WP') }
-    let!(:child) { FactoryBot.create(:work_package, project: project, subject: 'Child WP') }
-    let!(:child2) { FactoryBot.create(:work_package, project: project, subject: 'Another child WP') }
+  describe "as admin" do
+    let!(:parent) { create(:work_package, project:, subject: "Parent WP") }
+    let!(:child) { create(:work_package, project:, subject: "Child WP") }
+    let!(:child2) { create(:work_package, project:, subject: "Another child WP") }
 
-    it 'allows to manage hierarchy' do
+    it "allows to manage hierarchy" do
       # Add parent
-      relations.add_parent(parent.id, parent)
+      relations.add_parent(parent)
+      wp_page.expect_and_dismiss_toaster(message: "Successful update.")
       relations.expect_parent(parent)
+      tabs.expect_counter(relations_tab, 1)
 
       ##
       # Add child #1
-      relations.openChildrenAutocompleter
-
       relations.add_existing_child(child)
       relations.expect_child(child)
+      tabs.expect_counter(relations_tab, 2)
 
       ##
       # Add child #2
-      relations.openChildrenAutocompleter
-
       relations.add_existing_child(child2)
       relations.expect_child(child2)
-
-      # Count child relations in split view
-      tabs.expect_counter(relations_tab, 2)
-    end
-
-    context 'when switching to custom field with required CF' do
-      let(:custom_field) do
-        FactoryBot.create(
-          :work_package_custom_field,
-          field_format: 'string',
-          default_value: nil,
-          is_required: true,
-          is_for_all: true
-        )
-      end
-      let(:type2) { FactoryBot.create(:type, custom_fields: [custom_field]) }
-      let(:relations) { ::Components::WorkPackages::Relations.new(parent) }
-      let!(:status) { FactoryBot.create(:status, is_default: true) }
-      let!(:priority) { FactoryBot.create(:priority, is_default: true) }
-
-      before do
-        project.types << type2
-        project.save!
-        custom_field
-      end
-
-      it 'shows the required field when switching' do
-        relations.inline_create_child 'my new child'
-        table = relations.children_table
-
-        table.expect_work_package_subject 'my new child'
-        wp = WorkPackage.find_by!(subject: 'my new child')
-        type_field = table.edit_field(wp, :type)
-
-        type_field.activate!
-        type_field.set_value type2.name
-
-        wp_page.expect_toast message: "#{custom_field.name} can't be blank.",
-                                    type: 'error'
-
-        cf_field = wp_page.edit_field("customField#{custom_field.id}")
-        cf_field.expect_active!
-        cf_field.expect_value('')
-
-        cf_field.set_value 'my value'
-        cf_field.save!
-
-        wp_page.expect_toast message: "Successful update.",
-                                    type: 'success'
-
-        wp.reload
-        expect(wp.custom_value_for(custom_field).value).to eq 'my value'
-      end
-    end
-
-    describe 'inline create' do
-      let!(:status) { FactoryBot.create(:status, is_default: true) }
-      let!(:priority) { FactoryBot.create(:priority, is_default: true) }
-      let(:type_bug) { FactoryBot.create(:type_bug) }
-      let!(:project) do
-        FactoryBot.create(:project, types: [type_bug])
-      end
-
-      it 'can inline-create children' do
-        relations.inline_create_child 'my new child'
-        table = relations.children_table
-
-        table.expect_work_package_subject 'my new child'
-        work_package.reload
-        expect(work_package.children.count).to eq(1)
-
-        # If new child is inline created, counter should increase
-        tabs.expect_counter(relations_tab, 1)
-      end
+      tabs.expect_counter(relations_tab, 3)
     end
   end
 
-  describe 'relation group-by toggler' do
-    let(:project) { FactoryBot.create :project, types: [type_1, type_2] }
-    let(:type_1) { FactoryBot.create :type }
-    let(:type_2) { FactoryBot.create :type }
+  describe "as non-admin" do
+    let(:project) { create(:project, types: [type1, type2]) }
+    let(:type1) { create(:type) }
+    let(:type2) { create(:type) }
 
-    let(:to_1) { FactoryBot.create(:work_package, type: type_1, project: project) }
-    let(:to_2) { FactoryBot.create(:work_package, type: type_2, project: project) }
+    let(:to1) { create(:work_package, type: type1, project:) }
+    let(:to2) { create(:work_package, type: type2, project:) }
 
-    let!(:relation_1) do
-      FactoryBot.create :relation,
-                        from: work_package,
-                        to: to_1,
-                        relation_type: Relation::TYPE_FOLLOWS
+    let!(:relation1) do
+      create(:relation,
+             from: work_package,
+             to: to1,
+             relation_type: Relation::TYPE_FOLLOWS)
     end
-    let!(:relation_2) do
-      FactoryBot.create :relation,
-                        from: work_package,
-                        to: to_2,
-                        relation_type: Relation::TYPE_RELATES
+    let!(:relation2) do
+      create(:relation,
+             from: work_package,
+             to: to2,
+             relation_type: Relation::TYPE_RELATES)
     end
 
-    let(:toggle_btn_selector) { '#wp-relation-group-by-toggle' }
     let(:visit) { false }
 
     before do
       visit_relations
 
-      wp_page.visit_tab!('relations')
+      wp_page.visit_tab!("relations")
       wp_page.expect_subject
       loading_indicator_saveguard
     end
 
-    describe 'with limited permissions' do
+    describe "with limited permissions" do
       let(:permissions) { %i(view_work_packages) }
       let(:user_role) do
-        FactoryBot.create :role, permissions: permissions
+        create(:project_role, permissions:)
       end
 
       let(:user) do
-        FactoryBot.create :user,
-                          member_in_project: project,
-                          member_through_role: user_role
+        create(:user,
+               member_with_roles: { project => user_role })
       end
 
-      context 'as view-only user, with parent set' do
-        let!(:parent) { FactoryBot.create(:work_package, project: project, subject: 'Parent WP') }
-        let!(:work_package) { FactoryBot.create(:work_package, parent: parent, project: project, subject: 'Child WP') }
+      context "as view-only user, with parent set" do
+        let!(:parent) { create(:work_package, project:, subject: "Parent WP") }
+        let!(:work_package) { create(:work_package, parent:, project:, subject: "Child WP") }
 
-        it 'shows no links to create relations' do
-          # No create buttons should exist
-          expect(page).to have_no_selector('.wp-relations-create-button')
-
-          # Test for add relation
-          expect(page).to have_no_selector('#relation--add-relation')
+        it "shows no links to create relations" do
+          # No create buttons should exist (relation or children)
+          relations.expect_no_add_relation_button
 
           # Test for add parent
-          expect(page).to have_no_selector('.wp-relation--parent-change')
-
-          # Test for add children
-          expect(page).to have_no_selector('#hierarchy--add-exisiting-child')
-          expect(page).to have_no_selector('#hierarchy--add-new-child')
+          expect(page).to have_no_css(".wp-relation--parent-change")
 
           # But it should show the linked parent
-          expect(page).to have_selector('[data-qa-selector="op-wp-breadcrumb-parent"]', text: parent.subject)
+          expect(page).to have_test_selector("op-wp-breadcrumb-parent", text: parent.subject)
 
           # And it should count the two relations
-          tabs.expect_counter(relations_tab, 2)
+          tabs.expect_counter(relations_tab, 3)
         end
       end
 
-      context 'with manage_subtasks permissions' do
+      context "with manage_subtasks permissions" do
         let(:permissions) { %i(view_work_packages manage_subtasks) }
-        let!(:parent) { FactoryBot.create(:work_package, project: project, subject: 'Parent WP') }
-        let!(:child) { FactoryBot.create(:work_package, project: project, subject: 'Child WP') }
+        let!(:parent) { create(:work_package, project:, subject: "Parent WP") }
+        let!(:child) { create(:work_package, project:, subject: "Child WP") }
 
-        it 'should be able to link parent and children' do
+        it "is able to link parent and children" do
           # Add parent
-          relations.add_parent(parent.id, parent)
-          wp_page.expect_and_dismiss_toaster(message: 'Successful update.')
+          relations.add_parent(parent)
+          wp_page.expect_and_dismiss_toaster(message: "Successful update.")
           relations.expect_parent(parent)
+          expect(page).to have_button(accessible_name: "Change parent")
+          tabs.expect_counter(relations_tab, 3)
 
           ##
           # Add child
-          relations.openChildrenAutocompleter
-
           relations.add_existing_child(child)
-          wp_page.expect_and_dismiss_toaster(message: 'Successful update.')
           relations.expect_child(child)
 
           # Expect counter to add up child to the existing relations
-          tabs.expect_counter(relations_tab, 3)
+          tabs.expect_counter(relations_tab, 4)
 
           # Remove parent
           relations.remove_parent
-          wp_page.expect_and_dismiss_toaster(message: 'Successful update.')
+          wp_page.expect_and_dismiss_toaster(message: "Successful update.")
           relations.expect_no_parent
+          tabs.expect_counter(relations_tab, 3)
 
           # Remove child
           relations.remove_child(child)
           # Should also check for successful update but no message is shown, yet.
+          expect_and_dismiss_flash(message: "Successful update.")
           relations.expect_not_child(child)
 
           # Expect counter to count the two relations
@@ -267,12 +183,19 @@ shared_examples 'work package relations tab', js: true, selenium: true do
   end
 end
 
-context 'Split screen' do
-  let(:wp_page) { Pages::SplitWorkPackage.new(work_package) }
-  it_behaves_like 'work package relations tab'
+RSpec.context "within a primerized split screen" do
+  let(:wp_page) { Pages::PrimerizedSplitWorkPackage.new(work_package) }
+  let(:tabs) { Components::WorkPackages::PrimerizedTabs.new }
+  let(:relations_tab) { "relations" }
+
+  it_behaves_like "work package relations tab"
 end
 
-context 'Full screen' do
+RSpec.context "within a full screen" do
   let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
-  it_behaves_like 'work package relations tab'
+  let(:tabs) { Components::WorkPackages::Tabs.new(work_package) }
+
+  let(:relations_tab) { find(".op-tab-row--link_selected", text: "RELATIONS") }
+
+  it_behaves_like "work package relations tab"
 end

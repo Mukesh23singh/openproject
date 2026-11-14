@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/attachments/attachment_representer'
+require "api/v3/attachments/attachment_representer"
 
 module API
   module V3
@@ -47,7 +46,7 @@ module API
             post &API::V3::Attachments::AttachmentsByContainerAPI.prepare
           end
 
-          route_param :id, type: Integer, desc: 'Attachment ID' do
+          route_param :id, type: Integer, desc: "Attachment ID" do
             after_validation do
               @attachment = Attachment.find(params[:id])
 
@@ -55,7 +54,7 @@ module API
             end
 
             get do
-              AttachmentRepresenter.new(@attachment, embed_links: true, current_user: current_user)
+              AttachmentRepresenter.new(@attachment, embed_links: true, current_user:)
             end
 
             delete &::API::V3::Utilities::Endpoints::Delete.new(model: Attachment).mount
@@ -68,11 +67,11 @@ module API
               get do
                 attachment = Attachment.pending_direct_upload.find(params[:id])
 
-                raise API::Errors::NotFound unless attachment.file.readable?
+                raise API::Errors::NotFound unless DirectFogUploader.for_attachment(attachment).readable?
 
                 ::Attachments::FinishDirectUploadJob.perform_later attachment.id
 
-                ::API::V3::Attachments::AttachmentRepresenter.new(attachment, current_user: current_user)
+                ::API::V3::Attachments::AttachmentRepresenter.new(attachment, current_user:)
               end
             end
           end

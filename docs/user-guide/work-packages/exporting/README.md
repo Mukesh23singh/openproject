@@ -1,89 +1,78 @@
 ---
 sidebar_navigation:
-  title: Exporting
-  priority: 600
+  title: Export work packages
+  priority: 930
 description: How to export work packages for other tools, such as Microsoft Excel
-robots: index, follow
 keywords: work package exports, CSV, Excel, XLS, PDF
 ---
 
-# Exporting work packages
+# Export work packages
 
-You can export work packages from your OpenProject instance to other formats using the export functionality. 
+You can export [multiple work packages](#export-multiple-work-packages) in PDF/XLS/CSV formats or [a single work package](#export-a-single-work-package) in PDF/Atom format.
 
+## Overview
 
+| Topic                                               | Content                                                                           |
+| --------------------------------------------------- | :-------------------------------------------------------------------------------- |
+| [PDF table](pdf-table)                              | Export the work package table with the selected columns as rows in a PDF.         |
+| [PDF report](pdf-report)                            | Export detailed work plans with a title page, table of contents and descriptions. |
+| [Gantt chart PDF](gantt-chart-pdf)                  | Export the Gantt chart in PDF format.                                             |
+| [XLS export (Excel)](xls-excel)                     | Export the work package table as a spreadsheet for Microsoft Excel.               |
+| [CSV export](csv)                                   | Export the work package table as a comma-separated file.                          |
+| [Work package PDF export](work-package-pdf)         | Export one work package in PDF format using a template.                           |
+| [Work package Atom export](work-package-atom)       | Export one work package in Atom format.                                           |
 
-## How to trigger an export
+## Export multiple work packages
 
-To export a work packages list or card view to another format, visit the *Work packages* module or a saved view and click on the settings icon in the top right. Trigger the **Export** dialog from the dropdown menu that opens.
+### How to trigger an export
 
-![Exporting from the table](export-gantt-chart.png)
+To export work packages to another format, visit the **Work packages** module and select a default or saved work package view (table or card view) you want to export. Click on the settings icon in the top right corner. Trigger the **Export** dialog from the dropdown menu.
 
-This will open a dialog similar to the following screenshot, where you can select the desired format. Below, we will detail how to control the data being exported as well as the various formats.
+![Exporting from the table](openproject_export_wp.png)
 
+This will open a dialog where you can select the desired format. For **PDF** you additionally select the export type: table, report or Gantt chart. Adjust the options offered for your selection and click the **Export** button to start the export. The pages linked above detail what each format contains.
 
+The export is then prepared in the background. A dialog shows the progress and offers the download as soon as the file is ready. The generated file is only kept for a limited time, so a download link cannot be reused indefinitely.
 
-![The export dialog](dialog.png)
+> [!NOTE]
+> You need the **Export work packages** permission in order to export a work package list. It can be assigned to a role in the [roles and permissions](../../../system-admin-guide/users-permissions/roles-permissions/) administration.
 
+### Save export settings
 
+Export settings can be saved for [saved work package views](../work-package-table-configuration/#save-work-package-views). This allows you to easily share export settings with your team and save time in the future.
 
-## Changing what will be exported
+To save export settings adjust the export to your liking and check the **Save setting** checkbox before triggering an export. Clicking the **Export** button will trigger the adjustments to a work package query. The checkbox will remain checked for the next export.
 
-From the work packages module, all work packages that are included in the filter list will be exported. Up to a total of 500 work packages can be exported at once.
+The checkbox is not offered for default views or views you have not saved yet.
 
-<div class="alert alert-info" role="alert">
-**Note**: If you need to export more than 500 items, filter the work packages appropriately to export multiple files.
-</div>
-For self-hosted versions of OpenProject you can change this limit in the [work package settings](../../../system-admin-guide/manage-work-packages/work-package-settings/) in the system administration.
+![Checkbox to save export settings in work packages export modal in OpenProject](openproject-user-guide-wp-export-settings-save-checkbox.png)
 
+> [!TIP]
+>
+> If the query is public, other users can edit it and save the export settings. If you want to prevent other users from adjusting the export settings, you need to create a private work package query.
 
-**Columns**
+## Export a single work package
 
-The exported file will display the columns that you activated for the work package table. With it, you can control the columns that will be contained in various formats. Please make sure to [save](../work-package-table-configuration/#save-work-package-views) the view you configured, as saving is a necessary precondition to keep the selected columns in the export.
+It is also possible to export single work packages in PDF and Atom formats. To do that, click on the settings icon in the top right corner and select either the **Generate PDF** or the **Download Atom** option from the dropdown menu.
 
-Some formats such as PDF will limit the number of columns available due to limitations of the PDF rendering engine to avoid overflowing the available space.
+![Single work package export options in OpenProject](openproject_user_guide_work_package_export_options.png)
 
-
+See [Work package PDF export](work-package-pdf) and [Work package Atom export](work-package-atom) for what each format contains.
 
 ## PDF export
 
-OpenProject has multiple options of exporting the results to PDF:
+OpenProject has multiple options for exporting work packages in PDF format. The following applies to all of them.
 
+> [!TIP]
+>
+> OpenProject PDF export supports commonly used character sets, including multilingual fonts with different alphabets, various symbols (mathematical, technical) and emojis.
+>
+![Example of a PDF export in OpenProject that includes lorem ipsum text in multiple languages and mathematical symbols](openproject-user-guide-wp-export-multilingual-symbols-example.png)
 
+> [!NOTE]
+>
+> Rich text can be embedded using [Macros](../../wysiwyg/#attributes), such as descriptions of other work packages. This feature is supported as long as the embedding is not within table cells, or if it only contains basic text formatting.
 
-- **PDF** export of the work package list as rows
-- **PDF with descriptions** same as above with work package descriptions output. Note that this does not include a fully rendered markdown description, but a stripped version of it due to technical limitations of the PDF rendering engine.
-- **PDF with attachments** of work packages with their attachments inlined to fit as best as possible
-- **PDF with descriptions and attachments** The above options combined to create a PDF export with work package descriptions and their attachments
+### Page breaks
 
-
-
-## Excel (XLS) export
-
-OpenProject can export the table for Microsoft Excel with the following options:
-
-- **XLS** a plain sheet that matches the OpenProject work packages table with its columns and work packages as rows matching the selected filter(s).
-- **XLS with descriptions** same as above, but with an additional column for work package descriptions, which cannot be selected in the table
-- **XLS with relations** Same as XLS, but with additional columns to list each work package relation in a separate row with the relation target and its ID and relation type included in the export
-
-<div class="alert alert-info" role="alert">
-**Note**: To open XLS exported files into Microsoft Excel, ensure you set the encoding to UTF-8. Excel will not auto-detect the encoding or ask you to specify it, but simply open with a wrong encoding under Microsoft Windows.
-</div>
-
-
-
-## CSV export
-
-OpenProject can export the table into a comma-separated CSV. This file will be UTF-8 encoded.
-
-
-
-<div class="alert alert-info" role="alert">
-**Note**: To open CSV exported files into Microsoft Excel, ensure you set the encoding to UTF-8. Excel will not auto-detect the encoding or ask you to specify it, but simply open with a wrong encoding under Microsoft Windows.
-</div>
-
-
-
-## Atom (XML) export
-
-OpenProject can export the table into a XML-based atom format. This file will be UTF-8 encoded.
+If you used page breaks in work package descriptions, contents will be split into separate pages accordingly.

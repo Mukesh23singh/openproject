@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,33 +20,22 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy,
-  Component,
-  ElementRef,
-  Input,
-  OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Input, OnChanges, OnInit, ViewEncapsulation, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 
 import { TimezoneService } from 'core-app/core/datetime/timezone.service';
-import {
-  AvatarSize,
-  PrincipalRendererService,
-} from './principal-renderer.service';
+import { AvatarOptions, AvatarSize, HoverCardOptions, PrincipalRendererService } from './principal-renderer.service';
 import { PrincipalLike } from './principal-types';
-import { DatasetInputs } from 'core-app/shared/components/dataset-inputs.decorator';
-import { PrincipalHelper } from 'core-app/shared/components/principal/principal-helper';
-import PrincipalPluralType = PrincipalHelper.PrincipalPluralType;
-import PrincipalType = PrincipalHelper.PrincipalType;
+import { populateInputsFromDataset } from 'core-app/shared/components/dataset-inputs';
+import { PrincipalType } from 'core-app/shared/components/principal/principal-helper';
+import { PrincipalsResourceService } from 'core-app/core/state/principals/principals.service';
 
 export const principalSelector = 'op-principal';
 
@@ -55,44 +44,92 @@ export interface PrincipalInput {
   id:string;
 }
 
-@DatasetInputs
 @Component({
   template: '',
   selector: principalSelector,
+  styleUrls: ['./principal.component.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  encapsulation: ViewEncapsulation.None,
+  standalone: false,
 })
-export class OpPrincipalComponent implements OnInit {
+export class OpPrincipalComponent implements OnInit, OnChanges {
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  readonly PathHelper = inject(PathHelperService);
+  readonly principalRenderer = inject(PrincipalRendererService);
+  readonly principalResourceService = inject(PrincipalsResourceService);
+  readonly I18n = inject(I18nService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly timezoneService = inject(TimezoneService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   @Input() principal:PrincipalLike;
 
   @Input() hideAvatar = false;
 
+  @Input() avatarImageAltText?:string;
+
+  @Input() avatarImageUrl?:string;
+
+  @Input() avatarFallbackImageUrl?:string;
+
   @Input() hideName = false;
+
+  @Input() nameClasses? = '';
 
   @Input() link = true;
 
   @Input() size:AvatarSize = 'default';
 
-  public constructor(readonly elementRef:ElementRef,
-    readonly PathHelper:PathHelperService,
-    readonly principalRenderer:PrincipalRendererService,
-    readonly I18n:I18nService,
-    readonly apiV3Service:APIV3Service,
-    readonly timezoneService:TimezoneService) {
+  @Input() avatarClasses? = '';
 
+  @Input() hoverCard= true;
+  @Input() hoverCardUrl= '';
+
+  @Input() title = '';
+
+  private initialized = false;
+
+  public constructor() {
+    populateInputsFromDataset(this);
   }
 
   ngOnInit() {
-    this.principalRenderer.render(
-      this.elementRef.nativeElement as HTMLElement,
-      this.principal,
-      {
-        hide: this.hideName,
-        link: this.link,
-      },
-      {
+    this.initialized = true;
+    this.render();
+  }
+
+  ngOnChanges() {
+    if (this.initialized) this.render();
+  }
+
+  private render() {
+    this.elementRef.nativeElement.replaceChildren();
+    if (this.principal?.name) {
+      const avatarOptions:AvatarOptions = {
         hide: this.hideAvatar,
         size: this.size,
-      },
-    );
+        imageAltText: this.avatarImageAltText,
+        imageUrl: this.avatarImageUrl,
+        fallbackImageUrl: this.avatarFallbackImageUrl,
+      };
+
+      const hoverCardOptions:HoverCardOptions = {
+        isActivated: this.hoverCard,
+        url: this.hoverCardUrl,
+      };
+
+      this.principalRenderer.render(
+        this.elementRef.nativeElement,
+        this.principal,
+        {
+          hide: this.hideName,
+          link: this.link,
+          classes: this.nameClasses,
+        },
+        avatarOptions,
+        hoverCardOptions,
+        this.title === '' ? null : this.title,
+      );
+    }
   }
 }

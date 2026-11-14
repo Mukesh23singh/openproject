@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module ::TwoFactorAuthentication
   module Users
     class TwoFactorDevicesController < ::TwoFactorAuthentication::BaseController
@@ -7,8 +36,12 @@ module ::TwoFactorAuthentication
       # Ensure where not the user under edit
       before_action :require_not_self
 
+      # Ensure that only mobile devices are added for other users
+      before_action :ensure_only_sms_type, only: :new
+
       # Password confirmation helpers and actions
       include PasswordConfirmation
+
       before_action :check_password_confirmation,
                     only: :make_default
 
@@ -19,17 +52,19 @@ module ::TwoFactorAuthentication
 
       ##
       # Register the device and let the user confirm
-      def register
+      def register # rubocop:disable Metrics/AbcSize
         @device_type = params[:key].to_sym
         @device = new_device_type! @device_type
 
+        has_default = ::TwoFactorAuthentication::Device.has_default?(target_user)
         @device.attributes = new_device_params
         if @device.confirm_registration_and_save
+          logout_other_sessions unless has_default
           Rails.logger.info "Admin ##{current_user.id} registered a new device #{@device_type} for #{@user.id}."
           redirect_to index_path
         else
           Rails.logger.info "Admin ##{current_user.id} failed to register a new device #{@device_type} for #{@user.id}."
-          render 'two_factor_authentication/two_factor_devices/new'
+          render "two_factor_authentication/two_factor_devices/new", status: :unprocessable_entity
         end
       end
 
@@ -37,7 +72,7 @@ module ::TwoFactorAuthentication
       # Delete all devices
       def delete_all
         @user.otp_devices.delete_all
-        flash[:notice] = I18n.t('two_factor_authentication.admin.all_devices_deleted')
+        flash[:notice] = I18n.t("two_factor_authentication.admin.all_devices_deleted")
         redirect_to index_path
       end
 
@@ -49,54 +84,24 @@ module ::TwoFactorAuthentication
         if @device.make_default!
           flash[:notice] = t(:notice_successful_update)
         else
-          flash[:error] = t('two_factor_authentication.devices.make_default_failed')
+          flash[:error] = t("two_factor_authentication.devices.make_default_failed")
         end
 
         redirect_to index_path
       end
 
       ##
-      # Send a confirmation and request a OTP entry from the user to activate the device
-      def confirm
-        if request.get?
-          request_device_confirmation_token
-        else
-          return unless ensure_token_parameter
-
-          validate_device_token
-        end
-      end
-
-      ##
-      # Validate the token input
-      def validate_device_token
-        service = token_service(@device)
-        result = service.verify(params[:otp])
-
-        if result.success? && @device.confirm_registration_and_save
-          flash[:notice] = t('two_factor_authentication.devices.registration_complete')
-          return redirect_to action: :index
-        elsif !result.success?
-          flash[:error] = t('two_factor_authentication.devices.registration_failed_token_invalid')
-        else
-          flash[:error] = t('two_factor_authentication.devices.registration_failed_update')
-        end
-
-        redirect_to confirm_two_factor_device_path(@device)
-      end
-
-      ##
-      # Destroy the given device if its not the default
+      # Destroy the given device if it's not the default
       def destroy
         if @device.default && strategy_manager.enforced?
-          render_400 message: t('two_factor_authentication.devices.is_default_cannot_delete')
+          render_400 message: t("two_factor_authentication.devices.is_default_cannot_delete")
           return
         end
 
         if @device.destroy
           flash[:notice] = t(:notice_successful_delete)
         else
-          flash[:error] = t('two_factor_authentication.devices.failed_to_delete')
+          flash[:error] = t("two_factor_authentication.devices.failed_to_delete")
           Rails.logger.error "Failed to delete #{@device.id} of user#{@user.id}. Errors: #{@device.errors.full_messages.join(' ')}"
         end
 
@@ -104,6 +109,12 @@ module ::TwoFactorAuthentication
       end
 
       private
+
+      def ensure_only_sms_type
+        return if params[:type] == "sms"
+
+        render_400(message: I18n.t("two_factor_authentication.admin.only_sms_allowed"))
+      end
 
       def new_device_params
         # Overrides the base controller to active the device
@@ -118,10 +129,12 @@ module ::TwoFactorAuthentication
         edit_user_path(@user, tab: :two_factor_authentication)
       end
 
+      def registration_success_path
+        index_path
+      end
+
       def find_user
-        @user = User.find(params[:id])
-      rescue ActiveRecord::RecordNotFound
-        render_404
+        @user = User.visible.find(params[:id])
       end
 
       def target_user
@@ -130,7 +143,7 @@ module ::TwoFactorAuthentication
 
       def require_not_self
         if current_user.id == @user.id
-          render_403(message: I18n.t('two_factor_authentication.admin.self_edit_forbidden'))
+          render_403(message: I18n.t("two_factor_authentication.admin.self_edit_forbidden"))
         end
       end
     end

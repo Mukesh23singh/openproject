@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/cost_types/cost_type_representer'
+require "api/v3/cost_types/cost_type_representer"
 
 module API
   module V3
@@ -36,18 +33,16 @@ module API
       class CostTypesAPI < ::API::OpenProjectAPI
         resources :cost_types do
           after_validation do
-            authorize_any(%i[view_cost_entries view_own_cost_entries],
-                          global: true,
-                          user: current_user)
+            authorize_in_any_project(%i[view_cost_entries view_own_cost_entries])
           end
 
-          route_param :id, type: Integer, desc: 'Cost type ID' do
+          route_param :id, type: Integer, desc: "Cost type ID" do
             after_validation do
               @cost_type = CostType.active.find(params[:id])
             end
 
             get do
-              CostTypeRepresenter.new(@cost_type, current_user: current_user)
+              CostTypeRepresenter.new(@cost_type, current_user:)
             end
           end
         end

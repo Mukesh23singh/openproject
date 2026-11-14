@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,31 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Notifications::NotificationsAPI,
-         'update read status',
-         type: :request,
-         content_type: :json do
+RSpec.describe API::V3::Notifications::NotificationsAPI,
+               "update read status",
+               content_type: :json do
   include API::V3::Utilities::PathHelper
 
-  shared_let(:project) { FactoryBot.create(:project) }
-  shared_let(:work_package) { FactoryBot.create(:work_package, project: project) }
+  shared_let(:project) { create(:project) }
+  shared_let(:work_package) { create(:work_package, project:) }
   shared_let(:recipient) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_work_packages]
+    create(:user,
+           member_with_permissions: { project => %i[view_work_packages] })
   end
   shared_let(:notification) do
-    FactoryBot.create :notification,
-                      recipient: recipient,
-                      resource: work_package,
-                      project: project
+    create(:notification,
+           recipient:,
+           resource: work_package)
   end
 
   let(:send_read) do
@@ -63,29 +60,29 @@ describe ::API::V3::Notifications::NotificationsAPI,
     login_as current_user
   end
 
-  describe 'recipient user' do
+  describe "recipient user" do
     let(:current_user) { recipient }
 
-    it 'can read and unread' do
+    it "can read and unread" do
       send_read
-      expect(last_response.status).to eq(204)
+      expect(last_response).to have_http_status(:no_content)
       expect(notification.reload.read_ian).to be_truthy
 
       send_unread
-      expect(last_response.status).to eq(204)
+      expect(last_response).to have_http_status(:no_content)
       expect(notification.reload.read_ian).to be_falsey
     end
   end
 
-  describe 'admin user' do
-    let(:current_user) { FactoryBot.build(:admin) }
+  describe "admin user" do
+    let(:current_user) { build(:admin) }
 
-    it 'returns a 404 response' do
+    it "returns a 404 response" do
       send_read
-      expect(last_response.status).to eq(404)
+      expect(last_response).to have_http_status(:not_found)
 
       send_unread
-      expect(last_response.status).to eq(404)
+      expect(last_response).to have_http_status(:not_found)
     end
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require File.join(File.dirname(__FILE__), '..', '..', 'support', 'configuration_helper')
+require "spec_helper"
+require_relative "../../support/configuration_helper"
 
-describe CostQuery::Cache do
+RSpec.describe CostQuery::Cache do
   include OpenProject::Reporting::SpecHelper::ConfigurationHelper
 
   def all_caches
@@ -47,7 +46,7 @@ describe CostQuery::Cache do
 
   def expect_no_reset_on_caches
     all_caches.each do |klass|
-      expect(klass).to_not receive(:reset!)
+      expect(klass).not_to receive(:reset!)
     end
   end
 
@@ -75,20 +74,20 @@ describe CostQuery::Cache do
     reset_cache_keys
   end
 
-  describe '.check' do
-    context 'with cache_classes configuration enabled' do
+  describe ".check" do
+    context "with cache_classes configuration enabled" do
       before do
         mock_cache_classes_setting_with(true)
       end
 
-      it 'resets the caches on filters and group by' do
+      it "resets the caches on filters and group by" do
         custom_fields_exist
         expect_reset_on_caches
 
         described_class.check
       end
 
-      it 'stores when the last update was made and does not reset again if nothing changed' do
+      it "stores when the last update was made and does not reset again if nothing changed" do
         custom_fields_exist
         expect_reset_on_caches
 
@@ -99,7 +98,7 @@ describe CostQuery::Cache do
         described_class.check
       end
 
-      it 'does reset the cache if last CustomField is removed' do
+      it "does reset the cache if last CustomField is removed" do
         custom_fields_exist
         expect_reset_on_caches
 
@@ -112,12 +111,12 @@ describe CostQuery::Cache do
       end
     end
 
-    context 'with_cache_classes configuration disabled' do
+    context "with_cache_classes configuration disabled" do
       before do
         mock_cache_classes_setting_with(false)
       end
 
-      it 'resets the cache again even if nothing changed' do
+      it "resets the cache again even if nothing changed" do
         custom_fields_exist
         expect_reset_on_caches
 

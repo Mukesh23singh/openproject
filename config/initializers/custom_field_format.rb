@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,58 +22,95 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-OpenProject::CustomFieldFormat.map do |fields|
-  fields.register OpenProject::CustomFieldFormat.new('string',
-                                                     label: :label_string,
-                                                     order: 1)
-  fields.register OpenProject::CustomFieldFormat.new('text',
-                                                     label: :label_text,
-                                                     order: 2,
-                                                     formatter: 'CustomValue::FormattableStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('int',
-                                                     label: :label_integer,
-                                                     order: 3,
-                                                     formatter: 'CustomValue::IntStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('float',
-                                                     label: :label_float,
-                                                     order: 4,
-                                                     formatter: 'CustomValue::FloatStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('list',
-                                                     label: :label_list,
-                                                     order: 5,
-                                                     formatter: 'CustomValue::ListStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('date',
-                                                     label: :label_date,
-                                                     order: 6,
-                                                     formatter: 'CustomValue::DateStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('bool',
-                                                     label: :label_boolean,
-                                                     order: 7,
-                                                     formatter: 'CustomValue::BoolStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('user',
-                                                     label: Proc.new { User.model_name.human },
-                                                     only: %w(WorkPackage TimeEntry
-                                                              Version Project),
-                                                     edit_as: 'list',
-                                                     order: 8,
-                                                     formatter: 'CustomValue::UserStrategy')
-  fields.register OpenProject::CustomFieldFormat.new('version',
-                                                     label: Proc.new { Version.model_name.human },
-                                                     only: %w(WorkPackage TimeEntry
-                                                              Version Project),
-                                                     edit_as: 'list',
-                                                     order: 9,
-                                                     formatter: 'CustomValue::VersionStrategy')
+OpenProject::CustomFieldFormat.tap do |formats|
+  formats.register("string",
+                   label: :label_string,
+                   length_limits_possible: true,
+                   order: 1)
+  formats.register("text",
+                   label: :label_text,
+                   order: 2,
+                   length_limits_possible: true,
+                   formatter: "CustomValue::FormattableStrategy")
+  formats.register("link",
+                   label: :label_link_url,
+                   only: %w(WorkPackage Project),
+                   order: 3,
+                   formatter: "CustomValue::LinkStrategy")
+  formats.register("int",
+                   label: :label_integer,
+                   order: 4,
+                   numeric_bounds_possible: true,
+                   formatter: "CustomValue::IntStrategy")
+  formats.register("float",
+                   label: :label_float,
+                   order: 5,
+                   numeric_bounds_possible: true,
+                   formatter: "CustomValue::FloatStrategy")
+  formats.register("list",
+                   label: :label_list,
+                   order: 6,
+                   multi_value_possible: true,
+                   formatter: "CustomValue::ListStrategy")
+  formats.register("date",
+                   label: :label_date,
+                   order: 7,
+                   formatter: "CustomValue::DateStrategy")
+  formats.register("datetime",
+                   label: :label_date_and_time,
+                   only: %w(WorkPackage),
+                   order: 8,
+                   formatter: "CustomValue::DateTimeStrategy")
+  formats.register("bool",
+                   label: :label_boolean,
+                   order: 9,
+                   formatter: "CustomValue::BoolStrategy")
+  formats.register("user",
+                   label: Proc.new { User.model_name.human },
+                   only: %w(WorkPackage TimeEntry Version Project),
+                   edit_as: "list",
+                   order: 10,
+                   multi_value_possible: true,
+                   formatter: "CustomValue::UserStrategy")
+  formats.register("version",
+                   label: Proc.new { Version.model_name.human },
+                   only: %w(WorkPackage TimeEntry Version Project),
+                   edit_as: "list",
+                   order: 11,
+                   multi_value_possible: true,
+                   formatter: "CustomValue::VersionStrategy")
   # This is an internal formatter used as a fallback in case a value is not found.
   # Setting the label to nil in order to avoid it becoming available for selection as a custom value format.
-  fields.register OpenProject::CustomFieldFormat.new('empty',
-                                                     label: nil,
-                                                     order: 10,
-                                                     formatter: 'CustomValue::EmptyStrategy')
+  formats.register("empty",
+                   label: nil,
+                   order: 12,
+                   formatter: "CustomValue::EmptyStrategy")
+
+  formats.register("hierarchy",
+                   label: :label_hierarchy,
+                   only: %w(Project User WorkPackage),
+                   order: 13,
+                   multi_value_possible: true,
+                   enterprise_feature: :custom_field_hierarchies,
+                   formatter: "CustomValue::HierarchyStrategy")
+
+  formats.register("weighted_item_list",
+                   label: :label_weighted_item_list,
+                   only: %w(Project WorkPackage),
+                   order: 14,
+                   multi_value_possible: %w(Project),
+                   enterprise_feature: :weighted_item_lists,
+                   formatter: "CustomValue::HierarchyStrategy")
+
+  formats.register("calculated_value",
+                   label: :label_calculated_value,
+                   only: %w(Project),
+                   order: 15,
+                   enterprise_feature: :calculated_values,
+                   formatter: "CustomValue::CalculatedValueStrategy")
 end

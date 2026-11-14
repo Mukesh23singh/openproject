@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,7 +31,7 @@ module API
       class BudgetsByProjectAPI < ::API::OpenProjectAPI
         resources :budgets do
           after_validation do
-            authorize(:view_budgets, context: @project)
+            authorize_in_project(:view_budgets, project: @project)
             @budgets = @project.budgets
           end
 
@@ -42,7 +39,7 @@ module API
             BudgetCollectionRepresenter.new(@budgets,
                                             @budgets.count,
                                             self_link: api_v3_paths.budgets_by_project(@project.id),
-                                            current_user: current_user)
+                                            current_user:)
           end
         end
       end

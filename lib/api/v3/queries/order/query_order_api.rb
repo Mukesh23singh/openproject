@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,19 +40,13 @@ module API
                 @query.ordered_work_packages.where(work_package_id: wp_id).delete_all
               end
 
-              ##
-              # Upsert with old rails ways, use +UPSERT+ once available.
               def upsert_order(wp_id, position)
                 record = @query
                   .ordered_work_packages
                   .find_or_initialize_by(work_package_id: wp_id)
 
-                if record.persisted?
-                  record.update_column(:position, position)
-                else
-                  record.position = position
-                  record.save
-                end
+                upsert_attributes = record.attributes.merge(position:).compact
+                OrderedWorkPackage.upsert(upsert_attributes)
               end
             end
 
@@ -77,16 +72,27 @@ module API
               optional :delta, type: Hash
             end
             patch do
-              params[:delta].each do |work_package_id, new_position|
-                if new_position == -1
-                  remove_order(work_package_id)
-                else
-                  upsert_order(work_package_id, new_position)
+              @query.with_lock do
+                authorize_by_policy(:update) do
+                  raise API::Errors::NotFound
                 end
-              end
 
-              @query.touch
-              { t: ::API::V3::Utilities::DateTimeFormatter.format_datetime(@query.updated_at) }
+                previous = @query.updated_at
+                params[:delta].each do |work_package_id, new_position|
+                  if new_position == -1
+                    remove_order(work_package_id)
+                  else
+                    upsert_order(work_package_id, new_position)
+                  end
+                end
+
+                # Polling exposes millisecond timestamps, including for simultaneous order writes.
+                @query.touch(time: previous && [Time.current, previous + 0.001].max)
+                {
+                  t: ::API::V3::Utilities::DateTimeFormatter.format_datetime(@query.updated_at),
+                  previousUpdatedAt: ::API::V3::Utilities::DateTimeFormatter.format_datetime(previous, allow_nil: true)
+                }
+              end
             end
           end
         end

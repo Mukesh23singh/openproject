@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,56 +31,50 @@ module API
   module V3
     module Projects
       class ProjectsAPI < ::API::OpenProjectAPI
-        helpers do
-          def visible_project_scope
-            if current_user.admin?
-              Project.all
-            else
-              Project.visible(current_user)
-            end
-          end
-        end
-
         resources :projects do
-          get &::API::V3::Utilities::Endpoints::Index.new(model: Project,
-                                                          scope: -> {
-                                                            visible_project_scope
-                                                              .includes(ProjectRepresenter.to_eager_load)
-                                                          })
-                                                     .mount
+          get &::API::V3::Utilities::Endpoints::SqlFallbackedIndex.new(model: Project,
+                                                                       scope: -> {
+                                                                         # TODO: This should be scoped to only allow actual
+                                                                         # projects. But since it is an established route,
+                                                                         # we keep it intact for all kinds of workspaces for 17.0.
+                                                                         Project
+                                                                           .includes(ProjectRepresenter.to_eager_load)
+                                                                       })
+                                                                  .mount
 
-          post &::API::V3::Utilities::Endpoints::Create.new(model: Project)
+          post &::API::V3::Utilities::Endpoints::Create.new(model: Project,
+                                                            params_modifier: ->(attributes) {
+                                                              attributes.merge!(workspace_type: "project")
+                                                            })
                                                        .mount
 
-          mount ::API::V3::Projects::Schemas::ProjectSchemaAPI
+          mount ::API::V3::Workspaces::Schemas::WorkspaceSchemaAPI
           mount ::API::V3::Projects::CreateFormAPI
 
           mount API::V3::Projects::AvailableParentsAPI
 
           params do
-            requires :id, desc: 'Project id'
+            requires :id, desc: "Project id"
           end
           route_param :id do
             after_validation do
-              @project = visible_project_scope.find(params[:id])
+              # TODO: This should be scoped to only allow actual projects.
+              # But since it and especially the NestedAPIs are established routes,
+              # we keep it intact for all kinds of workspaces for 17.0.
+              # This behavior is not documented in the API docs to nudge users to switch.
+              @project = if current_user.admin?
+                           Project
+                         else
+                           Project.visible(current_user)
+                         end.find(params[:id])
             end
 
-            get &::API::V3::Utilities::Endpoints::Show.new(model: Project).mount
-            patch &::API::V3::Utilities::Endpoints::Update.new(model: Project).mount
-            delete &::API::V3::Utilities::Endpoints::Delete.new(model: Project,
-                                                                process_service: ::Projects::ScheduleDeletionService)
-                                                           .mount
-
-            mount ::API::V3::Projects::UpdateFormAPI
-
-            mount API::V3::Projects::AvailableAssigneesAPI
-            mount API::V3::Projects::AvailableResponsiblesAPI
             mount API::V3::Projects::Copy::CopyAPI
-            mount API::V3::WorkPackages::WorkPackagesByProjectAPI
-            mount API::V3::Categories::CategoriesByProjectAPI
-            mount API::V3::Versions::VersionsByProjectAPI
-            mount API::V3::Types::TypesByProjectAPI
-            mount API::V3::Queries::QueriesByProjectAPI
+            mount API::V3::Projects::Configuration::ProjectConfigurationAPI
+            mount ::API::V3::AI::TextActionsByProjectAPI
+
+            mount ::API::V3::Workspaces::InstanceApis
+            mount ::API::V3::Workspaces::NestedApis
           end
         end
       end

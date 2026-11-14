@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,72 +22,45 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Relations::BaseService < ::BaseServices::BaseCallable
+class Relations::BaseService < BaseServices::BaseCallable
   include Contracted
   include Shared::ServiceContext
+  include Relations::Concerns::Rescheduling
 
   attr_accessor :user
 
   def initialize(user:)
+    super()
     self.user = user
   end
 
   private
 
-  def update_relation(model, attributes)
-    model.attributes = model.attributes.merge attributes
+  def update_relation(relation, attributes)
+    relation.attributes = relation.attributes.merge attributes
 
-    success, errors = validate_and_save(model, user)
-    success, errors = retry_with_inverse_for_relates(model, errors) unless success
+    success, errors = validate_and_save(relation, user)
 
-    result = ServiceResult.new success: success, errors: errors, result: model
+    result = ServiceResult.new success:, errors:, result: relation
 
-    if success && model.follows?
-      reschedule_result = reschedule(model)
+    if success && relation.follows?
+      reschedule_result = reschedule_successor(relation)
       result.merge!(reschedule_result)
     end
 
     result
   end
 
-  def set_defaults(model)
-    if Relation::TYPE_FOLLOWS == model.relation_type
-      model.delay ||= 0
+  def set_defaults(relation)
+    if relation.follows?
+      relation.lag ||= 0
     else
-      model.delay = nil
-    end
-  end
-
-  def reschedule(model)
-    schedule_result = WorkPackages::SetScheduleService
-                      .new(user: user, work_package: model.to)
-                      .call
-
-    # The to-work_package will not be altered by the schedule service so
-    # we do not have to save the result of the service.
-    save_result = if schedule_result.success?
-                    schedule_result.dependent_results.all? { |dr| !dr.result.changed? || dr.result.save }
-                  end || false
-
-    schedule_result.success = save_result
-
-    schedule_result
-  end
-
-  def retry_with_inverse_for_relates(model, errors)
-    if errors.symbols_for(:base).include?(:"typed_dag.circular_dependency") &&
-       model.canonical_type == Relation::TYPE_RELATES
-      model.from, model.to = model.to, model.from
-
-      validate_and_save(model, user)
-    else
-      [false, errors]
+      relation.lag = nil
     end
   end
 end

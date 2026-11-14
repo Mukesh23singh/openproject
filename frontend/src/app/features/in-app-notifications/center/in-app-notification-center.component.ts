@@ -1,54 +1,80 @@
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  OnInit,
-} from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import {
-  filter,
-  map,
-} from 'rxjs/operators';
-import { StateService } from '@uirouter/angular';
-import { UIRouterGlobals } from '@uirouter/core';
+import { combineLatest } from 'rxjs';
+import { filter, map } from 'rxjs/operators';
 import { IanCenterService } from 'core-app/features/in-app-notifications/center/state/ian-center.service';
 import {
-  InAppNotification,
+  INotification,
   NOTIFICATIONS_MAX_SIZE,
 } from 'core-app/core/state/in-app-notifications/in-app-notification.model';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { IanBellService } from 'core-app/features/in-app-notifications/bell/state/ian-bell.service';
+import { imagePath } from 'core-app/shared/helpers/images/path-helper';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
+import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import {
+  ColorsService,
+} from 'core-app/shared/components/colors/colors.service';
 
 @Component({
-  selector: 'op-in-app-notification-center',
   templateUrl: './in-app-notification-center.component.html',
   styleUrls: ['./in-app-notification-center.component.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class InAppNotificationCenterComponent implements OnInit {
+  readonly cdRef = inject(ChangeDetectorRef);
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  readonly I18n = inject(I18nService);
+  readonly storeService = inject(IanCenterService);
+  readonly bellService = inject(IanBellService);
+  readonly urlParams = inject(UrlParamsService);
+  readonly apiV3 = inject(ApiV3Service);
+  readonly pathService = inject(PathHelperService);
+  readonly colorsService = inject(ColorsService);
+
   maxSize = NOTIFICATIONS_MAX_SIZE;
 
-  hasMoreThanPageSize$ = this.storeService.query.hasMoreThanPageSize$;
+  hasMoreThanPageSize$ = this.storeService.hasMoreThanPageSize$;
 
-  hasNotifications$ = this.storeService.query.hasNotifications$;
+  hasNotifications$ = this.storeService.hasNotifications$;
 
-  notifications$ = this.storeService.query.notifications$;
+  notifications$ = this.storeService.notifications$;
 
-  loading$ = this.storeService.query.selectLoading();
+  loading$ = this.storeService.loading$;
 
-  private totalCount$ = this.bellService.unread$;
-
-  noResultText$ = this
-    .totalCount$
-    .pipe(
-      map((count:number) => (count > 0 ? this.text.no_results.with_current_filter : this.text.no_results.at_all)),
-    );
+  totalCount$ = this.bellService.unread$;
 
   totalCountWarning$ = this
     .storeService
-    .query
     .notLoaded$
     .pipe(
       filter((notLoaded) => notLoaded > 0),
@@ -58,15 +84,65 @@ export class InAppNotificationCenterComponent implements OnInit {
       )),
     );
 
-  stateChanged$ = this.storeService.stateChanged$;
+  selectedWorkPackage$ = this.storeService.selectedWorkPackage$;
 
-  originalOrder = ():number => 0;
+  firstNotificationIsSelected$ = combineLatest([
+    this.notifications$,
+    this.selectedWorkPackage$,
+  ]).pipe(
+    map(([notifications, selected]) => {
+      if (!notifications?.length || !selected) return false;
+      return this.notificationMatchesSelectedWorkPackage(notifications[0][0], selected);
+    }),
+  );
 
-  trackNotificationGroups = (i:number, item:InAppNotification[]):string => item
+  reasonMenuItems = [
+    {
+      key: 'mentioned',
+      title: this.I18n.t('js.notifications.reasons.mentioned'),
+    },
+    {
+      key: 'assigned',
+      title: this.I18n.t('js.label_assignee'),
+    },
+    {
+      key: 'responsible',
+      title: this.I18n.t('js.notifications.reasons.accountable'),
+    },
+    {
+      key: 'watched',
+      title: this.I18n.t('js.notifications.reasons.watched'),
+    },
+    {
+      key: 'dateAlert',
+      title: this.I18n.t('js.notifications.reasons.dateAlert'),
+    },
+    {
+      key: 'shared',
+      title: this.I18n.t('js.notifications.reasons.shared'),
+    },
+    {
+      key: 'reminder',
+      title: this.I18n.t('js.notifications.reasons.reminder'),
+    },
+  ];
+
+  selectedFilter = this.reasonMenuItems.find((item) => item.key === this.urlParams.get('name'))?.title;
+
+  image = {
+    no_notification: imagePath(`notification-center/empty-state-no-notification_${this.colorsService.colorMode()}.svg`),
+    loading: imagePath(`notification-center/notification_loading_${this.colorsService.colorMode()}.gif`),
+  };
+
+  trackNotificationGroups = (i:number, item:INotification[]):string => item
     .map((el) => `${el.id}@${el.updatedAt}`)
     .join(',');
 
   text = {
+    no_notification: this.I18n.t('js.notifications.center.empty_state.no_notification'),
+    no_notification_with_current_filter_project: this.I18n.t('js.notifications.center.empty_state.no_notification_with_current_project_filter'),
+    no_notification_for_filter: this.I18n.t('js.notifications.center.empty_state.no_notification_for_filter'),
+    no_selection: this.I18n.t('js.notifications.center.empty_state.no_selection'),
     change_notification_settings: this.I18n.t(
       'js.notifications.settings.change_notification_settings',
       { url: this.pathService.myNotificationsSettingsPath() },
@@ -74,29 +150,42 @@ export class InAppNotificationCenterComponent implements OnInit {
     title: this.I18n.t('js.notifications.title'),
     button_close: this.I18n.t('js.button_close'),
     no_results: {
-      at_all: this.I18n.t('js.notifications.center.no_results.at_all'),
+      at_all: this.I18n.t(
+        'js.notifications.center.no_results.at_all',
+        { url: this.pathService.myNotificationsSettingsPath() },
+      ),
       with_current_filter: this.I18n.t('js.notifications.center.no_results.with_current_filter'),
     },
   };
 
-  constructor(
-    readonly cdRef:ChangeDetectorRef,
-    readonly elementRef:ElementRef,
-    readonly I18n:I18nService,
-    readonly storeService:IanCenterService,
-    readonly bellService:IanBellService,
-    readonly uiRouterGlobals:UIRouterGlobals,
-    readonly state:StateService,
-    readonly apiV3:APIV3Service,
-    readonly pathService:PathHelperService,
-  ) {
-  }
+  protected readonly idFromLink = idFromLink;
 
   ngOnInit():void {
-    this.storeService.setFacet('unread');
+    const facet = this.urlParams.get('facet') ?? 'unread';
+    this.storeService.setFacet(facet as 'unread'|'all');
     this.storeService.setFilters({
-      filter: this.uiRouterGlobals.params.filter, // eslint-disable-line @typescript-eslint/no-unsafe-assignment
-      name: this.uiRouterGlobals.params.name, // eslint-disable-line @typescript-eslint/no-unsafe-assignment
+      filter: this.urlParams.get('filter'),
+      name: this.urlParams.get('name'),
     });
+  }
+
+  noNotificationText(hasNotifications:boolean):string {
+    if (!hasNotifications) {
+      return this.text.no_notification;
+    }
+
+    if (this.urlParams.get('filter') === 'project') {
+      return this.text.no_notification_with_current_filter_project;
+    }
+
+    return this.text.no_notification_for_filter;
+  }
+
+  notificationMatchesSelectedWorkPackage(notification:INotification, selected:string|null):boolean {
+    const href = notification._links.resource?.href;
+    const workPackageId = href ? idFromLink(href) : null;
+    const workPackage = workPackageId ? this.apiV3.work_packages.cache.current(workPackageId) : null;
+
+    return selected === workPackageId || selected === workPackage?.displayId;
   }
 }

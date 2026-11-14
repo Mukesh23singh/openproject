@@ -12,34 +12,34 @@ if [[ $EUID -ne 0 ]]; then
    exit 1
 fi
 
-# Specifics for BIM edition
-wget -qO- https://packages.microsoft.com/keys/microsoft.asc | apt-key add -
-wget -q https://packages.microsoft.com/config/debian/9/prod.list -O /etc/apt/sources.list.d/microsoft-prod.list
+# Specifics for BIM edition (Ubuntu)
 apt-get update -qq
-apt-get install -y dotnet-runtime-3.1
+apt-get install -y wget unzip
 
 tmpdir=$(mktemp -d)
 cd $tmpdir
 
 # Install COLLADA2GLTF
-wget --quiet https://github.com/KhronosGroup/COLLADA2GLTF/releases/download/v2.1.5/COLLADA2GLTF-v2.1.5-linux.zip
+wget --quiet --tries 3 https://github.com/KhronosGroup/COLLADA2GLTF/releases/download/v2.1.5/COLLADA2GLTF-v2.1.5-linux.zip
 unzip -q COLLADA2GLTF-v2.1.5-linux.zip
 mv COLLADA2GLTF-bin "/usr/local/bin/COLLADA2GLTF"
 
 # IFCconvert
-wget --quiet https://s3.amazonaws.com/ifcopenshell-builds/IfcConvert-v0.6.0-517b819-linux64.zip
-unzip -q IfcConvert-v0.6.0-517b819-linux64.zip
+wget --quiet --tries 3 https://s3.amazonaws.com/ifcopenshell-builds/IfcConvert-v0.8.5-a51b2c5-linux64.zip
+echo "4214d58e7cf0929fb04e9b79dca84fb9cc1fe73e56490258eb159c10137ab2c2  IfcConvert-v0.8.5-a51b2c5-linux64.zip" | sha256sum -c -
+unzip -q IfcConvert-v0.8.5-a51b2c5-linux64.zip
 mv IfcConvert "/usr/local/bin/IfcConvert"
-
-wget --quiet https://github.com/bimspot/xeokit-metadata/releases/download/1.0.0/xeokit-metadata-linux-x64.tar.gz
-tar -zxvf xeokit-metadata-linux-x64.tar.gz
-chmod +x xeokit-metadata-linux-x64/xeokit-metadata
-cp -r xeokit-metadata-linux-x64/ "/usr/lib/xeokit-metadata"
-rm -f /usr/local/bin/xeokit-metadatarm -f /usr/local/bin/xeokit-metadata
-ln -s /usr/lib/xeokit-metadata/xeokit-metadata /usr/local/bin/xeokit-metadata
 
 cd /
 rm -rf $tmpdir
+
+# Clean up any prior install of the legacy .NET-based xeokit-metadata.
+rm -f /usr/local/bin/xeokit-metadata
+rm -rf /usr/lib/xeokit-metadata
+
+# Install IFC metadata extractor
+# Requires Node.js (>=22.18) and npm to already be available on the host.
+npm install -g @openproject/web-ifc-xeokit-metadata@0.0.1
 
 which IfcConvert
 echo "✔ IfcConvert is in your path."
@@ -47,8 +47,8 @@ echo "✔ IfcConvert is in your path."
 which COLLADA2GLTF
 echo "✔ COLLADA2GLTF is in your path."
 
-which xeokit-metadata
-echo "✔ xeokit-metadata is in your path. (without .NET yet, see below)"
+which web-ifc-xeokit-metadata
+echo "✔ web-ifc-xeokit-metadata is in your path."
 
 echo "DONE - Now execute the following as your development user:
       $ # Install XKT converter

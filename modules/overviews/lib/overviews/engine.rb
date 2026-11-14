@@ -1,45 +1,106 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module Overviews
   class Engine < ::Rails::Engine
     engine_name :overviews
 
     include OpenProject::Plugins::ActsAsOpEngine
 
-    initializer 'overviews.menu' do
+    initializer "overviews.menu" do
       ::Redmine::MenuManager.map(:project_menu) do |menu|
         menu.push(:overview,
-                  { controller: '/overviews/overviews', action: 'show' },
-                  caption: :'overviews.label',
+                  { controller: "/overviews/overviews", action: "show" },
+                  caption: ->(project) { I18n.t("overviews.label_home", workspace_type: project.workspace_label) },
                   first: true,
-                  icon: 'icon2 icon-info1')
+                  icon: "info")
       end
     end
 
-    initializer 'overviews.permissions' do
-      OpenProject::AccessControl.permission(:view_project)
-        .controller_actions
-        .push('overviews/overviews/show')
+    initializer "overviews.permissions" do
+      Rails.application.reloader.to_prepare do
+        OpenProject::AccessControl.permission(:view_project)
+          .controller_actions
+          .push(
+            "overviews/overviews/show",
+            "overviews/overviews/dashboard"
+          )
 
-      OpenProject::AccessControl.map do |ac_map|
-        ac_map.project_module nil do |map|
-          map.permission :manage_overview,
-                         'overviews/overviews': ['show'],
-                         public: true
+        OpenProject::AccessControl.permission(:view_project_attributes)
+          .controller_actions
+          .push(
+            "overviews/project_custom_fields/show",
+            "overviews/overviews/project_custom_fields_sidebar"
+          )
+
+        OpenProject::AccessControl.permission(:edit_project_attributes)
+          .controller_actions
+          .push(
+            "overviews/project_custom_fields/edit",
+            "overviews/project_custom_fields/update"
+          )
+
+        OpenProject::AccessControl.permission(:view_project_phases)
+          .controller_actions
+          .push(
+            "overviews/overviews/project_life_cycle_sidebar"
+          )
+
+        OpenProject::AccessControl.permission(:edit_project_phases)
+          .controller_actions
+          .push(
+            "overviews/project_phases/edit",
+            "overviews/project_phases/preview",
+            "overviews/project_phases/update"
+          )
+
+        OpenProject::AccessControl.permission(:view_work_packages)
+          .controller_actions
+          .push(
+            "overviews/overviews/show"
+          )
+
+        OpenProject::AccessControl.map do |ac_map|
+          ac_map.project_module nil do |map|
+            map.permission :manage_dashboards,
+                           { "overviews/overviews": %i[show dashboard] },
+                           permissible_on: :project,
+                           require: :member
+          end
         end
       end
     end
 
-    initializer 'overviews.patches' do
-      unless ::OpenProject::TextFormatting::Formats::Markdown::TextileConverter
-               .included_modules
-               .include?(Overviews::Patches::TextileConverterPatch)
-        ::OpenProject::TextFormatting::Formats::Markdown::TextileConverter.include(Overviews::Patches::TextileConverterPatch)
-      end
-    end
+    initializer "overviews.conversion" do
+      require Rails.root.join("config/constants/ar_to_api_conversions")
 
-    initializer 'overviews.conversion' do
-      require Rails.root.join('config', 'constants', 'ar_to_api_conversions')
-
-      Constants::ARToAPIConversions.add('grids/overview': 'grid')
+      Constants::ARToAPIConversions.add("grids/overview": "grid")
     end
 
     config.to_prepare do

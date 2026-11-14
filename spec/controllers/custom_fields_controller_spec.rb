@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,88 +22,37 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe CustomFieldsController, type: :controller do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe CustomFieldsController do
+  render_views
 
-  let(:custom_field) { FactoryBot.build_stubbed(:custom_field) }
+  shared_let(:admin) { create(:admin) }
 
-  before do
-    login_as admin
-  end
+  describe "GET index" do
+    it "requires admin" do
+      login_as create(:user)
+      get :index
 
-  describe 'POST edit' do
-    before do
-      allow(CustomField).to receive(:find).and_return(custom_field)
-      allow(custom_field).to receive(:save).and_return(true)
+      expect(response).to have_http_status(:forbidden)
     end
 
-    describe 'WITH all ok params' do
-      let(:params) do
-        {
-          'custom_field' => { 'name' => 'Issue Field' }
-        }
-      end
+    it "renders the overview with pointers to the dedicated pages" do
+      login_as admin
+      get :index
 
-      before do
-        put :update, params: params.merge(id: custom_field.id)
-      end
-
-      it 'works' do
-        expect(response).to be_redirect
-        expect(custom_field.name).to eq('Issue Field')
-      end
-    end
-  end
-
-  describe 'POST new' do
-    describe 'WITH empty name param' do
-      let(:params) do
-        {
-          'type' => 'WorkPackageCustomField',
-          'custom_field' => {
-            'name' => '',
-            'field_format' => 'string'
-          }
-        }
-      end
-
-      before do
-        post :create, params: params
-      end
-
-      it 'responds with error' do
-        expect(response).to render_template 'new'
-        expect(assigns(:custom_field).errors.messages[:name].first).to eq("can't be blank.")
-      end
-    end
-
-    describe 'WITH all ok params' do
-      let(:params) do
-        {
-          'type' => 'WorkPackageCustomField',
-          'custom_field' => {
-            'name' => 'field',
-            'field_format' => 'string'
-          }
-        }
-      end
-
-      before do
-        post :create, params: params
-      end
-
-      it 'responds ok' do
-        expect(response).to be_redirect
-        expect(CustomField.last.name).to eq 'field'
-      end
+      expect(response).to have_http_status(:ok)
+      expect(response.body).to include(admin_settings_work_package_custom_fields_path)
+      expect(response.body).to include(admin_settings_version_custom_fields_path)
+      expect(response.body).to include(admin_settings_user_custom_fields_path)
+      expect(response.body).to include(admin_settings_time_entry_custom_fields_path)
+      expect(response.body).to include(admin_settings_group_custom_fields_path)
+      expect(response.body).to include(admin_settings_project_custom_fields_path)
     end
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +22,58 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'wiki/new', type: :view do
-  let(:project) { FactoryBot.build_stubbed(:project) }
-  let(:wiki)    { FactoryBot.build_stubbed(:wiki, project: project) }
-  let(:page)    { FactoryBot.build_stubbed(:wiki_page_with_content, wiki: wiki, title: 'foo') }
-  let(:content) { page.content }
-  let(:user)    { FactoryBot.build_stubbed(:user) }
+RSpec.describe "wiki/new" do
+  let(:project) { build_stubbed(:project) }
+  let(:wiki)    { build_stubbed(:wiki, project:) }
+  let(:page)    { build_stubbed(:wiki_page, wiki:, title: "foo") }
+  # TODO: remove
+  let(:content) { page }
+  let(:user)    { build_stubbed(:user) }
 
   before do
     assign(:project, project)
     assign(:wiki,    wiki)
     assign(:page,    page)
     assign(:content, content)
-    allow(view)
-      .to receive(:current_user)
-      .and_return(user)
+
+    without_partial_double_verification do
+      allow(view)
+        .to receive(:current_user)
+        .and_return(user)
+    end
   end
 
-  it 'renders a form which POSTs to create_project_wiki_index_path' do
-    project.identifier = 'my_project'
+  it "renders a form which POSTs to create_project_wiki_index_path" do
+    project.identifier = "my_project"
     render
-    assert_select 'form',
+    assert_select "form",
                   action: create_project_wiki_index_path(project_id: project),
-                  method: 'post'
+                  method: "post"
   end
 
-  it 'contains an input element for title' do
-    page.title = 'Boogie'
+  it "contains an input element for title" do
+    page.title = "Boogie"
 
     render
-    assert_select 'input', name: 'page[title]', value: 'Boogie'
+    assert_select "input", name: "page[title]", value: "Boogie"
   end
 
-  it 'contains an input element for parent page' do
+  it "contains an input element for parent page" do
     page.parent_id = 123
 
     render
-    assert_select 'input', name: 'page[parent_id]', value: '123', type: 'hidden'
+    assert_select "input", name: "page[parent_id]", value: "123", type: "hidden"
+  end
+
+  it "renders a robots exclusion meta tag in the header tags" do
+    render
+    expect(view.content_for(:header_tags)).to include('name="ROBOTS"', 'content="NOINDEX,FOLLOW,NOARCHIVE"')
   end
 end

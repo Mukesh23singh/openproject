@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,12 +32,12 @@ module API
         class StatusesAPI < ::API::OpenProjectAPI
           resources :project_statuses do
             params do
-              requires :id, desc: 'Project status identifier'
+              requires :id, desc: "Project status identifier"
             end
             route_param :id do
               helpers do
                 def status_exists?
-                  ::Projects::Status.codes.keys.include?(params[:id])
+                  ::Project.status_codes.keys.include?(params[:id])
                 end
               end
 
@@ -48,7 +47,7 @@ module API
 
               get do
                 API::V3::Projects::Statuses::StatusRepresenter
-                  .new(params[:id], current_user: current_user, embed_links: true)
+                  .new(params[:id], current_user:, embed_links: true)
               end
             end
           end

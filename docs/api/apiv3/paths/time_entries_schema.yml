@@ -32,7 +32,7 @@ get:
                   hasDefault: false
                   name: sfsdfsdfsdfsdfdsf
                   options:
-                    rtl: 
+                    rtl:
                   required: false
                   type: String
                   writable: true
@@ -57,6 +57,13 @@ get:
                   name: Project
                   required: false
                   type: Project
+                  writable: true
+                ongoing:
+                  hasDefault: false
+                  name: Ongoing
+                  options: {}
+                  required: false
+                  type: Boolean
                   writable: true
                 spentOn:
                   hasDefault: false
@@ -88,12 +95,14 @@ get:
                   type: WorkPackage
                   writable: true
           schema:
-            "$ref": "../components/schemas/view_time_entry_schema_model.yml"
+            $ref: "../components/schemas/view_time_entry_schema_model.yml"
       description: OK
       headers: {}
     '403':
       content:
         application/hal+json:
+          schema:
+            $ref: "../components/schemas/error_response.yml"
           examples:
             response:
               value:
@@ -106,7 +115,7 @@ get:
         **Required permission:** *log time* or *view time entries* or *edit time entries* or *edit own time entries* on any project
       headers: {}
   tags:
-  - Time Entries
+    - Time Entries
   description: ''
-  operationId: View_time_entry_schema
+  operationId: get_time_entry_schema
   summary: View time entry schema

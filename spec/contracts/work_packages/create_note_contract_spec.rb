@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,76 +22,146 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
+require "spec_helper"
+require "contracts/shared/model_contract_shared_context"
 
-describe WorkPackages::CreateNoteContract do
+RSpec.describe WorkPackages::CreateNoteContract do
+  include_context "ModelContract shared context"
+
+  let(:project) { build_stubbed(:project) }
   let(:work_package) do
     # As we only want to test the contract, we mock checking whether the work_package is valid
-    wp = FactoryBot.build_stubbed(:work_package)
+    wp = build_stubbed(:work_package, project:)
     # we need to clear the changes information because otherwise the
     # contract will complain about all the changes to read_only attributes
     wp.send(:clear_changes_information)
-    allow(wp).to receive(:valid?).and_return true
 
     wp
   end
-  let(:user) { FactoryBot.build_stubbed(:user) }
-  let(:policy_instance) { double('WorkPackagePolicyInstance') }
+  let(:user) { build_stubbed(:user) }
+  let(:permissions) { %i[add_work_package_comments add_internal_comments] }
+
+  before do
+    mock_permissions_for(user) do |mock|
+      mock.allow_in_project(*permissions, project:)
+    end
+  end
 
   subject(:contract) do
-    contract = described_class.new(work_package, user)
-
-    contract.send(:'policy=', policy_instance)
-
-    contract
+    described_class.new(work_package, user)
   end
 
-  describe 'note' do
-    before do
-      work_package.journal_notes = 'blubs'
-    end
-
-    context 'if the user has the permissions' do
+  describe "validations" do
+    describe "journal_notes" do
       before do
-        allow(policy_instance).to receive(:allowed?).with(work_package, :comment).and_return true
-
-        contract.validate
+        work_package.journal_notes = "blubs"
       end
 
-      it('is valid') { expect(contract.errors).to be_empty }
+      context "if the user has only the add_work_package_comments permission" do
+        let(:permissions) { %i[add_work_package_comments] }
+
+        it_behaves_like "contract is valid"
+      end
+
+      context "if the user has only the edit_work_packages permission" do
+        let(:permissions) { %i[edit_work_packages] }
+
+        it_behaves_like "contract is valid"
+      end
+
+      context "if the user lacks the permissions" do
+        let(:permissions) { [] }
+
+        it_behaves_like "contract is invalid", journal_notes: :error_unauthorized
+      end
     end
 
-    context 'if the user lacks the permissions' do
+    describe "journal_internal", with_ee: [:internal_comments] do
       before do
-        allow(policy_instance).to receive(:allowed?).with(work_package, :comment).and_return false
-
-        contract.validate
+        # Setting the journal_notes to not trigger a :blank error
+        work_package.journal_notes = "blubs"
+        # Enable internal comments on project
+        allow(project).to receive(:enabled_internal_comments).and_return(true)
       end
 
-      it 'is invalid' do
-        expect(contract.errors.symbols_for(:journal_notes))
-          .to match_array([:error_unauthorized])
+      context "and journal_internal is true" do
+        before do
+          work_package.journal_internal = true
+        end
+
+        it_behaves_like "contract is valid"
+
+        context "and the enterprise token does not allow internal comments", with_ee: [] do
+          it "invalidates the contract, and shows the least required enterprise plan" do
+            expect(contract.validate).to be(false)
+
+            expect(contract.errors.full_messages)
+              .to eq(["Internal Journal requires at least the Professional enterprise plan."])
+          end
+        end
+
+        context "and the project setting does not allow internal comments" do
+          before do
+            allow(project).to receive(:enabled_internal_comments).and_return(false)
+          end
+
+          it_behaves_like "contract is invalid", journal_internal: :feature_disabled_for_project
+        end
+      end
+
+      context "and journal_internal is false" do
+        before do
+          work_package.journal_internal = false
+        end
+
+        it_behaves_like "contract is valid"
+      end
+
+      context "with journal_internal is true, but lacking permissions" do
+        let(:permissions) { super() - [:add_internal_comments] }
+
+        before do
+          work_package.journal_internal = true
+        end
+
+        it_behaves_like "contract is invalid", journal_internal: :error_unauthorized
+      end
+
+      context "with journal_internal is false and lacking permissions" do
+        let(:permissions) { super() - [:add_internal_comments] }
+
+        before do
+          work_package.journal_internal = false
+        end
+
+        it_behaves_like "contract is valid"
       end
     end
-  end
 
-  describe 'subject' do
-    before do
-      work_package.subject = 'blubs'
+    describe "another attribute of work package" do
+      before do
+        work_package.subject = "blubs"
+      end
 
-      allow(policy_instance).to receive(:allowed?).and_return true
-
-      contract.validate
+      it_behaves_like "contract is invalid", subject: :error_readonly
     end
 
-    it 'is invalid' do
-      expect(contract.errors.symbols_for(:subject))
-        .to match_array([:error_readonly])
+    describe "with the work package already being invalid" do
+      before do
+        work_package.done_ratio = -100
+
+        # Otherwise, the contract would complain about changing a read-only attribute
+        work_package.send(:clear_changes_information)
+
+        work_package.journal_notes = "abc"
+      end
+
+      it_behaves_like "contract is valid"
     end
   end
 end

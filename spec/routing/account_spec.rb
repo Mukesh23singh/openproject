@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,28 +22,35 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'account routes', type: :routing do
-  it '/account/lost_password GET routes to account#lost_password' do
-    expect(get('/account/lost_password')).to route_to('account#lost_password')
+RSpec.describe "account routes" do
+  it "/account/lost_password GET routes to account#lost_password" do
+    expect(get("/account/lost_password")).to route_to("account#lost_password")
   end
 
-  it '/account/lost_password POST routes to account#lost_password' do
-    expect(post('/account/lost_password')).to route_to('account#lost_password')
+  it "/account/lost_password POST routes to account#lost_password" do
+    expect(post("/account/lost_password")).to route_to("account#lost_password")
   end
 
-  it '/accounts/register GET routes to account#register' do
-    expect(get('/account/register')).to route_to('account#register')
+  it "/account/password_recovery GET routes to account#password_recovery" do
+    expect(get("/account/password_recovery")).to route_to("account#password_recovery")
   end
 
-  it '/accounts/register POST routes to account#register' do
-    expect(post('/account/register')).to route_to('account#register')
+  it "/account/set_recovered_password POST routes to account#set_recovered_password" do
+    expect(post("/account/set_recovered_password")).to route_to("account#set_recovered_password")
+  end
+
+  it "/accounts/register GET routes to account#register" do
+    expect(get("/account/register")).to route_to("account#register")
+  end
+
+  it "/accounts/register POST routes to account#register" do
+    expect(post("/account/register")).to route_to("account#register")
   end
 end

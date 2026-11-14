@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,183 +22,348 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-RSpec.feature 'Work package index sums', js: true do
+RSpec.describe "Work package index sums", :js do
+  shared_let(:type_bug) { create(:type_bug) }
+  shared_let(:type_task) { create(:type_task) }
+  shared_let(:status_new) { create(:status, name: "New") }
+  shared_let(:status_in_progress) { create(:status, name: "In progress") }
+  shared_let(:project) { create(:project, types: [type_bug, type_task]) }
+
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_own_hourly_rate
-                                                  view_work_packages
-                                                  edit_work_packages
-                                                  view_time_entries
-                                                  view_cost_entries
-                                                  view_cost_rates
-                                                  log_costs]
+    create(:user,
+           member_with_permissions: { project => %i[view_own_hourly_rate
+                                                    view_work_packages
+                                                    edit_work_packages
+                                                    view_time_entries
+                                                    view_cost_entries
+                                                    view_cost_rates
+                                                    log_costs] })
   end
-  let(:project) do
-    FactoryBot.create(:project, name: 'project1', identifier: 'project1')
-  end
-  let(:type) { FactoryBot.create(:type) }
   let!(:int_cf) do
-    FactoryBot.create(:int_wp_custom_field).tap do |cf|
-      project.work_package_custom_fields << cf
-      type.custom_fields << cf
+    create(:integer_wp_custom_field) do |cf|
+      type_bug.default_variant.custom_field_ids |= [cf.id]
+      type_task.default_variant.custom_field_ids |= [cf.id]
     end
   end
   let!(:float_cf) do
-    FactoryBot.create(:float_wp_custom_field).tap do |cf|
-      project.work_package_custom_fields << cf
-      type.custom_fields << cf
+    create(:float_wp_custom_field) do |cf|
+      type_bug.default_variant.custom_field_ids |= [cf.id]
+      type_task.default_variant.custom_field_ids |= [cf.id]
     end
   end
-  let!(:work_package_1) do
-    FactoryBot.create(:work_package, project: project, type: type, estimated_hours: 10).tap do |wp|
+  let!(:work_package1) do
+    create(:work_package,
+           project:,
+           type: type_bug,
+           status: status_new,
+           estimated_hours: 10,
+           remaining_hours: 5) do |wp|
       wp.custom_field_values = { int_cf.id => 5, float_cf.id => 5.5 }
       wp.save!
     end
   end
-  let!(:work_package_2) do
-    FactoryBot.create(:work_package, project: project, type: type, estimated_hours: 15).tap do |wp|
+  let!(:work_package2) do
+    create(:work_package,
+           project:,
+           type: type_task,
+           status: status_in_progress,
+           estimated_hours: 15,
+           remaining_hours: 7.5) do |wp|
       wp.custom_field_values = { int_cf.id => 7, float_cf.id => 7.7 }
       wp.save!
     end
   end
+  # labor costs
   let!(:hourly_rate) do
-    FactoryBot.create :default_hourly_rate,
-                      user: user,
-                      rate: 10.00
+    create(:default_hourly_rate,
+           principal: user,
+           rate: 10.00)
   end
   let!(:time_entry) do
-    FactoryBot.create :time_entry,
-                      user: user,
-                      work_package: work_package_1,
-                      project: project,
-                      hours: 1.50
+    create(:time_entry,
+           user:,
+           entity: work_package1,
+           project:,
+           hours: 1.50)
   end
+  # unit costs
   let(:cost_type) do
-    type = FactoryBot.create :cost_type, name: 'Translations'
-    FactoryBot.create :cost_rate,
-                      cost_type: type,
-                      rate: 3.00
+    type = create(:cost_type, name: "Translations")
+    create(:cost_rate,
+           cost_type: type,
+           rate: 3.00)
     type
   end
   let!(:cost_entry) do
-    FactoryBot.create :cost_entry,
-                      work_package: work_package_1,
-                      project: project,
-                      units: 2.50,
-                      cost_type: cost_type,
-                      user: user
+    create(:cost_entry,
+           entity: work_package1,
+           project:,
+           units: 2.50,
+           cost_type:,
+           user:)
   end
 
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
-  let(:columns) { ::Components::WorkPackages::Columns.new }
-  let(:modal) { ::Components::WorkPackages::TableConfigurationModal.new }
-  let(:group_by) { ::Components::WorkPackages::GroupBy.new }
+  let(:columns) { Components::WorkPackages::Columns.new }
+  let(:modal) { Components::WorkPackages::TableConfigurationModal.new }
+  let(:group_by) { Components::WorkPackages::GroupBy.new }
+  let(:filters) { Components::WorkPackages::Filters.new }
 
-  before do
-    login_as(user)
+  current_user { user }
 
+  it "calculates sums correctly" do
     visit project_work_packages_path(project)
-    expect(current_path).to eq('/projects/project1/work_packages')
-  end
+    wp_table.expect_work_package_listed work_package1, work_package2
 
-  scenario 'calculates sums correctly' do
-    wp_table.expect_work_package_listed work_package_1, work_package_2
+    # Add summable columns, without saving changes to save time
+    columns.add "Work", save_changes: false
+    columns.add "Remaining work", save_changes: false
+    columns.add "% Complete", save_changes: false
+    columns.add int_cf.name, save_changes: false
+    columns.add float_cf.name, save_changes: false
+    columns.add "Labor costs", save_changes: false
+    columns.add "Unit costs", save_changes: false
+    columns.add "Overall costs", save_changes: false
 
-    # Add estimated time column
-    columns.add 'Estimated time'
-    # Add int cf column
-    columns.add int_cf.name
-    # Add float cf column
-    columns.add float_cf.name
-    # Add overall costs column
-    columns.add 'Overall costs', finicky: true
-    # Add unit costs column
-    columns.add 'Unit costs', finicky: true
-    # Add labor costs column
-    columns.add 'Labor costs', finicky: true
-
-    # Trigger action from action menu dropdown
+    # Activate the display of sums, and save the changes
     modal.set_display_sums enable: true
 
-    wp_table.expect_work_package_listed work_package_1, work_package_2
+    wp_table.expect_work_package_listed work_package1, work_package2
 
     # Expect the total sums row
-    expect(page).to have_selector('.wp-table--sums-row', count: 1)
+    aggregate_failures do
+      within(:row, "Total sum") do |row|
+        expect(row).to have_css(".estimatedTime", text: "25h")
+        expect(row).to have_css(".remainingTime", text: "12.5h")
+        expect(row).to have_css(".percentageDone", text: "50%")
+        expect(row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "12")
+        expect(row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "13.2")
+        expect(row).to have_css(".laborCosts", text: "15.00 €")
+        expect(row).to have_css(".materialCosts", text: "7.50 €") # Unit costs
+        expect(row).to have_css(".overallCosts", text: "22.50 €")
+      end
+    end
 
-    expect(page).to have_selector('.wp-table--sum-container', text: 'Total sum')
-    expect(page).to have_selector('.wp-table--sum-container', text: '25')
-    expect(page).to have_selector('.wp-table--sum-container', text: '12')
-    expect(page).to have_selector('.wp-table--sum-container', text: '13.2')
-    # Unit costs
-    expect(page).to have_selector('.wp-table--sum-container', text: '7.50')
-    # Overall costs
-    expect(page).to have_selector('.wp-table--sum-container', text: '22.50')
-    # Labor costs
-    expect(page).to have_selector('.wp-table--sum-container', text: '15.00')
+    # Change some progress values to test that sums are recalculated
+    progress_popover = wp_table.progress_popover(work_package1)
+    progress_popover.open
+    progress_popover.set_values(work: "20h", remaining_work: "12h")
+    progress_popover.save
 
-    # Update the sum
-    edit_field = wp_table.edit_field(work_package_1, :estimatedTime)
-    edit_field.update '20'
-
-    expect(page).to have_selector('.wp-table--sum-container', text: 'Total sum')
-    expect(page).to have_selector('.wp-table--sum-container', text: '35')
-    expect(page).to have_selector('.wp-table--sum-container', text: '12')
-    expect(page).to have_selector('.wp-table--sum-container', text: '13.2')
-    # Unit costs
-    expect(page).to have_selector('.wp-table--sum-container', text: '7.50')
-    # Overall costs
-    expect(page).to have_selector('.wp-table--sum-container', text: '22.50')
-    # Labor costs
-    expect(page).to have_selector('.wp-table--sum-container', text: '15.00')
+    aggregate_failures do
+      within(:row, "Total sum") do |row|
+        expect(row).to have_css(".estimatedTime", text: "35h")
+        expect(row).to have_css(".remainingTime", text: "19.5h")
+        expect(row).to have_css(".percentageDone", text: "44%")
+        expect(row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "12")
+        expect(row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "13.2")
+        expect(row).to have_css(".laborCosts", text: "15.00 €")
+        expect(row).to have_css(".materialCosts", text: "7.50 €") # Unit costs
+        expect(row).to have_css(".overallCosts", text: "22.50 €")
+      end
+    end
 
     # Enable groups
-    group_by.enable_via_menu 'Status'
+    group_by.enable_via_menu "Status"
 
     # Expect to have three sums rows now
-    expect(page).to have_selector('.wp-table--sums-row', count: 3)
+    expect(page).to have_row("Sum", count: 2)
+    expect(page).to have_row("Total sum", count: 1)
 
+    first_sum_row, second_sum_row = *find_all(:row, "Sum")
     # First status row
-    expect(page).to have_selector('.wp-table--sum-container', text: '20 h')
-    expect(page).to have_selector(".wp-table--sum-container.customField#{int_cf.id}", text: '5')
-    expect(page).to have_selector(".wp-table--sum-container.customField#{float_cf.id}", text: '5.5')
-    # Unit costs
-    expect(page).to have_selector('.wp-table--sum-container.materialCosts', text: '7.50')
-    # Overall costs
-    expect(page).to have_selector('.wp-table--sum-container.overallCosts', text: '22.50')
-    # Labor costs
-    expect(page).to have_selector('.wp-table--sum-container.laborCosts', text: '15.00')
+    aggregate_failures do
+      expect(first_sum_row).to have_css(".estimatedTime", text: "20h")
+      expect(first_sum_row).to have_css(".remainingTime", text: "12h")
+      expect(first_sum_row).to have_css(".percentageDone", text: "40%")
+      expect(first_sum_row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "5")
+      expect(first_sum_row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "5.5")
+      expect(first_sum_row).to have_css(".laborCosts", text: "15.00 €")
+      expect(first_sum_row).to have_css(".materialCosts", text: "7.50 €") # Unit costs
+      expect(first_sum_row).to have_css(".overallCosts", text: "22.50 €")
+    end
 
     # Second status row
-    expect(page).to have_selector('.wp-table--sum-container', text: '15 h')
-    expect(page).to have_selector(".wp-table--sum-container.customField#{int_cf.id}", text: '7')
-    expect(page).to have_selector(".wp-table--sum-container.customField#{float_cf.id}", text: '7.7')
+    aggregate_failures do
+      expect(second_sum_row).to have_css(".estimatedTime", text: "15h")
+      expect(second_sum_row).to have_css(".remainingTime", text: "7.5h")
+      expect(second_sum_row).to have_css(".percentageDone", text: "50%")
+      expect(second_sum_row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "7")
+      expect(second_sum_row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "7.7")
+      expect(second_sum_row).to have_css(".laborCosts", text: "", exact_text: true)
+      expect(second_sum_row).to have_css(".materialCosts", text: "", exact_text: true) # Unit costs
+      expect(second_sum_row).to have_css(".overallCosts", text: "", exact_text: true)
+    end
 
     # Total sums row is unchanged
-    expect(page).to have_selector('tbody .wp-table--sum-container', text: '35')
-    expect(page).to have_selector("tbody .wp-table--sum-container.customField#{int_cf.id}", text: '12')
-    expect(page).to have_selector("tbody .wp-table--sum-container.customField#{float_cf.id}", text: '13.2')
-    # Unit costs
-    expect(page).to have_selector('tbody .wp-table--sum-container.materialCosts', text: '7.50')
-    # Overall costs
-    expect(page).to have_selector('tbody .wp-table--sum-container.overallCosts', text: '22.50')
-    # Labor costs
-    expect(page).to have_selector('tbody .wp-table--sum-container.laborCosts', text: '15.00')
+    aggregate_failures do
+      within(:row, "Total sum") do |row|
+        expect(row).to have_css(".estimatedTime", text: "35h")
+        expect(row).to have_css(".remainingTime", text: "19.5h")
+        expect(row).to have_css(".percentageDone", text: "44%")
+        expect(row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "12")
+        expect(row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "13.2")
+        expect(row).to have_css(".laborCosts", text: "15.00 €")
+        expect(row).to have_css(".materialCosts", text: "7.50 €") # Unit costs
+        expect(row).to have_css(".overallCosts", text: "22.50 €")
+      end
+    end
 
     # Collapsing groups will also hide the sums row
-    page.find('.expander.icon-minus2', match: :first).click
+    first(".expander.icon-minus2").click
     sleep 1
-    page.find('.expander.icon-minus2', match: :first).click
+    first(".expander.icon-minus2").click
 
     # Expect to have only the final sums
-    expect(page).to have_selector('tbody .wp-table--sums-row', count: 1)
+    expect(page).not_to have_row("Sum")
+    expect(page).to have_row("Total sum")
+  end
+
+  context "when filtering" do
+    let!(:work_package3) do
+      create(:work_package,
+             project:,
+             type: type_bug,
+             status: status_in_progress,
+             estimated_hours: 10,
+             remaining_hours: 5) do |wp|
+        wp.custom_field_values = { int_cf.id => 5, float_cf.id => 5.5 }
+        wp.save!
+      end
+    end
+    let!(:work_package4) do
+      create(:work_package,
+             project:,
+             type: type_task,
+             status: status_new,
+             estimated_hours: 15,
+             remaining_hours: 7.5) do |wp|
+        wp.custom_field_values = { int_cf.id => 7, float_cf.id => 7.7 }
+        wp.save!
+      end
+    end
+    # labor costs
+    let!(:time_entry2) do
+      create(:time_entry,
+             user:,
+             entity: work_package3,
+             project:,
+             hours: 2.50)
+    end
+    # unit costs
+    let!(:cost_entry2) do
+      create(:cost_entry,
+             entity: work_package3,
+             project:,
+             units: 3.50,
+             cost_type:,
+             user:)
+    end
+
+    it "calculates sums correctly" do
+      query = create(:query,
+                     project:,
+                     user:,
+                     display_sums: true,
+                     column_names: [:id, :subject, :type, :status, :estimated_hours, :remaining_hours, :done_ratio,
+                                    :"#{int_cf.column_name}", :"#{float_cf.column_name}",
+                                    :labor_costs, :material_costs, :overall_costs])
+      wp_table.visit_query query
+      wp_table.expect_work_package_listed work_package1, work_package2, work_package3, work_package4
+
+      # Expect the total sums row without filtering
+      aggregate_failures do
+        within(:row, "Total sum") do |row|
+          expect(row).to have_css(".estimatedTime", text: "50h")
+          expect(row).to have_css(".remainingTime", text: "25h")
+          expect(row).to have_css(".percentageDone", text: "50%")
+          expect(row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "24")
+          expect(row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "26.4")
+          expect(row).to have_css(".laborCosts", text: "40.00 €")
+          expect(row).to have_css(".materialCosts", text: "18.00 €") # Unit costs
+          expect(row).to have_css(".overallCosts", text: "58.00 €")
+        end
+      end
+
+      # Filter
+      filters.open
+      filters.add_filter_by("Type", "is (OR)", type_task.name)
+
+      # Expect 2 work packages shown
+      expect(page).to have_row("WorkPackage", count: 2) # works because the subject name includes "WorkPackage"
+      expect(page).to have_row("Total sum", count: 1)
+
+      # Expect the total sums row to have changed
+      aggregate_failures do
+        within(:row, "Total sum") do |row|
+          expect(row).to have_css(".estimatedTime", text: "30h")
+          expect(row).to have_css(".remainingTime", text: "15h")
+          expect(row).to have_css(".percentageDone", text: "50%")
+          expect(row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "14")
+          expect(row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "15.4")
+          expect(row).to have_css(".laborCosts", text: "", exact_text: true)
+          expect(row).to have_css(".materialCosts", text: "", exact_text: true) # Unit costs
+          expect(row).to have_css(".overallCosts", text: "", exact_text: true)
+        end
+      end
+
+      # Filter by status open
+      filters.remove_filter("type")
+      filters.remove_filter("status")
+      filters.add_filter_by("Status", "is (OR)", status_new.name)
+
+      # Enable groups by type
+      group_by.enable_via_menu "Type"
+
+      # Expect to have three sums rows now
+      expect(page).to have_row("Sum", count: 2)
+      expect(page).to have_row("Total sum", count: 1)
+
+      first_sum_row, second_sum_row = *find_all(:row, "Sum")
+      # First status row
+      aggregate_failures do
+        expect(first_sum_row).to have_css(".estimatedTime", text: "10h")
+        expect(first_sum_row).to have_css(".remainingTime", text: "5h")
+        expect(first_sum_row).to have_css(".percentageDone", text: "50%")
+        expect(first_sum_row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "5")
+        expect(first_sum_row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "5.5")
+        expect(first_sum_row).to have_css(".laborCosts", text: "15.00 €")
+        expect(first_sum_row).to have_css(".materialCosts", text: "7.50 €") # Unit costs
+        expect(first_sum_row).to have_css(".overallCosts", text: "22.50 €")
+      end
+
+      # Second status row
+      aggregate_failures do
+        expect(second_sum_row).to have_css(".estimatedTime", text: "15h")
+        expect(second_sum_row).to have_css(".remainingTime", text: "7.5h")
+        expect(second_sum_row).to have_css(".percentageDone", text: "50%")
+        expect(second_sum_row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "7")
+        expect(second_sum_row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "7.7")
+        expect(second_sum_row).to have_css(".laborCosts", text: "", exact_text: true)
+        expect(second_sum_row).to have_css(".materialCosts", text: "", exact_text: true) # Unit costs
+        expect(second_sum_row).to have_css(".overallCosts", text: "", exact_text: true)
+      end
+
+      # Total sum
+      aggregate_failures do
+        within(:row, "Total sum") do |row|
+          expect(row).to have_css(".estimatedTime", text: "25h")
+          expect(row).to have_css(".remainingTime", text: "12.5h")
+          expect(row).to have_css(".percentageDone", text: "50%")
+          expect(row).to have_css(".#{int_cf.attribute_name(:camel_case)}", text: "12")
+          expect(row).to have_css(".#{float_cf.attribute_name(:camel_case)}", text: "13.2")
+          expect(row).to have_css(".laborCosts", text: "15.00 €")
+          expect(row).to have_css(".materialCosts", text: "7.50 €") # Unit costs
+          expect(row).to have_css(".overallCosts", text: "22.50 €")
+        end
+      end
+    end
   end
 end

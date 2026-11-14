@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,26 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Cost Type resource' do
+RSpec.describe "API v3 Cost Type resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
   let(:current_user) do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
-  let(:role) { FactoryBot.create(:role, permissions: [:view_cost_entries]) }
-  let(:project) { FactoryBot.create(:project) }
-  subject(:response) { last_response }
+  let!(:cost_type) { create(:cost_type) }
+  let(:role) { create(:project_role, permissions: [:view_cost_entries]) }
+  let(:project) { create(:project) }
 
-  let!(:cost_type) { FactoryBot.create(:cost_type) }
+  subject(:response) { last_response }
 
   before do
     allow(User).to receive(:current).and_return current_user
@@ -48,38 +47,36 @@ describe 'API v3 Cost Type resource' do
     get get_path
   end
 
-  describe 'cost_types/:id' do
+  describe "cost_types/:id" do
     let(:get_path) { api_v3_paths.cost_type cost_type.id }
 
-    context 'user can see cost entries' do
-      context 'valid id' do
-        it 'should return HTTP 200' do
-          expect(response.status).to eql(200)
+    context "user can see cost entries" do
+      context "valid id" do
+        it "returns HTTP 200" do
+          expect(response.status).to be(200)
         end
       end
 
-      context 'cost type deleted' do
-        let!(:cost_type) { FactoryBot.create(:cost_type, :deleted) }
+      context "cost type deleted" do
+        let!(:cost_type) { create(:cost_type, :deleted) }
 
-        it_behaves_like 'not found'
+        it_behaves_like "not found"
       end
 
-      context 'invalid id' do
-        let(:get_path) { api_v3_paths.cost_type 'bogus' }
+      context "invalid id" do
+        let(:get_path) { api_v3_paths.cost_type "bogus" }
 
-        it_behaves_like 'param validation error' do
-          let(:id) { 'bogus' }
-        end
+        it_behaves_like "not found"
       end
     end
 
-    context 'user can\'t see cost entries' do
-      let(:current_user) { FactoryBot.create(:user) }
+    context "user can't see cost entries" do
+      let(:current_user) { create(:user) }
 
-      it_behaves_like 'error response',
+      it_behaves_like "error response",
                       403,
-                      'MissingPermission',
-                      I18n.t('api_v3.errors.code_403')
+                      "MissingPermission",
+                      I18n.t("api_v3.errors.code_403")
     end
   end
 end

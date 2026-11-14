@@ -1,51 +1,72 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { OpenProjectModule } from 'core-app/app.module';
-import { enableProdMode } from '@angular/core';
-import * as jQuery from 'jquery';
-import { platformBrowserDynamic } from '@angular/platform-browser-dynamic';
-import { SentryReporter } from 'core-app/core/errors/sentry/sentry-reporter';
-import { whenDebugging } from 'core-app/shared/helpers/debug_output';
-import { enableReactiveStatesLogging } from 'reactivestates';
+import { enableProdMode, provideZonelessChangeDetection } from '@angular/core';
+
+import 'core-app/core/setup/init-js-patches';
+
 import { initializeLocale } from 'core-app/core/setup/init-locale';
 import { environment } from './environments/environment';
+import { configureErrorReporter } from 'core-app/core/errors/configure-reporter';
+import { initializeGlobalListeners } from 'core-app/core/setup/globals/global-listeners';
+import { getMetaElement } from 'core-app/core/setup/globals/global-helpers';
 
-(window as any).global = window;
+import 'core-app/core/setup/init-vendors';
+import 'core-app/core/setup/init-globals';
+import './stimulus/setup';
+import './turbo/setup';
+import { platformBrowser } from '@angular/platform-browser';
 
 // Ensure we set the correct dynamic frontend path
 // based on the RAILS_RELATIVE_URL_ROOT setting
-// https://webpack.js.org/guides/public-path/
 const ASSET_BASE_PATH = '/assets/frontend/';
 
 // Sets the relative base path
-window.appBasePath = jQuery('meta[name=app_base_path]').attr('content') || '';
+window.appBasePath = getMetaElement('app_base_path')?.content || '';
 
-// Ensure to set the asset base for dynamic code loading
-// https://webpack.js.org/guides/public-path/
-__webpack_public_path__ = window.appBasePath + ASSET_BASE_PATH;
+// Get the asset host, if any
+const initializer = getMetaElement('openproject_initializer');
+const ASSET_HOST = initializer?.dataset.assetHost ? `//${initializer.dataset.assetHost}` : '';
 
-window.ErrorReporter = new SentryReporter();
+// Public path prefix used to build absolute asset URLs at runtime
+globalThis.publicAssetPath = ASSET_HOST + window.appBasePath + ASSET_BASE_PATH;
 
-require('core-app/core/setup/init-vendors');
-require('core-app/core/setup/init-globals');
+window.ErrorReporter = configureErrorReporter();
 
 if (environment.production) {
   enableProdMode();
 }
 
-// Enable debug logging for reactive states
-whenDebugging(() => {
-  (window as any).enableReactiveStatesLogging = () => enableReactiveStatesLogging(true);
-  (window as any).disableReactiveStatesLogging = () => enableReactiveStatesLogging(false);
-});
-
 // Import the correct locale early on
 void initializeLocale()
   .then(() => {
-    jQuery(() => {
-      // Due to the behaviour of the Edge browser we need to wait for 'DOM ready'
-      void platformBrowserDynamic()
-        .bootstrapModule(OpenProjectModule)
-        .then(() => {
-          jQuery('body').addClass('__ng2-bootstrap-has-run');
-        });
-    });
+    initializeGlobalListeners();
+
+    // Due to the behavior of the Edge browser we need to wait for 'DOM ready'
+    void platformBrowser().bootstrapModule(OpenProjectModule, { applicationProviders: [provideZonelessChangeDetection()], });
   });

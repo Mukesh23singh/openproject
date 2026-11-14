@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,133 +20,60 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { refreshOnFormChanges } from 'core-app/core/setup/globals/global-listeners/refresh-on-form-changes';
-import { registerRequestForConfirmation } from 'core-app/core/setup/globals/global-listeners/request-for-confirmation';
-import { DeviceService } from 'core-app/core/browser/device.service';
-import { scrollHeaderOnMobile } from 'core-app/core/setup/globals/global-listeners/top-menu-scroll';
-import { setupToggableFieldsets } from 'core-app/core/setup/globals/global-listeners/toggable-fieldset';
-import { TopMenu } from 'core-app/core/setup/globals/global-listeners/top-menu';
-import { installMenuLogic } from 'core-app/core/setup/globals/global-listeners/action-menu';
-import { makeColorPreviews } from 'core-app/core/setup/globals/global-listeners/color-preview';
-import { dangerZoneValidation } from 'core-app/core/setup/globals/global-listeners/danger-zone-validation';
 import { setupServerResponse } from 'core-app/core/setup/globals/global-listeners/setup-server-response';
-import { listenToSettingChanges } from 'core-app/core/setup/globals/global-listeners/settings';
-import { detectOnboardingTour } from 'core-app/core/setup/globals/onboarding/onboarding_tour_trigger';
-import { augmentedDatePicker } from './global-listeners/augmented-date-picker';
 import { performAnchorHijacking } from './global-listeners/link-hijacking';
 
 /**
  * A set of listeners that are relevant on every page to set sensible defaults
  */
-(function ($:JQueryStatic) {
-  $(() => {
-    $(document.documentElement)
-      .on('click', (evt:any) => {
-        const target = jQuery(evt.target) as JQuery;
+export function initializeGlobalListeners():void {
+  document
+    .documentElement
+    .addEventListener('click', (evt) => {
+      const target = evt.target as HTMLElement;
 
-        // Create datepickers dynamically for Rails-based views
-        augmentedDatePicker(evt, target);
-
-        // Prevent angular handling clicks on href="#..." links from other libraries
-        // (especially jquery-ui and its datepicker) from routing to <base url>/#
-        performAnchorHijacking(evt, target);
-
-        return true;
-      });
-
-    // Jump to the element given by location.hash, if present
-    const { hash } = window.location;
-    if (hash && hash.startsWith('#')) {
-      try {
-        const el = document.querySelector(hash);
-        el && el.scrollIntoView();
-      } catch (e) {
-        // This is very likely an invalid selector such as a Google Analytics tag.
-        // We can safely ignore this and just not scroll in this case.
-        // Still log the error so one can confirm the reason there is no scrolling.
-        console.log(`Could not scroll to given location hash: ${hash} ( ${e.message})`);
-      }
-    }
-
-    // Global submitting hook,
-    // necessary to avoid a data loss warning on beforeunload
-    $(document).on('submit', 'form', () => {
-      window.OpenProject.pageIsSubmitted = true;
-    });
-
-    // Add to content if warnings displayed
-    if (document.querySelector('.warning-bar--item')) {
-      const content = document.querySelector('#content') as HTMLElement;
-      if (content) {
-        content.style.marginBottom = '100px';
-      }
-    }
-
-    // Global beforeunload hook
-    $(window).on('beforeunload', (e:JQuery.TriggeredEvent) => {
-      const event = e.originalEvent as BeforeUnloadEvent;
-      if (window.OpenProject.pageWasEdited && !window.OpenProject.pageIsSubmitted) {
-        // Cancel the event
-        event.preventDefault();
-        // Chrome requires returnValue to be set
-        event.returnValue = I18n.t('js.work_packages.confirm_edit_cancel');
-      }
-    });
-
-    // Disable global drag & drop handling, which results in the browser loading the image and losing the page
-    $(document.documentElement)
-      .on('dragover drop', (evt:any) => {
+      // Avoid defaulting clicks on elements already removed from DOM
+      if (!document.contains(target)) {
         evt.preventDefault();
-        return false;
-      });
+        return;
+      }
 
-    refreshOnFormChanges();
+      // Avoid handling clicks on anything other than a
+      const linkElement = target.closest<HTMLAnchorElement>('a');
+      if (!linkElement) {
+        return;
+      }
 
-    // Allow forms with [request-for-confirmation]
-    // to show the password confirmation dialog
-    registerRequestForConfirmation($);
+      // Avoid opening new tab when clicking links while editing in ckeditor
+      if (linkElement.classList.contains('ck-link_selected')) {
+        evt.preventDefault();
+        return;
+      }
 
-    const deviceService:DeviceService = new DeviceService();
-    // Register scroll handler on mobile header
-    if (deviceService.isMobile) {
-      scrollHeaderOnMobile();
-    }
-
-    // Detect and trigger the onboarding tour
-    // through a lazy loaded script
-    detectOnboardingTour();
-
-    //
-    // Legacy scripts from app/assets that are not yet component based
-    //
-
-    // Toggable fieldsets
-    setupToggableFieldsets();
-
-    // Top menu click handling
-    new TopMenu(jQuery('.op-app-header'));
-
-    // Action menu logic
-    jQuery('.project-actions, .toolbar-items').each((idx:number, menu:HTMLElement) => {
-      installMenuLogic(jQuery(menu));
+      // Prevent angular handling clicks on href="#..." links from other libraries
+      // from routing to <base url>/#
+      if (performAnchorHijacking(evt, linkElement)) {
+        evt.preventDefault();
+      }
     });
 
-    // Legacy settings listener
-    listenToSettingChanges();
-
-    // Color patches preview the color
-    makeColorPreviews();
-
-    // Danger zone input validation
-    dangerZoneValidation();
-
-    // Bootstrap legacy app code
-    setupServerResponse();
+  // Listen for 'zenModeToggled' event to toggle Zen Mode styling on the body.
+  // Adds 'zen-mode' class if active; removes it if not.
+  window.addEventListener('zenModeToggled', (event:CustomEvent) => {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access,@typescript-eslint/no-unsafe-argument
+    document.body.classList.toggle('zen-mode', event.detail.active);
   });
-}(jQuery));
+
+  // Disable global drag & drop handling, which results in the browser loading the image and losing the page
+  const disableDragDefaults = (evt:Event) => { evt.preventDefault(); };
+  document.documentElement.addEventListener('dragover', disableDragDefaults);
+  document.documentElement.addEventListener('drop', disableDragDefaults);
+
+  // Bootstrap legacy app code
+  setupServerResponse();
+}

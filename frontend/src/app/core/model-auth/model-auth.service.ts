@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,18 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { Injectable } from '@angular/core';
-import { input } from 'reactivestates';
+import { input } from '@openproject/reactivestates';
 import { Observable } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 
-export type ModelLinks = { [action:string]:any };
-export type ModelLinksHash = { [model:string]:ModelLinks };
+export type ModelLinks = Record<string, unknown>;
+export type ModelLinksHash = Record<string, ModelLinks>;
 
 @Injectable({ providedIn: 'root' })
 export class AuthorisationService {
@@ -46,7 +45,7 @@ export class AuthorisationService {
     });
   }
 
-  public observeUntil(unsubscribe:Observable<any>) {
+  public observeUntil(unsubscribe:Observable<unknown>) {
     return this.links.values$().pipe(takeUntil(unsubscribe));
   }
 

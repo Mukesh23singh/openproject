@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,44 +22,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-RSpec.feature 'Work package create uses attributes from filters', js: true, selenium: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:type_bug) { FactoryBot.create(:type_bug) }
-  let(:type_task) { FactoryBot.create(:type_task) }
-  let(:project) { FactoryBot.create(:project, types: [type_task, type_bug]) }
-  let(:status) { FactoryBot.create(:default_status) }
+RSpec.describe "Work package create uses attributes from filters", :js do
+  let(:user) { create(:admin) }
+  let(:type_bug) { create(:type_bug) }
+  let(:type_task) { create(:type_task) }
+  let(:project) { create(:project, types: [type_task, type_bug]) }
 
-  let!(:status) { FactoryBot.create(:default_status) }
-  let!(:priority) { FactoryBot.create :priority, is_default: true }
+  let!(:default_status) { create(:default_status) }
+  let!(:priority) { create(:priority, is_default: true) }
 
-  let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
-  let(:split_view_create) { ::Pages::SplitWorkPackageCreate.new(project: project) }
+  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+  let(:split_view_create) { Pages::SplitWorkPackageCreate.new(project:) }
 
-  let(:role) { FactoryBot.create :existing_role, permissions: [:view_work_packages] }
+  let(:role) { create(:existing_project_role, permissions: %i[view_work_packages work_package_assigned]) }
 
   let!(:query) do
-    FactoryBot.build(:query, project: project, user: user).tap do |query|
+    build(:query, project:, user:).tap do |query|
       query.filters.clear
 
       filters.each do |filter|
         query.add_filter(*filter)
       end
 
-      query.column_names = ['id', 'subject', 'type', 'assigned_to']
+      query.column_names = ["id", "subject", "type", "assigned_to", "status"]
       query.save!
     end
   end
 
   let(:filters) do
-    [['type_id', '=', [type_task.id]]]
+    [["type_id", "=", [type_task.id]]]
   end
 
   before do
@@ -66,16 +66,15 @@ RSpec.feature 'Work package create uses attributes from filters', js: true, sele
     wp_table.expect_no_work_package_listed
   end
 
-  context 'with a multi-value custom field' do
-    let(:type_task) { FactoryBot.create(:type_task, custom_fields: [custom_field]) }
+  context "with a multi-value custom field" do
+    let(:type_task) { create(:type_task, custom_fields: [custom_field]) }
     let!(:project) do
-      FactoryBot.create :project,
-                        types: [type_task],
-                        work_package_custom_fields: [custom_field]
+      create(:project,
+             types: [type_task])
     end
 
     let!(:custom_field) do
-      FactoryBot.create(
+      create(
         :list_wp_custom_field,
         multi_value: true,
         is_filter: true,
@@ -87,43 +86,42 @@ RSpec.feature 'Work package create uses attributes from filters', js: true, sele
     end
 
     let(:filters) do
-      [['type_id', '=', [type_task.id]],
-       ["cf_#{custom_field.id}", '=', [custom_field.custom_options.detect { |o| o.value == 'A' }.id]]]
+      [["type_id", "=", [type_task.id]],
+       [custom_field.column_name, "=", [custom_field.custom_options.detect { |o| o.value == "A" }.id]]]
     end
 
-    it 'allows to save with a single value (Regression test #27833)' do
+    it "allows to save with a single value (Regression test #27833)" do
       split_page = wp_table.create_wp_by_button type_task
 
       subject = split_page.edit_field(:subject)
       subject.expect_active!
-      subject.set_value 'Foobar!'
+      subject.set_value "Foobar!"
       split_page.save!
 
       wp_table.expect_and_dismiss_toaster(
-        message: 'Successful creation. Click here to open this work package in fullscreen view.'
+        message: "Successful creation."
       )
       wp = WorkPackage.last
-      expect(wp.subject).to eq 'Foobar!'
-      expect(wp.send("custom_field_#{custom_field.id}")).to eq %w(A)
+      expect(wp.subject).to eq "Foobar!"
+      expect(wp.send(custom_field.attribute_getter)).to eq %w(A)
       expect(wp.type_id).to eq type_task.id
     end
   end
 
-  context 'with assignee filter' do
+  context "with assignee filter" do
     let!(:assignee) do
-      FactoryBot.create(:user,
-                        firstname: 'An',
-                        lastname: 'assignee',
-                        member_in_project: project,
-                        member_through_role: role)
+      create(:user,
+             firstname: "An",
+             lastname: "assignee",
+             member_with_roles: { project => role })
     end
 
     let(:filters) do
-      [['type_id', '=', [type_task.id]],
-       ['assigned_to_id', '=', [assignee.id]]]
+      [["type_id", "=", [type_task.id]],
+       ["assigned_to_id", "=", [assignee.id]]]
     end
 
-    it 'uses the assignee filter in inline-create and split view' do
+    it "uses the assignee filter in inline-create and split view" do
       wp_table.click_inline_create
 
       subject_field = wp_table.edit_field(nil, :subject)
@@ -138,16 +136,16 @@ RSpec.feature 'Work package create uses attributes from filters', js: true, sele
       assignee_field.expect_state_text type_task.name.upcase
 
       # Save the WP
-      subject_field.set_value 'Foobar!'
+      subject_field.set_value "Foobar!"
       subject_field.submit_by_enter
 
       wp_table.expect_toast(
-        message: 'Successful creation. Click here to open this work package in fullscreen view.'
+        message: "Successful creation."
       )
       wp_table.dismiss_toaster!
 
       wp = WorkPackage.last
-      expect(wp.subject).to eq 'Foobar!'
+      expect(wp.subject).to eq "Foobar!"
       expect(wp.assigned_to_id).to eq assignee.id
       expect(wp.type_id).to eq type_task.id
 
@@ -157,7 +155,7 @@ RSpec.feature 'Work package create uses attributes from filters', js: true, sele
       # Subject
       subject_field = split_view_create.edit_field :subject
       subject_field.expect_active!
-      subject_field.set_value 'Split Foobar!'
+      subject_field.set_value "Split Foobar!"
 
       # Type field IS NOT synced
       type_field = split_view_create.edit_field :type
@@ -165,18 +163,116 @@ RSpec.feature 'Work package create uses attributes from filters', js: true, sele
 
       # Assignee is synced
       assignee_field = split_view_create.edit_field :assignee
-      expect(assignee_field.input_element.find('.ng-value-label').text).to eql('An assignee')
+      expect(assignee_field.input_element.find(".ng-value-label")).to have_text("An assignee")
 
-      within '.work-packages--edit-actions' do
-        click_button 'Save'
+      within ".work-packages--edit-actions" do
+        click_button "Save"
       end
 
-      wp_table.expect_toast(message: 'Successful creation.')
+      wp_table.expect_toast(message: "Successful creation.")
 
       wp = WorkPackage.last
-      expect(wp.subject).to eq 'Split Foobar!'
+      expect(wp.subject).to eq "Split Foobar!"
       expect(wp.assigned_to_id).to eq assignee.id
       expect(wp.type_id).to eq type_bug.id
+    end
+  end
+
+  context "with status filter" do
+    let(:closed_status) { create(:closed_status, workflow_for_type: type_bug) }
+    let(:filters) do
+      [["status_id", "=", [closed_status.id]]]
+    end
+
+    it "uses the status filter in inline-create and split view" do
+      # When the chosen type ( type_task ) does not have a workflow for the status (closed_status)
+      # of the filter, it uses the default status instead (Regression #36719)
+      wp_table.click_inline_create
+
+      # Expect type set to task
+      type_field = wp_table.edit_field(nil, :type)
+      type_field.expect_state_text type_task.name.upcase
+
+      # Expect status set to status
+      status_field = wp_table.edit_field(nil, :status)
+      status_field.expect_state_text default_status.name
+
+      # Save the WP
+      subject_field = wp_table.edit_field(nil, :subject)
+      subject_field.set_value "Foobar!"
+      subject_field.submit_by_enter
+
+      wp_table.expect_toast(
+        message: "Successful creation."
+      )
+      wp_table.dismiss_toaster!
+
+      wp = WorkPackage.last
+      expect(wp.subject).to eq "Foobar!"
+      expect(wp.type_id).to eq type_task.id
+      expect(wp.status_id).to eq default_status.id
+
+      # When the chosen type (type_bug) has a workflow for the status (closed_status)
+      # of the filter, it uses that status
+
+      # Open split view create
+      split_view_create.click_create_wp_button(type_bug)
+
+      subject_field = split_view_create.edit_field :subject
+      subject_field.expect_active!
+      subject_field.set_value "Split Foobar!"
+
+      # Type field IS NOT synced
+      type_field = split_view_create.edit_field :type
+      type_field.expect_state_text type_bug.name.upcase
+
+      # Status is synced
+      status_field = split_view_create.edit_field :status
+      status_field.expect_display_value(closed_status.name.humanize)
+
+      within ".work-packages--edit-actions" do
+        click_button "Save"
+      end
+
+      wp_table.expect_and_dismiss_toaster(message: "Successful creation.")
+
+      wp = WorkPackage.last
+      expect(wp.subject).to eq "Split Foobar!"
+      expect(wp.type_id).to eq type_bug.id
+      expect(wp.status_id).to eq closed_status.id
+
+      split_view = Pages::PrimerizedSplitWorkPackage.new(wp, project)
+      split_view.close
+      split_view.expect_closed
+
+      # When the chosen type (type_task) does not have a workflow for the status (closed_status)
+      # of the filter, it uses the default status instead (Regression #36719)
+
+      # Open split view create
+      split_view_create.click_create_wp_button(type_task)
+
+      subject_field = split_view_create.edit_field :subject
+      subject_field.expect_active!
+      subject_field.set_value "Split Foobar!"
+
+      # Type field IS NOT synced
+      type_field = split_view_create.edit_field :type
+      type_field.expect_state_text type_task.name.upcase
+
+      # Status is synced
+      status_field = split_view_create.edit_field :status
+      status_field.expect_display_value(default_status.name.humanize)
+
+      within ".work-packages--edit-actions" do
+        click_button "Save"
+      end
+
+      wp_table.expect_toast(message: "Successful creation.")
+
+      wp = WorkPackage.last
+      expect(wp.subject).to eq "Split Foobar!"
+      expect(wp.type_id).to eq type_task.id
+      expect(wp.status_id).to eq default_status.id
     end
   end
 end

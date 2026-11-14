@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,41 +22,41 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::MilestoneFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::WorkPackages::Filter::MilestoneFilter do
+  it_behaves_like "basic query filter" do
     let(:type) { :list }
     let(:class_key) { :is_milestone }
+    let(:human_name) { "Is milestone" }
 
-    describe '#available?' do
-      context 'within a project' do
+    describe "#available?" do
+      context "within a project" do
         before do
           allow(project)
             .to receive_message_chain(:rolled_up_types, :exists?)
             .and_return true
         end
 
-        it 'is true' do
+        it "is true" do
           expect(instance).to be_available
         end
 
-        it 'is false without a type' do
+        it "is false without a type" do
           allow(project)
             .to receive_message_chain(:rolled_up_types, :exists?)
             .and_return false
 
-          expect(instance).to_not be_available
+          expect(instance).not_to be_available
         end
       end
 
-      context 'without a project' do
+      context "without a project" do
         let(:project) { nil }
 
         before do
@@ -63,68 +65,68 @@ describe Queries::WorkPackages::Filter::MilestoneFilter, type: :model do
             .and_return true
         end
 
-        it 'is true' do
+        it "is true" do
           expect(instance).to be_available
         end
 
-        it 'is false without a type' do
+        it "is false without a type" do
           allow(Type)
             .to receive_message_chain(:order, :exists?)
             .and_return false
 
-          expect(instance).to_not be_available
+          expect(instance).not_to be_available
         end
       end
     end
   end
 
-  it_behaves_like 'boolean query filter', scope: false do
+  it_behaves_like "boolean query filter", scope: false do
     let(:model) { WorkPackage.unscoped }
     let(:attribute) { :id }
 
-    describe '#scope' do
-      context 'for the true value' do
+    describe "#scope" do
+      context "for the true value" do
         let(:values) { [OpenProject::Database::DB_VALUE_TRUE] }
 
         context 'for "="' do
-          let(:operator) { '=' }
+          let(:operator) { "=" }
 
-          it 'is the same as handwriting the query' do
-            expected = 'type_id IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE ORDER BY position ASC)'
+          it "is the same as handwriting the query" do
+            expected = 'work_packages.type_id IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE)'
 
             expect(instance.where).to eql expected
           end
         end
 
         context 'for "!"' do
-          let(:operator) { '!' }
+          let(:operator) { "!" }
 
-          it 'is the same as handwriting the query' do
-            expected = 'type_id NOT IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE ORDER BY position ASC)'
+          it "is the same as handwriting the query" do
+            expected = 'work_packages.type_id NOT IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE)'
 
             expect(instance.where).to eql expected
           end
         end
       end
 
-      context 'for the false value' do
+      context "for the false value" do
         let(:values) { [OpenProject::Database::DB_VALUE_FALSE] }
 
         context 'for "="' do
-          let(:operator) { '=' }
+          let(:operator) { "=" }
 
-          it 'is the same as handwriting the query' do
-            expected = 'type_id NOT IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE ORDER BY position ASC)'
+          it "is the same as handwriting the query" do
+            expected = 'work_packages.type_id NOT IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE)'
 
             expect(instance.where).to eql expected
           end
         end
 
         context 'for "!"' do
-          let(:operator) { '!' }
+          let(:operator) { "!" }
 
-          it 'is the same as handwriting the query' do
-            expected = 'type_id IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE ORDER BY position ASC)'
+          it "is the same as handwriting the query" do
+            expected = 'work_packages.type_id IN (SELECT "types"."id" FROM "types" WHERE "types"."is_milestone" = TRUE)'
 
             expect(instance.where).to eql expected
           end

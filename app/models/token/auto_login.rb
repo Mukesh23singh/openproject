@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +22,53 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_dependency 'token/hashed_token'
-
 module Token
   class AutoLogin < HashedToken
+    include Ephemeral
+
+    prefix :opal
+
+    has_many :autologin_session_links,
+             class_name: "Sessions::AutologinSessionLink",
+             foreign_key: "token_id",
+             dependent: :destroy,
+             inverse_of: :token
+
+    ##
+    # Set validity time for autologin tokens
+    def self.validity_time
+      Setting.autologin.days
+    end
+
+    ##
+    # Find a valid autologin token from the given value.
+    # Validates the token by checking its expiration date and the user status.
+    #
+    # @param key [String] The plaintext token value
+    # @return [Token::AutoLogin, nil] The valid token or nil if not
+    def self.find_valid_token(key)
+      return if key.blank?
+
+      token = find_by_plaintext_value(key)
+
+      return if token.nil?
+      return if token.expired?
+      return unless token.user&.active?
+
+      token
+    end
+
+    protected
+
+    ##
+    # Autologin tokens might have multiple data
+    def single_value?
+      false
+    end
   end
 end

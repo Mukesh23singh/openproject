@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,50 +22,55 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe ::API::V3::Projects::Copy::CopyAPI, content_type: :json do
+RSpec.describe "API::V3::Projects::Copy::CopyAPI", content_type: :json, with_good_job_batches: [CopyProjectJob] do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
   shared_let(:text_custom_field) do
-    FactoryBot.create(:text_project_custom_field)
+    create(:text_project_custom_field)
   end
   shared_let(:list_custom_field) do
-    FactoryBot.create(:list_project_custom_field)
+    create(:list_project_custom_field)
   end
 
   shared_let(:source_project) do
-    FactoryBot.create :project,
-                      enabled_module_names: %w[work_package_tracking wiki],
-                      custom_field_values: {
-                        text_custom_field.id => 'source text',
-                        list_custom_field.id => list_custom_field.custom_options.last.id
-                      }
+    create(:project,
+           :with_internal_wiki,
+           enabled_module_names: %w[work_package_tracking],
+           custom_field_values: {
+             text_custom_field.id => "source text",
+             list_custom_field.id => list_custom_field.custom_options.last.id
+           })
   end
 
-  shared_let(:work_package) { FactoryBot.create :work_package, project: source_project }
-  shared_let(:wiki_page) { FactoryBot.create :wiki_page, wiki: source_project.wiki }
+  shared_let(:work_package) { create(:work_package, project: source_project) }
+  shared_let(:wiki_page) { create(:wiki_page, wiki: source_project.wiki) }
+
+  shared_let(:project_creator_role) { create(:project_creator_role) }
 
   shared_let(:current_user) do
-    FactoryBot.create :user,
-                      member_in_project: source_project,
-                      member_with_permissions: %i[copy_projects view_project view_work_packages]
+    create(:user,
+           member_with_permissions: { source_project => %i[copy_projects
+                                                           view_project
+                                                           view_work_packages
+                                                           view_project_attributes] })
   end
 
   let(:path) { api_v3_paths.project_copy(source_project.id) }
   let(:params) do
-    {
-    }
+    {}
   end
 
   before do
+    allow(Setting).to receive(:new_project_user_role_id).and_return(project_creator_role.id.to_s)
     login_as(current_user)
 
     post path, params.to_json
@@ -73,14 +78,15 @@ describe ::API::V3::Projects::Copy::CopyAPI, content_type: :json do
 
   subject(:response) { last_response }
 
-  describe '#POST /api/v3/projects/:id/copy' do
-    describe 'with empty params' do
-      it 'returns 422', :aggregate_failures do
-        expect(response.status).to eq(422)
+  # those are mock responses that don't deal well with the rails helpers
+  describe "#POST /api/v3/projects/:id/copy" do
+    describe "with empty params" do
+      it "returns 422", :aggregate_failures do
+        expect(response).to have_http_status(:unprocessable_entity)
 
         expect(response.body)
-          .to be_json_eql('Error'.to_json)
-                .at_path('_type')
+          .to be_json_eql("Error".to_json)
+                .at_path("_type")
 
         expect(response.body)
           .to be_json_eql("Name can't be blank.".to_json)
@@ -88,20 +94,18 @@ describe ::API::V3::Projects::Copy::CopyAPI, content_type: :json do
       end
     end
 
-    describe 'with attributes given' do
+    describe "with attributes given" do
       let(:params) do
-        { name: 'My copied project',
-          identifier: 'my-copied-project',
-          "customField#{text_custom_field.id}": {
-            "raw": "CF text"
-          },
-        }
+        { name: "My copied project",
+          identifier: "my-copied-project",
+          text_custom_field.attribute_name(:camel_case) => {
+            raw: "CF text"
+          } }
       end
 
-      it 'returns with a redirect to job' do
-
+      it "returns with a redirect to job" do
         aggregate_failures do
-          expect(response.status).to eq(302)
+          expect(response).to have_http_status(:found)
 
           expect(response).to be_redirect
 
@@ -110,49 +114,48 @@ describe ::API::V3::Projects::Copy::CopyAPI, content_type: :json do
 
         get response.location
 
-        expect(last_response.status).to eq 200
+        expect(last_response).to have_http_status(:ok)
 
         expect(last_response.body)
-          .to be_json_eql('in_queue'.to_json)
+          .to be_json_eql("in_queue".to_json)
                 .at_path("status")
 
-        perform_enqueued_jobs
+        GoodJob.perform_inline
 
         get response.location
 
-        expect(last_response.status).to eq 200
+        expect(last_response).to have_http_status(:ok)
 
         expect(last_response.body)
-          .to be_json_eql('success'.to_json)
+          .to be_json_eql("success".to_json)
                 .at_path("status")
 
         expect(last_response.body)
           .to be_json_eql("Created project My copied project".to_json)
                 .at_path("message")
 
-        project = Project.find_by(identifier: 'my-copied-project')
+        project = Project.find_by(identifier: "my-copied-project")
         expect(project).to be_present
 
-        expect(project.custom_value_for(text_custom_field).value).to eq 'CF text'
+        expect(project.custom_value_for(text_custom_field).value).to eq "CF text"
         expect(project.custom_value_for(list_custom_field).formatted_value).to eq list_custom_field.custom_options.last.value
       end
     end
 
-    describe 'with restricted copying' do
+    describe "with internal copying" do
       let(:params) do
-        { name: 'My copied project',
-          identifier: 'my-copied-project',
+        { name: "My copied project",
+          identifier: "my-copied-project",
           _meta: {
             copyWorkPackages: true,
-            copyWiki: false,
-          }
-        }
+            copyWiki: false
+          } }
       end
 
-      it 'does not copy the wiki' do
-        perform_enqueued_jobs
+      it "does not copy the wiki" do
+        GoodJob.perform_inline
 
-        project = Project.find_by(identifier: 'my-copied-project')
+        project = Project.find_by(identifier: "my-copied-project")
         expect(project).to be_present
 
         expect(source_project.wiki.pages.count).to eq 1
@@ -163,46 +166,98 @@ describe ::API::V3::Projects::Copy::CopyAPI, content_type: :json do
       end
     end
 
-    describe 'sendNotifications' do
+    describe "sendNotifications" do
       let(:params) do
-        { name: 'My copied project',
-          identifier: 'my-copied-project',
+        { name: "My copied project",
+          identifier: "my-copied-project",
           _meta: {
-            sendNotifications: sendNotifications
-          }
-        }
+            sendNotifications:
+          } }
       end
 
-      context 'when false' do
+      context "when false" do
         let(:sendNotifications) { false }
-        it 'queues the job without notifications' do
-          expect(CopyProjectJob)
-            .to have_been_enqueued.with do |args|
-            expect(args[:send_mails]).to eq false
-          end
+
+        it "queues the job without notifications" do
+          job = GoodJob::Job.where(job_class: "CopyProjectJob").last
+          enqueue_params = job.serialized_params["arguments"][0]
+
+          expect(enqueue_params["send_mails"]).to be_falsey
         end
       end
 
-      context 'when true' do
+      context "when true" do
         let(:sendNotifications) { true }
-        it 'queues the job with notifications' do
-          expect(CopyProjectJob)
-            .to have_been_enqueued.with do |args|
-            expect(args[:send_mails]).to eq true
-          end
+
+        it "queues the job with notifications" do
+          job = GoodJob::Job.where(job_class: "CopyProjectJob").last
+          enqueue_params = job.serialized_params["arguments"][0]
+
+          expect(enqueue_params["send_mails"]).to be_truthy
         end
       end
     end
 
-    context 'without the necessary permission' do
-      let(:current_user) do
-        FactoryBot.create :user,
-                          member_in_project: source_project,
-                          member_with_permissions: %i[view_project view_work_packages]
+    context "with semantic identifiers", with_settings: { work_packages_identifier: "semantic" } do
+      context "when identifier is not provided" do
+        let(:params) do
+          { name: "My copied project" }
+        end
+
+        it "returns a redirect to job" do
+          expect(response).to have_http_status(:found)
+        end
+
+        it "auto-generates a semantic identifier from the name" do
+          GoodJob.perform_inline
+
+          project = Project.find_by(name: "My copied project")
+          expect(project).to be_present
+          expect(project.identifier).to eq("MCP")
+        end
+
+        context "when the generated identifier is already taken" do
+          let!(:existing_project) { create(:project, identifier: "MCP") }
+
+          it "auto-generates a unique identifier instead" do
+            GoodJob.perform_inline
+
+            project = Project.find_by(name: "My copied project")
+            expect(project).to be_present
+            expect(project.identifier).not_to eq("MCP")
+            expect(project.identifier).to match(/\A[A-Z][A-Z0-9_]*\z/)
+          end
+        end
       end
 
-      it 'returns 403 Not Authorized' do
-        expect(response.status).to eq(403)
+      context "when an invalid identifier is provided" do
+        let(:params) do
+          {
+            name: "My copied project",
+            identifier: "1ABC"
+          }
+        end
+
+        it "returns 422" do
+          expect(response).to have_http_status(:unprocessable_entity)
+        end
+
+        it "explains the identifier format error" do
+          expect(response.body)
+            .to be_json_eql("Identifier must start with a letter".to_json)
+            .at_path("message")
+        end
+      end
+    end
+
+    context "without the necessary permission" do
+      let(:current_user) do
+        create(:user,
+               member_with_permissions: { source_project => %i[view_project view_work_packages] })
+      end
+
+      it "returns 403 Not Authorized" do
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end

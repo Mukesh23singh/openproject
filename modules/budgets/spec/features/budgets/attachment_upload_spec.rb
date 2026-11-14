@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,64 +20,89 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'features/page_objects/notification'
+require "spec_helper"
+require "features/page_objects/notification"
 
-describe 'Upload attachment to budget', js: true do
+RSpec.describe "Upload attachment to budget", :js do
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_budgets
-                                                  edit_budgets]
+    create(:user, member_with_permissions: { project => %i[view_budgets edit_budgets] })
   end
-  let(:project) { FactoryBot.create(:project) }
-  let(:attachments) { ::Components::Attachments.new }
-  let(:image_fixture) { ::UploadedFile.load_from('spec/fixtures/files/image.png') }
-  let(:editor) { ::Components::WysiwygEditor.new }
+  let(:project) { create(:project) }
+  let(:attachments) { Components::Attachments.new }
+  let(:image_fixture) { UploadedFile.load_from("spec/fixtures/files/image.png") }
+  let(:editor) { Components::WysiwygEditor.new }
+  let(:attachments_list) { Components::AttachmentsList.new }
 
   before do
     login_as(user)
   end
 
-  it 'can upload an image to new and existing budgets via drag & drop' do
+  it "can upload an image to new and existing budgets via drag & drop" do
     visit projects_budgets_path(project)
 
-    within '.toolbar-items' do
-      click_on "Budget"
-    end
+    page.find_test_selector("budget-create-button").click
 
-    fill_in "Subject", with: 'New budget'
+    fill_in "Subject", with: "New budget"
 
     # adding an image
-    editor.drag_attachment image_fixture.path, 'Image uploaded on creation'
+    editor.drag_attachment image_fixture.path, "Image uploaded on creation"
 
-    expect(page).to have_selector('attachment-list-item', text: 'image.png')
+    editor.attachments_list.expect_attached("image.png")
 
-    click_on 'Create'
+    click_on "Create"
 
-    expect(page).to have_selector('#content img', count: 1)
-    expect(page).to have_content('Image uploaded on creation')
-    expect(page).to have_selector('attachment-list-item', text: 'image.png')
+    expect_and_dismiss_flash(message: "Successful creation.")
 
-    within '.toolbar-items' do
-      click_on "Update"
-    end
+    expect(page).to have_text("Image uploaded on creation")
+    attachments_list.expect_attached("image.png")
 
-    editor.drag_attachment image_fixture.path, 'Image uploaded the second time'
+    page.find_test_selector("budget-edit-button").click
 
-    expect(page).to have_selector('attachment-list-item', text: 'image.png', count: 2)
+    editor.drag_attachment image_fixture.path, "Image uploaded the second time"
 
-    click_on 'Submit'
+    editor.attachments_list.expect_attached("image.png", count: 2)
 
-    expect(page).to have_selector('#content img', count: 2)
-    expect(page).to have_content('Image uploaded on creation')
-    expect(page).to have_content('Image uploaded the second time')
-    expect(page).to have_selector('attachment-list-item', text: 'image.png', count: 2)
+    click_on "Submit"
+
+    expect(page).to have_text("Image uploaded on creation")
+    expect(page).to have_text("Image uploaded the second time")
+    attachments_list.expect_attached("image.png", count: 2)
+  end
+
+  it "can upload an image to new and existing budgets via drag & drop on attachment list", :selenium do
+    visit projects_budgets_path(project)
+
+    page.find_test_selector("budget-create-button").click
+
+    fill_in "Subject", with: "New budget"
+    editor.set_markdown "Some content because it's required"
+
+    # adding an image
+    editor.attachments_list.drop(image_fixture)
+
+    editor.attachments_list.expect_attached("image.png")
+
+    click_on "Create"
+
+    expect_and_dismiss_flash(message: "Successful creation.")
+
+    attachments_list.expect_attached("image.png")
+
+    page.find_test_selector("budget-edit-button").click
+
+    # adding an image
+    editor.attachments_list.drag_enter
+    editor.attachments_list.drop(image_fixture)
+
+    editor.attachments_list.expect_attached("image.png", count: 2)
+
+    click_on "Submit"
+
+    attachments_list.expect_attached("image.png", count: 2)
   end
 end

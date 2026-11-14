@@ -1,0 +1,93 @@
+---
+da:
+  activerecord:
+    attributes:
+      ldap_departments/synchronized_department:
+        dn: DN
+        group: Afdeling
+        ldap_auth_source: LDAP-forbindelse
+        users_count: Medlemmer
+      ldap_departments/synchronized_tree:
+        base_dn: Base-DN
+        guid_attribute: Attribut for entydigt id
+        ldap_auth_source: LDAP-forbindelse
+        name: Navn
+        ou_name_attribute: Attribut for OU-navn
+        structure_filter_string: Filter for organisationsenheder
+        sync_users: Synkroniser brugere
+        user_filter_string: Brugerfilter
+    errors:
+      models:
+        ldap_departments/synchronized_tree:
+          must_contain_base_dn: Base-DN skal ligge inden for LDAP-forbindelsens base-DN.
+          overlaps_other_tree: Overlapper base-DN for en anden synkronisering på samme LDAP-forbindelse.
+    models:
+      ldap_departments/synchronized_department:
+        one: Synkroniseret afdeling
+        other: Synkroniserede afdelinger
+      ldap_departments/synchronized_tree:
+        one: Synkronisering af LDAP-afdelinger
+        other: Synkroniseringer af LDAP-afdelinger
+  ee:
+    upsell:
+      ldap_departments:
+        description: Spejl strukturen af organisationsenheder i LDAP til afdelingshierarkiet i OpenProject, og hold afdelingernes medlemmer synkroniseret automatisk.
+        title: Synkronisering af LDAP-afdelinger
+  ldap_departments:
+    label_menu_item: Synkronisering af LDAP-afdelinger
+    label_synchronize: Synkroniser organisationsenheder
+    synchronized_departments:
+      blankslate:
+        description: Kør synkroniseringen for at importere organisationsenhederne under denne base-DN som afdelinger.
+        heading: Der er endnu ikke synkroniseret nogen afdelinger
+      destroy:
+        confirmation: Hvis du fortsætter, styres %{name} ikke længere af LDAP-synkroniseringen.
+        heading: Vil du stoppe styringen af %{name}?
+        info: Afdelingen og dens medlemmer bevares. Den bliver en almindelig afdeling, som du kan redigere eller slette manuelt.
+        title: Stop styringen af %{name}
+      managed_notice: Styres af LDAP-synkroniseringen
+      no_results: Der er endnu ikke synkroniseret nogen afdelinger.
+      plural: Synkroniserede afdelinger
+      singular: Synkroniseret afdeling
+    synchronized_trees:
+      add_new: Tilføj synkronisering af LDAP-afdelinger
+      blankslate:
+        description: Sæt en synkronisering op for at spejle strukturen af organisationsenheder i LDAP til afdelingshierarkiet i OpenProject.
+        heading: Ingen synkroniseringer af LDAP-afdelinger
+      destroy:
+        confirmation_message:
+          one: Hvis du fortsætter, fjernes synkroniseringen %{name}, og dens %{count} afdeling styres ikke længere af LDAP.
+          other: Hvis du fortsætter, fjernes synkroniseringen %{name}, og dens %{count} afdelinger styres ikke længere af LDAP.
+        heading: Vil du fjerne synkroniseringen %{name}?
+        info: Afdelingerne og deres medlemmer bevares og bliver almindelige afdelinger. Du kan bagefter redigere eller slette dem manuelt under Administration → Brugere og tilladelser → Organisation.
+        title: Fjern synkroniseringen %{name}
+      form:
+        auth_source_text: Vælg, hvilken LDAP-forbindelse der skal bruges.
+        base_dn_text: 'Angiv den base-DN, hvis organisationsenheder skal synkroniseres. Dens direkte underordnede OU''er bliver afdelinger på øverste niveau. Den skal ligge under base-DN for den valgte LDAP-forbindelse.
+
+          '
+        guid_attribute_text: 'Valgfrit. Den LDAP-attribut, der indeholder et stabilt, entydigt id (fx "objectGUID" eller "entryUUID"). Når den er angivet, bevares afdelingerne, selvom OU''er omdøbes eller flyttes. Lad feltet stå tomt for at matche på DN.
+
+          '
+        ou_name_attribute_text: Den LDAP-attribut, der giver afdelingen dens navn (fx "ou").
+        sections:
+          connection: LDAP-forbindelse
+          structure: Organisationsenheder
+          users: Brugere
+        structure_filter_string_text: LDAP-filter efter RFC 4515, der finder poster for organisationsenheder.
+        sync_users_text: 'Når indstillingen er slået til, oprettes brugere, der findes under base-DN, også i OpenProject. Ellers tildeles kun eksisterende konti til afdelinger.
+
+          '
+        user_filter_string_text: 'Valgfrit LDAP-filter efter RFC 4515, der finder brugerposter. Lad feltet stå tomt for at bruge forbindelsens filter eller et generelt personfilter, hvis der ikke er angivet noget.
+
+          '
+      help_text: 'Modulet spejler strukturen af organisationsenheder (OU''er) i dit LDAP-katalog til afdelingshierarkiet i OpenProject. Hver OU under den konfigurerede base-DN bliver en afdeling, og brugerne tildeles afdelingen for den OU, som de ligger i. Afdelingerne synkroniseres jævnligt via et cron-job.
+
+        '
+      no_results: Der er endnu ikke konfigureret nogen synkroniseringer af LDAP-afdelinger.
+      plural: Synkroniseringer af LDAP-afdelinger
+      singular: Synkronisering af LDAP-afdelinger
+      synchronization_started: Synkroniseringen er startet i baggrunden. Afdelingerne vises, når den er færdig.
+  plugin_openproject_ldap_departments:
+    description: Synkronisering af organisationsenheder i LDAP til afdelinger i OpenProject.
+    name: OpenProject LDAP departments

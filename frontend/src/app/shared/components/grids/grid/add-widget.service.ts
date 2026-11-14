@@ -1,4 +1,36 @@
-import { Injectable, Injector } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import {
+  ChangeDetectorRef, inject,
+  Injectable,
+  Injector,
+  OnDestroy,
+} from '@angular/core';
 import { OpModalService } from 'core-app/shared/components/modal/modal.service';
 import { AddGridWidgetModalComponent } from 'core-app/shared/components/grids/widgets/add/add.modal';
 import { GridWidgetResource } from 'core-app/features/hal/resources/grid-widget-resource';
@@ -11,19 +43,31 @@ import { GridResizeService } from 'core-app/shared/components/grids/grid/resize.
 import { GridMoveService } from 'core-app/shared/components/grids/grid/move.service';
 import { GridGap } from 'core-app/shared/components/grids/areas/grid-gap';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { GridResource } from 'core-app/features/hal/resources/grid-resource';
 
 @Injectable()
-export class GridAddWidgetService {
+export class GridAddWidgetService implements OnDestroy {
+  readonly opModalService = inject(OpModalService);
+  readonly injector = inject(Injector);
+  readonly halResource = inject(HalResourceService);
+  readonly layout = inject(GridAreaService);
+  readonly drag = inject(GridDragAndDropService);
+  readonly move = inject(GridMoveService);
+  readonly resize = inject(GridResizeService);
+  readonly i18n = inject(I18nService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   text = { add: this.i18n.t('js.grid.add_widget') };
 
-  constructor(readonly opModalService:OpModalService,
-    readonly injector:Injector,
-    readonly halResource:HalResourceService,
-    readonly layout:GridAreaService,
-    readonly drag:GridDragAndDropService,
-    readonly move:GridMoveService,
-    readonly resize:GridResizeService,
-    readonly i18n:I18nService) {
+  private boundListener = this.createNewWidget.bind(this);
+
+
+  constructor() {
+    document.addEventListener('overview:addWidget', this.boundListener);
+  }
+
+  ngOnDestroy():void {
+    document.removeEventListener('overview:addWidget', this.boundListener);
   }
 
   public isAddable(area:GridArea) {
@@ -33,23 +77,22 @@ export class GridAddWidgetService {
       && this.isAllowed;
   }
 
-  public widget(area:GridArea) {
-    this
+  public widget(area:GridArea):Promise<GridWidgetResource|null> {
+    return this
       .select(area)
-      .then((widgetResource) => {
+      .then(async (widgetResource) => {
         if (this.layout.isGap(area)) {
-          this.addLine(area as GridGap);
+          this.addLine(area);
         }
 
         const newArea = new GridWidgetArea(widgetResource);
 
         this.setMaxWidth(newArea);
 
-        this.persist(newArea);
+        await this.persist(newArea);
+        return widgetResource;
       })
-      .catch(() => {
-        // user didn't select a widget
-      });
+      .catch(() => null);
   }
 
   public get addText() {
@@ -58,30 +101,35 @@ export class GridAddWidgetService {
 
   private select(area:GridArea) {
     return new Promise<GridWidgetResource>((resolve, reject) => {
-      const modal = this.opModalService.show(AddGridWidgetModalComponent, this.injector, { schema: this.layout.schema });
-      modal.closingEvent.subscribe((modal:AddGridWidgetModalComponent) => {
-        const registered = modal.chosenWidget;
+      this.opModalService.show(
+        AddGridWidgetModalComponent,
+        this.injector,
+        { $schema: this.layout.$schema },
+      ).subscribe((modal) => {
+        modal.closingEvent.subscribe(() => {
+          const registered = modal.chosenWidget;
 
-        if (!registered) {
-          reject();
-          return;
-        }
+          if (!registered) {
+            reject();
+            return;
+          }
 
-        const source = {
-          _type: 'GridWidget',
-          identifier: registered.identifier,
-          startRow: area.startRow,
-          endRow: area.endRow,
-          startColumn: area.startColumn,
-          endColumn: area.endColumn,
-          options: registered.properties || {},
-        };
+          const source = {
+            _type: 'GridWidget',
+            identifier: registered.identifier,
+            startRow: area.startRow,
+            endRow: area.endRow,
+            startColumn: area.startColumn,
+            endColumn: area.endColumn,
+            options: registered.properties || {},
+          };
 
-        const resource:GridWidgetResource = this.halResource.createHalResource(source);
+          const resource:GridWidgetResource = this.halResource.createHalResource(source);
 
-        resource.grid = this.layout.gridResource;
+          resource.grid = this.layout.gridResource;
 
-        resolve(resource);
+          resolve(resource);
+        });
       });
     });
   }
@@ -108,14 +156,21 @@ export class GridAddWidgetService {
     });
   }
 
-  private persist(area:GridWidgetArea) {
+  private async persist(area:GridWidgetArea):Promise<GridResource> {
     area.writeAreaChangeToWidget();
     this.layout.widgetAreas.push(area);
     this.layout.widgetResources.push(area.widget);
-    this.layout.rebuildAndPersist();
+
+    return this.layout.rebuildAndPersist();
   }
 
   public get isAllowed() {
-    return this.layout.gridResource && this.layout.gridResource.updateImmediately;
+    return this.layout.gridResource?.updateImmediately;
+  }
+
+  private async createNewWidget():Promise<void> {
+    const newGap = new GridGap(1, 2, 1, 2, 'row');
+    await this.widget(newGap);
+    this.cdRef.detectChanges();
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,248 +22,472 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'features/work_packages/work_packages_page'
+require "spec_helper"
+require "features/work_packages/work_packages_page"
 
-describe 'work package export', type: :feature do
-  let(:project) { FactoryBot.create :project_with_types, types: [type_a, type_b] }
-  let(:current_user) { FactoryBot.create :admin }
-
-  let(:type_a) { FactoryBot.create :type, name: "Type A" }
-  let(:type_b) { FactoryBot.create :type, name: "Type B" }
-
-  let(:wp_1) { FactoryBot.create :work_package, project: project, done_ratio: 25, type: type_a }
-  let(:wp_2) { FactoryBot.create :work_package, project: project, done_ratio: 0, type: type_a }
-  let(:wp_3) { FactoryBot.create :work_package, project: project, done_ratio: 0, type: type_b }
-  let(:wp_4) { FactoryBot.create :work_package, project: project, done_ratio: 0, type: type_a }
-
+RSpec.describe "work package export", :js do
+  let(:project) { create(:project_with_types, types: [type_a, type_b]) }
+  let(:export_type) { "CSV" }
+  let(:current_user) { create(:admin) }
+  let(:type_a) { create(:type, name: "Type A") }
+  let(:type_b) { create(:type, name: "Type B") }
+  let(:wp1) { create(:work_package, project:, done_ratio: 25, type: type_a) }
+  let(:wp2) { create(:work_package, project:, done_ratio: 0, type: type_a) }
+  let(:wp3) { create(:work_package, project:, done_ratio: 0, type: type_b) }
+  let(:wp4) { create(:work_package, project:, done_ratio: 0, type: type_a) }
   let(:work_packages_page) { WorkPackagesPage.new(project) }
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
-  let(:columns) { ::Components::WorkPackages::Columns.new }
-  let(:filters) { ::Components::WorkPackages::Filters.new }
-  let(:group_by) { ::Components::WorkPackages::GroupBy.new }
-  let(:hierarchies) { ::Components::WorkPackages::Hierarchies.new }
-  let(:settings_menu) { ::Components::WorkPackages::SettingsMenu.new }
+  let(:settings_menu) { Components::WorkPackages::SettingsMenu.new }
+  let(:export_variant) { nil }
+  let(:default_expected_params) do
+    { title: "My custom query title" }
+  end
+  let(:expected_params) do
+    default_expected_params
+  end
+  let(:expected_mime_type) { anything }
+  let(:query) { create(:query, user: current_user, project:, name: "My custom query title") }
+  let(:query_columns) { query.displayable_columns.map { |c| c.name.to_s } - ["bcf_thumbnail"] }
+  let(:cf_text_a) do
+    create(
+      :work_package_custom_field,
+      id: 42,
+      name: "Long text custom field",
+      field_format: "text",
+      is_for_all: false
+    )
+  end
+  let(:cf_text_b) do
+    create(
+      :work_package_custom_field,
+      id: 43,
+      name: "Second lt cf",
+      field_format: "text",
+      is_for_all: false
+    )
+  end
 
   before do
-    @download_list = DownloadList.new
-    wp_1
-    wp_2
-    wp_3
-    wp_4
-
     login_as(current_user)
+
+    service_instance = instance_double(WorkPackages::Exports::ScheduleService)
+    allow(WorkPackages::Exports::ScheduleService)
+      .to receive(:new)
+            .with(user: current_user)
+            .and_return(service_instance)
+
+    allow(service_instance)
+      .to receive(:call)
+            .with(query: anything, mime_type: expected_mime_type, params: has_mandatory_params(expected_params))
+            .and_return(ServiceResult.success(result: "uuid of the export job"))
+
+    wp1
+    wp2
+    wp3
+    wp4
+
+    query.column_names = query_columns
+    query.save!
   end
 
-  let(:export_type) { 'CSV' }
-  subject { @download_list.refresh_from(page).latest_downloaded_content }
+  RSpec::Matchers.define :has_mandatory_params do |expected|
+    match do |actual|
+      expected.count do |key, value|
+        actual[key.to_sym] == value
+      end == expected.size
+    end
+  end
 
-  def export!(expect_success = true)
+  def open_page!(query_target = :query)
+    case query_target
+    when :query
+      wp_table.visit_query query
+    when :default
+      wp_table.visit_with_params ""
+    else
+      raise ArgumentError, "query_target must be :query or :default"
+    end
     work_packages_page.ensure_loaded
+  end
 
-    settings_menu.open_and_choose 'Export ...'
+  def show_export_dialog!
+    settings_menu.open_and_choose I18n.t("js.toolbar.settings.export")
+    wait_for_size_animation_completion(find_by_id("op-work-packages-export-dialog", wait: 5))
     click_on export_type
-
-    # Expect to get a response regarding queuing
-    expect(page).to have_content I18n.t('js.job_status.generic_messages.in_queue'),
-                                 wait: 10
-
-    # Expect title
-    expect(page).to have_selector 'h1', text: I18n.t('export.your_work_packages_export')
-
-    begin
-      perform_enqueued_jobs
-    rescue StandardError
-      # nothing
-    end
-
-    if expect_success
-      expect(page).to have_text("The export has completed successfully")
-    end
   end
 
-  after do
-    DownloadList.clear
+  def open_export_dialog!(query_target = :query)
+    open_page! query_target
+    show_export_dialog!
   end
 
-  context 'CSV export' do
-    context 'with default filter' do
-      before do
-        work_packages_page.visit_index
-        filters.expect_filter_count 1
-        filters.open
-      end
+  def export!
+    click_on I18n.t("export.dialog.submit")
+    expect(page).to have_no_button(I18n.t("export.dialog.submit"), wait: 1)
+  end
 
-      it 'shows all work packages with the default filters', js: true do
-        export!
+  def close_export_dialog!
+    expect(page).to have_button(I18n.t("js.button_close"))
+    click_on I18n.t("js.button_close")
+    expect(page).to have_no_button(I18n.t("js.button_close"))
+  end
 
-        expect(subject).to have_text(wp_1.description)
-        expect(subject).to have_text(wp_2.description)
-        expect(subject).to have_text(wp_3.description)
-        expect(subject).to have_text(wp_4.description)
+  def export_and_reopen_dialog!(query_target = :query)
+    export!
+    close_export_dialog!
+    open_export_dialog!(query_target)
+  end
 
-        # results are ordered by ID (asc) and not grouped by type
-        expect(subject.scan(/Type (A|B)/).flatten).to eq %w(A A B A)
-      end
-
-      it 'shows all work packages grouped by ', js: true do
-        group_by.enable_via_menu 'Type'
-
-        wp_table.expect_work_package_listed(wp_1)
-        wp_table.expect_work_package_listed(wp_2)
-        wp_table.expect_work_package_listed(wp_3)
-        wp_table.expect_work_package_listed(wp_4)
-
-        export!
-
-        expect(subject).to have_text(wp_1.description)
-        expect(subject).to have_text(wp_2.description)
-        expect(subject).to have_text(wp_3.description)
-        expect(subject).to have_text(wp_4.description)
-
-        # grouped by type
-        expect(subject.scan(/Type (A|B)/).flatten).to eq %w(A A A B)
-      end
-
-      it 'shows only the work package with the right progress if filtered this way',
-         js: true do
-        filters.add_filter_by 'Progress (%)', 'is', ['25'], 'percentageDone'
-
-        sleep 1
-        loading_indicator_saveguard
-
-        wp_table.expect_work_package_listed(wp_1)
-        wp_table.ensure_work_package_not_listed!(wp_2, wp_3)
-
-        export!
-
-        expect(subject).to have_text(wp_1.description)
-        expect(subject).not_to have_text(wp_2.description)
-        expect(subject).not_to have_text(wp_3.description)
-      end
-
-      it 'shows only work packages of the filtered type', js: true do
-        filters.add_filter_by 'Type', 'is', wp_3.type.name
-
-        expect(page).to have_no_content(wp_2.description) # safeguard
-
-        sleep(0.5)
-
-        export!
-
-        expect(subject).not_to have_text(wp_1.description)
-        expect(subject).not_to have_text(wp_2.description)
-        expect(subject).to have_text(wp_3.description)
-      end
-
-      it 'exports selected columns', js: true do
-        columns.add 'Progress (%)'
-
-        export!
-
-        expect(subject).to have_text('Progress (%)')
-        expect(subject).to have_text('25')
-      end
+  def expect_selected_columns(columns = %w[])
+    selected_columns = page.within(".op-draggable-autocomplete--selected") do
+      all(".op-draggable-autocomplete--item-text").map(&:text)
     end
 
-    describe 'with a manually sorted query', js: true do
+    expect(selected_columns).to eq(columns)
+  end
+
+  context "with Query options" do
+    let(:export_type) { I18n.t("export.dialog.format.options.pdf.label") }
+    let(:expected_mime_type) { :pdf }
+
+    before do
+      open_export_dialog!
+    end
+
+    # these values must be looped through the dialog into the export
+
+    context "with activated options" do
       let(:query) do
-        FactoryBot.create :query,
-                          user: current_user,
-                          project: project
+        create(
+          :query,
+          id: 1234,
+          user: current_user,
+          project:,
+          display_sums: true,
+          include_subprojects: true,
+          show_hierarchies: true,
+          name: "My custom query title"
+        )
+      end
+      let(:expected_params) do
+        default_expected_params.merge({
+                                        query_id: "1234",
+                                        showSums: "true",
+                                        includeSubprojects: "true",
+                                        showHierarchies: "true"
+                                      })
       end
 
-      before do
-        ::OrderedWorkPackage.create(query: query, work_package: wp_4, position: 0)
-        ::OrderedWorkPackage.create(query: query, work_package: wp_1, position: 1)
-        ::OrderedWorkPackage.create(query: query, work_package: wp_2, position: 2)
-        ::OrderedWorkPackage.create(query: query, work_package: wp_3, position: 3)
-
-        query.add_filter('manual_sort', 'ow', [])
-        query.sort_criteria = [[:manual_sorting, 'asc']]
-        query.save!
-      end
-
-      it 'returns the correct number of work packages' do
-        wp_table.visit_query query
-        wp_table.expect_work_package_listed(wp_1, wp_2, wp_3, wp_4)
-        wp_table.expect_work_package_order(wp_4, wp_1, wp_2, wp_3)
-
+      it "starts an export with looped through values" do
         export!
+      end
+    end
 
-        expect(page).to have_selector('.job-status--modal .icon-checkmark', wait: 10)
-        expect(page).to have_content('The export has completed successfully.')
+    context "with grouping" do
+      let(:query) { create(:query, user: current_user, project:, group_by: "project", name: "My custom query title") }
+      let(:expected_params) { default_expected_params.merge({ groupBy: "project" }) }
 
-        expect(subject).to have_text(wp_1.description)
-        expect(subject).to have_text(wp_2.description)
-        expect(subject).to have_text(wp_3.description)
-        expect(subject).to have_text(wp_4.description)
-
-        # results are ordered by ID (asc) and not grouped by type
-        expect(subject.scan(/WorkPackage No\. \d+,/)).to eq [wp_4, wp_1, wp_2, wp_3].map { |wp| wp.subject + ',' }
+      it "starts an export grouped" do
+        export!
       end
     end
   end
 
-  context 'PDF export', js: true do
-    let(:export_type) { 'PDF' }
-    let(:query) do
-      FactoryBot.create :query,
-                        user: current_user,
-                        project: project
+  context "in a split view" do
+    before do
+      wp_table.visit_query query
+      work_packages_page.ensure_loaded
+      wp_table.open_split_view(wp1)
     end
 
-    context 'with many columns' do
-      before do
-        query.column_names = query.available_columns.map { |c| c.name.to_s } - ['bcf_thumbnail']
-        query.save!
-
-        # Despite attempts to provoke the error by having a lot of columns, the pdf
-        # is still being drawn successfully. We thus have to fake the error.
-        allow_any_instance_of(WorkPackage::PDFExport::WorkPackageListToPdf)
-          .to receive(:export!)
-          .and_raise(I18n.t(:error_pdf_export_too_many_columns))
-      end
-
-      it 'returns the error' do
-        wp_table.visit_query query
-
-        export!(false)
-
-        expect(page)
-          .to have_content(I18n.t(:error_pdf_export_too_many_columns), wait: 10)
-      end
+    it "opens the dialog and exports without leaving the split view" do
+      expect(page).to have_css("#work-package-details-#{wp1.id}")
+      show_export_dialog!
+      export!
     end
   end
 
-  # Atom exports are not downloaded. In fact, it is not even a download but rather
-  # a feed one can follow.
-  context 'Atom export', js: true do
-    let(:export_type) { 'Atom' }
-    context 'with default filter' do
-      before do
-        work_packages_page.visit_index
-        filters.expect_filter_count 1
-        filters.open
+  context "with CSV export" do
+    let(:export_type) { I18n.t("export.dialog.format.options.csv.label") }
+    let(:expected_mime_type) { :csv }
+    let(:expected_params) { default_expected_params }
+
+    before do
+      query.export_settings.delete_all
+      open_export_dialog!
+    end
+
+    it "exports with and without descriptions" do
+      expected_params[:show_descriptions] = "true"
+      check I18n.t("export.dialog.xls.include_descriptions.label")
+      export_and_reopen_dialog!
+
+      expected_params[:show_descriptions] = "false"
+      uncheck I18n.t("export.dialog.xls.include_descriptions.label")
+      export!
+    end
+  end
+
+  context "with a saved query" do
+    let!(:query) { create(:query, name: "saved settings query", user: current_user, project:) }
+    let(:export_type) { I18n.t("export.dialog.format.options.csv.label") }
+    let(:expected_mime_type) { :csv }
+    let(:expected_columns) { %w[ID Subject Type Status Assignee Priority] }
+    let(:expected_params) do
+      default_expected_params.merge(
+        {
+          title: "saved settings query",
+          show_descriptions: "true",
+          columns: %w[subject type status assigned_to priority]
+        }
+      )
+    end
+    let(:query_columns) do
+      query.displayable_columns.filter_map { |c| c.name.to_s if expected_columns.include?(c.name.to_s) }
+    end
+
+    before do
+      open_export_dialog!
+    end
+
+    it "saves the export settings" do
+      # Ensure that the option to save export settings is there and both checkboxes are unchecked
+      expect(page.find_test_selector("op-work-packages-export-dialog-form-save-export-settings")).not_to be_checked
+      expect(page.find_test_selector("show-descriptions-csv")).not_to be_checked
+      expect_selected_columns(expected_columns)
+
+      # Save settings and include descriptions
+      check I18n.t("export.dialog.save_export_settings.label")
+      check I18n.t("export.dialog.xls.include_descriptions.label")
+      # Remove the first column
+      page.within(".op-draggable-autocomplete--selected") do
+        first(".op-draggable-autocomplete--remove-item").click
       end
 
-      it 'shows an xml with work packages' do
-        settings_menu.open_and_choose 'Export ...'
+      export_and_reopen_dialog!
+      # Last settings are remembered
+      expect(page.find_test_selector("show-descriptions-csv")).to be_checked
+      expect(page.find_test_selector("op-work-packages-export-dialog-form-save-export-settings")).to be_checked
+      expect_selected_columns(expected_columns - ["ID"])
 
-        # The feed is opened in a new tab
-        new_window = window_opened_by { click_on export_type }
+      # Uncheck both checkboxes again (do not include descriptions, do not save changes)
+      uncheck I18n.t("export.dialog.save_export_settings.label")
+      uncheck I18n.t("export.dialog.xls.include_descriptions.label")
+      # Remove the last column
+      page.within(".op-draggable-autocomplete--selected") do
+        all(".op-draggable-autocomplete--remove-item").last.click
+      end
+      # Adjust expectation and export
+      expected_params[:show_descriptions] = "false"
+      expected_params[:columns].pop
+      export_and_reopen_dialog!
 
-        within_window new_window do
-          expect(page).to have_text(wp_1.description)
-          expect(page).to have_text(wp_2.description)
-          expect(page).to have_text(wp_3.description)
-          expect(page).to have_text(wp_4.description)
+      # Last saved settings are restored
+      expect(page.find_test_selector("show-descriptions-csv")).to be_checked
+      expect(page.find_test_selector("op-work-packages-export-dialog-form-save-export-settings")).to be_checked
+      expect_selected_columns(expected_columns - ["ID"])
+    end
+  end
+
+  context "with an unsaved query" do
+    let(:export_type) { I18n.t("export.dialog.format.options.csv.label") }
+    let(:expected_mime_type) { :csv }
+    let(:expected_params) { default_expected_params.merge({ title: "All open", show_descriptions: "true" }) }
+
+    before do
+      open_export_dialog!(:default)
+    end
+
+    it "does not offer to save export settings" do
+      # There is no save option
+      expect(page).not_to have_test_selector("op-work-packages-export-dialog-form-save-export-settings")
+      # show_descriptions is unchecked by default
+      expect(page.find_test_selector("show-descriptions-csv")).not_to be_checked
+
+      # Check show_descriptions and export, then reopen dialog
+      check I18n.t("export.dialog.xls.include_descriptions.label")
+      export_and_reopen_dialog!(:default)
+
+      # show_descriptions is still unchecked
+      expect(page.find_test_selector("show-descriptions-csv")).not_to be_checked
+    end
+  end
+
+  context "with default display_subprojects_work_packages and an unsaved query" do
+    let(:expected_params) { { includeSubprojects: "false" } }
+    let(:project_include) { Components::ProjectIncludeComponent.new }
+
+    before do
+      Setting.display_subprojects_work_packages = true
+      open_page!(:default)
+    end
+
+    it "does apply a disabled include_subprojects option" do
+      project_include.toggle!
+      project_include.expect_open
+      project_include.toggle_include_all_subprojects
+      project_include.expect_include_all_subprojects_unchecked
+      project_include.click_button("Apply")
+      show_export_dialog!
+      export!
+    end
+  end
+
+  context "with XLS export" do
+    let(:export_type) { I18n.t("export.dialog.format.options.xls.label") }
+    let(:expected_mime_type) { :xls }
+
+    before do
+      open_export_dialog!
+    end
+
+    it "exports relation and description options" do
+      expected_params[:show_relations] = "true"
+      check I18n.t("export.dialog.xls.include_relations.label")
+      export_and_reopen_dialog!
+
+      expected_params.replace(default_expected_params.merge(show_relations: "false"))
+      uncheck I18n.t("export.dialog.xls.include_relations.label")
+      export_and_reopen_dialog!
+
+      expected_params.replace(default_expected_params.merge(show_descriptions: "true"))
+      check I18n.t("export.dialog.xls.include_descriptions.label")
+      export_and_reopen_dialog!
+
+      expected_params.replace(default_expected_params.merge(show_descriptions: "false"))
+      uncheck I18n.t("export.dialog.xls.include_descriptions.label")
+      export!
+    end
+  end
+
+  context "with PDF export" do
+    let(:expected_mime_type) { :pdf }
+
+    before do
+      cf_text_a
+      cf_text_b
+      open_export_dialog!
+    end
+
+    context "as table" do
+      let(:export_type) { I18n.t("export.dialog.format.options.pdf.label") }
+      let(:export_variant) { I18n.t("export.dialog.pdf.export_type.options.table.label") }
+      let(:expected_params) { default_expected_params.merge({ pdf_export_type: "table" }) }
+
+      before do
+        choose export_variant
+      end
+
+      it "exports a pdf table" do
+        export!
+      end
+
+      it "does not export a pdf with no columns" do
+        page.within "[data-pdf-export-type='table']" do
+          all(".op-draggable-autocomplete--remove-item").each(&:click)
+        end
+        expect(page).to have_text(I18n.t("export.dialog.columns.input_caption_required"))
+        click_on I18n.t("export.dialog.submit")
+        expect(page).to have_button(I18n.t("export.dialog.submit")) # form not submitted, button is still there
+      end
+    end
+
+    context "as report" do
+      let(:export_type) { I18n.t("export.dialog.format.options.pdf.label") }
+      let(:export_variant) { I18n.t("export.dialog.pdf.export_type.options.report.label") }
+      let(:default_params_report) { default_expected_params.merge({ pdf_export_type: "report" }) }
+
+      before do
+        choose export_variant
+      end
+
+      context "with long text fields selection" do
+        let(:expected_params) { default_params_report.merge({ long_text_fields: "description #{cf_text_b.id}" }) }
+
+        it "exports a pdf report with all remaining custom fields" do
+          # Remove one custom field
+          page.within(".op-angular-component[data-id='\"ltf-select-export-pdf-report\"']") do
+            find(".op-draggable-autocomplete--item-text", text: "Long text custom field")
+              .sibling(".op-draggable-autocomplete--remove-item").click
+          end
+
+          # Save export settings, export and reopen dialog
+          check I18n.t("export.dialog.save_export_settings.label")
+          export_and_reopen_dialog!
+          choose export_variant
+
+          selected_long_fields = page.within(".op-angular-component[data-id='\"ltf-select-export-pdf-report\"']") do
+            all(".op-draggable-autocomplete--item-text").map(&:text)
+          end
+          # The removed field has been saved
+          expect(selected_long_fields).to contain_exactly("Description", cf_text_b.name)
+        end
+      end
+
+      context "with image options" do
+        let(:expected_params) { default_params_report.merge({ show_images: "true" }) }
+
+        it "exports a pdf report with and without images" do
+          expect(page).to have_field(I18n.t("export.dialog.pdf.include_images.label"), checked: true)
+          export_and_reopen_dialog!
+          choose export_variant
+
+          expected_params[:show_images] = "false"
+          uncheck I18n.t("export.dialog.pdf.include_images.label")
+          export!
+        end
+      end
+
+      context "with no columns" do
+        let(:query_columns) { [] }
+        let(:expected_params) do
+          default_expected_params.merge({ columns: [""], pdf_export_type: "report", no_columns: "1" })
+        end
+
+        it "does export a pdf" do
+          page.within "[data-pdf-export-type='report']" do
+            all(".op-draggable-autocomplete--remove-item").each(&:click)
+          end
+          export!
+        end
+      end
+    end
+
+    context "as gantt" do
+      let(:export_type) { I18n.t("export.dialog.format.options.pdf.label") }
+      let(:export_variant) { I18n.t("export.dialog.pdf.export_type.options.gantt.label") }
+
+      context "with EE active", with_ee: %i[gantt_pdf_export] do
+        let(:expected_params) { default_expected_params.merge({ pdf_export_type: "gantt" }) }
+
+        before do
+          choose export_variant
+        end
+
+        it "exports a gantt chart with its options" do
+          export_and_reopen_dialog!
+          choose export_variant
+
+          expected_params[:gantt_mode] = "week"
+          select I18n.t("export.dialog.pdf.gantt_zoom_levels.options.weeks"), from: "gantt_mode", wait: 2
+          export_and_reopen_dialog!
+          choose export_variant
+
+          expected_params.delete(:gantt_mode)
+          expected_params[:gantt_width] = "very_wide"
+          select I18n.t("export.dialog.pdf.column_width.options.very_wide"), from: "gantt_width", wait: 2
+          export_and_reopen_dialog!
+          choose export_variant
+
+          expected_params.delete(:gantt_width)
+          expected_params[:paper_size] = "A1"
+          select "A1", from: "paper_size"
+          export!
         end
       end
     end

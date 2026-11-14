@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,52 +22,62 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Memberships::MembershipCollectionRepresenter do
-  let(:self_base_link) { '/api/v3/members' }
+RSpec.describe API::V3::Memberships::MembershipCollectionRepresenter do
+  let(:self_base_link) { "/api/v3/members" }
   let(:members) do
-    FactoryBot.build_stubbed_list(:member, 3).tap do |members|
-      allow(members)
-        .to receive(:per_page)
-        .with(page_size)
-        .and_return(members)
+    build_stubbed_list(:member, 3).tap do |members|
+      without_partial_double_verification do
+        allow(members)
+          .to receive(:limit)
+          .with(page_size)
+          .and_return(members)
 
-      allow(members)
-        .to receive(:page)
-        .with(page)
-        .and_return(members)
+        allow(members)
+          .to receive(:offset)
+          .with(page - 1)
+          .and_return(members)
 
-      allow(members)
-        .to receive(:count)
-        .and_return(3)
+        allow(members)
+          .to receive(:where)
+                .with(id: members.pluck(:id))
+                .and_return(members)
+
+        allow(members)
+          .to receive_messages(count: 3,
+                               model: members,
+                               eager_load: members,
+                               preload: members,
+                               order: members,
+                               order_values: [])
+      end
     end
   end
-  let(:current_user) { FactoryBot.build_stubbed(:user) }
+  let(:current_user) { build_stubbed(:user) }
   let(:representer) do
     described_class.new(members,
                         self_link: self_base_link,
                         per_page: page_size,
-                        page: page,
-                        current_user: current_user)
+                        page:,
+                        current_user:)
   end
   let(:total) { 3 }
   let(:page) { 1 }
   let(:page_size) { 2 }
   let(:actual_count) { 3 }
-  let(:collection_inner_type) { 'Membership' }
+  let(:collection_inner_type) { "Membership" }
 
   include API::V3::Utilities::PathHelper
 
-  context 'generation' do
+  context "generation" do
     subject(:collection) { representer.to_json }
 
-    it_behaves_like 'offset-paginated APIv3 collection', 3, 'members', 'Membership'
+    it_behaves_like "offset-paginated APIv3 collection", 3, "members", "Membership"
   end
 end

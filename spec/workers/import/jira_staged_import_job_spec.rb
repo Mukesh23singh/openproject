@@ -1,0 +1,416 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe Import::JiraStagedImportJob, with_good_job_batches: [Import::JiraStagedImportJob] do
+  let(:jira) { create(:jira) }
+  let(:author) { create(:user) }
+  let(:jira_import) { create(:jira_import, jira:, author:, projects: selected_projects) }
+  let(:selected_projects) { [{ "id" => "10012", "key" => "DPPP", "name" => "Demo project" }] }
+
+  let(:stage) { nil }
+  let(:discarded) { false }
+
+  let(:batch) do
+    batch_record = GoodJob::BatchRecord.create!(
+      serialized_properties: { jira_import_id: jira_import.id, stage: },
+      on_finish: "Import::JiraStagedImportJob",
+      finished_at: Time.current,
+      discarded_at: discarded ? Time.current : nil
+    )
+    GoodJob::Batch.new(_record: batch_record)
+  end
+
+  subject(:run_callback) { described_class.perform_now(batch, {}) }
+
+  def transition_to_importing
+    allow(Import::JiraInstanceMetaDataJob)
+      .to receive(:perform_later)
+      .and_return(instance_double(Import::JiraInstanceMetaDataJob, job_id: "instance-meta-job-id"))
+    allow(Import::JiraProjectsMetaDataJob)
+      .to receive(:perform_later)
+      .and_return(instance_double(Import::JiraProjectsMetaDataJob, job_id: "projects-meta-job-id"))
+
+    jira_import.transition_to!(:instance_meta_fetching)
+    jira_import.transition_to!(:instance_meta_done)
+    jira_import.transition_to!(:configuring)
+    jira_import.transition_to!(:projects_meta_fetching)
+    jira_import.transition_to!(:projects_meta_done)
+    jira_import.transition_to!(:importing)
+  end
+
+  before { transition_to_importing }
+
+  context "when batch succeeded" do
+    let(:discarded) { false }
+
+    context "when the import is being aborted" do
+      before { jira_import.transition_to!(:import_aborting) }
+
+      describe "a stage that finished before the abort reached its jobs" do
+        let(:stage) { 4 }
+
+        it "does not enqueue the next stage" do
+          run_callback
+
+          expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectRoleJob").count).to eq(0)
+          expect(GoodJob::Job.where(job_class: "Import::JiraCreateCustomFieldsJob").count).to eq(0)
+          expect(GoodJob::Job.where(job_class: "Import::JiraCreateLabelsJob").count).to eq(0)
+        end
+
+        it "transitions the import to import_error" do
+          run_callback
+
+          expect(jira_import.reload.current_state).to eq("import_error")
+        end
+      end
+
+      describe "the final stage" do
+        let(:stage) { 12 }
+
+        it "transitions the import to import_error instead of raising" do
+          expect { run_callback }.not_to raise_error
+          expect(jira_import.reload.current_state).to eq("import_error")
+        end
+      end
+    end
+
+    describe "stage nil (initial stage)" do
+      let(:stage) { nil }
+
+      it "enqueues fetch jobs for issue types, priorities, statuses, and projects" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchIssueTypesJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchPrioritiesJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchStatusesJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_1" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchIssueTypesJob").last.labels).to include("stage_1")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchPrioritiesJob").last.labels).to include("stage_1")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchStatusesJob").last.labels).to include("stage_1")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectsJob").last.labels).to include("stage_1")
+      end
+    end
+
+    describe "stage 1" do
+      let(:stage) { 1 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one fetch issues, versions and boards job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectIssuesJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectVersionsJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectBoardsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_2" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectIssuesJob").last.labels).to include("stage_2")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectVersionsJob").last.labels).to include("stage_2")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectBoardsJob").last.labels).to include("stage_2")
+      end
+
+      context "with multiple selected projects" do
+        let(:selected_projects) do
+          [
+            { "id" => "10012", "key" => "DPPP", "name" => "Demo project" },
+            { "id" => "10013", "key" => "TEST", "name" => "Test project" }
+          ]
+        end
+        let!(:jira_project2) do
+          create(:jira_project, jira_import:, origin_id: "10013",
+                                payload: { "id" => "10013", "key" => "TEST", "name" => "Test project" })
+        end
+
+        it "enqueues a fetch job for each selected project" do
+          run_callback
+
+          expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectIssuesJob").count).to eq(2)
+          expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectVersionsJob").count).to eq(2)
+        end
+      end
+
+      context "when a project exists but is not selected for import" do
+        let!(:unselected_project) do
+          create(:jira_project, jira_import:, origin_id: "99999",
+                                payload: { "id" => "99999", "key" => "SKIP", "name" => "Skipped project" })
+        end
+
+        it "does not enqueue a fetch job for the unselected project" do
+          run_callback
+
+          expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectIssuesJob").count).to eq(1)
+          expect(GoodJob::Job.where(job_class: "Import::JiraFetchProjectVersionsJob").count).to eq(1)
+        end
+      end
+    end
+
+    describe "stage 2" do
+      let(:stage) { 2 }
+
+      it "enqueues fetch users, custom fields and sprints jobs" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchUsersJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchCustomFieldJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchSprintsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_3" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchUsersJob").last.labels).to include("stage_3")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchCustomFieldJob").last.labels).to include("stage_3")
+        expect(GoodJob::Job.where(job_class: "Import::JiraFetchSprintsJob").last.labels).to include("stage_3")
+      end
+    end
+
+    describe "stage 3" do
+      let(:stage) { 3 }
+
+      it "enqueues the create users job" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateUsersJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_4" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateUsersJob").last.labels).to include("stage_4")
+      end
+    end
+
+    describe "stage 4" do
+      let(:stage) { 4 }
+
+      it "enqueues the project role, custom fields and labels creation jobs" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectRoleJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateCustomFieldsJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateLabelsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_5" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectRoleJob").last.labels).to include("stage_5")
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateCustomFieldsJob").last.labels).to include("stage_5")
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateLabelsJob").last.labels).to include("stage_5")
+      end
+    end
+
+    describe "stage 5" do
+      let(:stage) { 5 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one create project job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_6" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectJob").last.labels).to include("stage_6")
+      end
+    end
+
+    describe "stage 6" do
+      let(:stage) { 6 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one create versions job per selected project and one create sprints job" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectVersionsJob").count).to eq(1)
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateSprintsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_7" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectVersionsJob").last.labels).to include("stage_7")
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateSprintsJob").last.labels).to include("stage_7")
+      end
+    end
+
+    describe "stage 7" do
+      let(:stage) { 7 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one create work packages job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectWorkPackagesJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_8" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectWorkPackagesJob").last.labels).to include("stage_8")
+      end
+    end
+
+    describe "stage 8" do
+      let(:stage) { 8 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one create parent-child relations job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateParentChildRelationsFromSubtasksJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_9" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateParentChildRelationsFromSubtasksJob").last.labels)
+          .to include("stage_9")
+      end
+    end
+
+    describe "stage 9" do
+      let(:stage) { 9 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one create relations job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateRelationsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_10" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateRelationsJob").last.labels)
+          .to include("stage_10")
+      end
+    end
+
+    describe "stage 10" do
+      let(:stage) { 10 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one create time entries job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectTimeEntriesJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_11" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraCreateProjectTimeEntriesJob").last.labels)
+          .to include("stage_11")
+      end
+    end
+
+    describe "stage 11" do
+      let(:stage) { 11 }
+      let!(:jira_project) do
+        create(:jira_project, jira_import:, origin_id: "10012",
+                              payload: { "id" => "10012", "key" => "DPPP", "name" => "Demo project" })
+      end
+
+      it "enqueues one download attachments job per selected project" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraDownloadProjectWorkPackageAttachmentsJob").count).to eq(1)
+      end
+
+      it "labels enqueued jobs with stage_12" do
+        run_callback
+
+        expect(GoodJob::Job.where(job_class: "Import::JiraDownloadProjectWorkPackageAttachmentsJob").last.labels)
+          .to include("stage_12")
+      end
+    end
+
+    describe "stage 12 (final stage)" do
+      let(:stage) { 12 }
+
+      it "does not enqueue any more jobs" do
+        expect { run_callback }.not_to change(GoodJob::Job, :count)
+      end
+
+      it "transitions the import to the imported state" do
+        run_callback
+
+        expect(jira_import.reload.current_state).to eq("imported")
+      end
+    end
+  end
+
+  context "when batch has been discarded" do
+    let(:stage) { 3 }
+    let(:discarded) { true }
+
+    it "does not enqueue any jobs" do
+      expect { run_callback }.not_to change(GoodJob::Job, :count)
+    end
+
+    it "transitions the import to import_error state" do
+      run_callback
+
+      expect(jira_import.reload.current_state).to eq("import_error")
+    end
+  end
+end

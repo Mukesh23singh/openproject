@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,42 +22,45 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'open_project/passwords'
+require "spec_helper"
+require "open_project/passwords"
 
-describe OpenProject::Passwords::Generator do
-  describe '#random_password',
+RSpec.describe OpenProject::Passwords::Generator do
+  describe "#random_password",
            with_settings: {
              password_active_rules: %w(lowercase uppercase numeric special),
-             password_min_adhered_rules: 3,
              password_min_length: 4
            } do
-    it 'should create a valid password' do
-      pwd = OpenProject::Passwords::Generator.random_password
-      expect(OpenProject::Passwords::Evaluator.conforming?(pwd)).to eq(true)
+    it "creates a valid password" do
+      pwd = described_class.random_password
+      expect(OpenProject::Passwords::Evaluator.conforming?(pwd)).to be(true)
     end
   end
 end
 
-describe OpenProject::Passwords::Evaluator,
-         with_settings: {
-           password_active_rules: %w(lowercase uppercase numeric),
-           password_min_adhered_rules: 3,
-           password_min_length: 4
-         } do
-  it 'should correctly evaluate passwords' do
-    expect(OpenProject::Passwords::Evaluator.conforming?('abCD')).to eq(false)
-    expect(OpenProject::Passwords::Evaluator.conforming?('ab12')).to eq(false)
-    expect(OpenProject::Passwords::Evaluator.conforming?('12CD')).to eq(false)
-    expect(OpenProject::Passwords::Evaluator.conforming?('12CD*')).to eq(false)
-    expect(OpenProject::Passwords::Evaluator.conforming?('aB1')).to eq(false)
-    expect(OpenProject::Passwords::Evaluator.conforming?('abCD12')).to eq(true)
-    expect(OpenProject::Passwords::Evaluator.conforming?('aB123')).to eq(true)
+RSpec.describe OpenProject::Passwords::Evaluator,
+               with_settings: {
+                 password_active_rules: %w(lowercase uppercase numeric),
+                 password_min_length: 4
+               } do
+  it "requires all active rules to be met" do
+    # Missing numeric
+    expect(described_class.conforming?("abCD")).to be(false)
+    # Missing uppercase
+    expect(described_class.conforming?("ab12")).to be(false)
+    # Missing lowercase
+    expect(described_class.conforming?("12CD")).to be(false)
+    # Has special but missing lowercase
+    expect(described_class.conforming?("12CD*")).to be(false)
+    # Too short
+    expect(described_class.conforming?("aB1")).to be(false)
+    # All 3 active rules met
+    expect(described_class.conforming?("abCD12")).to be(true)
+    expect(described_class.conforming?("aB123")).to be(true)
   end
 end

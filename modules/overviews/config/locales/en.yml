@@ -1,4 +1,11 @@
+---
 en:
+  activerecord:
+    models:
+      grids/overview:
+        one: "Overview"
+        other: "Overviews"
   overviews:
-    label: 'Overview'
-  permission_manage_overview: 'Manage overview page'
+    label_dashboard: "Dashboard"
+    label_home: "%{workspace_type} home"
+    label_overview: "Overview"

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -41,21 +38,21 @@ module API
             name_source = dep[:name_source]
 
             schema :"copy_#{identifier}",
-                   type: 'Boolean',
-                   name_source: name_source,
+                   type: "Boolean",
+                   name_source:,
                    has_default: true,
                    writable: true,
                    required: false,
                    description: -> do
                      count = dep[:count_source].call(represented.model, current_user)
 
-                     I18n.t('copy_project.x_objects_of_this_type', count: count.to_i)
+                     I18n.t("copy_project.x_objects_of_this_type", count: count.to_i)
                    end,
                    location: :meta
           end
 
           schema :send_notifications,
-                 type: 'Boolean',
+                 type: "Boolean",
                  name_source: ->(*) { I18n.t(:label_project_copy_notifications) },
                  has_default: true,
                  writable: true,

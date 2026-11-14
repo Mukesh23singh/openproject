@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +20,30 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
 <% html_title t(:label_administration), t("label_group_new") %>
-<% local_assigns[:additional_breadcrumb] = t(:label_group_new) %>
-<%= breadcrumb_toolbar t(:label_group_new) %>
 
-<%= labelled_tabular_form_for(@group) do |f| %>
-  <%= render partial: 'form', locals: { f: f } %>
-  <div><%= f.button t(:button_create), class: 'button -highlight -with-icon icon-checkmark' %></div>
-<% end %>
+<%=
+  render(Primer::OpenProject::PageHeader.new) do |header|
+    header.with_title { t(:label_group_new) }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: admin_settings_users_path, text: t(:label_user_and_permission) },
+       { href: groups_path, text: t(:label_group_plural) },
+       t(:label_group_new)]
+    )
+  end
+%>
+
+<%= error_messages_for @group %>
+
+<%=
+  settings_primer_form_with(model: @group) do |f|
+    render Groups::Form.new(f, submit_label: I18n.t(:button_create))
+  end
+%>

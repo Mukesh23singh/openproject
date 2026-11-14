@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,60 +22,69 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Queries::BaseQuery
-  class << self
+module Queries::BaseQuery
+  extend ActiveSupport::Concern
+
+  included do
+    include Queries::Filters::AvailableFilters
+    include Queries::Selects::AvailableSelects
+    include Queries::Orders::AvailableOrders
+    include Queries::GroupBys::AvailableGroupBys
+    include Queries::ValidSubset
+    include ActiveModel::Validations
+
+    validate :filters_valid,
+             :sortation_valid
+    validate :group_bys_valid, if: -> { respond_to?(:group_bys) }
+  end
+
+  class_methods do
     def model
-      @model ||= name.demodulize.gsub('Query', '').constantize
+      @model ||= name.demodulize.gsub("Query", "").constantize
     end
 
     def i18n_scope
       :activerecord
     end
-  end
 
-  attr_accessor :filters, :orders
-  attr_reader :group_by
-
-  include Queries::Filters::AvailableFilters
-  include Queries::Orders::AvailableOrders
-  include Queries::GroupBys::AvailableGroupBys
-  include ActiveModel::Validations
-
-  validate :filters_valid,
-           :sortation_valid,
-           :group_by_valid
-
-  def initialize(user: nil)
-    @filters = []
-    @orders = []
-    @group_by = nil
-    @user = user
+    # Also use the Query class' as a lookup ancestor so that error messages, etc can be shared.
+    # So if nothing is defined for the specific query class, we fall back to the generic query class.
+    #
+    # This is useful for error messages, because we can fall back to error messages, etc in
+    # activerecord.errors.models.query
+    def lookup_ancestors
+      super + [Query]
+    end
   end
 
   def results
     if valid?
-      apply_orders(apply_filters(default_scope))
+      apply_selects(apply_orders(apply_filters(default_scope)))
     else
       empty_scope
     end
   end
 
   def groups
-    return nil if group_by.nil?
+    return nil if group_bys.empty?
     return empty_scope unless valid?
 
     apply_group_by(apply_filters(default_scope))
-      .select(group_by.name, Arel.sql('COUNT(*)'))
+      .select(*group_by_names, Arel.sql("COUNT(*)"))
   end
 
+  # Keys are the plain value when grouping by a single attribute, and an array
+  # of values - one per group by - when grouping by several.
   def group_values
-    groups_hash = groups.pluck(group_by.name, Arel.sql('COUNT(*)')).to_h
+    groups_hash = groups.pluck(*group_by_names, Arel.sql("COUNT(*)")).to_h do |*values, count|
+      [group_bys.one? ? values.first : values, count]
+    end
+
     instantiate_group_keys groups_hash
   end
 
@@ -83,7 +94,25 @@ class Queries::BaseQuery
     filter.values = values
     filter.context = context
 
+    # Remove any previous instances of the same filter
+    remove_filter(filter.name)
     filters << filter
+
+    self
+  end
+
+  def remove_filter(name)
+    filters.delete(find_active_filter(name))
+  end
+
+  def select(*select_values, add_not_existing: true)
+    select_values.each do |select_value|
+      select_column = select_for(select_value)
+
+      if !select_column.is_a?(::Queries::Selects::NotExistingSelect) || add_not_existing
+        selects << select_column
+      end
+    end
 
     self
   end
@@ -91,15 +120,15 @@ class Queries::BaseQuery
   def order(hash)
     hash.each do |attribute, direction|
       order = order_for(attribute)
-      order.direction = direction
+      order.direction = direction.to_sym
       orders << order
     end
 
     self
   end
 
-  def group(attribute)
-    self.group_by = group_by_for(attribute)
+  def group(*attributes)
+    self.group_bys = attributes.map { |attribute| group_by_for(attribute) }
 
     self
   end
@@ -109,7 +138,7 @@ class Queries::BaseQuery
   end
 
   def find_active_filter(name)
-    filters.index_by(&:name)[name]
+    filters.detect { |f| f.name == name }
   end
 
   def find_available_filter(name)
@@ -121,9 +150,6 @@ class Queries::BaseQuery
   end
 
   protected
-
-  attr_accessor :user
-  attr_writer :group_by
 
   def filters_valid
     filters.each do |filter|
@@ -141,10 +167,12 @@ class Queries::BaseQuery
     end
   end
 
-  def group_by_valid
-    return if group_by.nil? || group_by.valid?
+  def group_bys_valid
+    group_bys.each do |group_by|
+      next if group_by.valid?
 
-    add_error(:group_by, group_by.name, group_by)
+      add_error(:group_bys, group_by.name, group_by)
+    end
   end
 
   def add_error(local_attribute, attribute_name, object)
@@ -163,55 +191,72 @@ class Queries::BaseQuery
   end
 
   def context
-    nil
+    self
   end
 
-  def apply_filters(scope)
-    filters.each do |filter|
-      scope = scope.merge(filter.scope)
+  def apply_filters(query_scope)
+    filters.inject(query_scope) do |scope, filter|
+      filter.apply_to(scope)
     end
-
-    scope
   end
 
-  def apply_orders(scope)
-    build_orders.each do |order|
-      scope = scope.merge(order.scope)
+  def apply_selects(query_scope)
+    return query_scope unless respond_to?(:selects)
+
+    selects.inject(query_scope) do |scope, select|
+      select.apply_to(scope)
+    end
+  end
+
+  def apply_orders(query_scope)
+    query_scope = build_orders.inject(query_scope) do |scope, order|
+      order.apply_to(scope)
     end
 
     # To get deterministic results, especially when paginating (limit + offset)
     # an order needs to be prepended that is ensured to be
     # different between all elements.
     # Without such a criteria, results can occur on multiple pages.
-    already_ordered_by_id?(scope) ? scope : scope.order(id: :desc)
+    already_ordered_by_id?(query_scope) ? query_scope : query_scope.order(id: :desc)
   end
 
-  def apply_group_by(scope)
-    return scope if group_by.nil?
+  def apply_group_by(query_scope)
+    return query_scope if group_bys.empty?
 
-    scope
-      .merge(group_by.scope)
-      .order(group_by.name)
+    group_bys
+      .inject(query_scope) { |scope, group_by| group_by.apply_to(scope) }
+      .order(*group_by_names)
+  end
+
+  def group_by_names
+    group_bys.map(&:name)
   end
 
   def build_orders
-    return orders if group_by.nil? || has_group_by_order?
+    return orders unless respond_to?(:group_bys)
 
-    [group_by_order] + orders
+    group_by_orders + orders
   end
 
-  def has_group_by_order?
-    !!group_by && orders.detect { |order| order.class.key == group_by.order_key }
+  def group_by_orders
+    group_bys
+      .reject { |group_by| ordered_by?(group_by) }
+      .map { |group_by| group_by_order(group_by) }
   end
 
-  def group_by_order
+  def ordered_by?(group_by)
+    orders.any? { |order| order.class.key == group_by.order_key }
+  end
+
+  def group_by_order(group_by)
     order_for(group_by.order_key).tap do |order|
       order.direction = :asc
     end
   end
 
   def instantiate_group_keys(groups)
-    return groups unless group_by&.association_class
+    group_by = group_bys.first
+    return groups unless group_bys.one? && group_by.association_class
 
     ar_keys = group_by.association_class.where(id: groups.keys.compact)
 
@@ -224,7 +269,7 @@ class Queries::BaseQuery
     scope.order_values.any? do |order|
       order.respond_to?(:value) && order.value.respond_to?(:relation) &&
         order.value.relation.name == self.class.model.table_name &&
-        order.value.name == 'id'
+        order.value.name == "id"
     end
   end
 end

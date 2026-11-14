@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,20 +20,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module V3
     module Versions
       class VersionRepresenter < ::API::Decorators::Single
-        include API::Decorators::LinkedResource
+        include API::V3::Workspaces::LinkedResource
         include API::Decorators::DateProperty
         include API::Decorators::FormattableProperty
         include ::API::Caching::CachedRepresenter
@@ -52,7 +49,7 @@ module API
         end
 
         link :update,
-             cache_if: -> { current_user_allowed_to(:manage_versions, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:manage_versions, represented.project) } do
           {
             href: api_v3_paths.version_form(represented.id),
             method: :post
@@ -60,7 +57,7 @@ module API
         end
 
         link :updateImmediately,
-             cache_if: -> { current_user_allowed_to(:manage_versions, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:manage_versions, represented.project) } do
           {
             href: api_v3_paths.version(represented.id),
             method: :patch
@@ -68,20 +65,18 @@ module API
         end
 
         link :delete,
-             cache_if: -> { current_user_allowed_to(:manage_versions, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:manage_versions, represented.project) } do
           {
             href: api_v3_paths.version(represented.id),
             method: :delete
           }
         end
 
-        associated_resource :project,
-                            as: :definingProject,
-                            skip_render: ->(*) { !represented.project || !represented.project.visible?(current_user) }
+        associated_project as: :definingProject
 
         link :availableInProjects do
           {
-            href: api_v3_paths.projects_by_version(represented.id)
+            href: api_v3_paths.workspaces_by_version(represented.id)
           }
         end
 
@@ -97,8 +92,8 @@ module API
         date_property :start_date
 
         date_property :effective_date,
-                      as: 'endDate',
-                      writeable: true
+                      as: "endDate",
+                      writable: true
 
         property :status
 
@@ -108,7 +103,7 @@ module API
         date_time_property :updated_at
 
         def _type
-          'Version'
+          "Version"
         end
       end
     end

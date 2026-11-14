@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,16 +32,18 @@ module API
     class ParseQueryParamsService
       KEYS_GROUP_BY = %i(group_by groupBy g).freeze
       KEYS_COLUMNS = %i(columns c column_names columns[]).freeze
+      KEYS_HIGHLIGHTED_ATTRIBUTES = %i(highlightedAttributes highlightedAttributes[]).freeze
 
       def call(params)
         json_parsed = json_parsed_params(params)
-        return json_parsed unless json_parsed.success?
+        return json_parsed if json_parsed.failure?
 
         parsed = parsed_params(params)
+        return parsed if parsed.failure?
 
-        result = without_empty(parsed.merge(json_parsed.result), determine_allowed_empty(params))
+        result = without_empty(parsed.result.merge(json_parsed.result), determine_allowed_empty(params))
 
-        ServiceResult.new(success: true, result: result)
+        ServiceResult.success(result:)
       end
 
       private
@@ -52,15 +55,16 @@ module API
           timeline_labels: timeline_labels_from_params(params)
         }
 
-        ServiceResult.new success: true, result: parsed
+        ServiceResult.success result: parsed
       rescue ::JSON::ParserError => e
-        result = ServiceResult.new success: false
+        result = ServiceResult.failure
         result.errors.add(:base, e.message)
         result
       end
 
+      # rubocop:disable-next Metrics/AbcSize
       def parsed_params(params)
-        {
+        ServiceResult.success result: {
           group_by: group_by_from_params(params),
           columns: columns_from_params(params),
           display_sums: boolearize(params[:showSums]),
@@ -69,8 +73,14 @@ module API
           highlighting_mode: params[:highlightingMode],
           highlighted_attributes: highlighted_attributes_from_params(params),
           display_representation: params[:displayRepresentation],
-          show_hierarchies: boolearize(params[:showHierarchies])
+          show_hierarchies: boolearize(params[:showHierarchies]),
+          include_subprojects: boolearize(params[:includeSubprojects]),
+          timestamps: Timestamp.parse_multiple(params[:timestamps])
         }
+      rescue ArgumentError => e
+        result = ServiceResult.failure
+        result.errors.add(:base, e.message)
+        result
       end
 
       def determine_allowed_empty(params)
@@ -124,14 +134,18 @@ module API
       end
 
       def filter_from_params(filter)
+        unless filter.is_a?(Hash)
+          raise JSON::ParserError, "Filter must be a JSON object, got #{filter.class}"
+        end
+
         attribute = filter.keys.first # there should only be one attribute per filter
-        operator =  filter[attribute]['operator']
-        values = Array(filter[attribute]['values'])
+        operator =  filter[attribute]["operator"]
+        values = Array(filter[attribute]["values"])
         ar_attribute = convert_filter_attribute attribute, append_id: true
 
         { field: ar_attribute,
-          operator: operator,
-          values: values }
+          operator:,
+          values: }
       end
 
       def columns_from_params(params)
@@ -145,20 +159,21 @@ module API
       end
 
       def highlighted_attributes_from_params(params)
-        highlighted_attributes = Array(params[:highlightedAttributes].presence)
+        highlighted_attributes = Array(params_value(params, KEYS_HIGHLIGHTED_ATTRIBUTES).presence)
 
-        return unless highlighted_attributes.present?
+        return if highlighted_attributes.blank?
 
         highlighted_attributes.map do |href|
-          attr = href.split('/').last
+          attr = href.split("/").last
           convert_attribute(attr)
         end
       end
 
       def boolearize(value)
-        if value == 'true'
+        case value
+        when "true"
           true
-        elsif value == 'false'
+        when "false"
           false
         end
       end
@@ -171,7 +186,7 @@ module API
       #
       # Examples:
       #   * status => status_id
-      #   * progresssDone => done_ratio
+      #   * progressDone => done_ratio
       #   * assigned => assigned_to
       #   * customField1 => cf_1
       #
@@ -187,10 +202,11 @@ module API
 
       def parse_sorting_from_json(json)
         JSON.parse(json).map do |order|
-          attribute, direction = if order.is_a?(Array)
+          attribute, direction = case order
+                                 when Array
                                    [order.first, order.last]
-                                 elsif order.is_a?(String)
-                                   order.split(':')
+                                 when String
+                                   order.split(":")
                                  end
 
           [convert_attribute(attribute), direction]
@@ -232,7 +248,7 @@ module API
 
       def group_by_empty?(params)
         params_exist?(params, KEYS_GROUP_BY) &&
-          !params_value(params, KEYS_GROUP_BY).present?
+          params_value(params, KEYS_GROUP_BY).blank?
       end
     end
   end

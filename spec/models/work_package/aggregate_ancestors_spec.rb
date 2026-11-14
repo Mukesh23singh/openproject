@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,84 +22,83 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackage::Ancestors, type: :model do
-  let(:user) { FactoryBot.create(:user) }
-  let(:project) { FactoryBot.create :project }
-  let(:project2) { FactoryBot.create :project }
+RSpec.describe WorkPackage::Ancestors do
+  let(:user) { create(:user) }
+  let(:project) { create(:project) }
+  let(:project2) { create(:project) }
 
   let!(:root_work_package) do
-    FactoryBot.create :work_package,
-                      project: project
+    create(:work_package,
+           project:)
   end
 
   let!(:intermediate) do
-    FactoryBot.create :work_package,
-                      parent: root_work_package,
-                      project: project
+    create(:work_package,
+           parent: root_work_package,
+           project:)
   end
   let!(:intermediate_project2) do
-    FactoryBot.create :work_package,
-                      parent: root_work_package,
-                      project: project2
+    create(:work_package,
+           parent: root_work_package,
+           project: project2)
   end
   let!(:leaf) do
-    FactoryBot.create :work_package,
-                      parent: intermediate,
-                      project: project
+    create(:work_package,
+           parent: intermediate,
+           project:)
   end
   let!(:leaf_project2) do
-    FactoryBot.create :work_package,
-                      parent: intermediate_project2,
-                      project: project
+    create(:work_package,
+           parent: intermediate_project2,
+           project:)
   end
 
   let(:view_role) do
-    FactoryBot.build(:role,
-                     permissions: [:view_work_packages])
+    build(:project_role,
+          permissions: [:view_work_packages])
   end
 
   let(:none_role) do
-    FactoryBot.build(:role,
-                     permissions: [])
+    build(:project_role,
+          permissions: [])
   end
 
   let(:leaf_ids) { [leaf.id, leaf_project2.id] }
   let(:intermediate_ids) { [intermediate.id, intermediate_project2.id] }
 
-  subject { ::WorkPackage.aggregate_ancestors(ids, user) }
+  subject { WorkPackage.aggregate_ancestors(ids, user) }
 
   before do
     allow(Setting).to receive(:cross_project_work_package_relations?).and_return(true)
     login_as(user)
   end
 
-  context 'with permission in the first project' do
+  context "with permission in the first project" do
     before do
-      FactoryBot.create :member,
-                        user: user,
-                        project: project,
-                        roles: [view_role]
+      create(:member,
+             user:,
+             project:,
+             roles: [view_role])
     end
 
-    describe 'fetching from db' do
-      it 'returns the same results' do
+    describe "fetching from db" do
+      it "returns the same results" do
         expect(leaf.visible_ancestors(user)).to eq([root_work_package, intermediate])
       end
     end
 
-    describe 'leaf ids' do
+    describe "leaf ids" do
       let(:ids) { leaf_ids }
 
-      it 'returns ancestors for the leaf in project 1' do
-        expect(subject).to be_kind_of(Hash)
+      it "returns ancestors for the leaf in project 1" do
+        expect(subject).to be_a(Hash)
         expect(subject.keys.length).to eq(2)
 
         expect(subject[leaf.id]).to eq([root_work_package, intermediate])
@@ -105,11 +106,11 @@ describe WorkPackage::Ancestors, type: :model do
       end
     end
 
-    describe 'intermediate ids' do
+    describe "intermediate ids" do
       let(:ids) { intermediate_ids }
 
-      it 'returns all ancestors in project 1' do
-        expect(subject).to be_kind_of(Hash)
+      it "returns all ancestors in project 1" do
+        expect(subject).to be_a(Hash)
         expect(subject.keys.length).to eq(2)
 
         expect(subject[intermediate.id]).to eq([root_work_package])
@@ -117,19 +118,19 @@ describe WorkPackage::Ancestors, type: :model do
       end
     end
 
-    context 'and permission in second project' do
+    context "and permission in second project" do
       before do
-        FactoryBot.create :member,
-                          user: user,
-                          project: project2,
-                          roles: [view_role]
+        create(:member,
+               user:,
+               project: project2,
+               roles: [view_role])
       end
 
-      describe 'leaf ids' do
+      describe "leaf ids" do
         let(:ids) { leaf_ids }
 
-        it 'returns all ancestors' do
-          expect(subject).to be_kind_of(Hash)
+        it "returns all ancestors" do
+          expect(subject).to be_a(Hash)
           expect(subject.keys.length).to eq(2)
 
           expect(subject[leaf.id]).to eq([root_work_package, intermediate])
@@ -139,19 +140,19 @@ describe WorkPackage::Ancestors, type: :model do
     end
   end
 
-  context 'no permissions' do
+  context "no permissions" do
     before do
-      FactoryBot.create :member,
-                        user: user,
-                        project: project,
-                        roles: [none_role]
+      create(:member,
+             user:,
+             project:,
+             roles: [none_role])
     end
 
-    describe 'leaf ids' do
+    describe "leaf ids" do
       let(:ids) { leaf_ids }
 
-      it 'returns no results for all ids' do
-        expect(subject).to be_kind_of(Hash)
+      it "returns no results for all ids" do
+        expect(subject).to be_a(Hash)
         expect(subject.keys.length).to eq(0)
       end
     end

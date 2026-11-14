@@ -1,0 +1,100 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Import
+  class JiraProjectsMetaDataJob < ApplicationJob
+    include GoodJob::ActiveJobExtensions::Concurrency
+    include JiraJobUtils
+
+    good_job_control_concurrency_with(
+      total_limit: 2,
+      enqueue_limit: 1,
+      perform_limit: 1,
+      key: -> { "Import::JiraProjectsMetaDataJob-#{arguments.last}" }
+    )
+
+    def text
+      I18n.t(:"admin.jira.run.jobs.#{self.class.to_s.demodulize}.title")
+    end
+
+    # rubocop:disable-next Metrics/AbcSize
+    def perform(jira_import_id)
+      jira_import = nil
+      tagged_log("jira_import_id:#{jira_import_id}") do
+        Rails.logger.info "Fetching meta data for selected projects started"
+        jira_import = Import::JiraImport.find(jira_import_id)
+        client = jira_import.jira.client
+        selected = collect_metadata(client, jira_import.projects)
+        jira_import.update!(selected:)
+        jira_import.transition_to!(:projects_meta_done, selected:)
+        Rails.logger.info "Fetching meta data for selected projects finished"
+      end
+    rescue StandardError => e
+      tagged_log("jira_import_id:#{jira_import_id}") do
+        Rails.logger.error "Fetching meta data for selected projects failed: #{e.message}"
+      end
+      jira_import&.transition_to!(:projects_meta_error, error: e.message, error_backtrace: e.backtrace)
+    end
+
+    def collect_metadata(client, projects)
+      issues_count = 0
+      status_ids = []
+      issue_type_ids = []
+
+      projects.each do |project|
+        project_issues_count, project_status_ids, project_issue_type_ids =
+          collect_project_metadata(client, project["id"], project["key"])
+
+        issue_type_ids = issue_type_ids.concat(project_issue_type_ids).uniq
+        status_ids = status_ids.concat(project_status_ids).uniq
+        issues_count += project_issues_count
+      end
+
+      {
+        "issues_count" => issues_count,
+        "status_ids" => status_ids,
+        "issue_type_ids" => issue_type_ids
+      }
+    end
+
+    def collect_project_metadata(client, project_id, project_key)
+      Rails.logger.tagged("jira_object_type:project", "jira_object_id_or_name:#{project_key}") do
+        Rails.logger.debug "Fetching meta data for project"
+        project_statuses = client.project_statuses(project_id)
+        project_issue_type_ids = project_statuses.pluck("id")
+        project_status_ids = project_statuses.flat_map { |type| type["statuses"].map { |status| status["id"] } }
+
+        result = client.issues(jql: "project = '#{project_id}'", max_results: 0)
+        project_issues_count = result["total"]
+
+        [project_issues_count, project_status_ids, project_issue_type_ids]
+      end
+    end
+  end
+end

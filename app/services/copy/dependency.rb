@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,7 +39,7 @@ module Copy
     ##
     # Identifier of this dependency to include/exclude
     def self.identifier
-      name.demodulize.gsub('DependentService', '').underscore
+      name.demodulize.gsub("DependentService", "").underscore
     end
 
     ##
@@ -49,13 +48,20 @@ module Copy
       identifier.capitalize
     end
 
+    ##
+    # Dependencies the current dependency itself supports.
+    # The most common case for this are attachment services.
+    def self.copy_dependencies
+      []
+    end
+
     def initialize(source:, target:, user:)
       @source = source
       @target = target
       @user = user
       # Create a result with an empty error set
       # that we can merge! so that not the target.errors object is reused.
-      @result = ServiceResult.new(result: target, success: true, errors: ActiveModel::Errors.new(target))
+      @result = ServiceResult.success(result: target, errors: ActiveModel::Errors.new(target))
     end
 
     protected
@@ -74,11 +80,13 @@ module Copy
       errors.full_messages.join(". ")
     end
 
-    def perform(params:)
+    def perform
       begin
-        copy_dependency(params: params)
+        copy_dependency(params:)
       rescue StandardError => e
         Rails.logger.error { "Failed to copy dependency #{self.class.identifier}: #{e.message}" }
+        ::OpenProject.logger.error e
+
         result.success = false
         result.errors.add(:base, :could_not_be_copied, dependency: self.class.human_name)
       end
@@ -87,7 +95,7 @@ module Copy
     end
 
     def copy_dependency(params:)
-      raise NotImplementedError
+      raise SubclassResponsibilityError
     end
   end
 end

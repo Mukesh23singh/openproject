@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
@@ -29,16 +28,24 @@ See COPYRIGHT and LICENSE files for more details.
 
 <% edit_label = "#{t(:label_edit)} #{@application.class.model_name.human} #{h(@application.name)}" %>
 <% html_title(t(:label_administration), edit_label) -%>
-<% local_assigns[:additional_breadcrumb] = h(@application.name) %>
-<%= breadcrumb_toolbar(edit_label) %>
 
-<%= labelled_tabular_form_for @application,
-                              url: { action: "update" },
-                              html: { class: nil, autocomplete: 'off' },
-                              as: :application do |f| %>
-  <%= render partial: 'form', locals: { f: f } %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title_content(@application.name)
+    header.with_description { t("oauth.application.instructions.page_description") }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t(:label_administration) },
+       { href: admin_settings_authentication_path, text: t(:label_authentication) },
+       { href: oauth_applications_path, text: t("oauth.application.plural") },
+       @application.name]
+    )
+  end
+%>
 
-  <p>
-    <%= styled_button_tag t(:button_save), class: '-highlight -with-icon icon-checkmark' %>
-  </p>
+<%= settings_primer_form_with(
+      model: @application,
+      url: { action: "update" },
+      html: { autocomplete: "off" }
+    ) do |f| %>
+  <%= render OAuth::ApplicationsForm.new(f) %>
 <% end %>

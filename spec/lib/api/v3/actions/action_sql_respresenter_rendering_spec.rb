@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +22,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Actions::ActionSqlRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Actions::ActionSqlRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
   let(:scope) do
     Action
@@ -37,34 +38,34 @@ describe ::API::V3::Actions::ActionSqlRepresenter, 'rendering' do
       .limit(1)
   end
   let(:action_id) do
-    'memberships/create'
+    "memberships/create"
   end
+
   current_user do
-    FactoryBot.create(:user)
+    create(:user)
   end
 
   subject(:json) do
-    ::API::V3::Utilities::SqlRepresenterWalker
+    API::V3::Utilities::SqlRepresenterWalker
       .new(scope,
-           embed: {},
-           select: { 'id' => {}, '_type' => {}, 'self' => {} },
-           current_user: current_user)
+           current_user:,
+           url_query: { select: { "id" => {}, "_type" => {}, "self" => {} } })
       .walk(API::V3::Actions::ActionSqlRepresenter)
       .to_json
   end
 
-  context 'with a project action' do
-    it 'renders as expected' do
+  context "with a project action" do
+    it "renders as expected" do
       expect(json)
         .to be_json_eql({
-                          "id": action_id,
-                          "_type": "Action",
-                          "_links": {
-                            "self": {
-                              "href": api_v3_paths.action(action_id)
-                            }
-                          }
-                        }.to_json)
+          id: action_id,
+          _type: "Action",
+          _links: {
+            self: {
+              href: api_v3_paths.action(action_id)
+            }
+          }
+        }.to_json)
     end
   end
 end

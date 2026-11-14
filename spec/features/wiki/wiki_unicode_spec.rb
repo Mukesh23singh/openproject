@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,30 +22,29 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Wiki unicode title spec', type: :feature, js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "Wiki unicode title spec", :js do
+  shared_let(:admin) { create(:admin) }
   let(:user) { admin }
 
-  let(:project) { FactoryBot.create :project }
+  let(:project) { create(:project, :with_internal_wiki).reload }
   let(:wiki_page_1) do
-    FactoryBot.build :wiki_page_with_content,
-                     title: '<script>alert("FOO")</script>'
+    build(:wiki_page,
+          title: '<script>alert("FOO")</script>')
   end
   let(:wiki_page_2) do
-    FactoryBot.build :wiki_page_with_content,
-                     title: 'Base de données'
+    build(:wiki_page,
+          title: "Base de données")
   end
   let(:wiki_page_3) do
-    FactoryBot.build :wiki_page_with_content,
-                     title: 'Base_de_données'
+    build(:wiki_page,
+          title: "Base_de_données")
   end
 
   let(:wiki_body) do
@@ -67,10 +68,10 @@ describe 'Wiki unicode title spec', type: :feature, js: true do
 
   let(:expected_titles) do
     [
-      'Base de données',
-      'Base de données',
-      'Base de données',
-      'Base_de_données',
+      "Base de données",
+      "Base de données",
+      "Base de données",
+      "Base_de_données",
       '<script>alert("FOO")</script>'
     ]
   end
@@ -87,25 +88,25 @@ describe 'Wiki unicode title spec', type: :feature, js: true do
     visit project_wiki_path(project, :wiki)
 
     # Set value
-    find('.ck-content').base.send_keys(wiki_body)
-    click_button 'Save'
+    find(".ck-content").base.send_keys(wiki_body)
+    click_button "Create"
 
-    expect(page).to have_selector('.title-container h2', text: 'Wiki')
-    expect(page).to have_selector('a.wiki-page', count: 5)
+    expect(page).to have_test_selector("wiki-page-header-title", text: "Wiki")
+    expect(page).to have_css("a.wiki-page", count: 5)
   end
 
-  it 'shows renders correct links' do
+  it "shows renders correct links" do
     expected_titles.each_with_index do |title, i|
       visit project_wiki_path(project, :wiki)
 
-      expect(page).to have_selector('div.wiki-content')
-      target_link = all('div.wiki-content a.wiki-page')[i]
+      expect(page).to have_css("div.wiki-content")
+      target_link = all("div.wiki-content a.wiki-page")[i]
 
       expect(target_link.text).to eq(title)
-      expect(target_link[:href]).to match("\/wiki\/#{expected_slugs[i]}")
+      expect(target_link[:href]).to match("/wiki/#{expected_slugs[i]}")
       target_link.click
 
-      expect(page).to have_selector('.title-container h2', text: title)
+      expect(page).to have_test_selector("wiki-page-header-title", text: title)
     end
   end
 end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,27 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { WorkPackageRelationsHierarchyService } from 'core-app/features/work-packages/components/wp-relations/wp-relations-hierarchy/wp-relations-hierarchy.service';
-import { WorkPackageInlineCreateService } from 'core-app/features/work-packages/components/wp-inline-create/wp-inline-create.service';
+import {
+  WorkPackageInlineCreateService,
+} from 'core-app/features/work-packages/components/wp-inline-create/wp-inline-create.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { BoardInlineAddAutocompleterComponent } from 'core-app/features/boards/board/inline-add/board-inline-add-autocompleter.component';
-import { GonService } from 'core-app/core/gon/gon.service';
+import {
+  BoardInlineAddAutocompleterComponent,
+} from 'core-app/features/boards/board/inline-add/board-inline-add-autocompleter.component';
+import { Observable } from 'rxjs';
 
 @Injectable()
 export class BoardInlineCreateService extends WorkPackageInlineCreateService {
-  constructor(readonly injector:Injector,
-    protected readonly querySpace:IsolatedQuerySpace,
-    protected readonly halResourceService:HalResourceService,
-    protected readonly pathHelperService:PathHelperService,
-    protected readonly Gon:GonService,
-    protected readonly wpRelationsHierarchyService:WorkPackageRelationsHierarchyService) {
-    super(injector);
-  }
+  protected readonly querySpace = inject(IsolatedQuerySpace);
+  protected readonly halResourceService = inject(HalResourceService);
 
   /**
    * A separate reference pane for the inline create component
@@ -57,12 +52,22 @@ export class BoardInlineCreateService extends WorkPackageInlineCreateService {
    */
   public referenceTarget:WorkPackageResource|null = null;
 
-  public get canAdd() {
-    return this.authorisationService.can('work_packages', 'createWorkPackage');
+  public get canAdd():Observable<boolean> {
+    return this
+      .currentUser
+      .hasCapabilities$(
+        ['work_packages/create'],
+        this.currentProject.id || 'global',
+      );
   }
 
-  public get canReference() {
-    return this.authorisationService.can('work_packages', 'editWorkPackage');
+  public get canReference():Observable<boolean> {
+    return this
+      .currentUser
+      .hasCapabilities$(
+        ['work_packages/update'],
+        this.currentProject.id || 'global',
+      );
   }
 
   /**

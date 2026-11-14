@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,22 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% html_title t(:label_administration), t(:label_work_package_status_plural) -%>
-<%= toolbar title: t(:label_work_package_status_plural) do %>
-  <li class="toolbar-item">
-    <%= link_to new_status_path,
-          { class: 'button -alt-highlight',
-            aria: {label: t(:label_work_package_status_new)},
-            title: t(:label_work_package_status_new)} do %>
-      <%= op_icon('button--icon icon-add') %>
-      <span class="button--text"><%= t(:label_status) %></span>
-    <% end %>
-  </li>
-  <% if WorkPackage.use_status_for_done_ratio? %>
-    <li class="toolbar-item">
-      <%= link_to update_work_package_done_ratio_statuses_path, class: 'button', method: :post, data: { confirm: t(:text_are_you_sure) } do %>
-        <%= op_icon('button--icon icon-reload') %>
-        <span class="button--text"><%= t(:label_update_work_package_done_ratios) %></span>
-      <% end %>
-    </li>
-  <% end %>
-<% end %>
+<% html_title t(:label_administration), t(:label_work_package_plural), I18n.t(:label_status_plural) -%>
 
-<%= rails_cell ::Statuses::TableCell, @statuses %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { I18n.t(:label_status_plural) }
+    header.with_breadcrumbs(
+      [{ href: admin_index_path, text: t("label_administration") },
+       { href: admin_settings_work_packages_general_path, text: t(:label_work_package_plural) },
+       I18n.t(:label_status_plural)]
+    )
+  end
+%>
+<%= render ::Statuses::IndexComponent.new(statuses: @statuses, query: @query, page_args: @page_args) %>

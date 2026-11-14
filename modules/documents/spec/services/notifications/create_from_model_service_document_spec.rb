@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +22,29 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
-require Rails.root.join('spec/services/notifications/create_from_journal_job_shared')
 
-describe Notifications::CreateFromModelService, 'document', with_settings: { journal_aggregation_time_minutes: 0 } do
+require "spec_helper"
+require Rails.root.join("spec/services/notifications/create_from_journal_job_shared")
+
+RSpec.describe Notifications::CreateFromModelService, "document", with_settings: { journal_aggregation_time_minutes: 0 } do
   subject(:call) do
     described_class.new(journal).call(send_notifications)
   end
 
-  include_context 'with CreateFromJournalJob context'
+  include_context "with CreateFromJournalJob context"
 
-  shared_let(:project) { FactoryBot.create(:project) }
+  shared_let(:project) { create(:project) }
 
   let(:permissions) { [:view_documents] }
   let(:send_notifications) { true }
 
   let(:resource) do
-    FactoryBot.create(:document,
-                      project: project)
+    create(:document,
+           project:)
   end
   let(:journal) { resource.journals.last }
   let(:author) { other_user }
@@ -55,10 +55,10 @@ describe Notifications::CreateFromModelService, 'document', with_settings: { jou
     recipient
   end
 
-  describe '#perform' do
-    context 'with a newly created document' do
-      context 'with the user having registered for all notifications' do
-        it_behaves_like 'creates notification' do
+  describe "#perform" do
+    context "with a newly created document" do
+      context "with the user having registered for all notifications" do
+        it_behaves_like "creates notification" do
           let(:notification_channel_reasons) do
             {
               read_ian: nil,
@@ -70,43 +70,53 @@ describe Notifications::CreateFromModelService, 'document', with_settings: { jou
         end
       end
 
-      context 'with the user having registered for involved notifications' do
+      context "with the user having registered for assignee notifications" do
         let(:recipient_notification_settings) do
           [
-            FactoryBot.build(:notification_setting, **notification_settings_all_false.merge(involved: true))
+            build(:notification_setting, **notification_settings_all_false.merge(assignee: true))
           ]
         end
 
-        it_behaves_like 'creates no notification'
+        it_behaves_like "creates no notification"
       end
 
-      context 'with the user having registered for no notifications' do
+      context "with the user having registered for responsible notifications" do
         let(:recipient_notification_settings) do
           [
-            FactoryBot.build(:notification_setting, **notification_settings_all_false)
+            build(:notification_setting, **notification_settings_all_false.merge(responsible: true))
           ]
         end
 
-        it_behaves_like 'creates no notification'
+        it_behaves_like "creates no notification"
       end
 
-      context 'with the user having registered for all notifications but lacking permissions' do
+      context "with the user having registered for no notifications" do
+        let(:recipient_notification_settings) do
+          [
+            build(:notification_setting, **notification_settings_all_false)
+          ]
+        end
+
+        it_behaves_like "creates no notification"
+      end
+
+      context "with the user having registered for all notifications but lacking permissions" do
         before do
           recipient.members.destroy_all
         end
 
-        it_behaves_like 'creates no notification'
+        it_behaves_like "creates no notification"
       end
     end
 
-    context 'with an updated document' do
+    context "with an updated document" do
       before do
-        resource.title = 'A new subject'
+        resource.title = "A new subject"
         resource.save!
       end
 
-      context 'with the user having registered for all notifications' do
-        it_behaves_like 'creates notification' do
+      context "with the user having registered for all notifications" do
+        it_behaves_like "creates notification" do
           let(:notification_channel_reasons) do
             {
               read_ian: nil,
@@ -118,32 +128,42 @@ describe Notifications::CreateFromModelService, 'document', with_settings: { jou
         end
       end
 
-      context 'with the user having registered for involved notifications' do
+      context "with the user having registered for assignee notifications" do
         let(:recipient_notification_settings) do
           [
-            FactoryBot.build(:notification_setting, **notification_settings_all_false.merge(involved: true))
+            build(:notification_setting, **notification_settings_all_false.merge(assignee: true))
           ]
         end
 
-        it_behaves_like 'creates no notification'
+        it_behaves_like "creates no notification"
       end
 
-      context 'with the user having registered for no notifications' do
+      context "with the user having registered for responsible notifications" do
         let(:recipient_notification_settings) do
           [
-            FactoryBot.build(:notification_setting, **notification_settings_all_false)
+            build(:notification_setting, **notification_settings_all_false.merge(responsible: true))
           ]
         end
 
-        it_behaves_like 'creates no notification'
+        it_behaves_like "creates no notification"
       end
 
-      context 'with the user having registered for all notifications but lacking permissions' do
+      context "with the user having registered for no notifications" do
+        let(:recipient_notification_settings) do
+          [
+            build(:notification_setting, **notification_settings_all_false)
+          ]
+        end
+
+        it_behaves_like "creates no notification"
+      end
+
+      context "with the user having registered for all notifications but lacking permissions" do
         before do
           recipient.members.destroy_all
         end
 
-        it_behaves_like 'creates no notification'
+        it_behaves_like "creates no notification"
       end
     end
   end

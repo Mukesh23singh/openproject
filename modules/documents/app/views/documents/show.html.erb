@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +20,44 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% html_title h(@document.title) -%>
-<%= toolbar title: @document.title,
-            subtitle: "#{@document.category.name} - #{format_date @document.created_at}" do %>
-  <% if authorize_for(:documents, :edit) %>
-    <li class="toolbar-item">
-      <%= link_to({controller: '/documents', action: 'edit', id: @document}, class: 'button', accesskey: accesskey(:edit)) do %>
-        <%= op_icon('button--icon icon-edit') %>
-        <span class="button--text"><%= t(:button_edit) %></span>
-      <% end %>
-    </li>
+<% html_title(*document_html_title_parts) %>
+
+<% if @document.collaborative? %>
+  <% if Setting.real_time_text_collaboration_enabled? %>
+    <% content_for :header_tags do %>
+      <%# Keep this page out of Turbo's snapshot cache: a restored snapshot rebuilds
+          the editor against a stale collaboration token and reconnects the WebSocket,
+          which the editor briefly surfaces as a spurious offline banner (STC-642). %>
+      <meta name="turbo-cache-control" content="no-cache">
+    <% end %>
+    <%=
+      render(
+        Documents::ShowEditView::BlockNoteEditorComponent.new(
+          @document,
+          project: @project,
+          token_payload: @token_payload,
+          state: @state,
+          resource_url: @resource_url,
+          token_expires_in_seconds: @token_expires_in_seconds,
+          readonly: @readonly
+        )
+      )
+    %>
+  <% else %>
+    <%=
+      render(
+        Documents::ShowEditView::CollaborationDisabledNoticeComponent.new(
+          @document, project: @project, state: :show
+        )
+      )
+    %>
   <% end %>
-  <% if authorize_for(:documents, :destroy) %>
-    <li class="toolbar-item">
-      <%= link_to({controller: '/documents', action: 'destroy', id: @document}, class: 'button', data: { confirm: t(:text_are_you_sure) }, method: :delete) do %>
-        <%= op_icon('button--icon icon-delete') %>
-        <span class="button--text"><%= t(:button_delete) %></span>
-      <% end %>
-    </li>
-  <% end %>
+<% else %>
+  <%= render partial: "classic_show", locals: { document: @document, project: @project, attachments: @attachments } %>
 <% end %>
-
-<div class="wiki op-uc-container">
-  <%= format_text @document.description, attachments: @document.attachments %>
-</div>
-
-<%= list_attachments(api_v3_document_resource(@document)) %>

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -38,22 +37,22 @@ import { WorkPackageCreateService } from 'core-app/features/work-packages/compon
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { TypeResource } from 'core-app/features/hal/resources/type-resource';
-import { HttpClientModule } from '@angular/common/http';
+import { provideHttpClient, withInterceptorsFromDi, withXhr } from '@angular/common/http';
 import { States } from 'core-app/core/states/states.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { UIRouterModule } from '@uirouter/angular';
 import { LoadingIndicatorService } from 'core-app/core/loading-indicator/loading-indicator.service';
 import { HookService } from 'core-app/features/plugins/hook-service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { HalEventsService } from 'core-app/features/hal/services/hal-events.service';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
 import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
-import { OpenProjectFileUploadService } from 'core-app/core/file-upload/op-file-upload.service';
-import { OpenProjectDirectFileUploadService } from 'core-app/core/file-upload/op-direct-file-upload.service';
 import { TimezoneService } from 'core-app/core/datetime/timezone.service';
+import { WeekdayService } from 'core-app/core/days/weekday.service';
+import { of } from 'rxjs';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
 describe('WorkPackageFilterValues', () => {
   let resource:WorkPackageResource;
@@ -65,15 +64,16 @@ describe('WorkPackageFilterValues', () => {
   let filters:any[];
   let source:any;
 
+  const WeekdayServiceStub = {
+    loadWeekdays: () => of(true),
+  };
+
   function setupTestBed() {
     // noinspection JSIgnoredPromiseFromCall
     void TestBed.configureTestingModule({
-      imports: [
-        UIRouterModule.forRoot({}),
-        HttpClientModule,
-      ],
       providers: [
         I18nService,
+        { provide: WeekdayService, useValue: WeekdayServiceStub },
         States,
         IsolatedQuerySpace,
         HalEventsService,
@@ -82,8 +82,6 @@ describe('WorkPackageFilterValues', () => {
         ConfigurationService,
         CurrentUserService,
         HookService,
-        OpenProjectFileUploadService,
-        OpenProjectDirectFileUploadService,
         LoadingIndicatorService,
         HalResourceService,
         ToastService,
@@ -93,23 +91,18 @@ describe('WorkPackageFilterValues', () => {
         WorkPackageCreateService,
         HalResourceEditingService,
         WorkPackagesActivityService,
-      ],
+        provideHttpClient(withXhr(), withInterceptorsFromDi()),
+      ]
     }).compileComponents();
 
     injector = TestBed.inject(Injector);
     halResourceService = injector.get(HalResourceService);
 
-    resource = halResourceService.createHalResourceOfClass(WorkPackageResource, source, true);
+    resource = halResourceService.createHalResourceOfClass(WorkPackageResource, source, true) as unknown as WorkPackageResource;
     changeset = new WorkPackageChangeset(resource);
 
-    const type1 = halResourceService.createHalResourceOfClass(
-      TypeResource,
-      { _type: 'Type', id: '1', _links: { self: { href: '/api/v3/types/1', name: 'Task' } } },
-    );
-    const type2 = halResourceService.createHalResourceOfClass(
-      TypeResource,
-      { _type: 'Type', id: '2', _links: { self: { href: '/api/v3/types/2', name: 'Bug' } } },
-    );
+    const type1 = halResourceService.createHalResourceOfClass(TypeResource, { _type: 'Type', id: '1', _links: { self: { href: '/api/v3/types/1', name: 'Task' } } });
+    const type2 = halResourceService.createHalResourceOfClass(TypeResource, { _type: 'Type', id: '2', _links: { self: { href: '/api/v3/types/2', name: 'Bug' } } });
 
     filters = [
       {
@@ -121,6 +114,69 @@ describe('WorkPackageFilterValues', () => {
 
     subject = new WorkPackageFilterValues(injector, filters);
   }
+
+  describe('when a version filter is present', () => {
+    function addVersionFilter() {
+      const version = halResourceService.createHalResourceOfClass(
+        HalResource,
+        { _type: 'Version', id: '42', _links: { self: { href: '/api/v3/versions/42', name: 'v1.0' } } },
+      );
+
+      filters.push({
+        id: 'version',
+        operator: { id: '=' },
+        values: [version],
+      });
+    }
+
+    describe('with no target versions on the work package', () => {
+      beforeEach(() => {
+        source = {
+          _type: 'WorkPackage',
+          id: '1234',
+          _links: {
+            type: { href: '/api/v3/types/1', name: 'Task' },
+          },
+        };
+
+        setupTestBed();
+        addVersionFilter();
+      });
+
+      it('writes the multi-valued targetVersions attribute instead of the deprecated version', () => {
+        subject.applyDefaultsFromFilters(changeset);
+
+        expect(changeset.changedAttributes).toContain('targetVersions');
+        expect(changeset.changedAttributes).not.toContain('version');
+
+        const written = changeset.value<HalResource[]>('targetVersions');
+        expect(written.length).toEqual(1);
+        expect(written[0].href).toEqual('/api/v3/versions/42');
+      });
+    });
+
+    describe('with the version already assigned as target version', () => {
+      beforeEach(() => {
+        source = {
+          _type: 'WorkPackage',
+          id: '1234',
+          _links: {
+            type: { href: '/api/v3/types/1', name: 'Task' },
+            targetVersions: [{ href: '/api/v3/versions/42', name: 'v1.0' }],
+          },
+        };
+
+        setupTestBed();
+        addVersionFilter();
+      });
+
+      it('does not change the work package', () => {
+        subject.applyDefaultsFromFilters(changeset);
+
+        expect(changeset.changedAttributes.length).toEqual(0);
+      });
+    });
+  });
 
   describe('when a filter value already exists in values', () => {
     describe('with the first type applied', () => {
@@ -139,12 +195,12 @@ describe('WorkPackageFilterValues', () => {
         setupTestBed();
       });
 
-      it('it should not apply the first value (Regression #30817)', (() => {
+      it('should not apply the first value (Regression #30817)', () => {
         subject.applyDefaultsFromFilters(changeset);
 
         expect(changeset.changedAttributes.length).toEqual(0);
-        expect(changeset.value('type').href).toEqual('/api/v3/types/1');
-      }));
+        expect(changeset.value<HalResource>('type').href).toEqual('/api/v3/types/1');
+      });
     });
 
     describe('with the second type applied', () => {
@@ -162,12 +218,12 @@ describe('WorkPackageFilterValues', () => {
         setupTestBed();
       });
 
-      it('it should not apply the first value (Regression #30817)', (() => {
+      it('should not keep the second value (Regression #30817)', () => {
         subject.applyDefaultsFromFilters(changeset);
 
         expect(changeset.changedAttributes.length).toEqual(0);
-        expect(changeset.value('type').href).toEqual('/api/v3/types/2');
-      }));
+        expect(changeset.value<HalResource>('type').href).toEqual('/api/v3/types/2');
+      });
     });
   });
 });

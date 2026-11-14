@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,13 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { APIv3GettableResource, APIv3ResourceCollection } from 'core-app/core/apiv3/paths/apiv3-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { ApiV3GettableResource, ApiV3ResourceCollection } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { States } from 'core-app/core/states/states.service';
 import { HasId, StateCacheService } from 'core-app/core/apiv3/cache/state-cache.service';
 import { Observable } from 'rxjs';
@@ -35,13 +34,13 @@ import { CollectionResource } from 'core-app/features/hal/resources/collection-r
 import { tap } from 'rxjs/operators';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
-export abstract class CachableAPIV3Collection<
+export abstract class ApiV3Collection<
   T extends HasId = HalResource,
-  V extends APIv3GettableResource<T> = APIv3GettableResource<T>,
+  V extends ApiV3GettableResource<T> = ApiV3GettableResource<T>,
   X extends StateCacheService<T> = StateCacheService<T>,
   >
-  extends APIv3ResourceCollection<T, V> {
-  @InjectField() states:States;
+  extends ApiV3ResourceCollection<T, V> {
+  @LazyInject() states:States;
 
   readonly cache:X = this.createCache();
 
@@ -62,7 +61,7 @@ export abstract class CachableAPIV3Collection<
           if (response instanceof CollectionResource) {
             response.elements?.forEach(this.touch.bind(this));
           } else if (response instanceof HalResource) {
-            this.touch(response as any);
+            this.touch(response as unknown as T);
           }
         },
       ),

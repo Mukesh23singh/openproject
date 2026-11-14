@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,42 +22,41 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe CategoriesController, type: :routing do
-  it 'should connect GET /projects/test/categories/new to categories#new' do
-    expect(get('/projects/test/categories/new')).to route_to(controller: 'categories',
-                                                             action: 'new',
-                                                             project_id: 'test')
+RSpec.describe CategoriesController do
+  it "connects GET /projects/test/categories/new to categories#new" do
+    expect(get("/projects/test/categories/new")).to route_to(controller: "categories",
+                                                             action: "new",
+                                                             project_id: "test")
   end
 
-  it 'should connect POST /projects/test/categories to categories#create' do
-    expect(post('/projects/test/categories')).to route_to(controller: 'categories',
-                                                          action: 'create',
-                                                          project_id: 'test')
+  it "connects POST /projects/test/categories to categories#create" do
+    expect(post("/projects/test/categories")).to route_to(controller: "categories",
+                                                          action: "create",
+                                                          project_id: "test")
   end
 
-  it 'should connect GET /categories/5/edit to categories#edit' do
-    expect(get('/categories/5/edit')).to route_to(controller: 'categories',
-                                                  action: 'edit',
-                                                  id: '5')
+  it "connects GET /categories/5/edit to categories#edit" do
+    expect(get("/categories/5/edit")).to route_to(controller: "categories",
+                                                  action: "edit",
+                                                  id: "5")
   end
 
-  it 'should connect PUT /categories/5 to categories#update' do
-    expect(put('/categories/5')).to route_to(controller: 'categories',
-                                             action: 'update',
-                                             id: '5')
+  it "connects PUT /categories/5 to categories#update" do
+    expect(put("/categories/5")).to route_to(controller: "categories",
+                                             action: "update",
+                                             id: "5")
   end
 
-  it 'should connect DELETE /categories/5 to categories#delete' do
-    expect(delete('/categories/5')).to route_to(controller: 'categories',
-                                                action: 'destroy',
-                                                id: '5')
+  it "connects DELETE /categories/5 to categories#delete" do
+    expect(delete("/categories/5")).to route_to(controller: "categories",
+                                                action: "destroy",
+                                                id: "5")
   end
 end

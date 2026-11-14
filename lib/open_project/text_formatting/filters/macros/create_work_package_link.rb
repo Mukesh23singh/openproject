@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,7 +33,7 @@ module OpenProject::TextFormatting::Filters::Macros
       include OpenProject::StaticRouting::UrlHelpers
     end
 
-    HTML_CLASS = 'create_work_package_link'.freeze
+    HTML_CLASS = "create_work_package_link"
 
     module_function
 
@@ -46,31 +45,31 @@ module OpenProject::TextFormatting::Filters::Macros
       macro.replace work_package_link(macro, context)
     end
 
-    def work_package_link(macro, context)
+    def work_package_link(macro, context) # rubocop:disable Metrics/AbcSize
       project = context[:project]
-      raise I18n.t('macros.create_work_package_link.errors.no_project_context') if project.nil?
+      raise I18n.t("macros.create_work_package_link.errors.no_project_context") if project.nil?
 
-      type_name = macro['data-type']
-      class_name = macro['data-classes'] == 'button' ? 'button' : nil
+      type_name = macro["data-type"]
+      class_name = macro["data-classes"] == "button" ? "button" : nil
 
       if type_name.present?
-        type = project.types.find_by(name: type_name)
+        type = project.enabled_types.find_by(name: type_name)
         if type.nil?
           raise I18n.t(
-            'macros.create_work_package_link.errors.invalid_type',
+            "macros.create_work_package_link.errors.invalid_type",
             type: type_name,
             project: project.name
           )
         end
 
         ApplicationController.helpers.link_to(
-          I18n.t('macros.create_work_package_link.link_name_type', type_name: type_name),
+          "+ #{type_name}",
           new_project_work_packages_path(project_id: project.identifier, type: type.id),
           class: class_name
         )
       else
         ApplicationController.helpers.link_to(
-          I18n.t('macros.create_work_package_link.link_name'),
+          I18n.t("macros.create_work_package_link.link_name"),
           new_project_work_packages_path(project_id: project.identifier),
           class: class_name
         )

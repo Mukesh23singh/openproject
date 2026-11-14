@@ -1,3 +1,30 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
@@ -6,35 +33,37 @@ import {
   rowGroupClassName,
 } from 'core-app/features/work-packages/components/wp-fast-table/builders/modes/grouped/grouped-classes.constants';
 import { WorkPackageViewColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-columns.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { States } from 'core-app/core/states/states.service';
 import { GroupObject } from 'core-app/features/hal/resources/wp-collection-resource';
 import { WorkPackageTable } from '../../../wp-fast-table';
 import { tableRowClassName } from '../../rows/single-row-builder';
 import { RowsBuilder } from '../rows-builder';
 import { GroupHeaderBuilder } from './group-header-builder';
+import type { RenderPassOptions } from '../../primary-render-pass';
 import { GroupedRenderPass } from './grouped-render-pass';
 import { groupedRowClassName, groupIdentifier } from './grouped-rows-helpers';
+import type { OccurrenceKey } from '../../../rendered-occurrence-ledger';
 
 export class GroupedRowsBuilder extends RowsBuilder {
   // Injections
-  @InjectField() private readonly querySpace:IsolatedQuerySpace;
+  @LazyInject() private readonly querySpace:IsolatedQuerySpace;
 
-  @InjectField() public states:States;
+  @LazyInject() public states:States;
 
-  @InjectField() public wpTableColumns:WorkPackageViewColumnsService;
+  @LazyInject() public wpTableColumns:WorkPackageViewColumnsService;
 
-  @InjectField() public I18n:I18nService;
+  @LazyInject() public I18n:I18nService;
 
   constructor(public readonly injector:Injector, workPackageTable:WorkPackageTable) {
     super(injector, workPackageTable);
   }
 
   /**
-   * The hierarchy builder is only applicable if the hierachy mode is active
+   * The hierarchy builder is only applicable if the hierarchy mode is active
    */
-  public isApplicable(table:WorkPackageTable) {
-    return !_.isEmpty(this.groups);
+  public isApplicable(_table:WorkPackageTable) {
+    return this.groups.length > 0;
   }
 
   /**
@@ -51,59 +80,64 @@ export class GroupedRowsBuilder extends RowsBuilder {
     return this.querySpace.collapsedGroups.value || {};
   }
 
-  public get colspan() {
-    // Columns + manual sorting column + settings column
-    return this.wpTableColumns.columnCount + 2;
-  }
-
-  public buildRows() {
+  public buildRows(options:RenderPassOptions) {
     const builder = new GroupHeaderBuilder(this.injector);
     return new GroupedRenderPass(
       this.injector,
       this.workPackageTable,
       this.getGroupData(),
       builder,
-      this.colspan,
-    ).render();
+      this.workPackageTable.colspan,
+    ).render(options);
   }
 
   /**
    * Refresh the group expansion state
    */
-  public refreshExpansionState() {
+  public refreshExpansionState():ReadonlyMap<OccurrenceKey, boolean> {
     const groups = this.getGroupData();
-    const rendered = this.querySpace.tableRendered.value!;
     const builder = new GroupHeaderBuilder(this.injector);
+    const updates = new Map<OccurrenceKey, boolean>();
 
-    jQuery(this.workPackageTable.tableAndTimelineContainer)
-      .find(`.${rowGroupClassName}`)
-      .each((i:number, oldRow:Element) => {
-        const groupIndex = jQuery(oldRow).data('groupIndex');
+    this.workPackageTable.tableAndTimelineContainer
+      .querySelectorAll<HTMLTableRowElement>(`.${rowGroupClassName}`)
+      .forEach((oldRow) => {
+        const groupIndex = parseInt(oldRow.dataset.groupIndex || '', 10);
         const group = groups[groupIndex];
 
         // Refresh the group header
-        const newRow = builder.buildGroupRow(group, this.colspan);
+        const newRow = builder.buildGroupRow(group, this.workPackageTable.colspan);
+        const headerKey = oldRow.dataset.occurrenceKey;
+
+        if (headerKey) {
+          newRow.dataset.occurrenceKey = headerKey;
+        }
 
         if (oldRow.parentNode) {
           oldRow.parentNode.replaceChild(newRow, oldRow);
         }
 
+        if (headerKey) {
+          this.workPackageTable.ledger.replaceElement(headerKey, newRow);
+        }
+
         // Set expansion state of contained rows
-        const affected = jQuery(this.workPackageTable.tableAndTimelineContainer)
-          .find(`.${groupedRowClassName(groupIndex)}`);
-        affected.toggleClass(collapsedRowClass, !!group.collapsed);
+        const affected = Array.from(this.workPackageTable.tableAndTimelineContainer
+          .querySelectorAll<HTMLElement>(`.${groupedRowClassName(groupIndex)}`));
 
-        // Update the hidden section of the rendered state
-        affected.filter(`.${tableRowClassName}`).each((i, el) => {
-          // Get the index of this row
-          const index = jQuery(el).index();
+        affected.forEach((el) => el.classList.toggle(collapsedRowClass, !!group.collapsed));
 
-          // Update the hidden state
-          rendered[index].hidden = !!group.collapsed;
-        });
+        affected
+          .filter((el) => el.matches(`.${tableRowClassName}`))
+          .forEach((el) => {
+            const key = el.dataset.occurrenceKey;
+            if (key) {
+              updates.set(key, !!group.collapsed);
+            }
+          });
       });
 
-    this.querySpace.tableRendered.putValue(rendered, 'Updated hidden state of rows after group change.');
+    return updates;
   }
 
   /**
@@ -112,7 +146,7 @@ export class GroupedRowsBuilder extends RowsBuilder {
   private getGroupData() {
     return this.groups.map((group:GroupObject, index:number) => {
       group.index = index;
-      if (group._links && group._links.valueLink) {
+      if (group._links?.valueLink) {
         group.href = group._links.valueLink;
       }
       group.identifier = groupIdentifier(group);

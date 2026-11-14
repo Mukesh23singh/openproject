@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,7 +30,7 @@
 module CustomFields
   class CreateService < ::BaseServices::Create
     def self.careful_new_custom_field(type)
-      if type.to_s =~ /.+CustomField\z/
+      if /.+CustomField\z/.match?(type.to_s)
         klass = type.to_s.constantize
         klass.new if klass.ancestors.include? CustomField
       end
@@ -40,10 +39,10 @@ module CustomFields
       nil
     end
 
-    def perform(params)
+    def perform
       super
     rescue StandardError => e
-      ServiceResult.new(success: false, message: e.message)
+      ServiceResult.failure(message: e.message)
     end
 
     def instance(params)
@@ -56,8 +55,12 @@ module CustomFields
     def after_perform(call)
       cf = call.result
 
-      if cf.is_a?(ProjectCustomField)
-        add_cf_to_visible_columns(cf.id)
+      if cf.field_format_calculated_value? && cf.is_required?
+        enqueue_recalculate_values(cf)
+      end
+
+      if cf.hierarchical_list?
+        CustomFields::Hierarchy::HierarchicalItemService.new.generate_root(cf)
       end
 
       call
@@ -65,8 +68,11 @@ module CustomFields
 
     private
 
-    def add_cf_to_visible_columns(id)
-      Setting.enabled_projects_columns = (Setting.enabled_projects_columns + ["cf_#{id}"]).uniq
+    def enqueue_recalculate_values(custom_field)
+      CustomFields::RecalculateValuesJob.perform_later(
+        user: User.current,
+        custom_field_id: custom_field.id
+      )
     end
   end
 end

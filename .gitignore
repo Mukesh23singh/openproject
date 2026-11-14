@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,7 +35,7 @@
 /.bundle
 
 # Ignore all logfiles and tempfiles.
-/log/*.log
+*.log
 npm-debug.log*
 /tmp
 *.swp
@@ -44,10 +43,14 @@ npm-debug.log*
 # Ignore Visual Studio Code files
 /.vscode
 
+# Ignore Vim backup files
+*~
+
 # Ignore Ctags files
 /tags
 /tags.lock
 /tags.temp
+/tags.files
 
 # Ignore RubyMine files
 /.idea
@@ -60,7 +63,7 @@ npm-debug.log*
 # Generated files
 /app/assets/javascripts/editor/*
 /app/assets/javascripts/locales/*.*
-/frontend/src/locales/*.js
+/frontend/src/locales/*
 /modules/*/frontend/module/module
 /config/additional_environment.rb
 /config/configuration.yml
@@ -91,7 +94,9 @@ npm-debug.log*
 /.rvmrc*
 /.ruby-gemset
 /.foreman
+/.overmind.env
 .DS_Store
+*.icloud
 .rspec
 .byebug_history
 
@@ -106,15 +111,39 @@ npm-debug.log*
 /frontend/dist/
 /frontend/tests/*.gif
 node_modules/
+/.angular
 
 # Ignore global package-lock.json that generates
-/package-lock.json
 plaintext.yml
-structure.sql
+db/*.sql
 
-# Local development docker 
+# Local development
+# used by dotenv
+/.env.*.local
+
+# Local development docker
 /.env
+/docker-compose.override.yml
 
 # Local development direnv files
 /.envrc
 /.direnv
+
+# local user override
+lefthook-local.yml
+.rubocop-local.yml
+
+# Local AI coding agent instruction overrides
+AGENTS.local.md
+CLAUDE.local.md
+
+/.lefthook-local/
+
+frontend/package-lock.json
+
+# Testing and nextcloud infrastructure
+acme.json
+.env.test
+
+# Generated seeders crowdin source file
+**/config/locales/en.seeders.yml

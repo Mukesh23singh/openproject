@@ -1,7 +1,41 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 class NotificationSetting < ApplicationRecord
   WATCHED = :watched
-  INVOLVED = :involved
+  ASSIGNEE = :assignee
+  RESPONSIBLE = :responsible
   MENTIONED = :mentioned
+  SHARED = :shared
+  START_DATE = :start_date
+  DUE_DATE = :due_date
+  OVERDUE = :overdue
   WORK_PACKAGE_CREATED = :work_package_created
   WORK_PACKAGE_COMMENTED = :work_package_commented
   WORK_PACKAGE_PROCESSED = :work_package_processed
@@ -19,14 +53,35 @@ class NotificationSetting < ApplicationRecord
   def self.all_settings
     [
       WATCHED,
-      INVOLVED,
+      ASSIGNEE,
+      RESPONSIBLE,
       MENTIONED,
+      SHARED,
       WORK_PACKAGE_CREATED,
       WORK_PACKAGE_COMMENTED,
       WORK_PACKAGE_PROCESSED,
       WORK_PACKAGE_PRIORITIZED,
       WORK_PACKAGE_SCHEDULED,
+      *date_alert_settings,
       *email_settings
+    ]
+  end
+
+  def self.non_participating_settings
+    [
+      WORK_PACKAGE_CREATED,
+      WORK_PACKAGE_COMMENTED,
+      WORK_PACKAGE_PROCESSED,
+      WORK_PACKAGE_PRIORITIZED,
+      WORK_PACKAGE_SCHEDULED
+    ]
+  end
+
+  def self.date_alert_settings
+    [
+      START_DATE,
+      DUE_DATE,
+      OVERDUE
     ]
   end
 
@@ -43,9 +98,21 @@ class NotificationSetting < ApplicationRecord
     ]
   end
 
-  belongs_to :project
+  belongs_to :project, optional: true
   belongs_to :user
 
   include Scopes::Scoped
   scopes :applicable
+
+  def start_date_active
+    start_date.present?
+  end
+
+  def due_date_active
+    due_date.present?
+  end
+
+  def overdue_active
+    overdue.present?
+  end
 end

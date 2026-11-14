@@ -1,0 +1,209 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+# require_relative "../../toasts/expectations"
+
+module Components
+  module WorkPackages
+    class ProgressPopover
+      include Capybara::DSL
+      include Capybara::RSpecMatchers
+      include RSpec::Matchers
+      include WaitHelpers
+
+      # include Toasts::Expectations
+
+      JS_FIELD_NAME_MAP = {
+        estimated_time: :estimatedTime,
+        percent_complete: :percentageDone,
+        percentage_done: :percentageDone,
+        remaining_work: :remainingTime,
+        remaining_time: :remainingTime,
+        status: :statusWithinProgressModal,
+        status_within_progress_modal: :statusWithinProgressModal,
+        work: :estimatedTime
+      }.freeze
+
+      WORK_PACKAGE_FIELD_NAME_MAP = {
+        estimated_time: :estimated_hours,
+        percent_complete: :done_ratio,
+        percentage_done: :done_ratio,
+        remaining_work: :remaining_hours,
+        remaining_time: :remaining_hours,
+        work: :estimated_hours
+      }.freeze
+
+      attr_reader :create_form
+
+      def initialize(container: page, create_form: false, field_selector_prefix: nil)
+        @container_or_lambda_to_get_container = container
+        @create_form = create_form
+        @field_selector_prefix = field_selector_prefix
+      end
+
+      def container
+        if @container_or_lambda_to_get_container.respond_to?(:call)
+          @container_or_lambda_to_get_container.call
+        else
+          @container_or_lambda_to_get_container
+        end
+      end
+
+      def open
+        open_by_clicking_on_field(:work)
+      end
+
+      def open_by_clicking_on_field(field_name)
+        wait_for_turbo_frame(frame: ProgressEditField::MODAL_SELECTOR.delete_prefix("#"), wait: 20) do
+          field(field_name).activate!
+        end
+      end
+
+      def close
+        progress_field = field(:work)
+        progress_field.close!
+        progress_field.expect_inactive!
+      end
+
+      def save
+        field(:work).submit_by_clicking_save
+      end
+
+      def focus(field_name)
+        field(field_name).focus
+      end
+
+      def set_value(field_name, value)
+        focus(field_name)
+        field(field_name).set_value(value)
+      end
+
+      def set_values(**field_value_pairs)
+        field_value_pairs.each do |field_name, value|
+          set_value(field_name, value)
+        end
+        wait_for_network_idle # Wait for live-update to finish
+      end
+
+      def expect_cursor_at_end_of_input(field_name)
+        field(field_name).expect_cursor_at_end_of_input
+      end
+
+      def expect_disabled(field_name)
+        field(field_name).expect_modal_field_disabled
+      end
+
+      def expect_focused(field_name)
+        field(field_name).expect_modal_field_in_focus
+      end
+
+      def expect_read_only(field_name)
+        field(field_name).expect_modal_field_read_only
+      end
+
+      def expect_select_with_options(field_name, *options)
+        field(field_name).expect_select_field_with_options(*options)
+      end
+
+      def expect_select_without_options(field_name, *options)
+        field(field_name).expect_select_field_with_no_options(*options)
+      end
+
+      def expect_value(field_name, value, **properties)
+        field(field_name).expect_modal_field_value(value, **properties)
+      end
+
+      def expect_values(**field_value_pairs)
+        aggregate_failures("progress popover values expectations") do
+          field_value_pairs.each do |field_name, value|
+            expect_value(field_name, value)
+          end
+        end
+      end
+
+      def expect_hint(field_name, hint)
+        progress_hint =
+          case hint
+          when nil
+            nil
+          when Symbol
+            WorkPackage::ProgressHint.new("#{wp_field_name(field_name)}.#{hint}")
+          when Hash
+            hint, params = hint.first
+            WorkPackage::ProgressHint.new("#{wp_field_name(field_name)}.#{hint}", params)
+          end
+        field(field_name).expect_caption(progress_hint&.message)
+      end
+
+      def expect_hints(**field_hint_pairs)
+        aggregate_failures("progress popover hints expectations") do
+          field_hint_pairs.each do |field_name, hint|
+            expect_hint(field_name, hint)
+          end
+        end
+      end
+
+      def expect_error(field_name, error_message)
+        field(field_name).expect_error(error_message)
+      end
+
+      def expect_errors(**field_error_pairs)
+        aggregate_failures("progress popover errors expectations") do
+          field_error_pairs.each do |field_name, error_message|
+            expect_error(field_name, error_message)
+          end
+        end
+      end
+
+      private
+
+      def field(field_name)
+        field_name = js_field_name(field_name)
+        selector = if @field_selector_prefix
+                     "#{@field_selector_prefix} .inline-edit--container.#{field_name.to_s.camelize(:lower)}"
+                   end
+        ProgressEditField.new(container, field_name, create_form:, selector:)
+      end
+
+      def js_field_name(field_name)
+        field_name = field_name.to_s.underscore.to_sym
+        JS_FIELD_NAME_MAP.fetch(field_name) do
+          raise ArgumentError, "cannot map '#{field_name.inspect}' to its javascript field name"
+        end
+      end
+
+      def wp_field_name(field_name)
+        field_name = field_name.to_s.underscore.to_sym
+        WORK_PACKAGE_FIELD_NAME_MAP.fetch(field_name) do
+          raise ArgumentError, "cannot map '#{field_name.inspect}' to its work package field name"
+        end
+      end
+    end
+  end
+end

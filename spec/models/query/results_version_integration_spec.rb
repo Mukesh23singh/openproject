@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,101 +22,101 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::Query::Results, 'Grouping and sorting for version', type: :model, with_mail: false do
+RSpec.describe Query::Results, "Grouping and sorting for version",
+               with_settings: { work_package_multiple_versions: false } do
   let(:query_results) do
-    ::Query::Results.new query
+    described_class.new query
   end
-  let(:project_1) { FactoryBot.create :project }
-  let(:user_1) do
-    FactoryBot.create(:user,
-                      firstname: 'user',
-                      lastname: '1',
-                      member_in_project: project_1,
-                      member_with_permissions: [:view_work_packages])
+  let(:project) { create(:project) }
+  let(:user) do
+    create(:user,
+           firstname: "user",
+           lastname: "1",
+           member_with_permissions: { project => [:view_work_packages] })
   end
 
   let(:old_version) do
-    FactoryBot.create(:version,
-                      name: '1. Old version',
-                      project: project_1,
-                      start_date: '2019-02-02',
-                      effective_date: '2019-02-03')
+    create(:version,
+           name: "4. Old version",
+           project:,
+           start_date: "2019-02-02",
+           effective_date: "2019-02-03")
   end
 
   let(:new_version) do
-    FactoryBot.create(:version,
-                      name: '1.2 New version',
-                      project: project_1,
-                      start_date: '2020-02-02',
-                      effective_date: '2020-02-03')
+    create(:version,
+           name: "10.2 New version",
+           project:,
+           start_date: "2020-02-02",
+           effective_date: "2020-02-03")
   end
 
   let(:no_date_version) do
-    FactoryBot.create(:version,
-                      name: '1.1 No date version',
-                      project: project_1,
-                      start_date: nil,
-                      effective_date: nil)
+    create(:version,
+           name: "10.1 No date version",
+           project:,
+           start_date: nil,
+           effective_date: nil)
   end
 
   let!(:no_version_wp) do
-    FactoryBot.create(:work_package,
-                      subject: 'No version wp',
-                      project: project_1)
+    create(:work_package,
+           subject: "No version wp",
+           project:)
   end
-  let!(:newest_version_wp) do
-    FactoryBot.create(:work_package,
-                      subject: 'Newest version wp',
-                      version: new_version,
-                      project: project_1)
+  let!(:new_version_wp) do
+    create(:work_package,
+           subject: "Newest version wp",
+           version: new_version,
+           project:)
   end
-  let!(:oldest_version_wp) do
-    FactoryBot.create(:work_package,
-                      subject: 'Oldest version wp',
-                      version: old_version,
-                      project: project_1)
+  let!(:old_version_wp) do
+    create(:work_package,
+           subject: "Oldest version wp",
+           version: old_version,
+           project:)
   end
   let!(:no_date_version_wp) do
-    FactoryBot.create(:work_package,
-                      subject: 'No date version wp',
-                      version: no_date_version,
-                      project: project_1)
+    create(:work_package,
+           subject: "No date version wp",
+           version: no_date_version,
+           project:)
   end
 
   let(:group_by) { nil }
-  let(:sort_criteria) { [['version', 'asc']] }
+  let(:sort_criteria) { [["version", "asc"]] }
 
   let(:query) do
-    FactoryBot.build(:query,
-                     user: user_1,
-                     group_by: group_by,
-                     show_hierarchies: false,
-                     project: project_1).tap do |q|
+    build(:query,
+          user:,
+          group_by:,
+          show_hierarchies: false,
+          project:).tap do |q|
       q.filters.clear
       q.sort_criteria = sort_criteria
     end
   end
-  let(:work_packages_asc) { [oldest_version_wp, no_date_version_wp, newest_version_wp, no_version_wp] }
+  let(:work_packages_asc) { [old_version_wp, no_date_version_wp, new_version_wp, no_version_wp] }
+  let(:work_packages_desc) { [no_version_wp, new_version_wp, no_date_version_wp, old_version_wp] }
 
   before do
-    login_as(user_1)
+    login_as(user)
   end
 
-  describe 'grouping by version' do
-    let(:group_by) { 'version' }
+  describe "grouping by version" do
+    let(:group_by) { "version" }
 
-    it 'returns the correctly sorted grouped result' do
+    it "returns the correctly sorted grouped result" do
       # Keys are also sorted by the version
       expect(query_results.work_package_count_by_group.keys)
-        .to eql work_packages_asc.map(&:version)
+        .to eql(work_packages_asc.map { it.target_versions.first })
 
       expect(query_results.work_package_count_by_group)
         .to eql(old_version => 1, no_date_version => 1, new_version => 1, nil => 1)
@@ -122,26 +124,67 @@ describe ::Query::Results, 'Grouping and sorting for version', type: :model, wit
       expect(query_results.work_packages.pluck(:id))
         .to match work_packages_asc.map(&:id)
     end
+
+    context "when no work package association matches the column" do
+      before do
+        allow(query_results).to receive(:find_association_for_group).and_return(nil)
+      end
+
+      it "still returns version records as group keys" do
+        expect(query_results.work_package_count_by_group)
+          .to eql(old_version => 1, no_date_version => 1, new_version => 1, nil => 1)
+      end
+    end
   end
 
-  describe 'sorting ASC by version' do
-    let(:sort_criteria) { [['version', 'asc']] }
+  describe "sorting ASC by version" do
+    let(:sort_criteria) { [["version", "asc"]] }
 
-    it 'returns the correctly sorted result' do
+    it "returns the correctly sorted result" do
       expect(query_results.work_packages.pluck(:id))
         .to match work_packages_asc.map(&:id)
     end
   end
 
-  describe 'sorting DESC by version' do
-    let(:sort_criteria) { [['version', 'desc']] }
+  describe "sorting DESC by version" do
+    let(:sort_criteria) { [["version", "desc"]] }
 
-    it 'returns the correctly sorted result' do
-      # null values are still sorted last
-      work_packages_order = [newest_version_wp, no_date_version_wp, oldest_version_wp, no_version_wp]
-
+    it "returns the correctly sorted result" do
       expect(query_results.work_packages.pluck(:id))
-        .to match work_packages_order.map(&:id)
+        .to match work_packages_desc.map(&:id)
+    end
+  end
+
+  context "with a work package having multiple target versions (transitional data)" do
+    let!(:multi_version_wp) do
+      create(:work_package,
+             subject: "Multi version wp",
+             version: new_version,
+             project:).tap do |wp|
+        create(:work_package_version, work_package: wp, version: old_version)
+      end
+    end
+
+    describe "sorting ASC by version" do
+      it "sorts the work package by its primary target version" do
+        # multi_version_wp's primary target version is new_version (the lowest
+        # version id), tying it with new_version_wp; the tie is broken by the
+        # default id DESC criterion.
+        expect(query_results.work_packages.pluck(:id))
+          .to eq [old_version_wp, no_date_version_wp, multi_version_wp, new_version_wp, no_version_wp].map(&:id)
+      end
+    end
+
+    describe "grouping by version" do
+      let(:group_by) { "version" }
+
+      it "counts the work package under its primary target version" do
+        expect(query_results.work_package_count_by_group)
+          .to eql(old_version => 1, no_date_version => 1, new_version => 2, nil => 1)
+
+        expect(query_results.work_package_count_by_group.keys)
+          .to eql [old_version, no_date_version, new_version, nil]
+      end
     end
   end
 end

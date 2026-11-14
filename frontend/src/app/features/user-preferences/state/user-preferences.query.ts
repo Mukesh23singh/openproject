@@ -1,4 +1,31 @@
-import { Injectable } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { groupBy } from 'lodash-es';
 
 import { Query } from '@datorama/akita';
 import {
@@ -7,21 +34,21 @@ import {
 } from 'rxjs/operators';
 import { Observable } from 'rxjs';
 import { UserPreferencesStore } from 'core-app/features/user-preferences/state/user-preferences.store';
-import { UserPreferencesModel } from 'core-app/features/user-preferences/state/user-preferences.model';
-import { NotificationSetting } from 'core-app/features/user-preferences/state/notification-setting.model';
+import { IUserPreference } from 'core-app/features/user-preferences/state/user-preferences.model';
+import { INotificationSetting } from 'core-app/features/user-preferences/state/notification-setting.model';
 
-export class UserPreferencesQuery extends Query<UserPreferencesModel> {
+export class UserPreferencesQuery extends Query<IUserPreference> {
   notificationSettings$ = this.select('notifications');
 
-  notificationsGroupedByProject$:Observable<{ [key:string]:NotificationSetting[] }> = this
+  notificationsGroupedByProject$:Observable<Record<string, INotificationSetting[]>> = this
     .notificationSettings$
     .pipe(
       map((settings) => settings.filter((setting) => setting._links.project.href)),
-      map((settings) => _.groupBy(settings, (setting) => setting._links.project.title)),
+      map((settings) => groupBy(settings, (setting) => setting._links.project.title)),
     );
 
   /** Notification settings grouped by Project */
-  notificationsForGlobal$:Observable<NotificationSetting|undefined> = this
+  notificationsForGlobal$:Observable<INotificationSetting|undefined> = this
     .notificationSettings$
     .pipe(
       map((notifications) => notifications.find((setting) => setting._links.project.href === null)),
@@ -38,7 +65,7 @@ export class UserPreferencesQuery extends Query<UserPreferencesModel> {
     .pipe(
       map((settings) => settings.find((notification) => !notification._links.project.href)),
       filter((global) => !!global),
-    ) as Observable<NotificationSetting>;
+    );
 
   /** Selected projects */
   selectedProjects$ = this

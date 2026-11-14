@@ -2,44 +2,33 @@
            [(ngModel)]="model"
            [items]="availableValues"
            [ngClass]="classes"
+           [groupBy]="groupByFn"
            [addTag]="createAllowed"
            [virtualScroll]="true"
            [required]="required"
            [clearable]="!required"
            [disabled]="disabled"
-           [typeahead]="typeahead"
+           [typeahead]="typeahead ?? localSearch"
            [clearOnBackspace]="false"
            [clearSearchOnAdd]="false"
            [appendTo]="appendTo"
            [hideSelected]="hideSelected"
            [compareWith]="compareByHref"
-           [id]="id"
+           [labelForId]="id"
            (change)="changeModel($event)"
            (open)="opened()"
            (close)="closed()"
            (keydown)="keyPressed($event)"
            bindLabel="name">
   <ng-template ng-tag-tmp let-search="searchTerm">
-    <b [textContent]="text.add_new_action"></b>: {{search}}
+    <b [textContent]="text.add_new_action"></b>: {{ search }}
   </ng-template>
 
   <ng-template ng-option-tmp let-item="item" let-search="searchTerm">
-    <op-principal
-      *ngIf="isPrincipal(item)"
-      [hideName]="true"
-      [principal]="item"
-      size="mini"
-    ></op-principal>
-    <span [ngOptionHighlight]="search"
+    <span
           [textContent]="item.name"
+          [ngStyle]="{'padding-left.px': item.depth * 16}"
           class="ng-option-label ellipsis">
     </span>
-  </ng-template>
-
-  <ng-template ng-footer-tmp *ngIf="showAddNewButton">
-    <op-invite-user-button
-      [projectId]="resource.project?.id"
-      class="op-select-footer"
-    ></op-invite-user-button>
   </ng-template>
 </ng-select>

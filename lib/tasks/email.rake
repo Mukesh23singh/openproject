@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -139,15 +136,17 @@ namespace :redmine do
     END_DESC
 
     task receive_imap: :environment do
-      imap_options = { host: ENV['host'],
-                       port: ENV['port'],
-                       ssl: ENV['ssl'],
-                       ssl_verification: !['0', 'false', 'f'].include?(ENV['ssl_verification']),
-                       username: ENV['username'],
-                       password: ENV['password'],
-                       folder: ENV['folder'],
-                       move_on_success: ENV['move_on_success'],
-                       move_on_failure: ENV['move_on_failure'] }
+      imap_options = {
+        host: ENV.fetch("host", nil),
+        port: ENV.fetch("port", nil),
+        ssl: ActiveRecord::Type::Boolean.new.cast(ENV.fetch("ssl", true)),
+        ssl_verification: ActiveRecord::Type::Boolean.new.cast(ENV.fetch("ssl_verification", true)),
+        username: ENV.fetch("username", nil),
+        password: ENV.fetch("password", nil),
+        folder: ENV.fetch("folder", nil),
+        move_on_success: ENV.fetch("move_on_success", nil),
+        move_on_failure: ENV.fetch("move_on_failure", nil)
+      }
 
       Redmine::IMAP.check(imap_options, options_from_env)
     end
@@ -163,28 +162,53 @@ namespace :redmine do
               apop=1                   use APOP authentication (default: false)
               delete_unprocessed=1     delete messages that could not be processed
                                        successfully from the server (default
-                                       behaviour is to leave them on the server)
+                                       behavior is to leave them on the server)
       #{'      '}
             See redmine:email:receive_imap for more options and examples.
     END_DESC
 
     task receive_pop3: :environment do
-      pop_options = { host: ENV['host'],
-                      port: ENV['port'],
-                      apop: ENV['apop'],
-                      username: ENV['username'],
-                      password: ENV['password'],
-                      delete_unprocessed: ENV['delete_unprocessed'] }
+      pop_options = { host: ENV.fetch("host", nil),
+                      port: ENV.fetch("port", nil),
+                      apop: ENV.fetch("apop", nil),
+                      username: ENV.fetch("username", nil),
+                      password: ENV.fetch("password", nil),
+                      delete_unprocessed: ENV.fetch("delete_unprocessed", nil) }
 
       Redmine::POP3.check(pop_options, options_from_env)
     end
 
-    desc 'Send a test email to the user with the provided login name'
+    desc <<~END_DESC
+            Read emails from the Gmail API
+      #{'      '}
+            Available Gmail options:
+              credentials=CREDENTIALS_FILE	Gmail Service Account Credentials File (JSON)
+              username=EMAIL			          Email Address
+              query=QUERY			              Gmail Query String
+              read_on_failure=1             Mark email as read on failure
+              max_emails=1000               Max num of emails to process
+      #{'      '}
+            See redmine:email:receive_gmail for more options and examples.
+    END_DESC
+
+    task receive_gmail: :environment do
+      gmail_options = {
+        credentials: ENV.fetch("credentials", nil),
+        user_id: ENV.fetch("user_id", nil),
+        query: ENV.fetch("query", nil),
+        read_on_failure: ActiveRecord::Type::Boolean.new.cast(ENV.fetch("read_on_failure", 1)),
+        max_emails: ENV.fetch("max_emails", 1000)
+      }
+
+      Redmine::Gmail.check(gmail_options, options_from_env)
+    end
+
+    desc "Send a test email to the user with the provided login name"
     task :test, [:login] => :environment do |_task, args|
       login = args[:login]
       if login.blank?
         abort I18n.t(:notice_email_error,
-                     default: 'Please include the user login to test with. Example: redmine:email:test[example-login]')
+                     default: "Please include the user login to test with. Example: redmine:email:test[example-login]")
       end
 
       user = User.find_by_login(login)
@@ -205,14 +229,18 @@ namespace :redmine do
     private
 
     def options_from_env
-      { issue: {} }.tap do |options|
-        default_fields = (ENV['default_fields'] || '').split
-        default_fields |= %w[project status type category priority assigned_to version]
-        default_fields.each { |field| options[:issue][field.to_sym] = ENV[field] if ENV[field] }
+      { issue: issue_defaults_from_env }.tap do |options|
+        %w[allow_override unknown_user no_permission_check].each do |key|
+          options[key.to_sym] = ENV[key] if ENV[key]
+        end
+      end
+    end
 
-        options[:allow_override] = ENV['allow_override'] if ENV['allow_override']
-        options[:unknown_user] = ENV['unknown_user'] if ENV['unknown_user']
-        options[:no_permission_check] = ENV['no_permission_check'] if ENV['no_permission_check']
+    def issue_defaults_from_env
+      fields = ENV.fetch("default_fields", "").split
+      fields |= %w[project status type category priority assigned_to version target_versions]
+      fields.each_with_object({}) do |field, issue|
+        issue[field.to_sym] = ENV[field] if ENV[field].present?
       end
     end
   end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,8 +31,26 @@ module Boards
   class CopyService < ::Grids::CopyService
     protected
 
-    def initialize_new_grid!(new_board, original_board, _params)
-      new_board.project = state.project || original_board.project
+    def set_attributes_params(params)
+      super.deep_symbolize_keys.tap do |hash|
+        hash[:project] = state.project || model.project
+        hash[:linked_type] = nil
+        hash[:linked_id] = nil
+
+        hash[:options] = mapped_options(hash[:options]) if hash.key?(:options)
+      end
+    end
+
+    def mapped_options(options)
+      options[:filters] = mapped_filters(options[:filters]) if options.key?(:filters)
+
+      options
+    end
+
+    def mapped_filters(filters)
+      ::Queries::Copy::FiltersMapper
+        .new(state)
+        .map_filters(filters)
     end
   end
 end

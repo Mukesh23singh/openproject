@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-OpenProject::Application.routes.draw do
-  scope '', as: 'bcf' do
-    mount ::Bim::Bcf::API::Root => '/api/bcf'
+Rails.application.routes.draw do
+  scope "", as: "bcf" do
+    mount Bim::Bcf::API::Root => "/api/bcf"
 
-    scope 'projects/:project_id', as: 'project' do
-      resources :issues, controller: 'bim/bcf/issues' do
+    scope "projects/:project_id", as: "project" do
+      get "bcf/menu" => "bim/menus#show"
+
+      resources :issues, controller: "bim/bcf/issues", except: :index do
         get :upload, action: :upload, on: :collection
         post :prepare_import, action: :prepare_import, on: :collection
         post :configure_import, action: :configure_import, on: :collection
@@ -39,14 +42,23 @@ OpenProject::Application.routes.draw do
       end
 
       # IFC viewer frontend
-      get 'bcf(/*state)', to: 'bim/ifc_models/ifc_viewer#show', as: :frontend
+      get "bcf" => "bim/ifc_models/ifc_viewer#index", as: :frontend
+
+      get "bcf/details/:work_package_id(/:tab)" => "bim/ifc_models/ifc_viewer#split_view", as: :details,
+          defaults: { tab: "overview" },
+          work_package_split_view: true,
+          constraints: { work_package_id: WorkPackage::SemanticIdentifier::ID_ROUTE_CONSTRAINT }
+
+      get "bcf/details/new" => "bim/ifc_models/ifc_viewer#split_create", as: "new_split",
+          work_package_split_create: true
 
       # IFC model management
-      resources :ifc_models, controller: 'bim/ifc_models/ifc_models' do
+      resources :ifc_models, controller: "bim/ifc_models/ifc_models" do
         collection do
           get :defaults
           get :direct_upload_finished
           post :set_direct_upload_file_name
+          post :set_direct_upload_default_value
         end
       end
     end

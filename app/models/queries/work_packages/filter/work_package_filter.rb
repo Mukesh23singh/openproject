@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Queries::WorkPackages::Filter::WorkPackageFilter < ::Queries::Filters::Base
+class Queries::WorkPackages::Filter::WorkPackageFilter < Queries::Filters::Base
   include ::Queries::Filters::Serializable
 
   self.model = WorkPackage
@@ -37,19 +36,17 @@ class Queries::WorkPackages::Filter::WorkPackageFilter < ::Queries::Filters::Bas
     WorkPackage.human_attribute_name(name)
   end
 
-  def project
-    context.project
-  end
+  delegate :project, to: :context
 
   def includes
     nil
   end
 
-  def scope
-    # We only return the WorkPackage base scope for now as most of the filters
+  def apply_to(query_scope)
+    # We only pass through the query_scope for now as most of the filters
     # (this one's subclasses) currently do not follow the base filter approach of using the scope.
-    # The intend is to have more and more wp filters use the scope method just like the
+    # The intent is to have more and more wp filters use the scope method just like the
     # rest of the queries (e.g. project)
-    WorkPackage.unscoped
+    query_scope
   end
 end

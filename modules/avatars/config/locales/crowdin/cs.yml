@@ -1,40 +1,49 @@
-#English strings go here
+---
 cs:
-  label_avatar: "Avatar"
-  label_avatar_plural: "Avatary"
-  label_current_avatar: "Aktuální Avatar"
-  label_choose_avatar: "Vyberte avatar ze souboru"
-  message_avatar_uploaded: "Avatar byl úspěšně změněn."
-  error_image_upload: "Chyba při ukládání obrázku."
-  error_image_size: "Obrázek je příliš velký."
-  button_change_avatar: "Změnit avatar"
-  are_you_sure_delete_avatar: "Jste si jisti, že chcete odstranit váš avatar?"
-  avatar_deleted: "Avatar byl úspěšně odstraněn."
-  unable_to_delete_avatar: "Avatar nelze odstranit."
-  wrong_file_format: "Povolené formáty jsou jpg, png, gif"
-  empty_file_error: "Prosím nahrajte platný obrázek (jpg, png, gif)"
+  are_you_sure_delete_avatar: Jste si jisti, že chcete odstranit váš avatar?
+  avatar_deleted: Avatar byl úspěšně odstraněn.
   avatars:
-    label_avatar: "Avatar"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Aktuální avatar'
-    label_local_avatar: 'Vlastní avatar'
-    text_current_avatar: |
-      Následující obrázek zobrazuje aktuální avatar.
-    text_upload_instructions: |
-      Nahrajte svůj vlastní avatar o velikosti 128 pixelů. Větší soubory budou změněny a oříznuty tak, aby odpovídaly.
-      Náhled avataru bude zobrazen před odesláním, jakmile jste vybrali obrázek.
-    text_change_gravatar_html: 'Chcete-li změnit nebo přidat Gravatar pro vaši e-mailovou adresu, přejděte na %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject vám umožňuje nahrát vlastní avatar.
-    text_local_avatar_over_gravatar: |
-      Pokud ho nastavíte, tento vlastní avatar se používá v předstihu před gravatarem výše.
-    text_your_current_gravatar: |
-      OpenProject používá váš gravatar, pokud jste ho zaregistrovali, nebo výchozí obrázek nebo ikonu, pokud existuje.
-      Aktuální gravatar je následující:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Vlastní avatar
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Povolit uživatelské gravatary'
-      gravatar_default: "Výchozí Gravatar"
-      enable_local_avatars: 'Povolit uživatelské uživatelské avatary'
-
-
-
+      enable_gravatars: Povolit uživatelské gravatary
+      enable_local_avatars: Povolit uživatelské uživatelské avatary
+      gravatar_default: Výchozí Gravatar
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Prosím nahrajte platný obrázek (jpg, png, gif)
+  error_image_size: Obrázek je příliš velký.
+  error_image_upload: Chyba při ukládání obrázku.
+  label_avatar: Avatar
+  label_avatar_plural: Avatary
+  label_choose_avatar: Vyberte avatar ze souboru
+  label_current_avatar: Aktuální Avatar
+  message_avatar_uploaded: Avatar byl úspěšně změněn.
+  plugin_openproject_avatars:
+    description: Tento modul umožňuje uživatelům OpenProject nahrát obrázek, který bude použit jako avatar nebo použít registrované obrázky z Gravataru.
+    name: Avatary
+  unable_to_delete_avatar: Avatar nelze odstranit.
+  wrong_file_format: Povolené formáty jsou jpg, png, gif

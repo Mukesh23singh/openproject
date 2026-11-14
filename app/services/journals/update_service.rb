@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,12 +22,50 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Journals
-  class UpdateService < ::BaseServices::Update; end
+  class UpdateService < ::BaseServices::Update
+    protected
+
+    def after_validate(call)
+      journal = call.result
+      journal.cause = Journal::CausedByCommentRetraction.new.to_hash if comment_retracted?(journal)
+
+      call
+    end
+
+    def after_perform(call)
+      if call.success? && activity_comment?(call.result)
+        attachments_claims = claim_attachments_for(call.result)
+        call.add_dependent!(attachments_claims)
+      end
+
+      OpenProject::Notifications.send(OpenProject::Events::JOURNAL_UPDATED,
+                                      journal: call.result,
+                                      send_notification: Journal::NotificationConfiguration.active?,
+                                      trigger_callbacks: Journal::EventConfiguration.active?)
+
+      call
+    end
+
+    private
+
+    def comment_retracted?(journal)
+      journal.notes.blank? && journal.notes_was.present? && !journal.has_cause?
+    end
+
+    def activity_comment?(journal)
+      journal.notes.present? || journal.attachments.exists?
+    end
+
+    def claim_attachments_for(journal)
+      WorkPackages::ActivitiesTab::CommentAttachmentsClaims::ClaimsService
+       .new(user: User.current, model: journal)
+       .call
+    end
+  end
 end

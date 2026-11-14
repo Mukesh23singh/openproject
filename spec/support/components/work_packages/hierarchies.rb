@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,6 +31,7 @@ module Components
   module WorkPackages
     class Hierarchies
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
 
       attr_reader :context_menu
@@ -47,11 +49,11 @@ module Components
       alias_method :enable_via_menu, :enable_hierarchy
 
       def enable_via_header
-        page.find('.wp-table--table-header .icon-no-hierarchy').click
+        toggle_via_subject_menu(checked: false)
       end
 
       def disable_via_header
-        page.find('.wp-table--table-header .icon-hierarchy').click
+        toggle_via_subject_menu(checked: true)
       end
 
       def disable_hierarchy
@@ -61,44 +63,63 @@ module Components
       end
 
       def expect_no_hierarchies
-        expect(page).to have_no_selector('.wp-table--hierarchy-span')
+        expect(page).to have_no_css(".wp-table--hierarchy-span")
       end
 
-      alias_method :expect_mode_disabled, :expect_no_hierarchies
-
       def expect_mode_enabled
-        expect(page).to have_selector('.wp-table--table-header .icon-hierarchy')
+        expect(page).to have_selector(:columnheader, subject_column_name, wait: 20) do |header|
+          header.has_selector?(:octicon, "op-hierarchy")
+        end
       end
 
       def expect_mode_disabled
-        expect(page).to have_selector('.wp-table--table-header .icon-no-hierarchy')
+        expect(page).to have_selector(:columnheader, subject_column_name, wait: 20) do |header|
+          header.has_no_selector?(:octicon, "op-hierarchy")
+        end
       end
 
-      def expect_indent(work_package, indent: true, outdent: true)
-        context_menu.open_for work_package
+      private
+
+      def subject_column_name
+        I18n.t("js.work_packages.properties.subject")
+      end
+
+      def toggle_via_subject_menu(checked:)
+        page.find(:columnheader, subject_column_name).click_button(subject_column_name)
+        page.within(:menu, subject_column_name) do
+          page.find(:role, "menuitemcheckbox",
+                    text: I18n.t("js.toolbar.settings.display_hierarchy"),
+                    aria: { checked: checked.to_s }).click
+        end
+      end
+
+      public
+
+      def expect_indent(work_package, indent: true, outdent: true, card_view: false)
+        context_menu.open_for(work_package, card_view:)
 
         if indent
-          context_menu.expect_options ['Indent hierarchy']
+          context_menu.expect_options "Indent hierarchy"
         end
 
         if outdent
-          context_menu.expect_options ['Outdent hierarchy']
+          context_menu.expect_options "Outdent hierarchy"
         end
       end
 
       def indent!(work_package)
         context_menu.open_for work_package
-        context_menu.choose 'Indent hierarchy'
+        context_menu.choose "Indent hierarchy"
       end
 
       def outdent!(work_package)
         context_menu.open_for work_package
-        context_menu.choose 'Outdent hierarchy'
+        context_menu.choose "Outdent hierarchy"
       end
 
       def expect_leaf_at(*work_packages)
         work_packages.each do |wp|
-          expect(page).to have_selector(".wp-row-#{wp.id} .wp-table--leaf-indicator")
+          expect(page).to have_css(".wp-row-#{wp.id} .wp-table--leaf-indicator")
         end
       end
 
@@ -109,17 +130,17 @@ module Components
           selector = ".wp-row-#{wp.id} .wp-table--hierarchy-indicator"
 
           if collapsed
-            expect(page).to have_selector("#{selector}#{collapsed_sel}")
+            expect(page).to have_css("#{selector}#{collapsed_sel}")
           else
             expect(page).to have_selector(selector)
-            expect(page).to have_no_selector("#{selector}#{collapsed_sel}")
+            expect(page).to have_no_css("#{selector}#{collapsed_sel}")
           end
         end
       end
 
       def expect_hidden(*work_packages)
         work_packages.each do |wp|
-          expect(page).to have_selector(".wp-row-#{wp.id}", visible: :hidden)
+          expect(page).to have_no_css(".wp-row-#{wp.id}", visible: :visible)
         end
       end
 

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,66 +22,74 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-describe IssuePriority, type: :model do
-  let(:stubbed_priority) { FactoryBot.build_stubbed(:priority) }
-  let(:priority) { FactoryBot.create(:priority) }
+require "spec_helper"
 
-  describe '.ancestors' do
-    it 'is an enumeration' do
+require_relative "enumerations/shared_enumeration_examples"
+
+RSpec.describe IssuePriority do
+  shared_let(:priority) { create(:priority) }
+  shared_let(:default_priority) { create(:default_priority) }
+
+  let(:stubbed_priority) { build_stubbed(:priority) }
+
+  it_behaves_like "enumeration#active handling", true do
+    let(:enumeration) { described_class.new(attributes_for(:priority)) }
+  end
+
+  describe ".ancestors" do
+    it "is an enumeration" do
       expect(IssuePriority.ancestors)
         .to include(Enumeration)
     end
   end
 
-  describe '#objects_count' do
-    let(:work_package1) { FactoryBot.create(:work_package, priority: priority) }
-    let(:work_package2) { FactoryBot.create(:work_package) }
+  describe "#objects_count" do
+    let(:work_package1) { create(:work_package, priority:) }
+    let(:work_package2) { create(:work_package) }
 
-    it 'counts the work packages having the priority' do
+    it "counts the work packages having the priority" do
       expect(priority.objects_count)
-        .to eql 0
+        .to be 0
 
       work_package1
       work_package2
 
       # will not count the other work package
       expect(priority.objects_count)
-        .to eql 1
+        .to be 1
     end
   end
 
-  describe '#option_name' do
-    it 'is a symbol' do
+  describe "#option_name" do
+    it "is a symbol" do
       expect(stubbed_priority.option_name)
-        .to eql :enumeration_work_package_priorities
+        .to be :enumeration_work_package_priorities
     end
   end
 
-  describe '#cache_key' do
-    it 'updates when the updated_at field changes' do
-      old_cache_key = stubbed_priority.cache_key
+  describe "#cache_key_with_version" do
+    it "updates when the updated_at field changes" do
+      old_cache_key = stubbed_priority.cache_key_with_version
 
-      stubbed_priority.updated_at = Time.now
+      stubbed_priority.updated_at = Time.zone.now
 
-      expect(stubbed_priority.cache_key)
+      expect(stubbed_priority.cache_key_with_version)
         .not_to eql old_cache_key
     end
   end
 
-  describe '#transer_to' do
-    let(:new_priority) { FactoryBot.create(:priority) }
-    let(:work_package1) { FactoryBot.create(:work_package, priority: priority) }
-    let(:work_package2) { FactoryBot.create(:work_package) }
-    let(:work_package3) { FactoryBot.create(:work_package, priority: new_priority) }
+  describe "#transfer_relations" do
+    let(:new_priority) { create(:priority) }
+    let(:work_package1) { create(:work_package, priority:) }
+    let(:work_package2) { create(:work_package) }
+    let(:work_package3) { create(:work_package, priority: new_priority) }
 
-    it 'moves all work_packages to the designated priority' do
+    it "moves all work_packages to the designated priority" do
       work_package1
       work_package2
       work_package3
@@ -89,7 +97,100 @@ describe IssuePriority, type: :model do
       priority.transfer_relations(new_priority)
 
       expect(new_priority.work_packages.reload)
-        .to match_array [work_package3, work_package1]
+        .to contain_exactly(work_package3, work_package1)
+    end
+  end
+
+  describe "#in_use?" do
+    context "with a work package that uses the priority" do
+      let!(:work_package) { create(:work_package, priority:) }
+
+      it "is true" do
+        expect(priority)
+          .to be_in_use
+      end
+    end
+
+    context "without a work package that uses the priority" do
+      it "is false" do
+        expect(priority)
+          .not_to be_in_use
+      end
+    end
+  end
+
+  describe ".default" do
+    it "returns the default priority" do
+      expect(described_class.default)
+        .to eq default_priority
+    end
+
+    it "changes if a new default priority is created" do
+      new_default = described_class.create(name: "New default", is_default: true)
+
+      expect(described_class.default)
+        .to eq new_default
+    end
+
+    it "does not change if a new non default priority is created" do
+      described_class.create(name: "New default", is_default: false)
+
+      expect(described_class.default)
+        .to eq default_priority
+    end
+
+    it "is nil if the default priority looses the default flag" do
+      default_priority.update(is_default: false)
+
+      expect(described_class.default)
+        .to be_nil
+    end
+  end
+
+  describe "#default?" do
+    it "is true for a default priority" do
+      expect(default_priority)
+        .to be_is_default
+    end
+
+    it "is false for a non default priority" do
+      expect(priority)
+        .not_to be_is_default
+    end
+
+    it "changes if a new default priority is created" do
+      described_class.create(name: "New default", is_default: true)
+
+      expect(default_priority.reload)
+        .not_to be_is_default
+    end
+
+    it "changes if an existing priority is assigned default" do
+      new_default_priority = create(:priority)
+      new_default_priority.update(is_default: true)
+
+      expect(default_priority.reload)
+        .not_to be_is_default
+    end
+  end
+
+  describe ".destroy" do
+    let!(:work_package) { create(:work_package, priority:) }
+
+    context "with reassign" do
+      it "reassigns the work packages" do
+        priority.destroy(default_priority)
+
+        expect(WorkPackage.where(priority: default_priority))
+          .to eq [work_package]
+      end
+    end
+
+    context "without reassign" do
+      it "raises an error as it is in use" do
+        expect { priority.destroy }
+          .to raise_error RuntimeError
+      end
     end
   end
 end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,46 +20,58 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-/* jshint expr: true */
-
 import { TestBed } from '@angular/core/testing';
-import { HttpClientModule } from '@angular/common/http';
+import { provideHttpClient, withInterceptorsFromDi, withXhr } from '@angular/common/http';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
 import { TimezoneService } from 'core-app/core/datetime/timezone.service';
+import moment from 'moment-timezone';
 
 describe('TimezoneService', () => {
   const TIME = '2013-02-08T09:30:26';
   const DATE = '2013-02-08';
   let timezoneService:TimezoneService;
 
-  const compile = (timezone?:string) => {
+  const compile = (timezone?:string, formats:{ date?:string, time?:string, duration?:string } = {}) => {
     const ConfigurationServiceStub = {
       isTimezoneSet: () => !!timezone,
       timezone: () => timezone,
+      dateFormatPresent: () => !!formats.date,
+      dateFormat: () => formats.date,
+      timeFormatPresent: () => !!formats.time,
+      timeFormat: () => formats.time,
+      durationFormat: () => formats.duration,
+      hoursPerDay: () => 8,
+      daysPerMonth: () => 20,
     };
 
+    if (!timezone) {
+      vi.spyOn(moment.tz, 'guess').mockReturnValue('Etc/UTC');
+    }
+
     TestBed.configureTestingModule({
-      imports: [
-        HttpClientModule,
-      ],
+      imports: [],
       providers: [
         { provide: I18nService, useValue: {} },
         { provide: ConfigurationService, useValue: ConfigurationServiceStub },
         PathHelperService,
         TimezoneService,
+        provideHttpClient(withXhr(), withInterceptorsFromDi()),
       ],
     });
 
     timezoneService = TestBed.inject(TimezoneService);
   };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
 
   describe('without time zone set', () => {
     beforeEach(() => {
@@ -69,12 +81,14 @@ describe('TimezoneService', () => {
     describe('#parseDatetime', () => {
       it('is UTC', () => {
         const time = timezoneService.parseDatetime(TIME);
+
         expect(time.utcOffset()).toEqual(0);
         expect(time.format('HH:mm')).toEqual('09:30');
       });
 
       it('has no time information', () => {
         const time = timezoneService.parseDate(DATE);
+
         expect(time.format('HH:mm')).toEqual('00:00');
       });
     });
@@ -88,12 +102,121 @@ describe('TimezoneService', () => {
     describe('Non-UTC timezone', () => {
       it('is in the given timezone', () => {
         const date = timezoneService.parseDatetime(TIME);
+
         expect(date.format('HH:mm')).toEqual('01:30');
       });
 
       it('has local time zone', () => {
         expect(timezoneService.configurationService.timezone()).toEqual('America/Vancouver');
       });
+    });
+  });
+
+  describe('#formattedDatetimeAsDate', () => {
+    beforeEach(() => {
+      compile('Asia/Kolkata', { date: 'DD.MM.YYYY', time: 'HH:mm' });
+    });
+
+    it('dates an instant by the user time zone, not by UTC', () => {
+      // Half past midnight in Kolkata, still the previous day everywhere west of it.
+      expect(timezoneService.formattedDatetimeAsDate('2026-10-16T19:00:00Z')).toEqual('17.10.2026');
+    });
+
+    // The trap this exists for: formattedDate parses without a zone, so it answers for whichever
+    // one the browser happens to be in.
+    it('differs from formattedDate, which does not apply the zone', () => {
+      const instant = '2026-10-16T19:00:00Z';
+
+      expect(timezoneService.formattedDatetimeAsDate(instant))
+        .not.toEqual(timezoneService.formattedDate(instant));
+    });
+  });
+
+  describe('#parseFormattedDatetime', () => {
+    beforeEach(() => {
+      compile('Europe/Berlin', { date: 'DD.MM.YYYY', time: 'HH:mm' });
+    });
+
+    it('parses the user format in the user time zone and returns UTC', () => {
+      expect(timezoneService.parseFormattedDatetime('01.10.2026 14:30')).toEqual('2026-10-01T12:30:00Z');
+    });
+
+    it('returns null for text not matching the user format', () => {
+      expect(timezoneService.parseFormattedDatetime('2026-10-01 14:30')).toBeNull();
+    });
+  });
+
+  describe('#uses24HourClock', () => {
+    it('is true for a 24 hour time format', () => {
+      compile('Europe/Berlin', { time: 'HH:mm' });
+
+      expect(timezoneService.uses24HourClock()).toBe(true);
+    });
+
+    it('is false for a time format with a meridiem', () => {
+      compile('Europe/Berlin', { time: 'hh:mm a' });
+
+      expect(timezoneService.uses24HourClock()).toBe(false);
+    });
+
+    it('expands the locale time format when none is configured', () => {
+      compile('Europe/Berlin');
+
+      expect(timezoneService.uses24HourClock()).toBe(!/[aA]/.test(moment.localeData().longDateFormat('LT')));
+    });
+  });
+
+  describe('#formattedChronicDuration', () => {
+    it('formats the ISO duration in hours_only', () => {
+      compile(undefined, { duration: 'hours_only' });
+
+      expect(timezoneService.formattedChronicDuration('PT21H15M')).toBe('21.25h');
+    });
+
+    it('formats the ISO duration in days_and_hours', () => {
+      compile(undefined, { duration: 'days_and_hours' });
+
+      expect(timezoneService.formattedChronicDuration('PT21H15M')).toBe('2d 5.25h');
+    });
+  });
+
+  describe('#formattedChronicDurationFromHours', () => {
+    it('formats the hours in hours_only', () => {
+      compile(undefined, { duration: 'hours_only' });
+
+      expect(timezoneService.formattedChronicDurationFromHours(21.25)).toBe('21.25h');
+    });
+
+    it('formats the hours in days_and_hours', () => {
+      compile(undefined, { duration: 'days_and_hours' });
+
+      expect(timezoneService.formattedChronicDurationFromHours(21.25)).toBe('2d 5.25h');
+    });
+  });
+
+  describe('#formattedChronicDurationFromSeconds', () => {
+    it('formats the seconds in hours_only', () => {
+      compile(undefined, { duration: 'hours_only' });
+
+      expect(timezoneService.formattedChronicDurationFromSeconds(21.25 * 3600)).toBe('21.25h');
+    });
+
+    it('formats the seconds in days_and_hours', () => {
+      compile(undefined, { duration: 'days_and_hours' });
+
+      expect(timezoneService.formattedChronicDurationFromSeconds(21.25 * 3600)).toBe('2d 5.25h');
+    });
+
+    it('formats zero in hours_only', () => {
+      compile(undefined, { duration: 'hours_only' });
+
+      expect(timezoneService.formattedChronicDurationFromSeconds(0)).toBe('0h');
+    });
+
+    it('formats zero in days_and_hours', () => {
+      compile(undefined, { duration: 'days_and_hours' });
+
+      expect(timezoneService.formattedChronicDurationFromSeconds(0)).toBe('0h');
     });
   });
 });

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +20,16 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable } from '@angular/core';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { combine, input, InputState } from 'reactivestates';
+import { isEqual } from 'lodash-es';
+import { Injectable, inject } from '@angular/core';
+import { combine, input, InputState } from '@openproject/reactivestates';
 import { States } from 'core-app/core/states/states.service';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { mapTo, take } from 'rxjs/operators';
 import { QuerySchemaResource } from 'core-app/features/hal/resources/query-schema-resource';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
@@ -39,9 +37,13 @@ import { cloneHalResourceCollection } from 'core-app/features/hal/helpers/hal-re
 import { QueryFilterInstanceSchemaResource } from 'core-app/features/hal/resources/query-filter-instance-schema-resource';
 import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
 import { WorkPackageQueryStateService } from './wp-view-base.service';
+import { firstValueFrom } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 @Injectable()
 export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<QueryFilterInstanceResource[]> {
+  protected readonly states = inject(States);
+
   public hidden:string[] = [
     'datesInterval',
     'precedes',
@@ -62,17 +64,34 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
     'subjectOr',
     'manualSort',
     'typeahead',
+    'semanticSearch',
   ];
+
+  /** The filter the text input edits */
+  public textFilterId:'search'|'semanticSearch' = 'search';
+
+  /** Whether the semantic search toggle is rendered */
+  public semanticSearchAvailable = false;
+
+  public semanticSearchEnabled = false;
+
+  /**
+   * The search mode is resolved by the server on page load,
+   * so switching the mode links to the same page with the
+   * search_mode parameter set accordingly.
+   */
+  public searchModeUrl(mode:'text'|'semantic'):string {
+    const url = new URL(window.location.href);
+    if (mode === 'semantic') {
+      url.searchParams.set('search_mode', 'semantic');
+    } else {
+      url.searchParams.delete('search_mode');
+    }
+    return url.toString();
+  }
 
   /** Flag state to determine whether the filters are incomplete */
   private incomplete = input<boolean>(false);
-
-  constructor(
-    protected readonly states:States,
-    readonly querySpace:IsolatedQuerySpace,
-  ) {
-    super(querySpace);
-  }
 
   /**
    * Load all schemas for the current filters and fill respective states
@@ -82,8 +101,17 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
   public initializeFilters(query:QueryResource, schema:QuerySchemaResource) {
     const filters = cloneHalResourceCollection<QueryFilterInstanceResource>(query.filters);
 
+    this.updateTextFilterId(filters);
     this.availableState.putValue(schema.filtersSchemas.elements);
     this.pristineState.putValue(filters);
+  }
+
+  private updateTextFilterId(filters:QueryFilterInstanceResource[]):void {
+    if (filters.some((filter) => filter.id === 'semanticSearch')) {
+      this.textFilterId = 'semanticSearch';
+    } else if (filters.some((filter) => filter.id === 'search')) {
+      this.textFilterId = 'search';
+    }
   }
 
   /**
@@ -145,7 +173,7 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
     }
 
     const filters = [...this.rawFilters];
-    modifier(filters[index]!);
+    modifier(filters[index]);
     this.update(filters);
 
     return true;
@@ -158,10 +186,7 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
   public instantiate(filterOrId:QueryFilterResource|string):QueryFilterInstanceResource {
     const id = (filterOrId instanceof QueryFilterResource) ? filterOrId.id : filterOrId;
 
-    const schema = _.find(
-      this.availableSchemas,
-      (schema) => (schema.filter.allowedValues as HalResource)[0].id === id,
-    )!;
+    const schema = this.availableSchemas.find((schema) => (schema.filter.allowedValues as HalResource[])[0].id === id)!;
 
     return schema.getFilter();
   }
@@ -186,7 +211,7 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
   public remainingVisibleFilters(filters = this.current) {
     return this
       .remainingFilters(filters)
-      .filter((filter) => this.hidden.indexOf(filter.id) === -1);
+      .filter((filter) => !this.hidden.includes(filter.id));
   }
 
   /**
@@ -206,7 +231,7 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
    * @param filters
    */
   public isComplete(filters:QueryFilterInstanceResource[]):boolean {
-    return _.every(filters, (filter) => filter.isCompletelyDefined());
+    return filters.every((filter) => filter.isCompletelyDefined());
   }
 
   /**
@@ -216,13 +241,13 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
   public hasChanged(query:QueryResource) {
     const comparer = (filter:HalResource[]) => filter.map((el) => el.$source);
 
-    return !_.isEqual(
+    return !isEqual(
       comparer(query.filters),
       comparer(this.rawFilters),
     );
   }
 
-  public valueFromQuery(query:QueryResource) {
+  public valueFromQuery(_query:QueryResource) {
     return undefined;
   }
 
@@ -252,10 +277,10 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
    * @param id Identifier of the filter
    */
   public findIndex(id:string):number {
-    return _.findIndex(this.current, (f) => f.id === id);
+    return this.current.findIndex((f) => f.id === id);
   }
 
-  public applyToQuery(query:QueryResource) {
+  public applyToQuery(query:QueryResource):boolean {
     query.filters = this.cloneFilters();
     return true;
   }
@@ -272,7 +297,7 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
    * Returns a deep clone of the current filters set, may be used
    * to modify the filters without altering this state.
    */
-  public cloneFilters() {
+  public cloneFilters():QueryFilterInstanceResource[] {
     return cloneHalResourceCollection<QueryFilterInstanceResource>(this.rawFilters);
   }
 
@@ -281,21 +306,21 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
    * without modification.
    */
   protected get rawFilters():QueryFilterInstanceResource[] {
-    return this.lastUpdatedState.value || [];
+    return this.lastUpdatedState.value ?? [];
   }
 
-  public get currentlyVisibleFilters() {
+  public get currentlyVisibleFilters():QueryFilterInstanceResource[] {
     const invisibleFilters = new Set(this.hidden);
     invisibleFilters.delete('search');
 
-    return _.reject(this.currentFilterResources, (filter) => invisibleFilters.has(filter.id));
+    return this.current.filter((filter) => !invisibleFilters.has(filter.id));
   }
 
   /**
    * Replace this filter state, but only if the given filters are complete
    * @param newState
    */
-  public replaceIfComplete(newState:QueryFilterInstanceResource[]) {
+  public replaceIfComplete(newState:QueryFilterInstanceResource[]):void {
     if (this.isComplete(newState)) {
       this.update(newState);
     } else {
@@ -306,28 +331,19 @@ export class WorkPackageViewFiltersService extends WorkPackageQueryStateService<
   /**
    * Filters service depends on two states
    */
-  public onReady() {
-    return combine(this.pristineState, this.availableState)
-      .values$()
-      .pipe(
-        take(1),
-        mapTo(null),
-      )
-      .toPromise();
+  public onReady():Promise<null> {
+    return firstValueFrom(
+      combine(this.pristineState, this.availableState)
+        .values$()
+        .pipe(map(() => null)),
+    );
   }
 
   /**
    * Get all filters that are not in the current active set
    */
   private remainingFilters(filters = this.rawFilters) {
-    return _.differenceBy(this.availableFilters, filters, (filter) => filter.id);
-  }
-
-  /**
-   * Map current filter instances to their FilterResource
-   */
-  private get currentFilterResources():QueryFilterResource[] {
-    return this.rawFilters.map((filter:QueryFilterInstanceResource) => filter.filter);
+    return this.availableFilters.filter((available) => !filters.some((filter) => filter.id === available.id));
   }
 
   isAvailable(el:QueryFilterInstanceResource):boolean {

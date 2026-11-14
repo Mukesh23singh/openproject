@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,26 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'base'
+require_relative "base"
 
 class Tables::CustomFieldsProjects < Tables::Base
-  def self.id_options
-    { id: false }
-  end
-
   def self.table(migration)
-    create_table migration do |t|
-      t.integer :custom_field_id, default: 0, null: false
-      t.integer :project_id, default: 0, null: false
+    create_table migration do |t| # rubocop:disable Rails/CreateTableWithTimestamps
+      t.references :custom_field, null: false, index: false, foreign_key: { on_delete: :cascade, on_update: :cascade }
+      t.references :project, null: false, index: false, foreign_key: { on_delete: :cascade, on_update: :cascade }
 
       t.index %i[custom_field_id project_id],
-              name: 'index_custom_fields_projects_on_custom_field_id_and_project_id'
+              unique: true
     end
   end
 end

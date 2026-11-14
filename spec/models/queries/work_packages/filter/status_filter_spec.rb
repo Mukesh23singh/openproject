@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::StatusFilter, type: :model do
-  let(:status) { FactoryBot.build_stubbed(:status) }
-  let(:status2) { FactoryBot.build_stubbed(:status) }
+RSpec.describe Queries::WorkPackages::Filter::StatusFilter do
+  let(:status) { build_stubbed(:status) }
+  let(:status2) { build_stubbed(:status) }
 
-  it_behaves_like 'basic query filter' do
+  it_behaves_like "basic query filter" do
     let(:type) { :list }
     let(:class_key) { :status_id }
 
-    describe '#available?' do
-      it 'is true if any status exists' do
+    describe "#available?" do
+      it "is true if any status exists" do
         allow(Status)
           .to receive(:all)
           .and_return [status]
@@ -45,63 +46,79 @@ describe Queries::WorkPackages::Filter::StatusFilter, type: :model do
         expect(instance).to be_available
       end
 
-      it 'is false if no status exists' do
+      it "is false if no status exists" do
         allow(Status)
           .to receive(:exists?)
           .and_return false
 
-        expect(instance).to_not be_available
+        expect(instance).not_to be_available
       end
     end
 
-    describe '#allowed_values' do
+    describe "#allowed_values" do
       before do
         allow(Status)
           .to receive(:all)
           .and_return [status]
       end
 
-      it 'is an array of status values' do
+      it "is an array of status values" do
         expect(instance.allowed_values)
-          .to match_array [[status.name, status.id.to_s]]
+          .to contain_exactly([status.name, status.id.to_s])
       end
     end
 
-    describe '#valid_values!' do
+    describe "#valid_values!" do
       before do
         allow(Status)
           .to receive(:all)
           .and_return [status]
 
-        instance.values = [status.id.to_s, '99999']
+        instance.values = [status.id.to_s, "99999"]
       end
 
-      it 'remove the invalid value' do
+      it "remove the invalid value" do
         instance.valid_values!
 
-        expect(instance.values).to match_array [status.id.to_s]
+        expect(instance.values).to contain_exactly(status.id.to_s)
       end
     end
 
-    describe '#value_objects' do
+    describe "#value_objects" do
       before do
         allow(Status)
           .to receive(:all)
           .and_return [status, status2]
       end
 
-      it 'is an array of statuses' do
+      it "is an array of statuses" do
         instance.values = [status.id.to_s]
 
         expect(instance.value_objects)
-          .to match_array [status]
+          .to contain_exactly(status)
       end
     end
 
-    describe '#ar_object_filter?' do
-      it 'is true' do
+    describe "#ar_object_filter?" do
+      it "is true" do
         expect(instance)
           .to be_ar_object_filter
+      end
+    end
+
+    describe "#available_operators" do
+      it "includes status category operators in the correct order" do
+        expect(instance.available_operators).to eq(
+          [
+            Queries::Operators::OpenWorkPackages,
+            Queries::Operators::ToDoWorkPackages,
+            Queries::Operators::InProgressWorkPackages,
+            Queries::Operators::ClosedWorkPackages,
+            Queries::Operators::EqualsOr,
+            Queries::Operators::NotEquals,
+            Queries::Operators::All
+          ]
+        )
       end
     end
   end

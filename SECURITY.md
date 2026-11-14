@@ -1,28 +1,17 @@
-# Security Policy
-
-
-At its core, OpenProject is an open-source software that is [developed and published on GitHub](https://github.com/opf/openproject). Every change to the OpenProject code base ends up in an open repository accessible to everyone. This results in a transparent software where every commit can be traced back to the contributor.
-
-Automated tests and manual code reviews ensure that these contributions are safe for the entire community of OpenProject. These tests encompass the correctness of security and access control features. We have ongoing collaborations with security professionals from to test the OpenProject code base for security exploits.
-
-
-
-### Security announcements mailing list
-
-We provide a mailing list for security advisories on OpenProject at <https://groups.google.com/forum/#!forum/openproject-security>. Please register there to get immediate notifications as we publish them.
-
-Any security related information will also be published on our blog and website at https://www.openproject.com
-
-
-
-### Reporting a vulnerability
-
-We take all facets of security seriously at OpenProject. If you want to report a security concerns, have remarks, or contributions regarding security at OpenProject, please reach out to us at [security@openproject.com](mailto:security@openproject.com).
+# Security
+We take all facets of security seriously at OpenProject. If you want to report a security concern, have remarks, or contributions regarding security at OpenProject, please reach out to us at [security@openproject.com](mailto:security@openproject.com).
 
 If you can, please send us a PGP-encrypted email using the following key:
 
-- Key ID: [0x7D669C6D47533958](https://pgp.mit.edu/pks/lookup?op=get&search=0x7D669C6D47533958) , 
+- Key ID: [0x7D669C6D47533958](https://keys.openpgp.org/vks/v1/by-fingerprint/BDCFE01EDE84EA199AE172CE7D669C6D47533958),
 - Fingerprint BDCF E01E DE84 EA19 9AE1 72CE 7D66 9C6D 4753 3958
-- You may also find the key [attached in our OpenProject repository.](https://github.com/opf/openproject/blob/dev/docs/development/security/security-at-openproject.com.asc)
+- You may also find the key [attached in our OpenProject repository.](security-at-openproject.com.asc)
 
-Please include a description on how to reproduce the issue if possible. Our security team will get your email and will attempt to reproduce and fix the issue as soon as possible.
+Please find our full statement on security in this document: https://www.openproject.org/docs/security-and-privacy/statement-on-security/
+
+## security.txt
+
+OpenProject uses the `security.txt` standard for defining security policies.
+You can find our `security.txt` here: [www.openproject.org/security.txt](https://www.openproject.org/security.txt)
+
+Please see [securitytxt.org](https://securitytxt.org/) for more information.

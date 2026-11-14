@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,29 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  EventEmitter,
-  Input,
-  OnInit,
-  Output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, OnInit, Output, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 import { PaginationInstance } from 'core-app/shared/components/table-pagination/pagination-instance';
-import { IPaginationOptions, PaginationService } from './pagination-service';
+import { PaginationService } from 'core-app/shared/components/table-pagination/pagination-service';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: '[tablePagination]',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './table-pagination.component.html',
+  standalone: false,
 })
 export class TablePaginationComponent extends UntilDestroyedMixin implements OnInit {
+  protected paginationService = inject(PaginationService);
+  protected cdRef = inject(ChangeDetectorRef);
+  protected I18n = inject(I18nService);
+
   @Input() totalEntries:string;
 
   @Input() hideForSinglePageResults = false;
@@ -61,10 +58,15 @@ export class TablePaginationComponent extends UntilDestroyedMixin implements OnI
   public pagination:PaginationInstance;
 
   public text = {
-    label_previous: this.I18n.t('js.pagination.pages.previous'),
-    label_next: this.I18n.t('js.pagination.pages.next'),
+    label_previous: this.I18n.t('js.label_previous'),
+    label_next: this.I18n.t('js.label_next'),
     per_page: this.I18n.t('js.label_per_page'),
     no_other_page: this.I18n.t('js.pagination.no_other_page'),
+    pages_skipped: this.I18n.t('js.pagination.pages_skipped'),
+    page_navigation: this.I18n.t('js.pagination.page_navigation'),
+    per_page_navigation: this.I18n.t('js.pagination.per_page_navigation'),
+    page_number: (num:number) => this.I18n.t('js.pagination.pages.page_number', { number: num }),
+    show_per_page: (num:number) => this.I18n.t('js.pagination.pages.show_per_page', { number: num }),
   };
 
   public currentRange = '';
@@ -77,20 +79,10 @@ export class TablePaginationComponent extends UntilDestroyedMixin implements OnI
 
   public perPageOptions:number[] = [];
 
-  constructor(protected paginationService:PaginationService,
-    protected cdRef:ChangeDetectorRef,
-    protected I18n:I18nService) {
-    super();
-  }
-
   ngOnInit():void {
-    this.paginationService
-      .loadPaginationOptions()
-      .then((paginationOptions:IPaginationOptions) => {
-        this.perPageOptions = paginationOptions.perPageOptions;
-        this.pagination = new PaginationInstance(1, parseInt(this.totalEntries), paginationOptions.perPage);
-        this.cdRef.detectChanges();
-      });
+    const paginationOptions = this.paginationService.getPaginationOptions();
+    this.perPageOptions = paginationOptions.perPageOptions;
+    this.pagination = new PaginationInstance(1, parseInt(this.totalEntries, 10), paginationOptions.perPage);
   }
 
   public update() {
@@ -134,7 +126,7 @@ export class TablePaginationComponent extends UntilDestroyedMixin implements OnI
       const lowerBound = this.pagination.getLowerPageBound();
       const upperBound = this.pagination.getUpperPageBound(this.pagination.total);
 
-      this.currentRange = `(${lowerBound} - ${upperBound}/${totalItems})`;
+      this.currentRange = `(${lowerBound} - ${upperBound}/${totalItems})`;
     } else {
       this.currentRange = '(0 - 0/0)';
     }
@@ -148,6 +140,7 @@ export class TablePaginationComponent extends UntilDestroyedMixin implements OnI
   public updatePageNumbers() {
     if (!this.showPageSelections) {
       this.pageNumbers = [];
+      this.prePageNumbers = [];
       this.postPageNumbers = [];
       return;
     }
@@ -165,13 +158,23 @@ export class TablePaginationComponent extends UntilDestroyedMixin implements OnI
       }
 
       // This avoids a truncation when there are not enough elements to truncate for the first elements
-      const startingDiff = currentPage - 2 * truncSize;
-      if (startingDiff >= 0 && startingDiff <= 1) {
-        this.postPageNumbers = this.truncatePageNums(pageNumbers, pageNumbers.length >= maxVisible + (truncSize * 2), maxVisible + truncSize, pageNumbers.length, 0);
-      } else {
-        this.prePageNumbers = this.truncatePageNums(pageNumbers, currentPage >= maxVisible, 0, Math.min(currentPage - Math.ceil(maxVisible / 2), pageNumbers.length - maxVisible), truncSize);
-        this.postPageNumbers = this.truncatePageNums(pageNumbers, pageNumbers.length >= maxVisible + (truncSize * 2), maxVisible, pageNumbers.length, 0);
-      }
+      const preVisible = Math.min(currentPage - Math.ceil(maxVisible / 2), pageNumbers.length - maxVisible);
+
+      this.prePageNumbers = this.truncatePageNums(
+        pageNumbers,
+        (currentPage >= maxVisible) && (pageNumbers.length >= maxVisible + (truncSize * 2)),
+        0,
+        preVisible,
+        truncSize,
+      );
+
+      this.postPageNumbers = this.truncatePageNums(
+        pageNumbers,
+        pageNumbers.length >= maxVisible + (truncSize * 2),
+        maxVisible,
+        pageNumbers.length,
+        0,
+      );
     }
 
     this.pageNumbers = pageNumbers;
@@ -183,7 +186,7 @@ export class TablePaginationComponent extends UntilDestroyedMixin implements OnI
       && this.pagination.total > this.perPageOptions[0];
   }
 
-  private truncatePageNums(pageNumbers:any, perform:any, disectFrom:any, disectLength:any, truncateFrom:any) {
+  private truncatePageNums(pageNumbers:number[], perform:boolean, disectFrom:number, disectLength:number, truncateFrom:number):number[] {
     if (perform) {
       const truncationSize = this.paginationService.getOptionsTruncationSize();
       const truncatedNums = pageNumbers.splice(disectFrom, disectLength);

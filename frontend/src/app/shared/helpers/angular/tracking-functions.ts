@@ -1,13 +1,43 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
 export function halHref<T extends HalResource>(_index:number, item:T):string|null {
   return item.href;
 }
 
-export function compareByAttribute(attribute:string) {
-  return (a:any, b:any) => {
+export function compareByAttribute(...attributes:string[]) {
+  return (a:unknown, b:unknown) => {
     const bothNil = !a && !b;
-    return bothNil || (!!a && !!b && a[attribute] === b[attribute]);
+    const same = !!a && !!b && attributes.every(
+      (attribute) => (a as Record<string, unknown>)[attribute] === (b as Record<string, unknown>)[attribute],
+    );
+    return bothNil || (!!a && !!b && same);
   };
 }
 
@@ -15,29 +45,13 @@ export function compareByName<T extends HalResource>(a:T|undefined|null, b:T|und
   return compareByAttribute('name')(a, b);
 }
 
-export function trackByName(i:number, item:any) {
-  return _.get(item, 'name');
-}
-
-export function trackByHref(i:number, item:{ href?:unknown }) {
-  return _.get(item, 'href');
-}
-
-export function trackByProperty(prop:string) {
-  return (i:number, item:unknown) => _.get(item, prop);
-}
-
 export function trackByHrefAndProperty(propertyName:string) {
   return (i:number, item:HalResource) => {
-    const href:string = _.get(item, 'href') || '';
-    const prop:string = _.get(item, propertyName, 'none');
+    const href:string = item.href ?? '';
+    const prop:string = (item as Record<string, string|undefined>)[propertyName] ?? 'none';
 
     return `${href}#${propertyName}=${prop}`;
   };
-}
-
-export function trackByTrackingIdentifier(i:number, item:any) {
-  return _.get(item, 'trackingIdentifier', item && item.href);
 }
 
 export function compareByHref<T extends HalResource>(a:T|undefined|null, b:T|undefined|null):boolean {
@@ -45,9 +59,9 @@ export function compareByHref<T extends HalResource>(a:T|undefined|null, b:T|und
   return bothNil || (!!a && !!b && a.href === b.href);
 }
 
-export function compareByHrefOrString<T extends HalResource>(a:T|string|undefined|null, b:T|string|undefined|null):boolean {
+export function compareByHrefOrString(a:unknown, b:unknown):boolean {
   if (a instanceof HalResource && b instanceof HalResource) {
-    return compareByHref(a as HalResource, b as HalResource);
+    return compareByHref(a, b);
   }
 
   const bothNil = !a && !b;

@@ -1,26 +1,81 @@
-import { Injectable } from '@angular/core';
-import { Board } from 'core-app/features/boards/board/board';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, inject } from '@angular/core';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { VersionResource } from 'core-app/features/hal/resources/version-resource';
 import { OpContextMenuItem } from 'core-app/shared/components/op-context-menu/op-context-menu.types';
 import { isClickedWithModifier } from 'core-app/shared/helpers/link-handling/link-handling';
-import { StateService } from '@uirouter/core';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { VersionBoardHeaderComponent } from 'core-app/features/boards/board/board-actions/version/version-board-header.component';
 import { FormResource } from 'core-app/features/hal/resources/form-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
 import { CachedBoardActionService } from 'core-app/features/boards/board/board-actions/cached-board-action.service';
 import { imagePath } from 'core-app/shared/helpers/images/path-helper';
 import { VersionAutocompleterComponent } from 'core-app/shared/components/autocompleter/version-autocompleter/version-autocompleter.component';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
+import {
+  Observable,
+  of,
+} from 'rxjs';
+import { map } from 'rxjs/operators';
 
 @Injectable()
 export class BoardVersionActionService extends CachedBoardActionService {
-  @InjectField() state:StateService;
-
-  @InjectField() halNotification:HalResourceNotificationService;
+  readonly halNotification = inject(HalResourceNotificationService);
 
   filterName = 'version';
+
+  /**
+   * Board queries created here send "version", but the server normalizes the
+   * stored key to whichever of the interchangeable version filters is
+   * available, so the API may render the filter under either id.
+   */
+  override get filterNames():string[] {
+    return ['version', 'targetVersion'];
+  }
+
+  /**
+   * The list-defining filter stays "version" (stored in board queries), while
+   * assigning a card writes the targetVersions attribute (see attributeName).
+   *
+   * Both keys have to be watched: with Setting::WorkPackageMultipleVersions
+   * disabled, Type::Attributes still offers the deprecated single "version" in
+   * the work package form, so an edit in the full or split view commits that
+   * key and a card would otherwise stay in its old list until a page reload.
+   *
+   * TODO: reduce this to the default [this.attributeName] once the deprecated
+   * version attribute is no longer offered in the form.
+   */
+  override get watchedAttributes():string[] {
+    return [this.attributeName, this.filterName];
+  }
+
+  resourceName = 'version' as const;
 
   text = this.I18n.t('js.boards.board_type.board_type_title.version');
 
@@ -37,35 +92,20 @@ export class BoardVersionActionService extends CachedBoardActionService {
   localizedName = this.I18n.t('js.work_packages.properties.version');
 
   public canAddToQuery(query:QueryResource):Promise<boolean> {
-    const formLink = _.get(query, 'results.createWorkPackage.href', null);
+    const formLink = (query?.results?.createWorkPackage as { href?:string }|undefined)?.href ?? null;
 
     if (!formLink) {
       return Promise.resolve(false);
     }
 
     if (!this.writable$) {
-      this.writable$ = query.results.createWorkPackage()
-        .then((form:FormResource) => form.schema.version.writable);
+      const createForm = query.results.createWorkPackage as () => Promise<FormResource>;
+
+      this.writable$ = createForm()
+        .then((form:FormResource) => (form.schema[this.attributeName] as IFieldSchema).writable);
     }
 
     return this.writable$;
-  }
-
-  public addInitialColumnsForAction(board:Board):Promise<Board> {
-    return this
-      .loadValues()
-      .toPromise()
-      .then((results) => Promise.all<unknown>(
-        results.map((version:VersionResource) => {
-          const definingName = _.get(version, 'definingProject.name', null);
-          if (version.isOpen() && definingName && definingName === this.currentProject.name) {
-            return this.addColumnWithActionAttribute(board, version);
-          }
-
-          return Promise.resolve(board);
-        }),
-      )
-        .then(() => board));
   }
 
   /**
@@ -95,7 +135,8 @@ export class BoardVersionActionService extends CachedBoardActionService {
   public disabledAddButtonPlaceholder(version:VersionResource) {
     if (version.isLocked()) {
       return { icon: 'locked', text: this.I18n.t('js.boards.version.locked') };
-    } if (version.isClosed()) {
+    }
+    if (version.isClosed()) {
       return { icon: 'not-supported', text: this.I18n.t('js.boards.version.closed') };
     }
     return undefined;
@@ -105,9 +146,9 @@ export class BoardVersionActionService extends CachedBoardActionService {
     return value instanceof VersionResource && value.isOpen();
   }
 
-  protected loadUncached():Promise<HalResource[]> {
+  protected loadUncached():Observable<HalResource[]> {
     if (this.currentProject.id === null) {
-      return Promise.resolve([]);
+      return of([]);
     }
 
     return this
@@ -116,8 +157,9 @@ export class BoardVersionActionService extends CachedBoardActionService {
       .id(this.currentProject.id)
       .versions
       .get()
-      .toPromise()
-      .then((collection) => collection.elements);
+      .pipe(
+        map((collection) => collection.elements),
+      );
   }
 
   private patchVersionStatus(version:VersionResource, newStatus:'open'|'closed'|'locked') {
@@ -126,8 +168,8 @@ export class BoardVersionActionService extends CachedBoardActionService {
       .id(version)
       .patch({ status: newStatus })
       .subscribe(
-        (version) => {
-          this.state.go('.', {}, { reload: true });
+        () => {
+          Turbo.visit(window.location.href, { action: 'replace' });
         },
         (error) => this.halNotification.handleRawError(error),
       );
@@ -176,7 +218,7 @@ export class BoardVersionActionService extends CachedBoardActionService {
         // Show link
         linkText: this.I18n.t('js.boards.version.show_version'),
         href: this.pathHelper.versionShowPath(id),
-        onClick: (evt:JQuery.TriggeredEvent) => {
+        onClick: (evt) => {
           if (!isClickedWithModifier(evt)) {
             window.open(this.pathHelper.versionShowPath(id), '_blank');
             return true;
@@ -190,7 +232,7 @@ export class BoardVersionActionService extends CachedBoardActionService {
         hidden: !version.$links.update,
         linkText: this.I18n.t('js.boards.version.edit_version'),
         href: this.pathHelper.versionEditPath(id),
-        onClick: (evt:JQuery.TriggeredEvent) => {
+        onClick: (evt) => {
           if (!isClickedWithModifier(evt)) {
             window.open(this.pathHelper.versionEditPath(id), '_blank');
             return true;

@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,56 +20,62 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% content_for :header_tags do %>
-  <meta name="required_script" content="repository_settings" />
-<% end %>
-
-<%= toolbar title: t(:label_repository) %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { t(:label_repository) }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       { href: project_settings_general_path(@project.id), text: I18n.t("label_project_settings") },
+       t(:label_repository)]
+    )
+  end
+%>
 
 <% is_creation_form = @repository.nil? || @repository.new_record? %>
-<%= form_for :repository,
-             url: { controller: '/repositories',
-                    action: is_creation_form ? 'create' : 'update',
-                    project_id: @project },
-             method: is_creation_form ? 'POST' : 'PUT',
-             builder: TabularFormBuilder,
-             html: { class: 'form' } do |f| %>
+<%= labelled_tabular_form_with model: @repository || false,
+                               scope: :repository,
+                               url: { controller: "/repositories",
+                                      action: is_creation_form ? "create" : "update",
+                                      project_id: @project },
+                               method: is_creation_form ? "POST" : "PUT",
+                               html: { class: "form" } do |f| %>
 
-<fieldset class="form--fieldset -with-control">
-  <legend class="form--fieldset-legend">
-    <%= t(:label_available_project_repositories) %>
-  </legend>
+  <fieldset
+    class="form--fieldset -with-control"
+    data-controller="repository-settings">
+    <legend class="form--fieldset-legend">
+      <%= t(:label_available_project_repositories) %>
+    </legend>
 
-  <%= error_messages_for 'repository' %>
-  <div class="form--field -required">
-    <%= label_tag('scm_vendor', t('repositories.scm_vendor'), class: "form--label") %>
-    <div class="form--field-container">
-      <div class="form--select-container -middle">
-        <%= scm_vendor_tag(@repository) %>
+    <%= error_messages_for "repository" %>
+    <div class="form--field -required">
+      <%= label_tag("scm_vendor", t("repositories.scm_vendor"), class: "form--label") %>
+      <div class="form--field-container">
+        <div class="form--select-container -middle">
+          <%= scm_vendor_tag(@repository) %>
+        </div>
       </div>
     </div>
-  </div>
 
-  <%# Show (selected) type options %>
-  <% unless @repository.nil? %>
+    <%# Show (selected) type options %>
+    <% unless @repository.nil? %>
       <%= render partial: "projects/settings/repository/vendor_form",
                  locals: { form: f, repository: @repository } %>
-  <% end %>
+    <% end %>
 
-  <%# Allow plugins to add additional information %>
-  <%= call_hook :repository_settings_fields, repository: @repository, form: f %>
+    <%# Allow plugins to add additional information %>
+    <%= call_hook :repository_settings_fields, repository: @repository, form: f %>
 
-  <%# Hide the save button for existing managed repositories %>
-  <% if show_settings_save_button?(@repository) %>
-    <%= render partial: "projects/settings/repository/submit",
-               locals: { form: f, is_creation_form: is_creation_form, project: @project } %>
-  <% end %>
-</fieldset>
+    <%# Hide the save button for existing managed repositories %>
+    <% if show_settings_save_button?(@repository) %>
+      <%= render partial: "projects/settings/repository/submit",
+                 locals: { form: f, is_creation_form: is_creation_form, project: @project } %>
+    <% end %>
+  </fieldset>
 <% end %>

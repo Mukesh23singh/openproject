@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -42,29 +41,43 @@ module Users
     validate :user_allowed_to_add
     validate :authentication_defined
     validate :type_is_user
+    validate :user_limit_not_exceeded
+    validate :notification_settings_present
 
     private
+
+    def user_limit_not_exceeded
+      if OpenProject::Enterprise.user_limit_reached?
+        errors.add :base, :user_limit_reached
+      end
+    end
+
+    def notification_settings_present
+      if model.notification_settings.empty?
+        errors.add :notification_settings, :blank
+      end
+    end
 
     def authentication_defined
       errors.add :password, :blank if model.active? && no_auth?
     end
 
     def no_auth?
-      model.password.blank? && model.auth_source_id.blank? && model.identity_url.blank?
+      model.password.blank? && model.ldap_auth_source_id.blank? && model.identity_url.blank?
     end
 
     ##
     # Users can only be created by Admins or users with
-    # the global right to :manage_user
+    # the global right to :create_user
     def user_allowed_to_add
-      unless user.allowed_to_globally?(:manage_user)
+      unless user.allowed_globally?(:create_user)
         errors.add :base, :error_unauthorized
       end
     end
 
     def type_is_user
       unless model.type == User.name
-        errors.add(:type, 'Type and class mismatch')
+        errors.add(:type, "Type and class mismatch")
       end
     end
   end

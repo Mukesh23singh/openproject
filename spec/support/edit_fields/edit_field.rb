@@ -1,21 +1,78 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 class EditField
   include Capybara::DSL
+  include Capybara::RSpecMatchers
   include RSpec::Matchers
+  include WaitHelpers
+  include ::Components::Autocompleter::NgSelectAutocompleteHelpers
 
-  attr_reader :selector,
-              :property_name,
-              :context
+  attr_reader :property_name,
+              :selector
 
   attr_accessor :field_type
 
+  # Initializes a new EditField object. It represents a work package field on a
+  # work packages table page, a work package view page (split or full), or a
+  # work package creation page (split or full).
+  #
+  # @param context [Object] The context in which the EditField is being used.
+  # @param property_name [Symbol] The name of the property associated with the
+  #   EditField. Generally camel case.
+  # @param selector [String] (optional) The CSS selector used to locate the
+  #   EditField element. if unspecified, the `property_name` is used.
+  # @param create_form [Boolean] (optional) Indicates whether the EditField is
+  #   used in a create form. It changes the way the field is clicked or not to
+  #   activate it on edition. It is `false` by default.
   def initialize(context,
                  property_name,
-                 selector: nil)
-
+                 selector: nil,
+                 create_form: false)
     @property_name = property_name.to_s
     @context = context
+    @field_type = derive_field_type
+    @create_form = create_form
 
-    @selector = selector || ".inline-edit--container.#{property_name}"
+    @selector = selector || ".inline-edit--container.#{@property_name.camelize(:lower)}"
+  end
+
+  def create_form?
+    @create_form
+  end
+
+  def context
+    @context.respond_to?(:call) ? @context.call : @context
+  end
+
+  def visible_on_create_form?
+    true
   end
 
   def field_container
@@ -23,32 +80,50 @@ class EditField
   end
 
   def display_selector
-    '.inline-edit--display-field'
+    ".inline-edit--display-field"
   end
 
   def display_element
     context.find "#{@selector} #{display_selector}"
   end
 
+  def display_trigger_element
+    display = display_element
+    display.first(".inline-edit--display-trigger", minimum: 0, wait: 0) || display
+  end
+
   def input_element
     context.find "#{@selector} #{input_selector}"
   end
 
+  def label_element
+    context.find ".wp-replacement-label[data-test-selector='#{property_name}']"
+  end
+
   def clear(with_backspace: false)
     if with_backspace
-      input_element.set(' ', fill_options: { clear: :backspace })
+      if using_cuprite?
+        clear_input_field_contents(input_element)
+      else
+        input_element.set(" ", fill_options: { clear: :backspace })
+      end
     else
       input_element.native.clear
     end
   end
 
+  def expect_editable
+    expect(context).to have_css "#{@selector} #{display_selector}.-editable"
+  end
+
   def expect_read_only
-    expect(context).to have_selector "#{@selector} #{display_selector}.-read-only"
+    expect(context).to have_css "#{@selector} #{display_selector}.-read-only"
   end
 
   def expect_state_text(text)
-    expect(context).to have_selector(@selector, text: text)
+    expect(context).to have_selector(@selector, text:)
   end
+
   alias :expect_text :expect_state_text
 
   def expect_value(value)
@@ -57,32 +132,50 @@ class EditField
 
   def expect_display_value(value)
     expect(display_element)
-      .to have_content(value)
+      .to have_text(value)
+  end
+
+  def expect_selected_values(*names)
+    expect(field_container).to have_css(".ng-value-label", count: names.size)
+    names.each { expect(field_container).to have_css(".ng-value-label", text: it) }
   end
 
   ##
   # Activate the field and check it opened correctly
+  # @return [EditField] self
   def activate!(expect_open: true)
-    retry_block do
-      unless active?
-        SeleniumHubWaiter.wait
-        scroll_to_and_click(display_element)
-        SeleniumHubWaiter.wait
-      end
-
-      if expect_open && !active?
-        raise "Expected field for attribute '#{property_name}' to be active."
-      end
+    unless active?
+      wait_for_network_idle if using_cuprite?
+      SeleniumHubWaiter.wait unless using_cuprite?
+      scroll_to_and_click(block: :nearest) { display_trigger_element }
+      SeleniumHubWaiter.wait unless using_cuprite?
     end
+
+    if expect_open
+      expect_active!
+      wait_for_network_idle
+    end
+
+    self
   end
+
   alias :activate_edition :activate!
 
   def openSelectField
+    expect_enabled!
     autocomplete_selector.click
+    wait_for_network_idle
+  end
+
+  def set_select_field_value(value)
+    retry_block do
+      openSelectField
+      set_value value
+    end
   end
 
   def expect_state!(open:)
-    if open
+    if open || (create_form? && visible_on_create_form?)
       expect_active!
     else
       expect_inactive!
@@ -90,34 +183,37 @@ class EditField
   end
 
   def active?
-    @context.has_selector? "#{@selector} #{input_selector}", wait: 1
+    context.has_selector? "#{@selector} #{input_selector}", wait: 1
   end
+
   alias :editing? :active?
 
   def expect_active!
-    expect(field_container)
-      .to have_selector(field_type, wait: 10),
-          "Expected field input type '#{field_type}' for attribute '#{property_name}'."
+    expect(context)
+      .to have_css("#{@selector} #{input_selector}", wait: 30),
+          "Expected field for attribute '#{property_name}' to be active."
 
     # Also ensure the element is not disabled
     expect_enabled!
+    wait_for_network_idle
   end
 
   def expect_inactive!
-    expect(field_container).to have_selector(display_selector, wait: 10)
-    expect(field_container).to have_no_selector(field_type)
+    expect(context).to have_css("#{@selector} #{display_selector}", wait: 10)
+    expect(context).to have_no_css("#{@selector} #{field_type}")
   end
 
   def expect_enabled!
-    expect(@context).to have_no_selector "#{@selector} #{input_selector}[disabled]"
+    expect(context).to have_no_css "#{@selector} #{input_selector}[disabled]", wait: 10
+    expect(context).to have_no_css "#{@selector} ng-select.ng-select-disabled", wait: 10
   end
 
   def expect_invalid
-    expect(page).to have_selector("#{@selector} #{field_type}:invalid")
+    expect(page).to have_css("#{@selector} #{field_type}:invalid")
   end
 
   def expect_error
-    expect(page).to have_selector("#{@selector} .-error")
+    expect(page).to have_css("#{@selector} .-error")
   end
 
   def save!
@@ -125,16 +221,20 @@ class EditField
   end
 
   def submit_by_dashboard
-    field_container.find('.inplace-edit--control--save', wait: 5).click
+    field_container.find(".inplace-edit--control--save").click
+    wait_for_reload if using_cuprite?
   end
 
   ##
   # Set or select the given value.
   # For fields of type select, will check for an option with that value.
   def set_value(content)
-    scroll_to_element(input_element)
-    if field_type.end_with?('-autocompleter')
-      page.find('.ng-dropdown-panel .ng-option', visible: :all, text: content).click
+    scroll_to_element(input_element, block: :nearest)
+    if autocompleter_field?
+      autocomplete(content)
+    elsif using_cuprite?
+      clear_input_field_contents(input_element)
+      input_element.fill_in with: content
     else
       # A normal fill_in would cause the focus loss on the input for empty strings.
       # Thus the form would be submitted.
@@ -143,30 +243,53 @@ class EditField
     end
   end
 
+  def autocomplete(query, select: true, select_text: query)
+    raise ArgumentError.new("Is not an autocompleter field") unless autocompleter_field?
+
+    if select
+      select_autocomplete -> { field_container }, query:, select_text:, results_selector: "body"
+    else
+      search_autocomplete -> { field_container }, query:, results_selector: "body"
+    end
+  end
+
+  def autocompleter_field?
+    field_type == "ng-select" || field_type.end_with?("-autocompleter")
+  end
+
   ##
   # Set or select the given value.
   # For fields of type select, will check for an option with that value.
-  def unset_value(content, multi = false)
+  def unset_value(content = nil, multi: false)
+    activate!
     scroll_to_element(input_element)
 
-    if field_type.end_with?('-autocompleter')
+    if autocompleter_field?
       if multi
-        page.find('.ng-value-label', visible: :all, text: content).sibling('.ng-value-icon').click
+        remove_icon = field_container
+                        .find(".ng-value-label", visible: :all, text: content)
+                        .sibling(".ng-value-icon")
+
+        begin
+          scroll_to_element(remove_icon, block: :nearest)
+          remove_icon.click
+        rescue Capybara::Cuprite::MouseEventFailed
+          # Cuprite-only: bypass Chrome's overlap check when the chip icon is obscured.
+          remove_icon.trigger("click")
+        end
       else
-        page.find('.ng-dropdown-panel .ng-option', visible: :all, text: '-').click
+        ng_select_clear(field_container)
       end
     else
-      input_element.set('')
+      input_element.set("")
     end
   end
 
   ##
   # Use option of ng-select field to create new element from within the autocompleter
   def set_new_value(content)
-    scroll_to_element(input_element)
-    input_element.find('input').set content
-
-    page.find('.ng-option', text: 'Create: ' + content).click
+    dropdown = search_autocomplete(-> { input_element }, query: content)
+    dropdown.find(".ng-option", text: "Create: #{content}").click
   end
 
   def type(text)
@@ -174,24 +297,29 @@ class EditField
     input_element.send_keys text
   end
 
-  ##
-  # Update this attribute while retrying to open the field
-  # if unsuccessful at first.
-  def update(value, save: true, expect_failure: false)
+  # Updates the value of the edit field. It retries if unsuccessful at first.
+  #
+  # @param value [Object] The new value to set.
+  # @param save [Boolean] Whether to save the field after updating. Save happens
+  #   by pressing Enter key. Default is `true` for non-create pages.
+  # @param expect_failure [Boolean] Whether to expect the update to fail. This
+  #   will check if field is still in edit state after save. Default is `false`.
+  def update(value, save: !create_form?, expect_failure: false)
     # Retry to set attributes due to reloading the page after setting
     # an attribute, which may cause an input not to open properly.
     retry_block do
       activate_edition
+      wait_for_network_idle
       set_value value
 
       # select fields are saved on change
-      save! if save && !field_type.end_with?('-autocompleter')
+      save! if save && !autocompleter_field?
       expect_state! open: expect_failure
     end
   end
 
   def submit_by_enter
-    if field_type.end_with? '-autocompleter'
+    if autocompleter_field?
       autocomplete_selector.send_keys :return
     else
       input_element.native.send_keys :return
@@ -199,7 +327,7 @@ class EditField
   end
 
   def cancel_by_escape
-    if field_type.end_with? '-autocompleter'
+    if autocompleter_field?
       autocomplete_selector.send_keys :escape
     else
       input_element.native.send_keys :escape
@@ -211,36 +339,39 @@ class EditField
   end
 
   def input_selector
-    if property_name == 'description'
-      '.op-ckeditor--wrapper'
+    if property_name == "description"
+      ".op-ckeditor--wrapper"
     else
-      '.inline-edit--field'
+      ".inline-edit--field"
     end
   end
 
   def autocomplete_selector
-    field_container.find('.ng-input input')
+    field_container.find(".ng-input input")
   end
 
-  def field_type
-    @field_type ||= begin
-      case property_name.to_s
-      when 'version'
-        'version-autocompleter'
-      when 'assignee',
-           'responsible',
-           'priority',
-           'status',
-           'project',
-           'type',
-           'category',
-           'workPackage'
-        'create-autocompleter'
-      when 'activity'
-        'activity-autocompleter'
-      else
-        :input
-      end.to_s
+  def derive_field_type
+    case property_name.to_sym
+    when :version
+      "version-autocompleter"
+    when :assignee, :responsible, :user
+      "op-user-autocompleter"
+    when :priority, :status, :type, :category, :workPackage, :parent, :projectPhase
+      "create-autocompleter"
+    when :targetVersions
+      "ng-select"
+    when :labels
+      "op-labels-autocompleter"
+    when :project
+      "op-project-autocompleter"
+    when :activity
+      "activity-autocompleter"
+    when :sprint
+      "sprint-autocompleter"
+    when :backlog_bucket
+      "backlog-bucket-autocompleter"
+    else
+      "input"
     end
   end
 end

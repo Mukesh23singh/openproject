@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,44 +22,62 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Wysiwyg work package linking',
-         type: :feature, js: true do
-  let(:user) { FactoryBot.create :admin }
-  let(:project) { FactoryBot.create(:project, enabled_module_names: %w[wiki work_package_tracking]) }
-  let(:work_package) { FactoryBot.create(:work_package, subject: 'Foobar', project: project) }
-  let(:editor) { ::Components::WysiwygEditor.new }
+RSpec.describe "Wysiwyg work package linking", :js, :selenium do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project, :with_internal_wiki, enabled_module_names: %w[work_package_tracking]) }
+  let(:work_package) { create(:work_package, subject: "Foobar", project:) }
+  let(:editor) { Components::WysiwygEditor.new }
 
   before do
     login_as(user)
   end
 
-  describe 'creating a wiki page' do
+  describe "creating a wiki page" do
     before do
       visit project_wiki_path(project, :wiki)
     end
 
-    it 'can reference work packages' do
+    it "can reference work packages" do
       # single hash autocomplete
       editor.click_and_type_slowly "##{work_package.id}"
       editor.click_autocomplete work_package.subject
 
-      expect(editor.editor_element).to have_selector('a.mention', text: "##{work_package.id}")
+      expect(editor.editor_element).to have_css("a.mention", text: "##{work_package.id}")
 
       # Save wiki page
-      click_on 'Save'
+      click_on "Create"
 
-      expect(page).to have_selector('.flash.notice')
+      expect_flash(message: "Successful creation.")
 
-      within('#content') do
-        expect(page).to have_selector('a.issue', count: 1)
+      within("#content") do
+        expect(page).to have_css("a.issue", count: 1)
+      end
+    end
+
+    it "renders double hash work package references as quickinfo macros when editing" do
+      editor.set_markdown "###{work_package.id}"
+
+      click_on "Create"
+
+      expect_flash(message: "Successful creation.")
+
+      within("#content") do
+        expect(page).to have_css("opce-macro-wp-quickinfo[data-id='#{work_package.id}'][data-detailed='false']")
+      end
+
+      click_on "Edit"
+
+      editor.in_editor do |_container, editable|
+        expect(editable).to have_css(".op-macro-wp-quickinfo-widget")
+        expect(editable).to have_css("opce-macro-wp-quickinfo[data-id='#{work_package.id}'][data-detailed='false']")
+        expect(editable).to have_css("opce-macro-wp-quickinfo > a", text: "##{work_package.id}")
       end
     end
   end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,39 +22,62 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Projects
-  filters = ::Queries::Projects::Filters
-  orders = ::Queries::Projects::Orders
-  query = ::Queries::Projects::ProjectQuery
+  ::Queries::Register.register(ProjectQuery) do
+    filter Filters::ActiveFilter
+    filter Filters::AncestorFilter
+    filter Filters::AvailableCustomFieldsProjectsFilter
+    filter Filters::AvailableProjectAttributesFilter
+    filter Filters::CreatedAtFilter
+    filter Filters::CustomFieldFilter
+    filter Filters::FavoritedFilter
+    filter Filters::IdFilter
+    filter Filters::LatestActivityAtFilter
+    filter Filters::ProjectPhaseAnyFilter
+    filter Filters::ProjectPhaseGateFilter
+    filter Filters::ProjectPhaseFilter
+    filter Filters::MemberOfFilter
+    filter Filters::NameAndIdentifierFilter
+    filter Filters::NameFilter
+    filter Filters::ParentFilter
+    filter Filters::PortfolioFilter
+    filter Filters::PrincipalFilter
+    filter Filters::ProgramFilter
+    filter Filters::ProjectSpecificValuesFilter
+    filter Filters::ProjectStatusFilter
+    filter Filters::PublicFilter
+    filter Filters::TemplatedFilter
+    filter Filters::TypeFilter
+    filter Filters::TypeVariantFilter
+    filter Filters::TypeaheadFilter
+    filter Filters::UpdatedAtFilter
+    filter Filters::UserActionFilter
+    filter Filters::VisibleFilter
 
-  ::Queries::Register.register do
-    filter query, filters::AncestorFilter
-    filter query, filters::TypeFilter
-    filter query, filters::ActiveFilter
-    filter query, filters::TemplatedFilter
-    filter query, filters::PublicFilter
-    filter query, filters::NameAndIdentifierFilter
-    filter query, filters::CustomFieldFilter
-    filter query, filters::CreatedAtFilter
-    filter query, filters::LatestActivityAtFilter
-    filter query, filters::PrincipalFilter
-    filter query, filters::ParentFilter
-    filter query, filters::IdFilter
-    filter query, filters::ProjectStatusFilter
-    filter query, filters::UserActionFilter
-    filter query, filters::VisibleFilter
+    order Orders::CustomFieldOrder
+    order Orders::DefaultOrder
+    order Orders::LatestActivityAtOrder
+    order Orders::ProjectPhaseOrder
+    order Orders::NameOrder
+    order Orders::ProjectStatusOrder
+    order Orders::RequiredDiskSpaceOrder
+    order Orders::TypeaheadOrder
+    order Orders::UpdatedAtOrder
 
-    order query, orders::DefaultOrder
-    order query, orders::LatestActivityAtOrder
-    order query, orders::RequiredDiskSpaceOrder
-    order query, orders::CustomFieldOrder
-    order query, orders::ProjectStatusOrder
-    order query, orders::NameOrder
+    select Selects::CreatedAt
+    select Selects::CustomField
+    select Selects::CustomComment
+    select Selects::Default
+    select Selects::Favorited
+    select Selects::LatestActivityAt
+    select Selects::ProjectPhase
+    select Selects::RequiredDiskSpace
+    select Selects::Status
+    select Selects::UpdatedAt
   end
 end

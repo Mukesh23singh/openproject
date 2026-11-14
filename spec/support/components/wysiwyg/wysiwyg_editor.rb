@@ -1,12 +1,44 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module Components
   class WysiwygEditor
     include Capybara::DSL
+    include Capybara::RSpecMatchers
     include RSpec::Matchers
-    attr_reader :context_selector, :attachments
 
-    def initialize(context = '#content')
+    attr_reader :context_selector, :attachments, :attachments_list
+
+    def initialize(context = "#content", attachment_list_selector = "opce-ckeditor-augmented-textarea")
       @context_selector = context
       @attachments = ::Components::Attachments.new
+      @attachments_list = ::Components::AttachmentsList.new("#{context} #{attachment_list_selector}")
     end
 
     def container
@@ -22,148 +54,223 @@ module Components
     end
 
     def input_selector
-      'div.ck-content'
+      "div.ck-content"
     end
 
     def set_markdown(text)
-      textarea = container.find('.op-ckeditor-source-element', visible: :all)
-      page.execute_script(
-          'jQuery(arguments[0]).trigger("op:ckeditor:setData", arguments[1])',
+      wait_until_loaded
+
+      # we set the content using a op:ckeditor:setData custom event.
+      # We need to make sure that CKEditor receives this event.
+      # We do this by asserting the editable data-last-updated timestamp increases.
+      page.document.synchronize do
+        textarea = container.find(".op-ckeditor-source-element", visible: :all)
+        last_updated_before = last_updated_for(textarea)
+
+        page.execute_script(
+          'arguments[0].dispatchEvent(new CustomEvent("op:ckeditor:setData", { detail: arguments[1] }))',
           textarea.native,
           text
-      )
+        )
+
+        last_updated_after = last_updated_for(textarea)
+        unless last_updated_after > last_updated_before
+          raise Capybara::ElementNotFound, "CKEditor did not process the set-data event"
+        end
+      end
+    end
+
+    def last_updated_for(textarea)
+      page.evaluate_script(<<~JS, textarea.native)
+        (() => {
+          const editable = arguments[0].closest('.op-ckeditor--wrapper')
+            ?.querySelector('.ck-editor__editable_inline');
+          const parsed = Number.parseInt(editable?.dataset?.lastUpdated ?? '0', 10);
+          return Number.isFinite(parsed) ? parsed : 0;
+        })()
+      JS
+    end
+
+    def replace_text(text)
+      platform = page.evaluate_script("navigator.userAgentData?.platform || navigator.platform")
+      select_all_modifier = platform.match?(/mac|iphone|ipad|ipod/i) ? :command : :control
+
+      editor_element.click
+      editor_element.send_keys([select_all_modifier, "a"], text)
     end
 
     def clear
-      textarea = container.find('.op-ckeditor-source-element', visible: :all)
+      textarea = container.find(".op-ckeditor-source-element", visible: :all)
+      last_updated_before = last_updated_for(textarea)
+
+      page.execute_script('arguments[0].dispatchEvent(new Event("op:ckeditor:clear"))', textarea.native)
+
+      page.document.synchronize do
+        last_updated_after = last_updated_for(textarea)
+        cleared = editor_element.text.blank?
+
+        unless last_updated_after > last_updated_before && cleared
+          raise Capybara::ElementNotFound, "CKEditor did not process the clear event"
+        end
+      end
+    end
+
+    def trigger_autosave
+      textarea = container.find(".op-ckeditor-source-element", visible: :all)
       page.execute_script(
-          'jQuery(arguments[0]).trigger("op:ckeditor:clear")',
-          textarea.native
+        'arguments[0].dispatchEvent(new Event("op:ckeditor:autosave"))',
+        textarea.native
       )
     end
 
     def expect_button(label)
-      expect(container).to have_selector('.ck-button', visible: :all, text: label)
+      expect(container).to have_css(".ck-button", visible: :all, text: label)
     end
 
     def expect_no_button(label)
-      expect(container).to have_no_selector('.ck-button', visible: :all, text: label)
+      expect(container).to have_no_css(".ck-button", visible: :all, text: label)
     end
 
     def expect_value(value)
       expect(editor_element.text).to eq(value)
     end
 
-    def expect_supports_no_macros
+    def expect_include_value(value)
+      expect(editor_element.text).to include(value)
+    end
+
+    def expect_supports_macros
       expect(container)
-          .to have_no_selector('.ck-button', visible: :all, text: 'Macros')
+          .to have_css(".ck-button", visible: :all, text: "Macros")
     end
 
     def within_enabled_preview
-      click_toolbar_button 'Toggle preview mode'
+      click_toolbar_button "Toggle preview mode"
       begin
-        yield container.find('.ck-editor__preview')
+        yield container.find(".ck-editor__preview")
       ensure
-        click_toolbar_button 'Toggle preview mode'
+        click_toolbar_button "Toggle preview mode"
       end
     end
 
     ##
-    # Create an image fixture with the optional caption
-    def drag_attachment(image_fixture, caption = 'Some caption')
-      in_editor do |_container, editable|
-        sleep 0.5
-        editable.base.send_keys(:enter, 'some text', :enter, :enter)
+    # Create an image fixture with the optional caption from inside the ckeditor
+    def drag_attachment(image_fixture, caption = "Some caption", scroll: true)
+      in_editor do |_container, _editable|
+        # Click the latest figure, if any
+        # Do not wait more than 1 second to check if there is an image
+        page.document.synchronize do
+          images = editor_element.all("figure.image", wait: 1)
+          if images.any?
+            images.last.click
 
-        images = editable.all('figure.image')
-        attachments.drag_and_drop_file(editable, image_fixture)
+            # Click the "move below figure" button
+            selected = page.all(".ck-widget_selected .ck-widget__type-around__button_after")
+            selected.first&.click
+          end
+        end
+
+        image_count = editor_element.all('img[src^="/api/v3/attachments/"]').length
+
+        page.document.synchronize do
+          editor_element.base.send_keys(:enter, "some text", :enter, :enter)
+        end
+
+        attachments.drag_and_drop_file(editor_element, image_fixture, :bottom, scroll:)
 
         expect(page)
-            .to have_selector('figure img[src^="/api/v3/attachments/"]', count: images.length + 1, wait: 10)
+            .to have_css('img[src^="/api/v3/attachments/"]', count: image_count + 1, wait: 10)
 
-        sleep 3
-        expect(page).not_to have_selector('op-toasters-upload-progress', wait: 5)
+        wait_until_upload_progress_toaster_cleared
 
         # Get the image uploaded last. As there is no way to distinguish between
         # two uploaded images, from the perspective of the user, we do it by getting
         # the id of the attachment uploaded last.
         last_id = Attachment.last.id
-        image = find("figure img[src^=\"/api/v3/attachments/#{last_id}\"]")
-        # Besides testing caption functionality this also slows down clicking on the submit button
-        # so that the image is properly embedded
-        figure = image.find(:xpath, '../..')
 
         retry_block do
-          # Click the figure
-          figure.click
-          sleep(0.2)
+          image = find("img[src^=\"/api/v3/attachments/#{last_id}\"]")
+          figure = image.find(:xpath, "../..")
+
+          # Toggle caption with button since newer version of ckeditor
+          click_hover_toolbar_button "Toggle caption on"
+
           # Locate figcaption to create comment
-          figcaption = figure.find('figcaption')
+          @figure_find = figure.find("figcaption")
+          figcaption = @figure_find
           figcaption.click
-          sleep(0.2)
           figcaption.send_keys(caption)
 
           # Expect caption set
-          figure.find('figcaption', text: caption)
+          figure.find("figcaption", text: caption)
         end
       end
     end
 
+    def wait_until_upload_progress_toaster_cleared
+      page.has_no_selector?("op-toasters-upload-progress")
+    end
+
+    def wait_until_loaded
+      editor_element
+    end
+
     def refocus
-      editor_element.first('*').click
+      editor_element.first("*").click
     rescue StandardError => e
       warn "Failed to refocus on first editor element #{e}"
     end
 
     def insert_link(link)
-      click_toolbar_button /Link \([^)]+\)/
-      page.find('.ck-input-text').set link
-      page.find('.ck-button-save').click
+      click_toolbar_button "Link"
+      page.within(".ck-balloon-rotator") do
+        fill_in "Link URL", with: link
+        click_button "Insert"
+      end
     end
 
     def click_toolbar_button(label)
       # strangely, we need visible: :all here
-      container.find('.ck-button', visible: :all, text: label).click
+      container.find(".ck-button", visible: :all, text: label).click
     end
 
-    def type_slowly(*text)
-      editor_element.send_keys *text
-      sleep 0.5
+    def type_slowly(*)
+      editor_element.send_keys(*)
     end
 
-    def click_and_type_slowly(*text)
-      sleep 0.5
-      editor_element.click
-
-      type_slowly *text
+    def click_and_type_slowly(*)
+      editor = editor_element
+      editor.click
+      expect(editor).to match_css(":focus", wait: 10)
+      editor.send_keys(*)
     end
 
     def click_hover_toolbar_button(label)
-      page.find('.ck-toolbar .ck-button', text: label, visible: :all).click
+      page.find(".ck-toolbar .ck-button", text: label, visible: :all).click
     end
 
     def insert_macro(label)
-      container.find('.ck-button', visible: :all, text: 'Macros').click
-      container.find('.ck-button', visible: :all, text: label).click
+      container.find(".ck-dropdown__button", visible: :all, exact_text: "Insert").click
+      container.find(".ck-button", visible: :all, text: label).click
     end
 
     def click_autocomplete(text)
-      page.find('.mention-list-item', text: text).click
+      page.find(".mention-list-item", text:).click
     end
 
     def align_table_by_label(editor, table, label)
       # Style first td in table
       table
-          .find('.op-uc-table--row:first-of-type .op-uc-table--cell:first-of-type')
+          .find(".op-uc-table--row:first-of-type .op-uc-table--cell:first-of-type")
           .click
 
       # Click table toolbar
-      editor.click_hover_toolbar_button 'Table properties'
+      editor.click_hover_toolbar_button "Table properties"
 
       # Set alignment left
       editor.click_hover_toolbar_button label
 
-      find('.ck-button-save').click
+      find(".ck-button", text: "Save").click
     end
   end
 end

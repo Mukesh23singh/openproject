@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,32 +22,41 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-module Migration::MigrationUtils
-  class SettingRenamer
-    # define all the following methods as class methods
-    class << self
-      def rename(source_name, target_name)
-        ActiveRecord::Base.connection.execute <<-SQL
-          UPDATE #{settings_table}
-          SET name = #{quote_value(target_name)}
-          WHERE name = #{quote_value(source_name)}
-        SQL
-      end
+module Migration
+  module MigrationUtils
+    class SettingRenamer
+      # define all the following methods as class methods
+      class << self
+        def rename(source_name, target_name)
+          ActiveRecord::Base.connection.execute <<~SQL.squish
+            UPDATE #{settings_table}
+            SET name = #{quote_value(target_name)}
+            WHERE name = #{quote_value(source_name)}
+          SQL
+        end
 
-      private
+        def rename_value(setting_name, from, to)
+          ActiveRecord::Base.connection.execute <<~SQL.squish
+            UPDATE #{settings_table}
+            SET value = #{quote_value(to)}
+            WHERE name = #{quote_value(setting_name)} AND value = #{quote_value(from)}
+          SQL
+        end
 
-      def settings_table
-        @settings_table ||= ActiveRecord::Base.connection.quote_table_name('settings')
-      end
+        private
 
-      def quote_value(s)
-        ActiveRecord::Base.connection.quote(s)
+        def settings_table
+          @settings_table ||= ActiveRecord::Base.connection.quote_table_name("settings")
+        end
+
+        def quote_value(value)
+          ActiveRecord::Base.connection.quote(value)
+        end
       end
     end
   end

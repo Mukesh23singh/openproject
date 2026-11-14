@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,26 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { firstValueFrom } from 'rxjs';
 import { Injector } from '@angular/core';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { HttpClient } from '@angular/common/http';
 import { SimpleResource } from 'core-app/core/apiv3/paths/path-resources';
 
-export type QueryOrder = { [wpId:string]:number };
+export type QueryOrder = Record<string, number>;
 
-export class APIV3QueryOrder extends SimpleResource {
-  @InjectField() http:HttpClient;
+interface QueryOrderUpdate {
+  t:string;
+  previousUpdatedAt?:string|null;
+}
+
+export class ApiV3QueryOrder extends SimpleResource {
+  @LazyInject() http:HttpClient;
 
   constructor(readonly injector:Injector,
     readonly basePath:string,
@@ -48,24 +53,17 @@ export class APIV3QueryOrder extends SimpleResource {
       this.path,
     )
       .toPromise()
-      .then((result) => result || {});
+      .then((result) => result ?? {});
   }
 
-  public update(delta:QueryOrder):Promise<string> {
-    return this.http
-      .patch(
-        this.path,
-        { delta },
-        { withCredentials: true },
-      )
-      .toPromise()
-      .then((response:{ t:string }) => response.t);
+  public update(delta:QueryOrder):Promise<QueryOrderUpdate> {
+    return firstValueFrom(this.http.patch<QueryOrderUpdate>(this.path, { delta }, { withCredentials: true }));
   }
 
   public delete(id:string, ...wpIds:string[]) {
     const delta:QueryOrder = {};
-    wpIds.forEach((id) => delta[id] = -1);
+    wpIds.forEach((id) => { delta[id] = -1; });
 
-    return this.update(delta);
+    return this.update(delta).then(({ t }) => t);
   }
 }

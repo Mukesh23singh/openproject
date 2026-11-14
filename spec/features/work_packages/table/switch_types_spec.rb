@@ -1,56 +1,93 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Switching types in work package table', js: true do
-  let(:user) { FactoryBot.create :admin }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-  describe 'switching to required CF' do
+require "spec_helper"
+
+RSpec.describe "Switching types in work package table", :js do
+  let(:user) { create(:admin) }
+
+  describe "switching to required CF" do
     let(:cf_req_text) do
-      FactoryBot.create(
+      create(
         :work_package_custom_field,
-        field_format: 'string',
-        name: 'Required CF',
+        field_format: "string",
+        name: "Required CF",
         is_required: true,
         is_for_all: false
       )
     end
     let(:cf_text) do
-      FactoryBot.create(
+      create(
         :work_package_custom_field,
-        field_format: 'string',
+        field_format: "string",
         is_required: false,
         is_for_all: false
       )
     end
 
-    let(:type_task) { FactoryBot.create(:type_task, custom_fields: [cf_text]) }
-    let(:type_bug) { FactoryBot.create(:type_bug, custom_fields: [cf_req_text]) }
+    let(:type_task) { create(:type_task, custom_fields: [cf_text]) }
+    let(:type_bug) { create(:type_bug, custom_fields: [cf_req_text]) }
 
     let(:project) do
-      FactoryBot.create(
+      create(
         :project,
-        types: [type_task, type_bug],
-        work_package_custom_fields: [cf_text, cf_req_text]
+        types: [type_task, type_bug]
       )
     end
     let(:work_package) do
-      FactoryBot.create(:work_package,
-                        subject: 'Foobar',
-                        type: type_task,
-                        project: project)
+      create(:work_package,
+             subject: "Foobar",
+             type: type_task,
+             project:)
     end
     let(:wp_table) { Pages::WorkPackagesTable.new(project) }
 
     let(:query) do
-      query = FactoryBot.build(:query, user: user, project: project)
-      query.column_names = ['id', 'subject', 'type', "cf_#{cf_text.id}"]
+      query = build(:query, user:, project:)
+      query.column_names = ["id", "subject", "type", cf_text.column_name]
 
       query.save!
       query
     end
 
-    let(:type_field) { wp_table.edit_field(work_package, :type) }
-    let(:text_field) { wp_table.edit_field(work_package, :"customField#{cf_text.id}") }
-    let(:req_text_field) { wp_table.edit_field(work_package, :"customField#{cf_req_text.id}") }
+    # Using let to memoize the fields sometimes leads to invalid node reference errors in chrome 113.
+    def type_field
+      wp_table.edit_field(work_package, :type)
+    end
+
+    def text_field
+      wp_table.edit_field(work_package, cf_text.attribute_name(:camel_case))
+    end
+
+    def req_text_field
+      wp_table.edit_field(work_package, cf_req_text.attribute_name(:camel_case))
+    end
 
     before do
       login_as(user)
@@ -62,50 +99,34 @@ describe 'Switching types in work package table', js: true do
       wp_table.expect_work_package_listed(work_package)
     end
 
-    it 'switches the types correctly' do
+    it "switches the types correctly" do
       expect(text_field).to be_editable
 
       # Set non-required CF
       text_field.activate!
-      text_field.set_value 'Foobar'
+      text_field.set_value "Foobar"
       text_field.save!
 
-      wp_table.expect_toast(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
-      )
-      # safegurards
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
+      wp_table.expect_and_dismiss_toaster(
+        message: "Successful update."
       )
 
       # Switch type
       type_field.activate!
       type_field.set_value type_bug.name
 
-      wp_table.expect_toast(
-        type: :error,
-        message: "#{cf_req_text.name} can't be blank."
-      )
-      # safegurards
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(
+      wp_table.expect_and_dismiss_toaster(
         type: :error,
         message: "#{cf_req_text.name} can't be blank."
       )
 
-      # Required CF requires activation
-      req_text_field.activate!
-      req_text_field.set_value 'Required'
+      # After a failed type switch, the required CF field is auto-opened in edit mode
+      req_text_field.expect_active!
+      req_text_field.set_value "Required"
       req_text_field.save!
 
-      wp_table.expect_toast(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
-      )
-      # safegurards
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
+      wp_table.expect_and_dismiss_toaster(
+        message: "Successful update."
       )
 
       expect { text_field.display_element }.to raise_error(Capybara::ElementNotFound)
@@ -113,73 +134,55 @@ describe 'Switching types in work package table', js: true do
       type_field.activate!
       type_field.set_value type_task.name
 
-      wp_table.expect_toast(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
-      )
-      # safegurards
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
+      wp_table.expect_and_dismiss_toaster(
+        message: "Successful update."
       )
 
-      expect(page).to have_no_selector "#{req_text_field.selector} #{req_text_field.display_selector}"
+      expect(page).to have_no_css "#{req_text_field.selector} #{req_text_field.display_selector}"
       expect { req_text_field.display_element }.to raise_error(Capybara::ElementNotFound)
     end
 
-    it 'can switch back from an open required CF (Regression test #28099)' do
+    it "can switch back from an open required CF (Regression test #28099)" do
+      # The required field is not a column, so opening it makes the table load its query form and
+      # add the required field. we need to make sure the type is editable before we try it to prevent a race condition
+      expect(type_field).to be_editable
+      wait_for_network_idle
+
       # Switch type
       type_field.activate!
-      type_field.set_value type_bug.name
+      type_field.set_select_field_value type_bug.name
 
-      wp_table.expect_toast(
-        type: :error,
-        message: "#{cf_req_text.name} can't be blank."
-      )
-      # safegurards
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(
+      wp_table.expect_and_dismiss_toaster(
         type: :error,
         message: "#{cf_req_text.name} can't be blank."
       )
 
-      # Required CF requires activation
+      # After a failed type switch, the required CF field is auto-opened in edit mode
       req_text_field.expect_active!
 
       # Now switch back to a type without the required CF
       type_field.activate!
-      type_field.openSelectField
-      type_field.set_value type_task.name
+      type_field.set_select_field_value type_task.name
 
-      wp_table.expect_toast(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
-      )
-      # safegurards
-      wp_table.dismiss_toaster!
-      wp_table.expect_no_toaster(
-        message: 'Successful update. Click here to open this work package in fullscreen view.'
+      wp_table.expect_and_dismiss_toaster(
+        message: "Successful update."
       )
     end
 
-    context 'switching to single view' do
+    context "switching to single view" do
       let(:wp_split) { wp_table.open_split_view(work_package) }
       let(:type_field) { wp_split.edit_field(:type) }
-      let(:text_field) { wp_split.edit_field(:"customField#{cf_text.id}") }
-      let(:req_text_field) { wp_split.edit_field(:"customField#{cf_req_text.id}") }
+      let(:text_field) { wp_split.edit_field(cf_text.attribute_name(:camel_case)) }
+      let(:req_text_field) { wp_split.edit_field(cf_req_text.attribute_name(:camel_case)) }
 
-      it 'allows editing and cancelling the new required fields' do
+      it "allows editing and cancelling the new required fields" do
         wp_split
 
         # Switch type
         type_field.activate!
         type_field.set_value type_bug.name
 
-        wp_table.expect_toast(
-          type: :error,
-          message: "#{cf_req_text.name} can't be blank."
-        )
-        # safegurards
-        wp_table.dismiss_toaster!
-        wp_table.expect_no_toaster(
+        wp_table.expect_and_dismiss_toaster(
           type: :error,
           message: "#{cf_req_text.name} can't be blank."
         )
@@ -190,50 +193,44 @@ describe 'Switching types in work package table', js: true do
         # Cancel edition now
         SeleniumHubWaiter.wait
         req_text_field.cancel_by_escape
-        req_text_field.expect_state_text '-'
+        req_text_field.expect_state_text "-"
 
         # Set the value now
-        req_text_field.update 'foobar'
+        req_text_field.update "foobar"
 
-        wp_table.expect_toast(
-          message: 'Successful update. Click here to open this work package in fullscreen view.'
-        )
-        # safegurards
-        wp_table.dismiss_toaster!
-        wp_table.expect_no_toaster(
-          message: 'Successful update. Click here to open this work package in fullscreen view.'
+        wp_table.expect_and_dismiss_toaster(
+          message: "Successful update."
         )
 
-        req_text_field.expect_state_text 'foobar'
+        req_text_field.expect_state_text "foobar"
       end
     end
   end
 
-  describe 'switching to required bool CF with default value' do
+  describe "switching to required bool CF with default value" do
     let(:cf_req_bool) do
-      FactoryBot.create(
+      create(
         :work_package_custom_field,
-        field_format: 'bool',
+        field_format: "bool",
         is_required: true,
         default_value: false
       )
     end
 
-    let(:type_task) { FactoryBot.create(:type_task) }
-    let(:type_bug) { FactoryBot.create(:type_bug, custom_fields: [cf_req_bool]) }
+    let(:type_task) { create(:type_task) }
+    let(:type_bug) { create(:type_bug, custom_fields: [cf_req_bool]) }
 
     let(:project) do
-      FactoryBot.create(
+      create(
         :project,
-        types: [type_task, type_bug],
-        work_package_custom_fields: [cf_req_bool]
+        types: [type_task, type_bug]
       )
     end
     let(:work_package) do
-      FactoryBot.create(:work_package,
-                        subject: 'Foobar',
-                        type: type_task,
-                        project: project)
+      create(:work_package,
+             subject: "Foobar",
+             type: type_task,
+             project:)
     end
     let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
     let(:type_field) { wp_page.edit_field :type }
@@ -244,37 +241,33 @@ describe 'Switching types in work package table', js: true do
       wp_page.ensure_page_loaded
     end
 
-    it 'can switch to the bug type without errors' do
+    it "can switch to the bug type without errors" do
       type_field.expect_state_text type_task.name.upcase
       type_field.update type_bug.name
 
-      # safegurards
-      wp_page.expect_toast message: 'Successful update.'
-      wp_page.dismiss_toaster!
-      wp_page.expect_no_toaster message: 'Successful update.'
+      wp_page.expect_and_dismiss_toaster message: "Successful update."
 
       type_field.expect_state_text type_bug.name.upcase
 
       work_package.reload
       expect(work_package.type_id).to eq(type_bug.id)
-      expect(work_package.send("custom_field_#{cf_req_bool.id}")).to eq(false)
+      expect(work_package.send(cf_req_bool.attribute_getter)).to be(false)
     end
   end
 
-  describe 'switching to list CF' do
+  describe "switching to list CF" do
     let!(:wp_page) { Pages::FullWorkPackageCreate.new }
-    let!(:type_with_cf) { FactoryBot.create(:type_task, custom_fields: [custom_field]) }
-    let!(:type) { FactoryBot.create(:type_bug) }
+    let!(:type_with_cf) { create(:type_task, custom_fields: [custom_field]) }
+    let!(:type) { create(:type_bug) }
     let(:permissions) { %i(view_work_packages add_work_packages) }
-    let(:role) { FactoryBot.create :role, permissions: permissions }
+    let(:role) { create(:project_role, permissions:) }
     let(:user) do
-      FactoryBot.create :user,
-                        member_in_project: project,
-                        member_through_role: role
+      create(:user,
+             member_with_roles: { project => role })
     end
 
     let(:custom_field) do
-      FactoryBot.create(
+      create(
         :list_wp_custom_field,
         name: "Ingredients",
         multi_value: true,
@@ -283,26 +276,25 @@ describe 'Switching types in work package table', js: true do
     end
 
     let!(:project) do
-      FactoryBot.create(
+      create(
         :project,
-        types: [type, type_with_cf],
-        work_package_custom_fields: [custom_field]
+        types: [type, type_with_cf]
       )
     end
-    let!(:status) { FactoryBot.create(:default_status) }
+    let!(:status) { create(:default_status) }
     let!(:workflow) do
-      FactoryBot.create :workflow,
-                        type_id: type.id,
-                        old_status: status,
-                        new_status: FactoryBot.create(:status),
-                        role: role
+      create(:workflow,
+             type_id: type.id,
+             old_status: status,
+             new_status: create(:status),
+             role:)
     end
 
-    let!(:priority) { FactoryBot.create :priority, is_default: true }
+    let!(:priority) { create(:priority, is_default: true) }
 
     let(:cf_edit_field) do
-      field = wp_page.edit_field "customField#{custom_field.id}"
-      field.field_type = 'create-autocompleter'
+      field = wp_page.edit_field custom_field.attribute_name(:camel_case)
+      field.field_type = "create-autocompleter"
       field
     end
 
@@ -315,10 +307,10 @@ describe 'Switching types in work package table', js: true do
       SeleniumHubWaiter.wait
     end
 
-    it 'can switch to the type with CF list' do
+    it "can switch to the type with CF list" do
       # Set subject
       subject = wp_page.edit_field :subject
-      subject.set_value 'My subject'
+      subject.set_value "My subject"
 
       # Switch type
       type_field = wp_page.edit_field :type
@@ -335,13 +327,13 @@ describe 'Switching types in work package table', js: true do
       wp_page.save!
 
       wp_page.expect_toast(
-        message: 'Successful creation.'
+        message: "Successful creation."
       )
 
       new_wp = WorkPackage.last
-      expect(new_wp.subject).to eq('My subject')
+      expect(new_wp.subject).to eq("My subject")
       expect(new_wp.type_id).to eq(type_with_cf.id)
-      expect(new_wp.custom_value_for(custom_field.id).map(&:typed_value)).to match_array(%w(pineapple mushrooms))
+      expect(new_wp.custom_value_for(custom_field).map(&:typed_value)).to match_array(%w(pineapple mushrooms))
     end
   end
 end

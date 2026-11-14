@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,34 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'contracts/shared/model_contract_shared_context'
+require "spec_helper"
+require "contracts/shared/model_contract_shared_context"
 
-describe Notifications::CreateContract do
-  include_context 'ModelContract shared context'
+RSpec.describe Notifications::CreateContract do
+  include_context "ModelContract shared context"
 
   let(:current_user) do
-    FactoryBot.build_stubbed(:user) do |user|
+    build_stubbed(:user) do |user|
     end
   end
 
-  let(:notification_context) { FactoryBot.build_stubbed(:project) }
-  let(:notification_resource) { FactoryBot.build_stubbed(:journal) }
-  let(:notification_recipient) { FactoryBot.build_stubbed(:user) }
-  let(:notification_subject) { 'Some text' }
+  let(:notification_resource) { build_stubbed(:journal) }
+  let(:notification_recipient) { build_stubbed(:user) }
+  let(:notification_subject) { "Some text" }
   let(:notification_reason) { :mentioned }
   let(:notification_read_ian) { false }
   let(:notification_mail_reminder_sent) { false }
 
   let(:notification) do
-    Notification.new(project: notification_context,
-                     recipient: notification_recipient,
+    Notification.new(recipient: notification_recipient,
                      subject: notification_subject,
                      reason: notification_reason,
                      resource: notification_resource,
@@ -57,43 +56,45 @@ describe Notifications::CreateContract do
 
   let(:contract) { described_class.new(notification, current_user) }
 
-  describe '#validation' do
-    it_behaves_like 'contract is valid'
+  describe "#validation" do
+    it_behaves_like "contract is valid"
 
-    context 'without a recipient' do
+    context "without a recipient" do
       let(:notification_recipient) { nil }
 
-      it_behaves_like 'contract is invalid', recipient: :blank
+      it_behaves_like "contract is invalid", recipient: :blank
     end
 
-    context 'without a reason' do
+    context "without a reason" do
       let(:notification_reason) { nil }
 
-      it_behaves_like 'contract is invalid', reason: :no_notification_reason
+      it_behaves_like "contract is invalid", reason: :no_notification_reason
     end
 
-    context 'without a subject' do
+    context "without a subject" do
       let(:notification_subject) { nil }
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with an empty subject' do
-      let(:notification_subject) { '' }
+    context "with an empty subject" do
+      let(:notification_subject) { "" }
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with read_ian true' do
+    context "with read_ian true" do
       let(:notification_read_ian) { true }
 
-      it_behaves_like 'contract is invalid', read_ian: :read_on_creation
+      it_behaves_like "contract is invalid", read_ian: :read_on_creation
     end
 
-    context 'with mail_reminder_sent true' do
+    context "with mail_reminder_sent true" do
       let(:notification_mail_reminder_sent) { true }
 
-      it_behaves_like 'contract is invalid', mail_reminder_sent: :set_on_creation
+      it_behaves_like "contract is invalid", mail_reminder_sent: :set_on_creation
     end
   end
+
+  include_examples "contract reuses the model errors"
 end

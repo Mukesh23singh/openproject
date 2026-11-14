@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,37 +22,35 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'base'
+require_relative "base"
 
 class Tables::Messages < Tables::Base
   # rubocop:disable Metrics/AbcSize
   def self.table(migration)
     create_table migration do |t|
-      t.integer :board_id, null: false
-      t.integer :parent_id
-      t.string :subject, default: '', null: false
+      t.bigint :forum_id, null: false
+      t.bigint :parent_id
+      t.string :subject, default: "", null: false
       t.text :content
-      t.integer :author_id
+      t.bigint :author_id
       t.integer :replies_count, default: 0, null: false
-      t.integer :last_reply_id
-      t.datetime :created_on, null: false
-      t.datetime :updated_on, null: false
+      t.bigint :last_reply_id
+      t.timestamps precision: nil, default: -> { "CURRENT_TIMESTAMP" }
       t.boolean :locked, default: false
       t.integer :sticky, default: 0
-      t.datetime :sticked_on, default: nil, null: true
+      t.datetime :sticked_on, precision: false, default: nil, null: true
 
-      t.index :author_id, name: 'index_messages_on_author_id'
-      t.index :board_id, name: 'messages_board_id'
-      t.index :created_on, name: 'index_messages_on_created_on'
-      t.index :last_reply_id, name: 'index_messages_on_last_reply_id'
-      t.index :parent_id, name: 'messages_parent_id'
-      t.index %i[board_id updated_on]
+      t.index :author_id, name: "index_messages_on_author_id"
+      t.index :forum_id, name: "messages_board_id" # Name kept for compatibility
+      t.index :created_at, name: "index_messages_on_created_at"
+      t.index :last_reply_id, name: "index_messages_on_last_reply_id"
+      t.index :parent_id, name: "messages_parent_id"
+      t.index %i[forum_id updated_at]
     end
   end
   # rubocop:enable Metrics/AbcSize

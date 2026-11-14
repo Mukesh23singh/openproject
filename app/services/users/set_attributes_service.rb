@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,6 +30,7 @@
 module Users
   class SetAttributesService < ::BaseServices::SetAttributes
     include ::HookHelper
+    include ::UserAuthProviderLinksSetter
 
     private
 
@@ -38,8 +38,9 @@ module Users
 
     def set_attributes(params)
       self.pref = params.delete(:pref)
+      set_user_auth_provider_links(params.delete(:identity_url))
 
-      super(params)
+      super
     end
 
     def validate_and_result
@@ -50,33 +51,30 @@ module Users
 
     def set_default_attributes(params)
       # Assign values other than mail to new_user when invited
-      if model.invited? && model.valid_attribute?(:mail)
-        assign_invited_attributes!(params)
-      end
+      assign_name_attributes_from_mail(params) if model.invited? && model.valid_attribute?(:mail)
+      assign_default_language
 
-      initialize_notification_settings unless model.notification_settings.any?
+      model.notification_settings.build unless model.notification_settings.any?
     end
 
     def set_preferences
       ::UserPreferences::SetAttributesService
-        .new(user: user, model: model.pref, contract_class: ::UserPreferences::UpdateContract)
+        .new(user:, model: model.pref, contract_class: ::UserPreferences::UpdateContract)
         .call(pref)
     end
 
-    def initialize_notification_settings
-      model.notification_settings.build(involved: true, mentioned: true, watched: true)
-    end
-
-    # rubocop:disable Metrics/AbcSize
-    def assign_invited_attributes!(params)
+    # rubocop:disable-next Metrics/AbcSize
+    def assign_name_attributes_from_mail(params)
       placeholder = placeholder_name(params[:mail])
 
       model.login = model.login.presence || params[:mail]
       model.firstname = model.firstname.presence || placeholder.first
       model.lastname = model.lastname.presence || placeholder.last
+    end
+
+    def assign_default_language
       model.language = model.language.presence || Setting.default_language
     end
-    # rubocop:enable Metrics/AbcSize
 
     ##
     # Creates a placeholder name for the user based on their email address.
@@ -84,7 +82,7 @@ module Users
     # are longer than 30 characters they will be trimmed to 27 characters and an
     # ellipsis will be appended.
     def placeholder_name(email)
-      first, last = email.split('@').map { |name| trim_name(name) }
+      first, last = email.split("@").map { |name| trim_name(name) }
 
       [first, "@#{last}"]
     end

@@ -1,87 +1,244 @@
 #!/bin/bash
-set -e
 
-export PGBIN="/usr/lib/postgresql/$PGVERSION/bin"
+set -eo pipefail
+
+export PATH="/usr/lib/postgresql/$PGVERSION/bin:$PATH"
 export JOBS="${CI_JOBS:=$(nproc)}"
 # for parallel rspec
 export PARALLEL_TEST_PROCESSORS=$JOBS
+export PARALLEL_TEST_FIRST_IS_1=true
+export DISABLE_DATABASE_ENVIRONMENT_CHECK=1
+# export NODE_OPTIONS="--max-old-space-size=8192"
+export LOG_FILE=/tmp/op-output.log
+export PGUSER=${PGUSER:=appuser}
+export PGHOST=${PGHOST:=127.0.0.1}
+export PGPASSWORD=${PGPASSWORD:=p4ssw0rd}
+export DATABASE_URL="postgres://$PGUSER:$PGPASSWORD@$PGHOST/appdb"
+# Hocuspocus will not start without a secret and it needs to be the same in OpenProject
+export OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__SECRET=secret12345
 
-# if from within docker
-if [ $(id -u) -eq 0 ]; then
-	if [ ! -d "/tmp/nulldb" ]; then
-		su - postgres -c "$PGBIN/initdb -E UTF8 -D /tmp/nulldb"
-		su - postgres -c "$PGBIN/pg_ctl -D /tmp/nulldb -l /dev/null -w start"
-		echo "create database app; create user app with superuser encrypted password 'p4ssw0rd'; grant all privileges on database app to app;" | su - postgres -c $PGBIN/psql
-	fi
-
-	mkdir -p /usr/local/bundle
-	mkdir -p /home/$USER/openproject/frontend/node_modules
-	mkdir -p /home/$USER/openproject/tmp
-	chown $USER:$USER /usr/local/bundle
-	chown $USER:$USER /home/$USER/openproject/frontend/node_modules
-	chown $USER:$USER /home/$USER/openproject/tmp
-fi
-
-
-execute() {
-	if [ $(id -u) -eq 0 ]; then
-		su $USER -c "$@"
-	else
-		bash -c "$@"
-	fi
+run_psql() {
+	psql -v ON_ERROR_STOP=1 "$@"
 }
 
 cleanup() {
-        rm -rf tmp/cache/parallel*
+	exit_code=$?
+	echo "CLEANUP"
+	rm -rf tmp/cache/parallel*
+
+	# kill hocuspocus running in background:
+	killall node || true
+	if [ ! $exit_code -eq "0" ]; then
+		echo "ERROR: exit code $exit_code"
+		tail -n 1000 $LOG_FILE
+	fi
+	rm -f $LOG_FILE
 }
 
-if [ "$1" == "setup-tests" ]; then
+trap cleanup INT TERM EXIT
+
+declare -a pids=()
+
+run_background() {
+	# Run the command in the background
+	"$@" &
+
+	# Store the PID of the background process
+	local pid=$!
+	pids+=("$pid")
+
+	echo "[background] Started background process $pid: $@"
+}
+
+wait_for_background() {
+	# Make a copy of the pids array
+	local waiting_pids=("${pids[@]}")
+	echo "[background] Waiting for background processes ${waiting_pids[@]} to finish..."
+	# Reset the global pids array to empty
+	pids=()
+
+	for pid in "${waiting_pids[@]}"; do
+		wait "$pid"
+		# Check the exit status of each background process
+		if [ $? -ne 0 ]; then
+			echo "[background] Command with PID $pid failed"
+			exit 1
+		fi
+	done
+	echo "[background] All background processes ${waiting_pids[@]} finished"
+}
+
+execute() {
+	BANNER=${BANNER:="[execute]"}
+	echo "$BANNER $@" >&2
+	eval "$@"
+}
+
+execute_quiet() {
+	if ! BANNER="[execute_quiet]" execute "$@" >"$LOG_FILE" ; then
+		return 1
+	else
+		return 0
+	fi
+}
+create_db_cluster() {
+	if [ ! -d "/tmp/nulldb" ]; then
+		execute_quiet "initdb -E UTF8 -D /tmp/nulldb -U $PGUSER"
+		execute_quiet "cp docker/ci/postgresql.conf /tmp/nulldb/"
+		execute_quiet "pg_ctl -D /tmp/nulldb -l /dev/null -w start"
+	fi
+}
+
+reset_dbs() {
+	create_db_cluster
+	# must reset main db because for some reason the users table is not empty, after running db:migrate
+	execute_quiet "echo 'drop database if exists appdb ; create database appdb' | run_psql -d postgres"
+	execute_quiet "cat db/structure.sql | run_psql -d appdb"
+	# create and load schema for test databases "appdb1" to "appdb$JOBS", far faster than using parallel_rspec tasks for that
+	for i in $(seq 1 $JOBS); do
+		execute_quiet "echo 'drop database if exists appdb$i ; create database appdb$i with template appdb owner $PGUSER;' | run_psql -d postgres"
+	done
+}
+
+setup_hocuspocus() {
+  if [ -d "extensions/op-blocknote-hocuspocus" ]; then
+    cd extensions/op-blocknote-hocuspocus
+    npm install --omit=dev
+    cd -
+  else
+    echo 'Could not find Hocuspocus in extensions/op-blocknote-hocuspocus!'
+  fi
+}
+
+start_hocuspocus() {
+  if [ -d "extensions/op-blocknote-hocuspocus" ]; then
+    cd extensions/op-blocknote-hocuspocus
+    execute "SECRET=$OPENPROJECT_COLLABORATIVE__EDITING__HOCUSPOCUS__SECRET npm run start"
+    cd -
+  else
+    echo 'Could not find Hocuspocus in extensions/op-blocknote-hocuspocus!'
+  fi
+}
+
+backend_stuff() {
+	# create test database "app" and dump schema because db/structure.sql is not checked in
+	execute_quiet "time bundle exec rails db:create db:migrate db:schema:dump zeitwerk:check"
+}
+
+frontend_stuff() {
+	execute_quiet "DATABASE_URL=nulldb://db time bin/rails openproject:plugins:register_frontend assets:precompile"
+	execute_quiet "cp -rp config/frontend_assets.manifest.json public/assets/frontend_assets.manifest.json"
+}
+
+setup_tests() {
 	echo "Preparing environment for running tests..."
-	shift
-
-	execute "mkdir -p tmp"
-	execute "cp docker/ci/database.yml config/"
-
-	for i in $(seq 0 $JOBS); do
+	for i in $(seq 1 $JOBS); do
 		folder="$CAPYBARA_DOWNLOADED_FILE_DIR/$i"
-		echo "Creating folder $folder..."
-		rm -rf "$folder"
-		mkdir -p "$folder"
-		chmod 1777 "$folder"
+		execute_quiet "rm -rf '$folder' ; mkdir -p '$folder' ; chmod 1777 '$folder'"
 	done
 
-	execute "time bundle install -j$JOBS"
-	execute "TEST_ENV_NUMBER=0 time bundle exec rake db:create db:migrate db:schema:dump webdrivers:chromedriver:update webdrivers:geckodriver:update openproject:plugins:register_frontend"
-	execute "time bundle exec rake parallel:create parallel:load_schema"
+	execute_quiet "mkdir -p spec/support/runtime-logs/"
+	execute_quiet "cp docker/ci/database.yml config/"
+	create_db_cluster
+
+	execute "gem install bundler --no-document"
+
+	run_background execute "BUNDLE_JOBS=8 bundle install --quiet && bundle clean --force && echo BUNDLE DONE"
+	run_background execute "JOBS=8 time npm install --quiet && npm prune --quiet && echo NPM DONE"
+	wait_for_background
+
+	setup_hocuspocus
+	run_background backend_stuff
+	run_background frontend_stuff
+	# pre-cache browsers and their drivers binaries
+	local arch=$(uname -m)
+	[ "$arch" = aarch64 ] && arch=arm64
+	local selenium_manager="$(bundle show selenium-webdriver)/bin/linux-${arch}/selenium-manager"
+	run_background "$selenium_manager" --browser chrome --debug
+	run_background "$selenium_manager" --browser firefox --debug
+	wait_for_background
+}
+
+run_units() {
+	shopt -s extglob globstar nullglob
+	reset_dbs
+	execute "time bundle exec turbo_tests --verbose -n $JOBS --runtime-log spec/support/runtime-logs/turbo_runtime_units.log {,modules/*/}spec/{!(features)/**/,}*_spec.rb"
+	cleanup
+}
+
+run_features() {
+	shopt -s globstar nullglob
+	run_background start_hocuspocus
+	reset_dbs
+
+	if ! execute "time bundle exec turbo_tests --verbose -n $JOBS --runtime-log spec/support/runtime-logs/turbo_runtime_features.log {,modules/*/}spec/features/**/*_spec.rb"; then
+		retry_failed_features
+	fi
+	report_slowest_feature_files
+
+	cleanup
+}
+
+report_slowest_feature_files() {
+	local runtime_log="spec/support/runtime-logs/turbo_runtime_features.log"
+
+	if [ -s "$runtime_log" ]; then
+		echo "20 slowest feature files by aggregate example time:"
+		grep -E '^[^ :]+_spec\.rb:[0-9.]+$' "$runtime_log" | sort -t: -k2,2nr | awk -F: 'NR <= 20 { printf "%8.1fs  %s\n", $2, $1 }'
+	fi
+}
+
+retry_failed_features() {
+	local status_file="tmp/spec_examples.txt"
+	local failed_count
+	if [ ! -f "$status_file" ]; then
+		echo "failed to find the feature example status file"
+		return 1
+	fi
+
+	failed_count=$(awk '$3 == "failed" { count++ } END { print count + 0 }' "$status_file" 2>/dev/null)
+
+	if [ "$failed_count" -eq 0 ]; then
+		echo "failed to find failing examples, unexpected"
+		return 1
+	elif [ "$failed_count" -gt 10 ]; then
+		echo "too many failures ($failed_count), not retrying"
+		return 1
+	fi
+
+	echo "retrying $failed_count failed examples"
+	awk '$3 == "failed" {print "- `rspec " $1 "`"}' "$status_file" > tmp/retried_specs.txt
+	mapfile -t failed_examples < <(awk '$3 == "failed" { print $1 }' "$status_file")
+	bundle exec rspec --format documentation "${failed_examples[@]}"
+}
+
+run_all() {
+	shopt -s globstar nullglob
+	reset_dbs
+	execute "time bundle exec turbo_tests --verbose -n $JOBS --runtime-log spec/support/runtime-logs/turbo_runtime_all.log {,modules/*/}spec/**/*_spec.rb"
+	cleanup
+}
+
+export -f cleanup execute execute_quiet run_psql create_db_cluster reset_dbs setup_tests setup_hocuspocus start_hocuspocus backend_stuff frontend_stuff run_units run_features report_slowest_feature_files retry_failed_features run_all
+
+if [ "$1" == "setup-tests" ]; then
+	shift
+	setup_tests
 fi
 
 if [ "$1" == "run-units" ]; then
 	shift
-	execute "cd frontend && npm install && npm run test"
-	execute "time bundle exec rspec -I spec_legacy spec_legacy"
-	if ! execute "time bundle exec rake parallel:units" ; then
-		execute "cat tmp/parallel_summary.log"
-		cleanup
-		exit 1
-	else
-		cleanup
-		exit 0
-	fi
+	run_units
 fi
 
 if [ "$1" == "run-features" ]; then
 	shift
-	execute "cd frontend; npm install ; cd -"
-	execute "bundle exec rake assets:precompile"
-	execute "cp -rp config/frontend_assets.manifest.json public/assets/frontend_assets.manifest.json"
-	if ! execute "time bundle exec rake parallel:features" ; then
-		execute "cat tmp/parallel_summary.log"
-		cleanup
-		exit 1
-	else
-		cleanup
-		exit 0
-	fi
+	run_features
+fi
+
+if [ "$1" == "run-all" ]; then
+	shift
+	run_all
 fi
 
 if [ ! -z "$1" ] ; then

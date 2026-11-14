@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-import { State } from 'reactivestates';
-import { Injectable } from '@angular/core';
+
+import { State } from '@openproject/reactivestates';
+import { Injectable, inject } from '@angular/core';
 import { StateCacheService } from 'core-app/core/apiv3/cache/state-cache.service';
-import { Observable } from 'rxjs';
+import { firstValueFrom, Observable } from 'rxjs';
 import { take } from 'rxjs/operators';
 import { States } from 'core-app/core/states/states.service';
 import { ISchemaProxy, SchemaProxy } from 'core-app/features/hal/schemas/schema-proxy';
@@ -36,12 +36,24 @@ import { HalResourceService } from 'core-app/features/hal/services/hal-resource.
 import { WorkPackageSchemaProxy } from 'core-app/features/hal/schemas/work-package-schema-proxy';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
+
+export const fallbackSchemaId = '__fallback';
 
 @Injectable()
 export class SchemaCacheService extends StateCacheService<SchemaResource> {
-  constructor(readonly states:States,
-    readonly halResourceService:HalResourceService) {
+  readonly states:States;
+  readonly halResourceService = inject(HalResourceService);
+
+  fallbackSchema = this.halResourceService.createHalResourceOfClass<SchemaResource>(SchemaResource, {}, true);
+
+  constructor() {
+    const states = inject(States);
+
     super(states.schemas);
+    this.states = states;
+
+    this.putValue(fallbackSchemaId, this.fallbackSchema);
   }
 
   public state(id:string|HalResource):State<SchemaResource> {
@@ -56,26 +68,21 @@ export class SchemaCacheService extends StateCacheService<SchemaResource> {
    * @return The schema for the HalResource
    */
   of(resource:HalResource):ISchemaProxy {
-    const schema = this.state(resource).value;
+    const schema = this.state(resource).value!;
 
-    if (!schema) {
-      throw new Error(`Schema for resource ${resource} was expected to be loaded but isn't.`);
-    }
+    return this.proxied(resource, schema);
+  }
 
+  proxied(resource:HalResource, schema:SchemaResource):ISchemaProxy {
     if (resource._type === 'WorkPackage') {
       return WorkPackageSchemaProxy.create(schema, resource);
     }
+
     return SchemaProxy.create(schema, resource);
   }
 
-  public getSchemaHref(resource:HalResource):string {
-    const href = resource.$links.schema?.href;
-
-    if (!href) {
-      throw new Error(`Resource ${resource} has no schema to load.`);
-    }
-
-    return href;
+  public getSchemaHref(resource:HalResource):string|undefined {
+    return (resource.$links.schema as CallableHalLink|undefined)?.href as string|undefined;
   }
 
   /**
@@ -85,13 +92,7 @@ export class SchemaCacheService extends StateCacheService<SchemaResource> {
    */
   ensureLoaded(resource:HalResource|string):Promise<SchemaResource> {
     const href = resource instanceof HalResource ? this.getSchemaHref(resource) : resource;
-
-    return this
-      .requireAndStream(href)
-      .pipe(
-        take(1),
-      )
-      .toPromise();
+    return firstValueFrom(this.requireAndStream(href || fallbackSchemaId));
   }
 
   /**
@@ -127,7 +128,7 @@ export class SchemaCacheService extends StateCacheService<SchemaResource> {
       );
   }
 
-  protected loadAll(hrefs:string[]):Promise<unknown|undefined> {
+  protected loadAll(hrefs:string[]):Promise<unknown> {
     return Promise.all(hrefs.map((href) => this.load(href)));
   }
 
@@ -142,8 +143,9 @@ export class SchemaCacheService extends StateCacheService<SchemaResource> {
 
   private stateKey(id:string|HalResource):string {
     if (id instanceof HalResource) {
-      return this.getSchemaHref(id);
+      return this.getSchemaHref(id) || fallbackSchemaId;
     }
+
     return id;
   }
 }

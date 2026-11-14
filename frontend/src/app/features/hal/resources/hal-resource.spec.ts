@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,59 +20,55 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injector } from '@angular/core';
-import { TestBed, waitForAsync } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { States } from 'core-app/core/states/states.service';
 import { of } from 'rxjs';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
 import { OpenprojectHalModule } from 'core-app/features/hal/openproject-hal.module';
-import { HalLink, HalLinkInterface } from 'core-app/features/hal/hal-link/hal-link';
-import Spy = jasmine.Spy;
+import { CallableHalLink, HalLink, HalLinkInterface } from 'core-app/features/hal/hal-link/hal-link';
+import { provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient, withInterceptorsFromDi, withXhr } from '@angular/common/http';
+import type { Mock } from 'vitest';
+type Spy = Mock;
 
 describe('HalResource', () => {
   let halResourceService:HalResourceService;
-  let injector:Injector;
 
   let source:any;
   let resource:HalResource;
+  let OtherResource:typeof HalResource;
 
-  class OtherResource extends HalResource {
-  }
+  beforeEach(async () => {
+    OtherResource = class extends HalResource {};
 
-  beforeEach(waitForAsync(() => {
-    // noinspection JSIgnoredPromiseFromCall
-    TestBed.configureTestingModule({
-      imports: [
-        OpenprojectHalModule,
-      ],
+    await TestBed.configureTestingModule({
+      imports: [OpenprojectHalModule],
       providers: [
         HalResourceService,
         States,
         I18nService,
-      ],
-    })
-      .compileComponents()
-      .then(() => {
-        halResourceService = TestBed.inject(HalResourceService);
-        injector = TestBed.inject(Injector);
-      });
-  }));
+        provideHttpClient(withXhr(), withInterceptorsFromDi()),
+        provideHttpClientTesting(),
+      ]
+    }).compileComponents();
+    halResourceService = TestBed.inject(HalResourceService);
+  });
 
   it('should be instantiable using a default object', () => {
     const resource = halResourceService.createHalResource({}, true);
+
     expect(resource.href).toEqual(null);
   });
 
   describe('when updating a loaded resource using `$update()`', () => {
-    let getStub:jasmine.Spy;
+    let getStub:Mock;
 
     beforeEach(() => {
       source = {
@@ -83,9 +79,9 @@ describe('HalResource', () => {
         },
       };
 
-      getStub = spyOn(halResourceService, 'request').and.callFake((verb:string, path:string) => {
+      getStub = vi.spyOn(halResourceService, 'request').mockImplementation((verb:string, path:string) => {
         if (verb === 'get' && path === '/api/hello') {
-          return of(halResourceService.createHalResource(source)) as any;
+          return of(halResourceService.createHalResource(source));
         }
         return false as any;
       });
@@ -94,6 +90,7 @@ describe('HalResource', () => {
     it('should perform a request', () => {
       resource = halResourceService.createHalResource(source, true);
       resource.$update();
+
       expect(getStub).toHaveBeenCalled();
     });
   });
@@ -106,7 +103,7 @@ describe('HalResource', () => {
       });
 
       it('should be an instance of HalResource', () => {
-        expect(resource).toEqual(jasmine.any(HalResource));
+        expect(resource).toEqual(expect.any(HalResource));
       });
     });
 
@@ -121,23 +118,20 @@ describe('HalResource', () => {
           },
         };
 
-        halResourceService.registerResource(
-          'Other',
-          { cls: OtherResource, attrTypes: { someResource: 'Other' } },
-        );
+        halResourceService.registerResource('Other', { cls: OtherResource, attrTypes: { someResource: 'Other' } });
         resource = halResourceService.createHalResource(source, false);
       });
 
       it('should be an instance of that type', () => {
-        expect(resource).toEqual(jasmine.any(OtherResource));
+        expect(resource).toEqual(expect.any(OtherResource));
       });
 
       it('should have an attribute that is of the configured instance', () => {
-        expect(resource.someResource).toEqual(jasmine.any(OtherResource));
+        expect(resource.someResource).toEqual(expect.any(OtherResource));
       });
 
       it('should not be loaded', () => {
-        expect(resource.someResource.$loaded).toBeFalsy();
+        expect((resource.someResource as HalResource).$loaded).toBeFalsy();
       });
     });
   });
@@ -147,8 +141,8 @@ describe('HalResource', () => {
     let embeddedFn:Spy;
 
     beforeEach(() => {
-      linkFn = jasmine.createSpy();
-      embeddedFn = jasmine.createSpy();
+      linkFn = vi.fn();
+      embeddedFn = vi.fn();
 
       resource = halResourceService.createHalResource({
         _links: {
@@ -167,23 +161,25 @@ describe('HalResource', () => {
     });
 
     it('should not have touched the source links initially', () => {
-      expect(linkFn.calls.count()).toEqual(0);
+      expect(vi.mocked(linkFn).mock.calls.length).toEqual(0);
     });
 
     it('should not have touched the embedded elements of the source initially', () => {
-      expect(embeddedFn.calls.count()).toEqual(0);
+      expect(vi.mocked(embeddedFn).mock.calls.length).toEqual(0);
     });
 
     it('should use the source link only once when called', () => {
-      resource.link;
-      resource.link;
-      expect(linkFn.calls.count()).toEqual(1);
+      void resource.link;
+      void resource.link;
+
+      expect(vi.mocked(linkFn).mock.calls.length).toEqual(1);
     });
 
     it('should use the source embedded only once when called', () => {
-      resource.resource;
-      resource.resource;
-      expect(embeddedFn.calls.count()).toEqual(1);
+      void resource.resource;
+      void resource.resource;
+
+      expect(vi.mocked(embeddedFn).mock.calls.length).toEqual(1);
     });
   });
 
@@ -219,7 +215,7 @@ describe('HalResource', () => {
     });
 
     it('should have enumerable properties', () => {
-      expect(resource.propertyIsEnumerable('property')).toBeTruthy();
+      expect(Object.prototype.propertyIsEnumerable.call(resource, 'property')).toBeTruthy();
     });
 
     describe('when a property is changed', () => {
@@ -252,6 +248,7 @@ describe('HalResource', () => {
 
     it('should have a writable name attribute', () => {
       resource.name = 'some name';
+
       expect(resource.name).toEqual('some name');
     });
 
@@ -374,9 +371,9 @@ describe('HalResource', () => {
     });
 
     it('should have a callable self link', () => {
-      spyOn(halResourceService, 'request').and.callFake((verb:string, path:string) => {
+      vi.spyOn(halResourceService, 'request').mockImplementation((verb:string, path:string) => {
         if (verb === 'get' && path === 'unicorn/69') {
-          return of(halResourceService.createHalResource({})) as any;
+          return of(halResourceService.createHalResource({}));
         }
         return null as any;
       });
@@ -385,18 +382,17 @@ describe('HalResource', () => {
     });
 
     it('should have a callable beaver', () => {
-      spyOn(halResourceService, 'request').and.callFake((verb:string, path:string) => {
+      vi.spyOn(halResourceService, 'request').mockImplementation((verb:string, path:string) => {
         if (verb === 'get' && path === 'justin/420') {
-          return of(halResourceService.createHalResource({})) as any;
+          return of(halResourceService.createHalResource({}));
         }
         return null as any;
       });
 
-      expect(() => resource.$links.beaver()).not.toThrow(Error);
+      expect(() => (resource.$links.beaver as CallableHalLink)()).not.toThrow(Error);
     });
 
     it('should have a $links property with the keys of its source _links', () => {
-      const transformedLinks = Object.keys(resource.$links);
       const plainLinks = Object.keys(source._links);
 
       plainLinks.forEach((link:string) => {
@@ -421,11 +417,11 @@ describe('HalResource', () => {
     });
 
     it('should have a property, that is a loaded resource', () => {
-      expect(resource.resource.$loaded).toBeTruthy();
+      expect((resource.resource as HalResource).$loaded).toBeTruthy();
     });
 
     it('should have an embedded resource, that is loaded', () => {
-      expect(resource.$embedded.resource.$loaded).toBeTruthy();
+      expect((resource.$embedded.resource as HalResource).$loaded).toBeTruthy();
     });
 
     it('should have a property that is the resource', () => {
@@ -444,7 +440,7 @@ describe('HalResource', () => {
       });
 
       it('should set the property to that resource', () => {
-        expect(resource.resource.href).toEqual(link.href);
+        expect((resource.resource as HalResource).href).toEqual(link.href);
       });
     });
 
@@ -465,11 +461,12 @@ describe('HalResource', () => {
           },
         };
 
-        first = resource.$embedded.resource.$embedded.first;
-        deep = resource.$embedded.resource.$embedded.first.$embedded.second;
+        const embedded = resource.$embedded.resource as HalResource;
+        first = embedded.$embedded.first;
+        deep = (embedded.$embedded.first as HalResource).$embedded.second;
       });
 
-      it('should crate all nested resources recursively', () => {
+      it('should create all nested resources recursively', () => {
         expect(deep.$isHal).toBeTruthy();
       });
 
@@ -483,7 +480,7 @@ describe('HalResource', () => {
   describe('when creating a resource from a source with a linked array property', () => {
     const expectLengthsToBe = (length:any, update = 'update') => {
       it(`should ${update} the values of the resource`, () => {
-        expect(resource.values.length).toEqual(length);
+        expect((resource.values as unknown[]).length).toEqual(length);
       });
 
       it(`should ${update} the source`, () => {
@@ -491,7 +488,7 @@ describe('HalResource', () => {
       });
 
       it(`should ${update} the $source property`, () => {
-        expect(resource.$source._links.values.length).toEqual(length);
+        expect((resource.$source._links.values as unknown as unknown[]).length).toEqual(length);
       });
     };
 
@@ -517,28 +514,28 @@ describe('HalResource', () => {
 
     describe('when adding resources to the array', () => {
       beforeEach(() => {
-        resource.values.push(resource);
+        (resource.values as unknown[]).push(resource);
       });
       expectLengthsToBe(3);
     });
 
     describe('when adding arbitrary values to the array', () => {
       beforeEach(() => {
-        resource.values.push('something');
+        (resource.values as unknown[]).push('something');
       });
       expectLengthsToBe(2, 'not update');
     });
 
     describe('when removing resources from the array', () => {
       beforeEach(() => {
-        resource.values.pop();
+        (resource.values as unknown[]).pop();
       });
       expectLengthsToBe(1);
     });
 
     describe('when each value is transformed', () => {
       beforeEach(() => {
-        resource = resource.values[0];
+        resource = (resource.values as HalResource[])[0];
         source = source._links.values[0];
       });
 
@@ -576,8 +573,9 @@ describe('HalResource', () => {
     });
 
     it('should transform the list elements', () => {
-      expect(resource.$embedded.elements[0].$isHal).toBeTruthy();
-      expect(resource.$embedded.elements[1].$isHal).toBeTruthy();
+      const elements = resource.$embedded.elements as HalResource[];
+      expect(elements[0].$isHal).toBeTruthy();
+      expect(elements[1].$isHal).toBeTruthy();
     });
   });
 
@@ -628,8 +626,9 @@ describe('HalResource', () => {
 
     it('should not be possible to override a link', () => {
       try {
-        resource.$links.action = 'foo';
-      } catch (ignore) {
+        resource.$links.action = 'foo' as unknown as CallableHalLink;
+      }
+      catch {
         /**/
       }
 
@@ -639,7 +638,8 @@ describe('HalResource', () => {
     it('should not be possible to override an embedded resource', () => {
       try {
         resource.$embedded.embedded = 'foo';
-      } catch (ignore) {
+      }
+      catch {
         /**/
       }
 
@@ -686,7 +686,7 @@ describe('HalResource', () => {
       });
 
       it('should be a resource, if the link method is "get"', () => {
-        expect(resource.property.$isHal).toBeTruthy();
+        expect((resource.property as HalResource).$isHal).toBeTruthy();
       });
 
       describe('when a property is a resource', () => {
@@ -695,72 +695,79 @@ describe('HalResource', () => {
         });
 
         it('should not be loaded initially', () => {
-          expect(resource.property.$loaded).toBeFalsy();
-          expect(resource.notLinked.$loaded).toBeTruthy();
+          expect((resource.property as HalResource).$loaded).toBeFalsy();
+          expect((resource.notLinked as HalResource).$loaded).toBeTruthy();
         });
 
         it('should be loaded, if the resource is embedded', () => {
-          expect(resource.embedded.$loaded).toBeTruthy();
+          expect((resource.embedded as HalResource).$loaded).toBeTruthy();
         });
 
         it('should update the source when set', () => {
           resource.property = resource;
+
           expect(resource.$source._links.property.href).toEqual('/api/self');
         });
 
         describe('when loading it', () => {
-          let getStub:jasmine.Spy;
+          let getStub:Mock;
           let newResult:any;
           let promise:Promise<any>;
 
-          beforeEach((done) => {
+          beforeEach(async () => {
             const result = halResourceService.createHalResource({
               _links: {},
               name: 'name',
               foo: 'bar',
             });
 
-            getStub = spyOn(halResourceService, 'request').and.callFake((verb:string, path:string) => {
+            getStub = vi.spyOn(halResourceService, 'request').mockImplementation((verb:string, path:string) => {
               if (verb === 'get' && path === '/api/property') {
-                return of(result) as any;
+                return of(result);
               }
               return false as any;
             });
 
-            resource = resource.property;
+            resource = resource.property as HalResource;
             promise = resource.$load().then((result:HalResource) => {
               newResult = result;
             });
+          });
 
+          it('should request the property', () => {
             expect(getStub).toHaveBeenCalled();
-            done();
           });
 
-          it('should be loaded', (done) => {
-            promise.then(() => {
-              expect(resource.$loaded).toBeTruthy();
-              done();
-            });
+          it('should be loaded', async () => {
+            await promise;
+
+            expect(resource.$loaded).toBeTruthy();
           });
 
-          it('should be updated', () => {
+          it('should be updated', async () => {
+            await promise;
+
             expect(newResult.name).toEqual('name');
           });
 
-          it('should have properties that have a getter and setter', () => {
-            const descriptor = Object.getOwnPropertyDescriptor(newResult, 'foo');
-            expect(descriptor).toBeDefined('Descriptor should be defined');
+          it('should have properties that have a getter and setter', async () => {
+            await promise;
 
-            expect(descriptor!.get).toBeDefined('Descriptor getter should be defined');
-            expect(descriptor!.set).toBeDefined('Descriptor setter should be defined');
+            const descriptor = Object.getOwnPropertyDescriptor(newResult, 'foo');
+
+            expect(descriptor).toBeDefined();
+
+            expect(descriptor).toEqual(expect.objectContaining({
+              get: expect.any(Function),
+              set: expect.any(Function),
+            }));
           });
 
-          it('should return itself in a promise if already loaded', () => {
+          it('should return itself in a promise if already loaded', async () => {
             resource.$loaded = true;
 
-            resource.$load().then((result:HalResource) => {
-              expect(result).toEqual(resource);
-            });
+            const result = await resource.$load();
+            expect(result).toEqual(resource);
           });
         });
       });

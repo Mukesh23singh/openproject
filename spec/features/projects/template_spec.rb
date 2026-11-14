@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,122 +22,153 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Project templates', type: :feature, js: true do
-  describe 'making project a template' do
-    let(:project) { FactoryBot.create :project }
-    shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "Project templates", :js, with_good_job_batches: [CopyProjectJob, SendCopyProjectStatusEmailJob] do
+  describe "making project a template" do
+    let(:project) { create(:project) }
+
+    shared_let(:admin) { create(:admin) }
 
     before do
       login_as admin
     end
 
-    it 'can make the project a template from settings' do
+    it "can make the project a template from settings" do
       visit project_settings_general_path(project)
 
       # Make a template
-      find('.button', text: 'Set as template').click
+      page.find_test_selector("project-settings-more-menu").click
+      page.find_test_selector("project-settings--mark-template", text: "Set as template").click
+      expect_and_dismiss_flash(message: "Successful update.")
 
-      expect(page).to have_selector('.button', text: 'Remove from templates')
       project.reload
       expect(project).to be_templated
 
       # unset template
-      find('.button', text: 'Remove from templates').click
-      expect(page).to have_selector('.button', text: 'Set as template')
+      page.find_test_selector("project-settings-more-menu").click
+      page.find_test_selector("project-settings--mark-template", text: "Remove from templates").click
 
       project.reload
       expect(project).not_to be_templated
     end
   end
 
-  describe 'instantiating templates' do
+  describe "instantiating templates" do
     let!(:template) do
-      FactoryBot.create(:template_project, name: 'My template', enabled_module_names: %w[wiki work_package_tracking])
+      create(:template_project,
+             :with_internal_wiki,
+             status_code: "on_track",
+             status_explanation: "some explanation",
+             name: "My template",
+             enabled_module_names: %w[work_package_tracking])
     end
-    let!(:template_status) { FactoryBot.create(:project_status, project: template, explanation: 'source') }
-    let!(:other_project) { FactoryBot.create(:project, name: 'Some other project') }
-    let!(:work_package) { FactoryBot.create :work_package, project: template }
-    let!(:wiki_page) { FactoryBot.create(:wiki_page_with_content, wiki: template.wiki) }
+    let!(:other_project) { create(:project, name: "Some other project") }
+    let!(:work_package) { create(:work_package, project: template) }
+    let!(:wiki_page) { create(:wiki_page, wiki: template.wiki) }
 
     let!(:role) do
-      FactoryBot.create(:role, permissions: %i[view_project view_work_packages copy_projects add_subprojects add_project])
+      create(:project_role, permissions: %i[view_project view_work_packages copy_projects add_subprojects])
     end
-    let!(:current_user) { FactoryBot.create(:user, member_in_projects: [template, other_project], member_through_role: role) }
+    let!(:global_permissions) do
+      %i[add_project]
+    end
     let(:status_field_selector) { 'ckeditor-augmented-textarea[textarea-selector="#project_status_explanation"]' }
-    let(:status_description) { ::Components::WysiwygEditor.new status_field_selector }
+    let(:status_description) { Components::WysiwygEditor.new status_field_selector }
 
-    let(:name_field) { ::FormFields::InputFormField.new :name }
-    let(:template_field) { ::FormFields::SelectFormField.new :use_template }
-    let(:status_field) { ::FormFields::SelectFormField.new :status }
-    let(:parent_field) { ::FormFields::SelectFormField.new :parent }
-
-    before do
-      login_as current_user
+    let!(:other_user) do
+      create(:user, member_with_roles: { template => role })
     end
 
-    it 'can instantiate the project with the copy permission' do
-      visit new_project_path
+    current_user do
+      create(:user,
+             member_with_roles: { template => role, other_project => role },
+             global_permissions:)
+    end
 
-      name_field.set_value 'Foo bar'
+    it "does not show a special heading when the project initiation feature is enabled" do
+      visit new_project_path(template_id: template.id)
+      expect(page).to have_heading "New project"
+    end
 
-      template_field.select_option 'My template'
+    it "can instantiate the project with the copy permission" do
+      visit new_project_path(template_id: template.id)
 
-      sleep 1
+      # Step 2: Project details
+      expect(page).to have_heading "New project"
+      expect(page).to have_text("2 of 2")
+      fill_in "Name", with: "Foo bar"
 
-      # It keeps the name
-      name_field.expect_value 'Foo bar'
-      template_field.expect_selected 'My template'
+      click_on "Complete"
 
-      # Updates the identifier in advanced settings
-      page.find('.op-fieldset--toggle', text: 'ADVANCED SETTINGS').click
-      status_field.expect_selected 'ON TRACK'
+      expect(page).to have_dialog "Background job status"
 
-      # It does not show the copy meta flags
-      expect(page).to have_no_selector('[data-qa-field-name="copyMembers"]')
-      expect(page).to have_no_selector('[data-qa-field-name="sendNotifications"]')
+      within_dialog "Background job status" do
+        expect(page).to have_heading "Applying template"
+        expect(page).to have_text "The job has been queued and will be processed shortly."
+      end
 
-      # Update status to off track
-      status_field.select_option 'Off track'
-      parent_field.select_option other_project.name
-
-      page.find('button:not([disabled])', text: 'Save').click
-
-      expect(page).to have_content I18n.t(:label_copy_project)
-      expect(page).to have_content I18n.t('js.job_status.generic_messages.in_queue')
-
-      # Email notification should be sent
-      perform_enqueued_jobs
+      # Run background jobs twice: the background job which itself enqueues the mailer job
+      GoodJob.perform_inline
 
       mail = ActionMailer::Base
         .deliveries
-        .detect { |mail| mail.subject == 'Created project Foo bar' }
+        .detect { |mail| mail.subject == "Created project Foo bar" }
 
       expect(mail).not_to be_nil
 
       expect(page).to have_current_path /\/projects\/foo-bar\/?/, wait: 20
 
-      project = Project.find_by identifier: 'foo-bar'
-      expect(project.name).to eq 'Foo bar'
+      project = Project.find_by identifier: "foo-bar"
+      expect(project.name).to eq "Foo bar"
       expect(project).not_to be_templated
-      expect(project.users.first).to eq current_user
+      # Members are copied by default from the template
+      expect(project.users).to contain_exactly(current_user, other_user)
       expect(project.enabled_module_names.sort).to eq(template.enabled_module_names.sort)
 
       wp_source = template.work_packages.first.attributes.except(*%w[id author_id project_id updated_at created_at])
       wp_target = project.work_packages.first.attributes.except(*%w[id author_id project_id updated_at created_at])
-      expect(wp_source).to eq(wp_target)
+      expect(wp_target).to eq(wp_source)
 
       wiki_source = template.wiki.pages.first
       wiki_target = project.wiki.pages.first
       expect(wiki_source.title).to eq(wiki_target.title)
-      expect(wiki_source.content.text).to eq(wiki_target.content.text)
+      expect(wiki_source.text).to eq(wiki_target.text)
+    end
+
+    it "skips custom field validation when creating from template" do
+      # Create a required custom field on the template
+      custom_field = create(:string_project_custom_field, is_required: true)
+      template.project_custom_field_ids = [custom_field.id]
+
+      visit new_project_path(template_id: template.id)
+
+      # Step 2: Project details
+      expect(page).to have_text("2 of 2")
+      fill_in "Name", with: "Project from template"
+
+      click_on "Complete"
+
+      # Step 3: Custom fields - should not show custom field form when creating from template
+      expect(page).to have_no_field custom_field.name
+
+      # Templates submit automatically on step 3 since custom fields are skipped
+      expect(page).to have_dialog "Background job status"
+
+      GoodJob.perform_inline
+
+      expect(page).to have_current_path /\/projects\/project-from-template\/?/, wait: 20
+
+      # Project should be created successfully even though required custom field is empty
+      project = Project.find_by(identifier: "project-from-template")
+      expect(project).to be_present
+      expect(project.template).to eq(template)
+      expect(project.send(custom_field.attribute_getter)).to be_blank
     end
   end
 end

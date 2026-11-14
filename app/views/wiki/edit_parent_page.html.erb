@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,39 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<%= toolbar title: "#{t(:button_change_parent_page)}: #{@page.title}" %>
+<% html_title Wiki.model_name.human, t(:button_change_parent_page) %>
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title_content(@page.title)
+    header.with_breadcrumbs(
+      breadcrumb_for_page(@project, @page)
+    )
+  end
+%>
+<%= error_messages_for "page" %>
 
-<% html_title t('activerecord.models.wiki'), t(:button_change_parent_page) %>
-<% breadcrumb_paths(*(@page.ancestors.reverse.collect { |parent| link_to h(parent.breadcrumb_title), {id: parent, project_id: parent.project}} + [h(@page.breadcrumb_title)] )) %>
-<%= error_messages_for 'page' %>
+<%= primer_form_with(model: @page, url: { id: @page, action: "update_parent_page" }) do |f| %>
+  <%= render_inline_form(f) do |form|
+        form.select_list(
+          name: :parent_id,
+          input_width: :large,
+          label: WikiPage.human_attribute_name(:parent_title)
+        ) do |list|
+          helpers.wiki_page_options_for_select(model.wiki.pages).each do |label, value|
+            list.option(
+              label:,
+              value:,
+              selected: model.parent_id == value
+            )
+          end
+        end
 
-<%= labelled_tabular_form_for @page, url: { id: @page, action: 'update_parent_page' } do |f| %>
-  <div class='form--field'>
-    <%= f.select :parent_id,
-                 wiki_page_options_for_select(@parent_pages),
-                 { label: WikiPage.human_attribute_name(:parent_title), include_blank: false, container_class: '-wide' } %>
-  </div>
-
-  <%= nonced_javascript_tag  do -%>
-    jQuery(function() {
-        var parent_select = jQuery('#wiki_page_parent_id');
-        parent_select.attr('size', parent_select.children().length);
-      }
-    ));
-  <% end -%>
-  <%= submit_tag t(:button_save), class: 'button -highlight' %>
+        form.submit(name: :submit, label: helpers.t(:button_submit), scheme: :primary)
+      end %>
 <% end %>

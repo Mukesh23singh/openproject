@@ -1,0 +1,243 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import '@openproject/primer-view-components/app/components/primer/alpha/tool_tip.js';
+import { TestBed } from '@angular/core/testing';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ColorsService } from 'core-app/shared/components/colors/colors.service';
+import { PrincipalRendererService } from './principal-renderer.service';
+
+describe('PrincipalRendererService', () => {
+  let service:PrincipalRendererService;
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        PrincipalRendererService,
+        ColorsService,
+        { provide: PathHelperService, useValue: { userPath: (id:string) => `/users/${id}` } },
+        {
+          provide: ApiV3Service,
+          useValue: {
+            users: { id: (id:string) => ({ avatar: { toString: () => `/api/v3/users/${id}/avatar` } }) },
+            groups: { id: (id:string) => ({ avatar: { toString: () => `/api/v3/groups/${id}/avatar` } }) },
+          },
+        },
+      ],
+    });
+
+    service = TestBed.inject(PrincipalRendererService);
+  });
+
+  describe('name hints', () => {
+    let container:HTMLElement;
+
+    beforeEach(() => { container = document.body.appendChild(document.createElement('div')); });
+
+    afterEach(() => container.remove());
+
+    function renderName(title:string|null, link = true) {
+      service.render(
+        container,
+        { id: '1', name: 'John Doe', href: '/api/v3/users/1' },
+        { hide: false, link },
+        { hide: true, size: 'default' },
+        { isActivated: true, url: '/users/1/hover_card' },
+        title,
+      );
+
+      return container.querySelector<HTMLElement>('.op-principal--name')!;
+    }
+
+    it.each([null, '', 'John Doe'])('omits redundant linked name hints (%s)', (title) => {
+      const name = renderName(title);
+      expect(name).toHaveAccessibleName('John Doe');
+      expect(name).toHaveAccessibleDescription('');
+      expect(name).toHaveAttribute('title', '');
+      expect(container.querySelector('tool-tip')).toBeNull();
+    });
+
+    it('describes a linked name without moving hover-card attributes', () => {
+      const name = renderName('Assigned to this work package');
+      expect(name).toHaveAccessibleName('John Doe');
+      expect(name).toHaveAccessibleDescription('Assigned to this work package');
+      expect(name).toHaveAttribute('href', '/users/1');
+      expect(name).toHaveAttribute('title', '');
+      expect(name).toHaveAttribute('data-hover-card-trigger-target', 'trigger');
+      expect(name).toHaveAttribute('data-hover-card-url', '/users/1/hover_card');
+    });
+
+    it('keeps nonlinked names unchanged', () => {
+      const name = renderName('Assigned to this work package', false);
+      expect(name.tagName).toBe('SPAN');
+      expect(name).toHaveAttribute('title', 'Assigned to this work package');
+      expect(container.querySelector('tool-tip')).toBeNull();
+    });
+  });
+
+  describe('fallback avatar initials', () => {
+    const renderFallback = (name:string):string|null => {
+      const container = document.createElement('div');
+
+      service.render(
+        container,
+        { id: '1', name, href: '/api/v3/placeholder_users/1' },
+        { hide: true, link: false },
+        { hide: false, size: 'default' },
+        { isActivated: false },
+      );
+
+      return container.querySelector('.op-avatar--fallback')?.textContent ?? null;
+    };
+
+    it('uses the first letters of first and last name', () => {
+      expect(renderFallback('John Doe')).toBe('JD');
+    });
+
+    it('uses a single initial when there is no last name', () => {
+      expect(renderFallback('Madonna')).toBe('M');
+    });
+
+    it('keeps emoji first names as complete code points', () => {
+      expect(renderFallback('🤖 Oliver')).toBe('🤖O');
+    });
+
+    it('keeps emoji last names as complete code points', () => {
+      expect(renderFallback('Oliver 🤖')).toBe('O🤖');
+    });
+
+    it('keeps emoji-only names as complete code points', () => {
+      expect(renderFallback('🤖')).toBe('🤖');
+    });
+  });
+
+  describe('user avatar', () => {
+    const renderUser = ():HTMLElement => {
+      const container = document.createElement('div');
+
+      service.render(
+        container,
+        { id: '1', name: 'John Doe', href: '/api/v3/users/1' },
+        { hide: true, link: false },
+        { hide: false, size: 'default' },
+        { isActivated: false },
+      );
+
+      return container;
+    };
+
+    it('renders an <img> pointed at the backend avatar endpoint', () => {
+      const container = renderUser();
+      const image = container.querySelector<HTMLImageElement>('.op-principal--avatar');
+
+      expect(image?.tagName).toBe('IMG');
+      expect(image?.getAttribute('src')).toBe('/api/v3/users/1/avatar');
+      expect(image).toHaveClass('op-avatar_user');
+    });
+
+    it('retries once with fallback=true when the image fails to load', () => {
+      const container = renderUser();
+      const image = container.querySelector<HTMLImageElement>('.op-principal--avatar');
+
+      image?.dispatchEvent(new Event('error'));
+
+      expect(image?.getAttribute('src')).toBe('/api/v3/users/1/avatar?fallback=true');
+    });
+
+    it('clears the error handler after the first retry so a second failure does not trigger another request', () => {
+      const container = renderUser();
+      const image = container.querySelector<HTMLImageElement>('.op-principal--avatar');
+
+      image?.dispatchEvent(new Event('error'));
+
+      expect(image?.onerror).toBeNull();
+    });
+  });
+
+  describe('avatar image overrides', () => {
+    const renderPreview = (fallbackImageUrl?:string):HTMLImageElement => {
+      const container = document.createElement('div');
+      service.render(
+        container,
+        { id: '1', name: 'John Doe', href: '/api/v3/users/1' },
+        { hide: false, link: false },
+        { hide: false, size: 'mini', imageUrl: 'blob:avatar-preview', fallbackImageUrl },
+        { isActivated: false },
+      );
+      return container.querySelector<HTMLImageElement>('.op-principal--avatar')!;
+    };
+
+    it('uses the override with the standard avatar size and principal name', () => {
+      const image = renderPreview();
+
+      expect(image.getAttribute('src')).toBe('blob:avatar-preview');
+      expect(image).toHaveClass('op-avatar_mini');
+      expect(image.parentElement).toHaveTextContent('John Doe');
+    });
+
+    it('uses the fallback override when the preview image fails', () => {
+      const image = renderPreview('data:image/svg+xml,preview');
+      image.dispatchEvent(new Event('error'));
+
+      expect(image.getAttribute('src')).toBe('data:image/svg+xml,preview');
+      expect(image.onerror).toBeNull();
+    });
+
+    it('uses the backend fallback when no fallback override is provided', () => {
+      const image = renderPreview();
+      image.dispatchEvent(new Event('error'));
+
+      expect(image.getAttribute('src')).toBe('/api/v3/users/1/avatar?fallback=true');
+    });
+  });
+
+  describe('group avatar', () => {
+    const renderGroup = ():HTMLElement => {
+      const container = document.createElement('div');
+
+      service.render(
+        container,
+        { id: '1', name: 'A-Team', href: '/api/v3/groups/1' },
+        { hide: true, link: false },
+        { hide: false, size: 'default' },
+        { isActivated: false },
+      );
+
+      return container;
+    };
+
+    it('renders an <img> pointed at the backend group avatar endpoint, same as for users', () => {
+      const container = renderGroup();
+      const image = container.querySelector<HTMLImageElement>('.op-principal--avatar');
+
+      expect(image?.tagName).toBe('IMG');
+      expect(image?.getAttribute('src')).toBe('/api/v3/groups/1/avatar');
+      expect(image).toHaveClass('op-avatar_group');
+    });
+  });
+});

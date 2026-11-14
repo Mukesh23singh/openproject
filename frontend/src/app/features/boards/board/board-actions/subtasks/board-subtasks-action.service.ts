@@ -1,7 +1,37 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injectable } from '@angular/core';
 import { BoardActionService } from 'core-app/features/boards/board/board-actions/board-action.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { Observable } from 'rxjs';
+import {
+  firstValueFrom,
+  Observable,
+} from 'rxjs';
 import { map } from 'rxjs/operators';
 import { SubtasksBoardHeaderComponent } from 'core-app/features/boards/board/board-actions/subtasks/subtasks-board-header.component';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
@@ -13,6 +43,8 @@ import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 @Injectable()
 export class BoardSubtasksActionService extends BoardActionService {
   filterName = 'parent';
+
+  resourceName = 'parent-child' as const;
 
   text = this.I18n.t('js.boards.board_type.board_type_title.subtasks');
 
@@ -28,6 +60,10 @@ export class BoardSubtasksActionService extends BoardActionService {
 
   public headerComponent() {
     return SubtasksBoardHeaderComponent;
+  }
+
+  public largeHeader():boolean {
+    return true;
   }
 
   public canMove(workPackage:WorkPackageResource):boolean {
@@ -51,13 +87,13 @@ export class BoardSubtasksActionService extends BoardActionService {
     filters.add('project', '=', [this.currentProject.id || '']);
 
     if (matching) {
-      filters.add('subjectOrId', '**', [matching]);
+      filters.add('typeahead', '**', [matching]);
     }
 
     return this
       .apiV3Service
       .work_packages
-      .filtered(filters)
+      .filtered(filters, { pageSize: '-1' })
       .get()
       .pipe(
         map((collection) => collection.elements),
@@ -65,11 +101,6 @@ export class BoardSubtasksActionService extends BoardActionService {
   }
 
   protected require(id:string):Promise<HalResource> {
-    return this
-      .apiV3Service
-      .work_packages
-      .id(id)
-      .get()
-      .toPromise();
+    return firstValueFrom(this.apiV3Service.work_packages.id(id).get());
   }
 }

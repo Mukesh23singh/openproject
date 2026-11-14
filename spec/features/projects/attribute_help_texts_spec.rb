@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,95 +22,119 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Project attribute help texts', type: :feature, js: true do
-  let(:project) { FactoryBot.create :project }
+RSpec.describe "Project attribute help texts", :js do
+  let!(:project) { create(:project) }
 
-  let(:instance) do
-    FactoryBot.create :project_help_text,
-                      attribute_name: :status,
-                      help_text: 'Some **help text** for status.'
-    FactoryBot.create :project_help_text,
-                      attribute_name: :description,
-                      help_text: 'Some **help text** for description.'
+  let!(:name_help_text) do
+    create(
+      :project_help_text,
+      attribute_name: :name,
+      help_text: "Some **help text** for name."
+    )
+  end
+
+  let!(:description_help_text) do
+    create(
+      :project_help_text,
+      attribute_name: :description,
+      help_text: "Some **help text** for description."
+    )
+  end
+
+  let!(:status_help_text) do
+    create(
+      :project_help_text,
+      attribute_name: :status,
+      help_text: "Some **help text** for status."
+    )
   end
 
   let(:grid) do
-    grid = FactoryBot.create :grid
-    grid.widgets << FactoryBot.create(:grid_widget,
-                                      identifier: 'project_status',
-                                      options: { 'name' => 'Project status' },
-                                      start_row: 1,
-                                      end_row: 2,
-                                      start_column: 1,
-                                      end_column: 1)
+    grid = create(:grid)
+    grid.widgets << create(:grid_widget,
+                           identifier: "project_status",
+                           options: { "name" => "Status" },
+                           start_row: 1,
+                           end_row: 2,
+                           start_column: 1,
+                           end_column: 1)
   end
-
-  let(:modal) { Components::AttributeHelpTextModal.new(instance) }
-  let(:wp_page) { Pages::FullWorkPackage.new work_package }
 
   before do
     login_as user
-    project
-    instance
   end
 
-  shared_examples 'allows to view help texts' do
-    it 'shows an indicator for whatever help text exists' do
-      visit project_path(project)
+  shared_examples "allows to view help texts" do |show_edit:|
+    it "shows help text modal on clicking help text link" do
+      visit dashboard_project_overview_path(project)
 
-      within '#menu-sidebar' do
-        click_link "Overview"
+      wait_for_network_idle
+      expect(page).to have_css("#{test_selector('op-widget-box--header')} .help-text--entry", wait: 10)
+
+      # Open help text modal
+      page.find("[data-qa-help-text-for='description").click
+
+      expect(page).to have_modal "Description"
+      within_modal "Description" do
+        expect(page).to have_css("strong", text: "help text")
+
+        expect(page).to have_button "Close"
+        if show_edit
+          expect(page).to have_link "Edit"
+        end
+
+        click_on "Close"
       end
 
-      expect(page).to have_selector('[data-qa-selector="op-widget-box--header"] .help-text--entry', wait: 10)
-
-      # Open help text modal
-      modal.open!
-      expect(modal.modal_container).to have_selector('strong', text: 'help text')
-      modal.expect_edit(admin: user.admin?)
-
-      modal.close!
+      expect(page).to have_no_modal "Description"
     end
   end
 
-  describe 'as admin' do
-    let(:user) { FactoryBot.create :admin }
-    it_behaves_like 'allows to view help texts'
+  describe "as admin" do
+    let(:user) { create(:admin) }
 
-    it 'shows the help text on the project create form' do
+    it_behaves_like "allows to view help texts", show_edit: true
+
+    it "shows the help text on the project create form" do
       visit new_project_path
 
-      page.find('.op-fieldset--legend', text: 'ADVANCED SETTINGS').click
+      # Step 1: Select workspace type (blank project)
+      click_on "Continue"
 
-      expect(page).to have_selector('.op-form-field--label attribute-help-text', wait: 10)
+      # Step 2: Project details - Name field is visible here
+      expect(page).to have_field "Name"
 
-      # Open help text modal
-      modal.open!
-      expect(modal.modal_container).to have_selector('strong', text: 'help text')
-      modal.expect_edit(admin: user.admin?)
+      within(:element, "label", text: "Name") do
+        click_on accessible_name: "Show help text"
+      end
 
-      modal.close!
+      expect(page).to have_modal "Name"
+
+      within_modal "Name" do
+        expect(page).to have_css "strong", text: "help text"
+
+        expect(page).to have_button "Close"
+        expect(page).to have_link "Edit"
+
+        click_on "Close"
+      end
+
+      expect(page).not_to have_modal "Name"
     end
   end
 
-  describe 'as regular user' do
-    let(:view_role) do
-      FactoryBot.create :role, permissions: [:view_project]
-    end
+  describe "as regular user" do
     let(:user) do
-      FactoryBot.create :user,
-                        member_in_project: project,
-                        member_through_role: view_role
+      create(:user, member_with_permissions: { project => [:view_project] })
     end
 
-    it_behaves_like 'allows to view help texts'
+    it_behaves_like "allows to view help texts", show_edit: false
   end
 end

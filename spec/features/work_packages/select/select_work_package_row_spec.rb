@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,23 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Select work package row', type: :feature, js: true, selenium: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:project) { FactoryBot.create(:project) }
-  let(:work_package_1) { FactoryBot.create(:work_package, project: project) }
-  let(:work_package_2) { FactoryBot.create(:work_package, project: project) }
-  let(:work_package_3) { FactoryBot.create(:work_package, project: project) }
-  let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
+RSpec.describe "Select work package row", :js do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project) }
+  let(:work_package_1) { create(:work_package, project:) }
+  let(:work_package_2) { create(:work_package, project:) }
+  let(:work_package_3) { create(:work_package, project:) }
+  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
 
-  include_context 'work package table helpers'
+  include_context "work package table helpers"
 
   before do
     login_as(user)
@@ -66,20 +67,14 @@ describe 'Select work package row', type: :feature, js: true, selenium: true do
     element = find(".work-package-table--container tr:nth-of-type(#{number}) .wp-table--cell-td.id")
     loading_indicator_saveguard
 
-    page.driver.browser.action.key_down(:shift)
-        .click(element.native)
-        .key_up(:shift)
-        .perform
+    element.click(:shift)
   end
 
   def select_work_package_row_with_ctrl(number)
     element = find(".work-package-table--container tr:nth-of-type(#{number}) .wp-table--cell-td.id")
     loading_indicator_saveguard
 
-    page.driver.browser.action.key_down(:meta)
-        .click(element.native)
-        .key_up(:meta)
-        .perform
+    element.click(:meta)
   end
 
   def expect_row_checked(*indices)
@@ -103,18 +98,18 @@ describe 'Select work package row', type: :feature, js: true, selenium: true do
   end
 
   def check_all
-    find('body').send_keys [:control, 'a']
+    wp_table.select_all_work_packages
     expect_row_checked(1, 2, 3)
-    expect(page).to have_no_selector '#work-package-context-menu'
+    expect(page).to have_no_css "#work-package-context-menu"
   end
 
   def uncheck_all
-    find('body').send_keys [:control, 'd']
+    find("body").send_keys :escape
     expect_row_unchecked(1, 2, 3)
-    expect(page).to have_no_selector '#work-package-context-menu'
+    expect(page).to have_no_css "#work-package-context-menu"
   end
 
-  it 'handles selection flows' do
+  it "handles selection flows" do
     ###
     # Keyboard shortcuts
     ###
@@ -135,6 +130,12 @@ describe 'Select work package row', type: :feature, js: true, selenium: true do
     # select different row with right click
     select_work_package_row(3, :right)
     expect_row_unchecked(1, 2)
+    expect_row_checked(3)
+
+    # Escape closes the context menu first and leaves the selection alone
+    expect(page).to have_css "#work-package-context-menu"
+    find("body").send_keys :escape
+    expect(page).to have_no_css "#work-package-context-menu"
     expect_row_checked(3)
 
     ###
@@ -198,30 +199,43 @@ describe 'Select work package row', type: :feature, js: true, selenium: true do
     expect_row_unchecked(2)
   end
 
-  describe 'opening work package full screen view' do
+  it "clears the selection with the Escape after a cancelled inline create" do
+    check_all
+    wp_table.click_inline_create
+
+    # The first Escape cancels the create row and hands focus back to the button
+    find_by_id("wp-new-inline-edit--field-subject").send_keys :escape
+    expect(page).to have_no_css(".wp-inline-create-row")
+    expect_row_checked(1, 2, 3)
+
+    expect(page).to have_focus_on('[data-test-selector="op-wp-inline-create"]')
+    page.send_keys :escape
+    expect_row_unchecked(1, 2, 3)
+  end
+
+  describe "opening work package full screen view" do
     before do
       wp_table.open_full_screen_by_doubleclick(work_package_1)
     end
 
     it do
-      expect(page).to have_selector('.work-packages--details--subject',
-                                    text: work_package_1.subject)
+      expect(page).to have_heading(work_package_1.subject, level: 2, exact: true)
     end
   end
 
-  describe 'opening last selected work package' do
+  describe "opening last selected work package" do
     before do
       select_work_package_row(2)
       expect_row_checked(2)
     end
 
     it do
-      find('#work-packages-details-view-button').click
-      split_wp = Pages::SplitWorkPackage.new(work_package_2)
+      find_by_id("work-packages-details-view-button").click
+      split_wp = Pages::PrimerizedSplitWorkPackage.new(work_package_2)
       split_wp.expect_attributes Subject: work_package_2.subject
 
-      find('#work-packages-details-view-button').click
-      expect(page).to have_no_selector('.work-packages--details')
+      find_by_id("work-packages-details-view-button").click
+      expect(page).to have_no_css(".work-packages--details")
     end
   end
 end

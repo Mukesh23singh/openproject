@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'Quick-add menu', js: true, selenium: true do
-  let(:quick_add) { ::Components::QuickAddMenu.new }
+RSpec.describe "Quick-add menu", :js do
+  let(:quick_add) { Components::QuickAddMenu.new }
 
-  context 'as a logged in user with add_project permission' do
-    current_user { FactoryBot.create :user, global_permission: %i[add_project] }
+  context "as a logged in user with add_project permission" do
+    current_user { create(:user, global_permissions: %i[add_project]) }
 
-    it 'shows the add project option' do
+    it "shows the add project option" do
       visit home_path
 
       quick_add.expect_visible
@@ -43,46 +44,48 @@ feature 'Quick-add menu', js: true, selenium: true do
       quick_add.expect_user_invite present: false
       quick_add.expect_no_work_package_types
 
-      quick_add.click_link 'Project'
+      quick_add.click_link "Project"
       expect(page).to have_current_path new_project_path
     end
 
-    context 'with an existing project' do
-      let(:project) { FactoryBot.create :project }
-      let(:field) { ::FormFields::SelectFormField.new :parent }
+    context "with an existing project" do
+      let(:project) { create(:project) }
+      let(:field) { FormFields::SelectFormField.new :parent }
 
       current_user do
-        FactoryBot.create :user,
-                          member_in_project: project,
-                          member_with_permissions: %i[add_subprojects]
+        create(:user,
+               member_with_permissions: { project => %i[add_subprojects] })
       end
 
-      it 'moves to a form with parent_id set' do
+      it "moves to a form with parent_id set" do
         visit project_path(project)
 
         quick_add.expect_visible
         quick_add.toggle
         quick_add.expect_add_project
 
-        quick_add.click_link 'Project'
+        quick_add.click_link "Project"
         expect(page).to have_current_path new_project_path(parent_id: project.id)
 
-        field.expect_selected project.name
+        # Step 1: Select workspace type (blank project)
+        click_on "Continue"
+
+        # Step 2: Project details - Parent field is not visible here
+        field.expect_not_visible
       end
     end
   end
 
-  context 'with current user as member with permission :manage_members in one project' do
-    let!(:project) { FactoryBot.create :project }
-    let(:invite_modal) { ::Components::Users::InviteUserModal.new project: project, role: nil, principal: nil }
+  context "with current user as member with permission :manage_members in one project" do
+    let!(:project) { create(:project) }
+    let(:invite_modal) { Components::Users::InviteUserModal.new project:, role: nil, principal: nil }
 
     current_user do
-      FactoryBot.create :user,
-                        member_in_project: project,
-                        member_with_permissions: %i[manage_members]
+      create(:user,
+             member_with_permissions: { project => %i[manage_members] })
     end
 
-    it 'shows the user invite screen' do
+    it "shows the user invite screen" do
       visit home_path
 
       quick_add.expect_visible
@@ -91,43 +94,118 @@ feature 'Quick-add menu', js: true, selenium: true do
       quick_add.expect_no_work_package_types
       quick_add.expect_user_invite
 
-      quick_add.click_link 'Invite user'
+      quick_add.click_link "Invite user"
       invite_modal.expect_open
     end
   end
 
-  context 'with a project with one of three work package types' do
-    let!(:type_bug) { FactoryBot.create :type_bug }
-    let!(:other_type) { FactoryBot.create :type_task }
-    let!(:other_project_type) { FactoryBot.create :type }
-    let!(:add_role) { FactoryBot.create(:role, permissions: %i[add_work_packages]) }
-    let!(:read_role) { FactoryBot.create(:role, permissions: %i[view_work_packages]) }
+  context "with current user as member with permission :manage_board_views in one project" do
+    let!(:project) { create(:project) }
+
+    current_user do
+      create(:user,
+             member_with_permissions: { project => %i[show_board_views manage_board_views
+                                                      add_work_packages view_work_packages
+                                                      manage_public_queries] })
+    end
+
+    it "shows the add board option" do
+      visit project_path(project)
+
+      quick_add.expect_visible
+      quick_add.toggle
+      quick_add.expect_board
+
+      quick_add.click_link "Board"
+      expect(page).to have_current_path new_project_work_package_board_path(project)
+    end
+  end
+
+  context "with current user as member with permission :create_meetings in one project" do
+    let!(:project) { create(:project) }
+
+    current_user do
+      create(:user,
+             member_with_permissions: { project => %i[view_meetings create_meetings] })
+    end
+
+    it "shows the add meeting option within the project and globally" do
+      visit project_path(project)
+
+      quick_add.expect_visible
+      quick_add.toggle
+      quick_add.expect_meeting
+
+      quick_add.click_link "Meeting"
+      expect(page).to have_css("#new-meeting-dialog")
+
+      visit home_path
+
+      quick_add.expect_visible
+      quick_add.toggle
+      quick_add.expect_meeting
+
+      quick_add.click_link "Meeting"
+      expect(page).to have_css("#new-meeting-dialog")
+    end
+  end
+
+  context "with current user as member with permission :manage_documents in one project" do
+    let!(:project) { create(:project, enabled_module_names: %w[documents]) }
+
+    current_user do
+      create(:user,
+             member_with_permissions: { project => %i[view_documents manage_documents] })
+    end
+
+    it "shows the add document option only within the project" do
+      visit project_path(project)
+
+      quick_add.expect_visible
+      quick_add.toggle
+      quick_add.expect_document
+
+      quick_add.click_link "Document"
+      expect(page).to have_current_path new_project_document_path(project)
+
+      visit home_path
+
+      quick_add.expect_invisible
+    end
+  end
+
+  context "with a project with one of three work package types" do
+    let!(:type_bug) { create(:type_bug) }
+    let!(:other_type) { create(:type_task) }
+    let!(:other_project_type) { create(:type) }
+    let!(:add_role) { create(:project_role, permissions: %i[add_work_packages]) }
+    let!(:read_role) { create(:project_role, permissions: %i[view_work_packages]) }
     let!(:project_with_permission) do
-      FactoryBot.create :project,
-                        types: [type_bug],
-                        members: { current_user => add_role }
+      create(:project,
+             types: [type_bug],
+             members: { current_user => add_role })
     end
     let!(:other_project_with_permission) do
-      FactoryBot.create :project,
-                        types: [other_project_type],
-                        members: { current_user => add_role }
-
+      create(:project,
+             types: [other_project_type],
+             members: { current_user => add_role })
     end
     let!(:project_without_permission) do
-      FactoryBot.create :project,
-                        types: [other_type],
-                        members: { current_user => read_role }
+      create(:project,
+             types: [other_type],
+             members: { current_user => read_role })
     end
 
-    current_user { FactoryBot.create :user }
+    current_user { create(:user) }
 
-    it 'shows only the project types within a project and only those types in projects the user can add work packages in' do
+    it "shows only the project types within a project and only those types in projects the user can add work packages in" do
       visit project_path(project_with_permission)
 
       quick_add.expect_visible
       quick_add.toggle
       quick_add.expect_add_project present: false
       quick_add.expect_user_invite present: false
+      quick_add.open_work_package_submenu
       quick_add.expect_work_package_type type_bug.name
       quick_add.expect_work_package_type other_type.name, present: false
       quick_add.expect_work_package_type other_project_type.name, present: false
@@ -144,33 +222,55 @@ feature 'Quick-add menu', js: true, selenium: true do
 
       quick_add.expect_visible
       quick_add.toggle
+      quick_add.open_work_package_submenu
       quick_add.expect_work_package_type type_bug.name
       quick_add.expect_work_package_type other_type.name, present: false
       quick_add.expect_work_package_type other_project_type.name
 
       quick_add.click_link other_project_type.name
-      expect(page).to have_current_path new_work_packages_path(type: other_project_type.id)
+      expect(page).to have_current_path new_work_package_path(type: other_project_type.id)
     end
   end
 
-  context 'as a logged in user with no permissions' do
-    current_user { FactoryBot.create :user }
+  context "as a logged in user with no permissions" do
+    current_user { create(:user) }
 
-    it 'does not show the quick add menu on the home screen' do
+    it "does not show the quick add menu on the home screen" do
       visit home_path
       quick_add.expect_invisible
     end
   end
 
-  context 'as an anonymous user', with_settings: { login_required: true } do
+  context "as an anonymous user", with_settings: { login_required: true } do
     current_user do
-      FactoryBot.create(:anonymous_role, permissions: %i[add_work_packages])
-      FactoryBot.create :anonymous
+      create(:anonymous_role, permissions: %i[add_work_packages])
+      create(:anonymous)
     end
 
-    it 'does not show the quick add menu on the home screen' do
+    it "does not show the quick add menu on the home screen" do
       visit signin_path
       quick_add.expect_invisible
+    end
+  end
+
+  context "with a project that has a variant enabled" do
+    let!(:root_type) { create(:type, name: "Task") }
+    let!(:variant) { create(:type_variant, type: root_type, variant_name: "Bug") }
+    let!(:add_role) { create(:project_role, permissions: %i[add_work_packages]) }
+    let!(:project) do
+      create(:project, types: [variant], members: { current_user => add_role })
+    end
+
+    current_user { create(:user) }
+
+    it "labels the quick-add entry with the type's name, not the variant's" do
+      visit project_path(project)
+
+      quick_add.expect_visible
+      quick_add.toggle
+      quick_add.open_work_package_submenu
+      quick_add.expect_work_package_type root_type.name
+      quick_add.expect_work_package_type variant.variant_name, present: false
     end
   end
 end

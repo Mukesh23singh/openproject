@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,41 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples_for 'time entry contract' do
-  let(:current_user) do
-    FactoryBot.build_stubbed(:user) do |user|
-      allow(user)
-        .to receive(:allowed_to?) do |permission, permission_project|
-        permissions.include?(permission) && time_entry_project == permission_project
-      end
+RSpec.shared_examples_for "time entry contract" do
+  let(:current_user) { build_stubbed(:user) }
+  before do
+    mock_permissions_for(current_user) do |mock|
+      mock.allow_in_project(*permissions, project: time_entry_project) if time_entry_project
     end
   end
-  let(:other_user) { FactoryBot.build_stubbed(:user) }
-  let(:time_entry_work_package) do
-    FactoryBot.build_stubbed(:work_package,
-                             project: time_entry_project)
-  end
-  let(:time_entry_project) { FactoryBot.build_stubbed(:project) }
+
+  let(:other_user) { build_stubbed(:user) }
+  let(:time_entry_entity) { build_stubbed(:work_package, project: time_entry_project) }
+  let(:time_entry_project) { build_stubbed(:project) }
   let(:time_entry_user) { current_user }
-  let(:time_entry_activity) do
-    FactoryBot.build_stubbed(:time_entry_activity)
-  end
+  let(:time_entry_activity) { build_stubbed(:time_entry_activity) }
   let(:time_entry_activity_active) { true }
-  let(:time_entry_spent_on) { Date.today }
+  let(:time_entry_spent_on) { Time.zone.today }
   let(:time_entry_hours) { 5 }
   let(:time_entry_comments) { "A comment" }
-  let(:work_package_visible) { true }
+  let(:time_entry_ongoing) { false }
+  let(:entity_visible) { true }
+  let(:user_visible) { true }
   let(:time_entry_day_sum) { 5 }
   let(:activities_scope) do
-    scope = double('activities')
+    scope = class_double(TimeEntryActivity)
 
     if time_entry_activity
       allow(scope)
@@ -69,18 +64,22 @@ shared_examples_for 'time entry contract' do
   end
 
   before do
-    if time_entry_work_package
-      allow(time_entry_work_package)
+    if time_entry_entity
+      allow(time_entry_entity)
+        .to receive(:visible?)
+        .and_return(true)
+
+      allow(time_entry_entity)
         .to receive(:visible?)
         .with(current_user)
-        .and_return(work_package_visible)
+        .and_return(entity_visible)
     end
 
     allow(TimeEntryActivity)
       .to receive(:active_in_project)
       .and_return(TimeEntryActivity.none)
 
-    of_user_and_day_scope = double('of_user_and_day_scope')
+    of_user_and_day_scope = instance_double(ActiveRecord::Relation)
 
     allow(TimeEntry)
       .to receive(:of_user_and_day)
@@ -100,6 +99,8 @@ shared_examples_for 'time entry contract' do
       .to receive(:active_in_project)
       .with(time_entry_project)
       .and_return(activities_scope)
+
+    allow(time_entry_user).to receive_messages(visible?: user_visible)
   end
 
   def expect_valid(valid, symbols = {})
@@ -110,127 +111,239 @@ shared_examples_for 'time entry contract' do
     end
   end
 
-  shared_examples 'is valid' do
-    it 'is valid' do
+  shared_examples "is valid" do
+    it "is valid" do
       expect_valid(true)
     end
   end
 
-  it_behaves_like 'is valid'
+  it_behaves_like "is valid"
 
-  context 'when the work_package is within a different project than the provided project' do
-    let(:time_entry_work_package) { FactoryBot.build_stubbed(:work_package) }
+  context "when the work_package is within a different project than the provided project" do
+    let(:another_project) { build_stubbed(:project) }
+    let(:time_entry_entity) { build_stubbed(:work_package, project: another_project) }
 
-    it 'is invalid' do
-      expect_valid(false, work_package_id: %i(invalid))
+    it "is invalid" do
+      expect_valid(false, entity: %i(invalid))
     end
   end
 
-  context 'when the work_package is nil' do
-    let(:time_entry_work_package) { nil }
+  context "when the meeting is within a different project than the provided project" do
+    let(:another_project) { build_stubbed(:project) }
+    let(:time_entry_entity) { build_stubbed(:meeting, project: another_project) }
 
-    it_behaves_like 'is valid'
+    it "is invalid" do
+      expect_valid(false, entity: %i(invalid))
+    end
   end
 
-  context 'when the project is nil' do
+  context "when the meeting is not visible to the user" do
+    let(:time_entry_entity) { build_stubbed(:meeting, project: time_entry_project) }
+    let(:entity_visible) { false }
+
+    it "is invalid" do
+      expect_valid(false, entity: %i(invalid))
+    end
+  end
+
+  context "when the work_package is nil" do
+    let(:time_entry_entity) { nil }
+
+    it "is invalid" do
+      expect_valid(false, entity: %i(blank))
+    end
+  end
+
+  context "when the project is nil" do
     let(:time_entry_project) { nil }
 
-    it 'is invalid' do
+    it "is invalid" do
       expect_valid(false, project_id: %i(invalid blank))
     end
   end
 
-  context 'when activity is nil' do
+  context "when activity is nil" do
     let(:time_entry_activity) { nil }
 
-    it 'is invalid' do
-      expect_valid(false, activity_id: %i(blank))
-    end
+    it_behaves_like "is valid"
   end
 
-  context 'if the activity is disabled in the project' do
+  context "if the activity is disabled in the project" do
     let(:time_entry_activity_active) { false }
 
-    it 'is invalid' do
+    it "is invalid" do
       expect_valid(false, activity_id: %i(inclusion))
     end
   end
 
-  context 'when spent_on is nil' do
+  context "when spent_on is nil" do
     let(:time_entry_spent_on) { nil }
 
-    it 'is invalid' do
+    it "is invalid" do
       expect_valid(false, spent_on: %i(blank))
     end
   end
 
-  context 'when hours is nil' do
-    let(:time_entry_hours) { nil }
+  context "when spent_on is outside the year limits to prevent overflow in postgres" do
+    let(:time_entry_spent_on) { Date.new(10000) }
 
-    it 'is invalid' do
-      expect_valid(false, hours: %i(blank))
+    it "is invalid" do
+      expect_valid(false, spent_on: %i(date_before_or_equal_to))
     end
   end
 
-  context 'when hours is negative' do
-    let(:time_entry_hours) { -1 }
+  context "when spent_on is in the future" do
+    let(:time_entry_spent_on) { Date.new(9999) }
 
-    it 'is invalid' do
-      expect_valid(false, hours: %i(invalid))
-    end
-  end
-
-  context 'when hours is nil' do
-    let(:time_entry_hours) { nil }
-
-    it 'is invalid' do
-      expect_valid(false, hours: %i(blank))
-    end
-  end
-
-  context 'when comment is longer than 255' do
-    let(:time_entry_comments) { "a" * 256 }
-
-    it 'is invalid' do
-      expect_valid(false, comments: %i(too_long))
-    end
-  end
-
-  context 'when comment is nil' do
-    let(:time_entry_comments) { nil }
-
-    it_behaves_like 'is valid'
-  end
-
-  context 'if more than 24 hours are booked for a day' do
-    let(:time_entry_day_sum) { 24 - time_entry_hours + 1 }
-
-    it 'is valid' do
+    it "is valid" do
       expect_valid(true)
     end
   end
 
-  describe 'assignable_activities' do
-    context 'if no project is set' do
+  context "when spent_on is today" do
+    let(:time_entry_spent_on) { Time.zone.today }
+
+    it "is valid" do
+      expect_valid(true)
+    end
+  end
+
+  context "when spent_on is in the past" do
+    let(:time_entry_spent_on) { Time.zone.yesterday }
+
+    it "is valid" do
+      expect_valid(true)
+    end
+  end
+
+  context "when hours is nil" do
+    let(:time_entry_hours) { nil }
+
+    it "is invalid" do
+      expect_valid(false, hours: %i(blank))
+    end
+  end
+
+  context "when hours is negative" do
+    let(:time_entry_hours) { -1 }
+
+    it "is invalid" do
+      expect_valid(false, hours: %i(invalid))
+    end
+  end
+
+  context "with a maximum number of hours per time entry configured" do
+    let(:max_hours_per_entry) { 4 }
+
+    before do
+      allow(Setting).to receive(:time_entries_max_hours_per_entry).and_return(max_hours_per_entry)
+    end
+
+    it_behaves_like "is valid" # without an Enterprise token, the restriction is not enforced
+
+    context "with an Enterprise token", with_ee: %i[time_entry_time_restrictions] do
+      context "when hours exceed the maximum" do
+        it "is invalid" do
+          expect_valid(false, hours: %i(max_hours_per_entry_exceeded))
+        end
+      end
+
+      context "when hours equal the maximum" do
+        let(:time_entry_hours) { max_hours_per_entry }
+
+        it_behaves_like "is valid"
+      end
+
+      context "when the maximum is 0" do
+        let(:max_hours_per_entry) { 0 }
+
+        it_behaves_like "is valid"
+      end
+    end
+  end
+
+  context "with a maximum number of hours per day configured" do
+    let(:max_hours_per_day) { 8 }
+    let(:time_entry_hours) { 5 }
+    let(:time_entry_day_sum) { 4 }
+
+    before do
+      allow(Setting).to receive(:time_entries_max_hours_per_day).and_return(max_hours_per_day)
+    end
+
+    it_behaves_like "is valid" # without an Enterprise token, the restriction is not enforced
+
+    context "with an Enterprise token", with_ee: %i[time_entry_time_restrictions] do
+      context "when the hours already logged plus the entry's hours exceed the maximum" do
+        it "is invalid" do
+          expect_valid(false, hours: %i(max_hours_per_day_exceeded))
+        end
+      end
+
+      context "when the hours already logged plus the entry's hours equal the maximum" do
+        let(:time_entry_day_sum) { max_hours_per_day - time_entry_hours }
+
+        it_behaves_like "is valid"
+      end
+
+      context "when the maximum is 0" do
+        let(:max_hours_per_day) { 0 }
+
+        it_behaves_like "is valid"
+      end
+    end
+  end
+
+  context "when comment is nil" do
+    let(:time_entry_comments) { nil }
+
+    it_behaves_like "is valid"
+  end
+
+  context "if more than 24 hours are booked for a day" do
+    let(:time_entry_day_sum) { 24 - time_entry_hours + 1 }
+
+    it "is valid" do
+      expect_valid(true)
+    end
+  end
+
+  context "when ongoing and another ongoing time entry already exists for the current user" do
+    let(:time_entry_ongoing) { true }
+
+    before do
+      allow(TimeEntry)
+        .to receive(:ongoing_for_user_other_than)
+              .with(time_entry_user, time_entry)
+              .and_return([build_stubbed(:time_entry, user: time_entry_user, ongoing: true)])
+    end
+
+    it "is invalid" do
+      expect_valid(false, base: %i(duplicate_ongoing))
+    end
+  end
+
+  describe "assignable_activities" do
+    context "if no project is set" do
       let(:time_entry_project) { nil }
 
-      it 'is empty' do
+      it "is empty" do
         expect(contract.assignable_activities)
           .to be_empty
       end
     end
 
-    context 'if a project is set' do
-      it 'returns all activities active in the project' do
+    context "if a project is set" do
+      it "returns all activities active in the project" do
         expect(contract.assignable_activities)
           .to eql activities_scope
       end
     end
   end
 
-  describe 'assignable_versions' do
-    let(:project_versions) { double('project versions') }
-    let(:wp_versions) { double('work_package versions') }
+  describe "assignable_versions" do
+    let(:project_versions) { [instance_double(Version)] }
+    let(:wp_versions) { [instance_double(Version)] }
 
     before do
       if time_entry_project
@@ -239,43 +352,43 @@ shared_examples_for 'time entry contract' do
           .and_return project_versions
       end
 
-      if time_entry_work_package
-        allow(time_entry_work_package)
+      if time_entry_entity
+        allow(time_entry_entity)
           .to receive(:assignable_versions)
           .and_return wp_versions
       end
     end
 
-    context 'if no project and no work package is set' do
+    context "if no project and no work package is set" do
       let(:time_entry_project) { nil }
-      let(:time_entry_work_package) { nil }
+      let(:time_entry_entity) { nil }
 
-      it 'is empty' do
+      it "is empty" do
         expect(contract.assignable_versions)
           .to be_empty
       end
     end
 
-    context 'if a project is set but no work package' do
-      let(:time_entry_work_package) { nil }
+    context "if a project is set but no work package" do
+      let(:time_entry_entity) { nil }
 
-      it 'returns assignable_versions of the project' do
+      it "returns assignable_versions of the project" do
         expect(contract.assignable_versions)
           .to eql project_versions
       end
     end
 
-    context 'if a work_package is set but no project' do
+    context "if a work_package is set but no project" do
       let(:time_entry_project) { nil }
 
-      it 'returns assignable_versions of the project' do
+      it "returns assignable_versions of the project" do
         expect(contract.assignable_versions)
           .to eql wp_versions
       end
     end
 
-    context 'if both project and work_package are set' do
-      it 'returns assignable_versions of the project' do
+    context "if both project and work_package are set" do
+      it "returns assignable_versions of the project" do
         expect(contract.assignable_versions)
           .to eql wp_versions
       end

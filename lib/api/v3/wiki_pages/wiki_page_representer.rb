@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,28 +29,20 @@ module API
   module V3
     module WikiPages
       class WikiPageRepresenter < ::API::Decorators::Single
-        include API::Decorators::LinkedResource
+        include API::V3::Workspaces::LinkedResource
         include API::Caching::CachedRepresenter
         include ::API::V3::Attachments::AttachableRepresenterMixin
 
-        self_link title_getter: ->(*) { nil }
+        self_link title_getter: ->(*) {}
 
         property :id
 
         property :title
 
-        associated_resource :project,
-                            link: ->(*) do
-                              next unless represented.project.present?
-
-                              {
-                                href: api_v3_paths.project(represented.project.id),
-                                title: represented.project.name
-                              }
-                            end
+        associated_project
 
         def _type
-          'WikiPage'
+          "WikiPage"
         end
       end
     end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,20 +30,25 @@
 module Projects
   class ArchiveService < ::BaseServices::BaseContracted
     include Contracted
-    include Projects::Concerns::UpdateDemoData
+    prepend Projects::Concerns::UpdateDemoData
 
     def initialize(user:, model:, contract_class: Projects::ArchiveContract)
-      super(user: user, contract_class: contract_class)
+      super(user:, contract_class:)
       self.model = model
     end
 
     private
 
     def persist(service_call)
-      archive_project(model) and model.children.each do |child|
-        archive_project(child)
+      archive_project(model) and model.active_subprojects.each do |subproject|
+        archive_project(subproject)
       end
 
+      service_call
+    end
+
+    def after_perform(service_call)
+      OpenProject::Notifications.send(OpenProject::Events::PROJECT_ARCHIVED, project: model)
       service_call
     end
 

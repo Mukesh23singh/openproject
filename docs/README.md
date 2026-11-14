@@ -2,21 +2,19 @@
 sidebar_navigation:
   title: OpenProject Documentation
   priority: 999
-description: Help and documentation for OpenProject Community Edition, Enterprise on-premises and Enterprise cloud.
-robots: index, follow
+description: Help and documentation for OpenProject Community edition, Enterprise on-premises and Enterprise cloud.
 keywords: help, documentation
----
+--- 
 # OpenProject Documentation
 
-<div class="alert alert-info" role="alert">
-**Note**: To better read our OpenProject Documentation, please go to [www.openproject.org/docs/](https://www.openproject.org/docs/).
-</div>
+> [!NOTE]
+> For enhanced usability, access the OpenProject documentation at [www.openproject.org/docs/](https://www.openproject.org/docs).
 
 ## Installation
 
-Get started with installing and upgrading OpenProject using [our Installation Guide starting point](https://www.openproject.org/docs/installation-and-operations/).
+Get started with installing and upgrading OpenProject using [our Installation Guide starting point](./installation-and-operations/).
 
-The guides for [manual](./installation-and-operations/installation/manual), [packaged](./installation-and-operations/installation/packaged) and [Docker-based](./installation-and-operations/installation/docker) installations are provided.
+The guides for [packaged](./installation-and-operations/installation/packaged) and [Docker-based](./installation-and-operations/installation/docker) installations are provided.
 
 ## Upgrading
 
@@ -26,27 +24,28 @@ The guides for [upgrading](./installation-and-operations/operation/upgrading) ar
 
 ## Operation
 
-* [Backing up you installation](./installation-and-operations/operation/backing-up)
-* [Alter configuration of OpenProject](./installation-and-operations/configuration)
-* [Manual repository integration for Git and Subversion](./installation-and-operations/configuration/repositories)
-* [Configure incoming mails](./installation-and-operations/configuration/incoming-emails)
-* [Install custom plugins](./installation-and-operations/configuration/plugins)
-
+- [Backing up your installation](./installation-and-operations/operation/backing-up)
+- [Alter configuration of OpenProject](./installation-and-operations/configuration)
+- [Manual repository integration for Git and Subversion](./installation-and-operations/configuration/repositories)
+- [Configure incoming mails](./installation-and-operations/configuration/incoming-emails)
+- [Install custom plugins](./installation-and-operations/configuration/plugins)
 
 ## User Guides
 
-Please see our [User Guide pages](https://www.openproject.org/docs/user-guide/) for detailed documentation on the functionality of OpenProject.
+Please see our [User Guide pages](./user-guide/) for detailed documentation on the functionality of OpenProject.
 
+## Use Cases
+
+Please see our [Use Cases section](./use-cases/) for detailed how-to guides and step-by-step instruction on how to set up a variety of common cases and views.
 
 ## Development
 
-* [Full development environment for developers on Ubuntu](./development/development-environment-ubuntu) and [Mac OS X](./development/development-environment-osx)
-* [Developing plugins](./development/create-openproject-plugin)
-* [Developing OmniAuth Plugins](./development/create-omniauth-plugin)
-* [Running tests](./development/running-tests)
-* [Code review guidelines](./development/code-review-guidelines)
-* [API documentation](./api)
-
+- [Full development environment for developers](./development/development-environment)
+- [Developing plugins](./development/create-openproject-plugin)
+- [Developing OmniAuth Plugins](./development/create-omniauth-plugin)
+- [Running tests](./development/testing)
+- [Code review guidelines](./development/code-review-guidelines)
+- [API documentation](./api)
 
 ## APIv3 documentation sources
 

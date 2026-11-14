@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,67 +22,261 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative 'exportable_project_context'
+require "spec_helper"
+require_relative "exportable_project_context"
 
-describe Projects::Exports::CSV, 'integration', type: :model do
-  include_context 'with a project with an arrangement of custom fields'
-  include_context 'with an instance of the described exporter'
+RSpec.describe Projects::Exports::CSV, "integration" do
+  include_context "with a project with an arrangement of custom fields"
+  include_context "with an instance of the described exporter"
 
   let(:parsed) do
-    CSV.parse(output)
+    CSV.parse(output.delete_prefix(utf8_bom))
   end
+
+  let(:utf8_bom) { "\xEF\xBB\xBF" }
 
   let(:header) { parsed.first }
 
   let(:rows) { parsed.drop(1) }
 
-  it 'performs a successful export' do
+  it "performs a successful export" do
     expect(parsed.size).to eq(2)
-    expect(parsed.last).to eq [project.id.to_s, project.identifier, project.name, 'Off track', 'false']
+    expect(parsed.last).to eq [project.name, project.description, "Off track", "false"]
   end
 
-  describe 'custom field columns selected' do
-    before do
-      Setting.enabled_projects_columns += custom_fields.map { |cf| "cf_#{cf.id}" }
+  it "starts with a UTF-8 BOM" do
+    expect(output).to start_with(utf8_bom)
+  end
+
+  context "with status_explanation enabled" do
+    let(:query_columns) { %w[name description project_status status_explanation public] }
+
+    it "performs a successful export" do
+      expect(parsed.size).to eq(2)
+      expect(parsed.last).to eq [project.name, project.description,
+                                 "Off track", "some explanation", "false"]
+    end
+  end
+
+  context "with id and identifier selected" do
+    let(:query_columns) { %w[name description id identifier project_status public] }
+
+    it "performs a successful export" do
+      expect(parsed.size).to eq(2)
+      expect(parsed.last).to eq [project.name, project.description, project.id.to_s,
+                                 project.identifier, "Off track", "false"]
+    end
+  end
+
+  describe "custom field columns selected" do
+    let(:query_columns) do
+      %w[name description project_status public] + global_project_custom_fields.map(&:column_name)
     end
 
-    context 'when ee enabled', with_ee: %i[custom_fields_in_projects_list] do
-      it 'renders all those columns' do
+    context "without view_project_attributes permission" do
+      let(:permissions) { super() - %i[view_project_attributes] }
+
+      it "does not render project custom fields in the header" do
         expect(parsed.size).to eq 2
 
-        cf_names = custom_fields.map(&:name)
-        expect(header).to eq ['id', 'Identifier', 'Name', 'Status', 'Public', *cf_names]
+        expect(header).to eq %w[Name Description Status Public]
+      end
 
-        custom_values = custom_fields.map do |cf|
-          if cf == bool_cf
-            'true'
+      it "does not render the custom field values in the rows if enabled for a project" do
+        expect(rows.first)
+          .to eq [project.name, project.description, "Off track", "false"]
+      end
+    end
+
+    context "with view_project_attributes permission" do
+      it "renders available project custom fields in the header if enabled in any project" do
+        expect(parsed.size).to eq 2
+
+        cf_names = global_project_custom_fields.map(&:name)
+
+        expect(cf_names).not_to include(not_used_string_cf.name)
+        expect(cf_names).not_to include(hidden_cf.name)
+
+        expect(header).to eq ["Name", "Description", "Status", "Public", *cf_names]
+      end
+
+      it "renders the custom field values in the rows if enabled for a project" do
+        custom_values = global_project_custom_fields.map do |cf|
+          case cf
+          when bool_cf
+            "true"
+          when text_cf
+            project.typed_custom_value_for(cf)
+          when not_used_string_cf
+            ""
           else
             project.formatted_custom_value_for(cf)
           end
         end
         expect(rows.first)
-          .to eq [project.id.to_s, project.identifier, project.name, 'Off track', 'false', *custom_values]
+          .to eq [project.name, project.description, "Off track", "false", *custom_values]
       end
     end
 
-    context 'when ee not enabled' do
-      it 'renders only the default columns' do
-        expect(header).to eq %w[id Identifier Name Status Public]
+    context "with admin permission" do
+      let(:current_user) { create(:admin) }
+
+      it "renders all globally available project custom fields including hidden ones in the header" do
+        expect(parsed.size).to eq 3
+
+        cf_names = global_project_custom_fields.map(&:name)
+
+        expect(cf_names).to include(not_used_string_cf.name)
+        expect(cf_names).to include(hidden_cf.name)
+
+        expect(header).to eq ["Name", "Description", "Status", "Public", *cf_names]
+      end
+
+      it "renders the custom field values in the rows if enabled for a project" do
+        custom_values = global_project_custom_fields.map do |cf|
+          case cf
+          when bool_cf
+            "true"
+          when hidden_cf
+            "hidden"
+          when not_used_string_cf
+            ""
+          when text_cf
+            project.typed_custom_value_for(cf)
+          else
+            project.formatted_custom_value_for(cf)
+          end
+        end
+        expect(rows.first)
+          .to eq [project.name, project.description, "Off track", "false", *custom_values]
       end
     end
   end
 
-  context 'with no project visible' do
+  describe "custom comment columns selected" do
+    let(:query_columns) do
+      %w[name description project_status public] + global_project_custom_fields.map(&:comment_column_name)
+    end
+
+    context "without view_project_attributes permission" do
+      let(:permissions) { super() - %i[view_project_attributes] }
+
+      it "does not render custom comment columns in the header" do
+        expect(parsed.size).to eq 2
+
+        expect(header).to eq %w[Name Description Status Public]
+      end
+
+      it "does not render the custom comment values in the rows" do
+        expect(rows.first).to eq [
+          project.name,
+          project.description,
+          "Off track",
+          "false"
+        ]
+      end
+    end
+
+    context "with view_project_attributes permission" do
+      it "renders available custom comment columns in the header if enabled in any project" do
+        expect(parsed.size).to eq 2
+
+        expect(header).to eq %w[Name Description Status Public] + ["#{version_cf.name} comment"]
+      end
+
+      it "renders the custom comment values in the rows" do
+        expect(rows.first).to eq [
+          project.name,
+          project.description,
+          "Off track",
+          "false",
+          "Comment visible to members"
+        ]
+      end
+    end
+
+    context "with admin permission" do
+      let(:current_user) { create(:admin) }
+
+      it "renders all custom comment columns including hidden ones in the header" do
+        expect(parsed.size).to eq 3
+
+        expect(header).to eq %w[Name Description Status Public] + [version_cf, hidden_cf].map { "#{it.name} comment" }
+      end
+
+      it "renders all custom comment values in the rows" do
+        expect(rows.first).to eq [
+          project.name,
+          project.description,
+          "Off track",
+          "false",
+          "Comment visible to members",
+          "Comment visible to admins"
+        ]
+      end
+    end
+  end
+
+  describe "project phase columns selected" do
+    shared_let(:phase_definition) { create(:project_phase_definition, name: "Initiation") }
+    shared_let(:query_columns) { %w[name description project_status public] + ["project_phase_#{phase_definition.id}"] }
+
+    let!(:project_phase) do
+      create(:project_phase, project:, definition: phase_definition,
+                             start_date: Date.new(2026, 1, 5), finish_date: Date.new(2026, 1, 20))
+    end
+
+    context "with view_project_phases permission" do
+      let(:permissions) { super() + %i[view_project_phases] }
+
+      context "and an active phase" do
+        it "renders the phase's date range in the row" do
+          expect(header).to eq %w[Name Description Status Public Initiation]
+          expect(rows.first).to eq [project.name, project.description, "Off track", "false", "01/05/2026 - 01/20/2026"]
+        end
+      end
+
+      context "and an inactive phase" do
+        before { project_phase.update!(active: false) }
+
+        it "renders an empty value while keeping the phase column" do
+          expect(header).to eq %w[Name Description Status Public Initiation]
+          expect(rows.first).to eq [project.name, project.description, "Off track", "false", ""]
+        end
+      end
+    end
+
+    context "without view_project_phases permission anywhere" do
+      it "omits the phase column entirely" do
+        expect(header).to eq %w[Name Description Status Public]
+        expect(rows.first).to eq [project.name, project.description, "Off track", "false"]
+      end
+    end
+
+    context "with view_project_phases permission in another project only" do
+      let(:other_project) { create(:project) }
+
+      before do
+        create(:member, user: current_user, project: other_project,
+                        roles: [create(:project_role, permissions: %i[view_project_phases])])
+      end
+
+      it "renders an empty value for the project where the user lacks the permission" do
+        expect(header).to eq %w[Name Description Status Public Initiation]
+        expect(rows.first).to eq [project.name, project.description, "Off track", "false", ""]
+      end
+    end
+  end
+
+  context "with no project visible" do
     let(:current_user) { User.anonymous }
 
-    it 'does not include the project' do
+    it "does not include the project" do
       expect(output).not_to include project.identifier
       expect(parsed.size).to eq(1)
     end

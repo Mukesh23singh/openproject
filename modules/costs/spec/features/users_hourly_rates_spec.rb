@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,60 +22,46 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.expand_path(File.dirname(__FILE__) + '/../spec_helper.rb')
+require_relative "../spec_helper"
 
-describe 'hourly rates on user edit', type: :feature, js: true do
-  let(:user) { FactoryBot.create :admin }
+RSpec.describe "hourly rates on user edit", :js do
+  let(:user) { create(:admin) }
 
   def view_rates
-    visit edit_user_path(user, tab: 'rates')
+    visit edit_user_path(user, tab: "rates")
   end
 
   before do
-    allow(User).to receive(:current).and_return user
+    login_as user
   end
 
-  context 'with no rates' do
+  context "with no rates" do
     before do
       view_rates
     end
 
-    it 'shows no data message' do
-      expect(page).to have_text I18n.t('no_results_title_text')
+    it "explains what a default rate is for" do
+      expect(page).to have_text I18n.t(:label_no_default_rate)
+      expect(page).to have_text I18n.t(:text_no_default_rate)
     end
   end
 
-  context 'with rates' do
-    let!(:rate) { FactoryBot.create(:default_hourly_rate, user: user) }
+  context "with rates" do
+    let!(:rate) { create(:default_hourly_rate, principal: user, rate: 42) }
 
     before do
       view_rates
     end
 
-    it 'shows the rates' do
-      expect(page).to have_text 'Current rate'.upcase
-    end
-
-    describe 'deleting all rates' do
-      before do
-        click_link 'Update'         # go to update view for rates
-        SeleniumHubWaiter.wait
-        find('.icon-delete').click  # delete last existing rate
-        click_on 'Save'             # save change
-      end
-
-      # regression test: clicking save used to result in a error
-      it 'leads back to the now empty rate overview' do
-        expect(page).to have_text /rate history/i
-        expect(page).to have_text I18n.t('no_results_title_text')
-
-        expect(page).to have_no_text 'Current rate'
+    it "lists the rate history without having to expand the section" do
+      within "[data-test-selector='rate-history-default']" do
+        expect(page).to have_text Rate.human_attribute_name(:valid_from)
+        expect(page).to have_text "42.00"
       end
     end
   end

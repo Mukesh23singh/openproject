@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,40 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::PlaceholderUsers::PlaceholderUserCollectionRepresenter do
-  let(:self_base_link) { '/api/v3/placeholder_users' }
-  let(:collection_inner_type) { 'PlaceholderUser' }
+RSpec.describe API::V3::PlaceholderUsers::PlaceholderUserCollectionRepresenter do
+  let(:self_base_link) { "/api/v3/placeholder_users" }
+  let(:collection_inner_type) { "PlaceholderUser" }
   let(:total) { 3 }
   let(:page) { 1 }
   let(:page_size) { 2 }
   let(:actual_count) { 3 }
-  let(:current_user) { FactoryBot.build_stubbed :user }
+  let(:current_user) { build_stubbed(:user) }
 
   let(:placeholders) do
-    placeholders = FactoryBot.build_stubbed_list(:placeholder_user,
-                                          actual_count)
-    allow(placeholders)
-      .to receive(:per_page)
-      .with(page_size)
-      .and_return(placeholders)
+    placeholders = build_stubbed_list(:placeholder_user,
+                                      actual_count)
+    without_partial_double_verification do
+      allow(placeholders)
+        .to receive(:limit)
+        .with(page_size)
+        .and_return(placeholders)
 
-    allow(placeholders)
-      .to receive(:page)
-      .with(page)
-      .and_return(placeholders)
+      allow(placeholders)
+        .to receive(:offset)
+        .with(page - 1)
+        .and_return(placeholders)
 
-    allow(placeholders)
-      .to receive(:count)
-      .and_return(total)
+      allow(placeholders)
+        .to receive(:count)
+        .and_return(total)
+    end
 
     placeholders
   end
@@ -61,13 +64,13 @@ describe ::API::V3::PlaceholderUsers::PlaceholderUserCollectionRepresenter do
     described_class.new(placeholders,
                         self_link: self_base_link,
                         per_page: page_size,
-                        page: page,
-                        current_user: current_user)
+                        page:,
+                        current_user:)
   end
 
-  context 'generation' do
+  context "generation" do
     subject(:collection) { representer.to_json }
 
-    it_behaves_like 'offset-paginated APIv3 collection'
+    it_behaves_like "offset-paginated APIv3 collection"
   end
 end

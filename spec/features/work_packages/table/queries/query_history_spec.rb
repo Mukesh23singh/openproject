@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,73 +22,70 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Going back and forth through the browser history', type: :feature, js: true do
+RSpec.describe "Going back and forth through the browser history", :js do
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
-  let(:project) { FactoryBot.create(:project) }
-  let(:type) { project.types.first }
+  let(:project) { create(:project) }
+  let(:type) { project.enabled_types.first }
   let(:role) do
-    FactoryBot.create(:role,
-                      permissions: %i[view_work_packages
-                                      save_queries])
+    create(:project_role,
+           permissions: %i[view_work_packages
+                           save_queries])
   end
 
   let(:work_package_1) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      type: type)
+    create(:work_package,
+           project:,
+           type:)
   end
   let(:work_package_2) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      type: type,
-                      assigned_to: user)
+    create(:work_package,
+           project:,
+           type:,
+           assigned_to: user)
   end
   let(:version) do
-    FactoryBot.create(:version,
-                      project: project)
+    create(:version,
+           project:)
   end
   let(:work_package_3) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      type: type,
-                      version: version)
+    create(:work_package,
+           project:,
+           type:,
+           version:)
   end
   let(:assignee_query) do
-    query = FactoryBot.create(:query,
-                              name: 'Assignee Query',
-                              project: project,
-                              user: user)
+    query = create(:query,
+                   name: "Assignee Query",
+                   project:,
+                   user:)
 
-    query.add_filter('assigned_to_id', '=', [user.id])
+    query.add_filter("assigned_to_id", "=", [user.id])
     query.save!
 
     query
   end
   let(:version_query) do
-    query = FactoryBot.create(:query,
-                              name: 'Version Query',
-                              project: project,
-                              user: user)
+    query = create(:query,
+                   name: "Version Query",
+                   project:,
+                   user:)
 
-    query.add_filter('version_id', '=', [version.id])
+    query.add_filter("version_id", "=", [version.id])
     query.save!
 
     query
   end
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
-  let(:filters) { ::Components::WorkPackages::Filters.new }
+  let(:filters) { Components::WorkPackages::Filters.new }
 
   before do
     login_as(user)
@@ -99,9 +98,9 @@ describe 'Going back and forth through the browser history', type: :feature, js:
     version_query
   end
 
-  it 'updates the filters and query results on history back and forth', retry: 1 do
+  it "updates the filters and query results on history back and forth", retry: 1 do
     wp_table.visit!
-    wp_table.expect_title('All open', editable: true)
+    wp_table.expect_title("All open", editable: true)
 
     wp_table.visit_query(assignee_query)
     wp_table.expect_title(assignee_query.name)
@@ -112,58 +111,90 @@ describe 'Going back and forth through the browser history', type: :feature, js:
     wp_table.expect_work_package_listed work_package_3
 
     filters.open
-    filters.add_filter_by('Assignee', 'is', user.name)
+    filters.expect_open
+    filters.add_filter_by("Assignee", "is (OR)", user.name)
     filters.expect_filter_count 3
     wp_table.expect_no_work_package_listed
 
-    page.execute_script('window.history.back()')
+    page.execute_script("window.history.back()")
+    loading_indicator_saveguard
 
     wp_table.expect_title(version_query.name)
     wp_table.expect_work_package_listed work_package_3
     filters.expect_filter_count 2
-    filters.expect_filter_by('Status', 'open', nil)
-    filters.expect_filter_by('Version', 'is', version.name)
+    # Turbo paints the restored (cached) page instantly, then a moment later the
+    # real reload replaces it. Retrying the whole open+check as a unit - not just
+    # the check - matters here: a click that landed on the soon-to-be-replaced DOM
+    # opens a panel that's about to disappear, so `expect_filter_by` alone would
+    # just keep polling a dead element. Retrying re-issues the click against
+    # whatever is current by then.
+    retry_block do
+      filters.open
+      filters.expect_open
+      filters.expect_filter_by("Status", "open (to-do + in progress)", nil)
+      filters.expect_filter_by("Target versions", "is (OR)", version.name, "targetVersion")
+    end
 
-    page.execute_script('window.history.back()')
+    page.execute_script("window.history.back()")
+    loading_indicator_saveguard
 
     wp_table.expect_title(assignee_query.name)
     wp_table.expect_work_package_listed work_package_2
-    filters.open
-    filters.expect_filter_by('Status', 'open', nil)
-    filters.expect_filter_by('Assignee', 'is', user.name)
+    retry_block do
+      filters.open
+      filters.expect_open
+      filters.expect_filter_by("Status", "open (to-do + in progress)", nil)
+      filters.expect_filter_by("Assignee", "is (OR)", user.name)
+    end
 
-    page.execute_script('window.history.back()')
+    page.execute_script("window.history.back()")
+    loading_indicator_saveguard
 
-    wp_table.expect_title('All open', editable: true)
+    wp_table.expect_title("All open", editable: true)
     wp_table.expect_work_package_listed work_package_1
     wp_table.expect_work_package_listed work_package_2
     wp_table.expect_work_package_listed work_package_3
-    filters.open
-    filters.expect_filter_by('Status', 'open', nil)
+    retry_block do
+      filters.open
+      filters.expect_open
+      filters.expect_filter_by("Status", "open (to-do + in progress)", nil)
+    end
 
-    page.execute_script('window.history.forward()')
+    page.execute_script("window.history.forward()")
+    loading_indicator_saveguard
 
     wp_table.expect_title(assignee_query.name)
     wp_table.expect_work_package_listed work_package_2
-    filters.open
-    filters.expect_filter_by('Status', 'open', nil)
-    filters.expect_filter_by('Assignee', 'is', user.name)
+    retry_block do
+      filters.open
+      filters.expect_open
+      filters.expect_filter_by("Status", "open (to-do + in progress)", nil)
+      filters.expect_filter_by("Assignee", "is (OR)", user.name)
+    end
 
-    page.execute_script('window.history.forward()')
+    page.execute_script("window.history.forward()")
+    loading_indicator_saveguard
 
     wp_table.expect_title(version_query.name)
     wp_table.expect_work_package_listed work_package_3
-    filters.open
-    filters.expect_filter_by('Status', 'open', nil)
-    filters.expect_filter_by('Version', 'is', version.name)
+    retry_block do
+      filters.open
+      filters.expect_open
+      filters.expect_filter_by("Status", "open (to-do + in progress)", nil)
+      filters.expect_filter_by("Target versions", "is (OR)", version.name, "targetVersion")
+    end
 
-    page.execute_script('window.history.forward()')
+    page.execute_script("window.history.forward()")
+    loading_indicator_saveguard
 
     wp_table.expect_title(version_query.name)
     wp_table.expect_no_work_package_listed
-    filters.open
-    filters.expect_filter_by('Status', 'open', nil)
-    filters.expect_filter_by('Version', 'is', version.name)
-    filters.expect_filter_by('Assignee', 'is', user.name)
+    retry_block do
+      filters.open
+      filters.expect_open
+      filters.expect_filter_by("Status", "open (to-do + in progress)", nil)
+      filters.expect_filter_by("Target versions", "is (OR)", version.name, "targetVersion")
+      filters.expect_filter_by("Assignee", "is (OR)", user.name)
+    end
   end
 end

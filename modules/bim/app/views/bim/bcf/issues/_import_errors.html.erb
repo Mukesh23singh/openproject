@@ -1,8 +1,8 @@
-<%= render 'import_options_hidden_fields' %>
+<%= render "import_options_hidden_fields" %>
 
 <p>
   <span>
-    <%= op_icon 'icon-context icon-warning' %>
+    <%= op_icon "icon-context icon-warning" %>
     <strong><%= error_message %></strong>
   </span>
 </p>
@@ -14,9 +14,9 @@
           <%= obj.mail %> (<%= obj.name %>)
         <% else %>
           <%= obj %>
-        <% end  %>
+        <% end %>
       <% else %>
-        <%= "(#{error_default_text})"%>
+        (<%= error_default_text %>)
       <% end %>
     </li>
   <% end %>

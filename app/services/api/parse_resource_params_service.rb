@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,12 +37,12 @@ module API
       self.current_user = user
       self.model = model
 
-      self.representer = if !representer && model
-                           deduce_representer(model)
-                         elsif representer
+      self.representer = if representer
                            representer
+                         elsif model
+                           deduce_representer(model)
                          else
-                           raise 'Representer not defined'
+                           raise "Representer not defined"
                          end
     end
 
@@ -52,19 +53,18 @@ module API
                  {}
                end
 
-      ServiceResult.new(success: true,
-                        result: parsed)
+      ServiceResult.success(result: parsed)
     end
 
     private
 
     def deduce_representer(_model)
-      raise NotImplementedError
+      raise SubclassResponsibilityError
     end
 
     def parsing_representer
       representer
-        .new(struct, current_user: current_user)
+        .new(struct, current_user:)
     end
 
     def parse_attributes(request_body)
@@ -72,16 +72,17 @@ module API
                .from_hash(request_body)
 
       deep_to_h(struct)
+        .deep_symbolize_keys
     end
 
     def struct
-      OpenStruct.new
+      ParserStruct.new
     end
 
     def deep_to_h(value)
       # Does not yet factor in Arrays. There hasn't been the need to do that, yet.
       case value
-      when OpenStruct, Hash
+      when Hash, ParserStruct
         value.to_h.transform_values do |sub_value|
           deep_to_h(sub_value)
         end

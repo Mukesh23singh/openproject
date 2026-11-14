@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,110 +20,149 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-import { Injectable } from '@angular/core';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
+
+import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import moment from 'moment';
+
 import { ConfigurationResource } from 'core-app/features/hal/resources/configuration-resource';
-import * as moment from 'moment';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { type DurationFormat } from 'core-app/shared/helpers/chronic_duration';
 
 @Injectable({ providedIn: 'root' })
 export class ConfigurationService {
+  private readonly apiV3Service = inject(ApiV3Service);
+
   // fetches configuration from the ApiV3 endpoint
   // TODO: this currently saves the request between page reloads,
   // but could easily be stored in localStorage
   private configuration:ConfigurationResource;
 
-  public initialized:Promise<boolean>;
-
-  public constructor(readonly I18n:I18nService,
-    readonly apiV3Service:APIV3Service) {
-    this.initialized = this.loadConfiguration().then(() => true).catch(() => false);
+  public initialize():Promise<void> {
+    return this.loadConfiguration();
   }
 
-  public commentsSortedInDescendingOrder() {
-    return this.userPreference('commentSortDescending');
+  public commentsSortedInDescendingOrder():boolean {
+    return this.configuration.userPreferences.commentSortDescending;
   }
 
-  public warnOnLeavingUnsaved() {
-    return this.userPreference('warnOnLeavingUnsaved');
+  public disableKeyboardShortcuts():boolean {
+    return this.configuration.userPreferences.disableKeyboardShortcuts;
   }
 
-  public autoHidePopups() {
-    return this.userPreference('autoHidePopups');
+  public requireDoubleClickForInlineEdit():boolean {
+    return this.configuration.userPreferences.requireDoubleClickForInlineEdit;
   }
 
-  public isTimezoneSet() {
+  public warnOnLeavingUnsaved():boolean {
+    return this.configuration.userPreferences.warnOnLeavingUnsaved;
+  }
+
+  public autoHidePopups():boolean {
+    return this.configuration.userPreferences.autoHidePopups;
+  }
+
+  public isTimezoneSet():boolean {
     return !!this.timezone();
   }
 
-  public timezone():string {
-    return this.userPreference('timeZone') as string;
+  public isDefaultTimezoneSet():boolean {
+    return !!this.defaultTimezone();
   }
 
-  public isDirectUploads() {
+  public timezone():string {
+    return this.configuration.userPreferences.timeZone;
+  }
+
+  public isDirectUploads():boolean {
     return !!this.prepareAttachmentURL;
   }
 
-  public get prepareAttachmentURL() {
-    return _.get(this.configuration, ['prepareAttachment', 'href']);
+  public get prepareAttachmentURL():string|undefined {
+    return this.configuration.prepareAttachment?.href;
   }
 
-  public get maximumAttachmentFileSize() {
-    return this.systemPreference('maximumAttachmentFileSize');
+  public get maximumAttachmentFileSize():number {
+    return this.configuration.maximumAttachmentFileSize;
   }
 
-  public get perPageOptions() {
-    return this.systemPreference('perPageOptions');
+  public get maximumApiV3PageSize():number {
+    return this.configuration.maximumAPIV3PageSize;
   }
 
-  public dateFormatPresent() {
-    return !!this.systemPreference('dateFormat');
+  public get perPageOptions():number[] {
+    return this.configuration.perPageOptions;
   }
 
-  public dateFormat() {
-    return this.systemPreference('dateFormat');
+  public get allowedLinkProtocols():string[]|null {
+    return this.configuration.allowedLinkProtocols ?? null;
   }
 
-  public timeFormatPresent() {
-    return !!this.systemPreference('timeFormat');
+  public dateFormatPresent():boolean {
+    return !!this.dateFormat();
   }
 
-  public timeFormat() {
-    return this.systemPreference('timeFormat');
+  public dateFormat():string {
+    return this.configuration.dateFormat ?? '';
   }
 
-  public startOfWeekPresent() {
-    return !!this.systemPreference('startOfWeek');
+  public durationFormat():DurationFormat {
+    return this.configuration.durationFormat;
+  }
+
+  public hoursPerDay():number {
+    return this.configuration.hoursPerDay;
+  }
+
+  public daysPerMonth():number {
+    return this.configuration.daysPerMonth;
+  }
+
+  public timeFormatPresent():boolean {
+    return !!this.timeFormat();
+  }
+
+  public timeFormat():string {
+    return this.configuration.timeFormat ?? '';
+  }
+
+  public defaultTimezone():string {
+    return this.configuration.userDefaultTimezone ?? '';
   }
 
   public startOfWeek():number {
-    if (this.startOfWeekPresent()) {
-      return this.systemPreference('startOfWeek');
+    const startOfWeek = this.configuration.startOfWeek;
+    if (startOfWeek !== null) {
+      return startOfWeek;
     }
     return moment.localeData(I18n.locale).firstDayOfWeek();
   }
 
-  private loadConfiguration() {
-    return this
-      .apiV3Service
-      .configuration
-      .get()
-      .toPromise()
-      .then((configuration) => {
-        this.configuration = configuration;
-      });
+  public get wikisAvailable():boolean {
+    return this.configuration.wikisAvailable;
   }
 
-  private userPreference(pref:string) {
-    return _.get(this.configuration, ['userPreferences', pref]);
+  public get hostName():string {
+    return this.configuration.hostName;
   }
 
-  private systemPreference(pref:string) {
-    return _.get(this.configuration, pref);
+  public get activeFeatureFlags():string[] {
+    return this.configuration.activeFeatureFlags;
+  }
+
+  public get availableFeatures():string[] {
+    return this.configuration.availableFeatures;
+  }
+
+  public get triallingFeatures():string[] {
+    return this.configuration.triallingFeatures;
+  }
+
+  private async loadConfiguration():Promise<void> {
+    this.configuration = await firstValueFrom(this.apiV3Service.configuration.get());
   }
 }

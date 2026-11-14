@@ -1,4 +1,33 @@
-require_relative 'fog_file_uploader'
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "fog_file_uploader"
 
 class DirectFogUploader < FogFileUploader
   include CarrierWaveDirect::Uploader
@@ -10,21 +39,28 @@ class DirectFogUploader < FogFileUploader
     true
   end
 
+  def upload_expiration
+    OpenProject::Configuration.fog_direct_upload_expires_in
+  end
+
+  # The signed policy restricts the key via `starts-with`, so this must never be a prefix
+  # of the final store_dir the attachment is served from.
+  def store_dir
+    "uploads/direct_uploads/attachment/#{model.id}"
+  end
+
   class << self
     def for_attachment(attachment)
-      for_uploader attachment.file
+      new(attachment).tap do |uploader|
+        uploader.retrieve_from_store!(attachment[:file])
+        uploader.key = uploader.file.path
+      end
     end
 
-    def for_uploader(fog_file_uploader)
-      raise ArgumentError, "FogFileUploader expected" unless fog_file_uploader.is_a? FogFileUploader
-
-      uploader = new
-
-      uploader.instance_variable_set "@file", fog_file_uploader.file
-      uploader.instance_variable_set "@key", fog_file_uploader.path
-      uploader.instance_variable_set "@model", fog_file_uploader.model
-
-      uploader
+    def delete_staged_upload(attachment)
+      for_attachment(attachment).remote_file.delete
+    rescue StandardError => e
+      OpenProject.logger.error("Failed to delete staged upload of attachment #{attachment.id}: #{e.message}")
     end
 
     ##
@@ -42,13 +78,13 @@ class DirectFogUploader < FogFileUploader
     )
       uploader = direct_fog_hash_uploader attachment, success_action_redirect, success_action_status
       hash = uploader
-        .direct_fog_hash(enforce_utf8: false, max_file_size: max_file_size)
-        .merge(extra_fog_hash_attributes(uploader: uploader))
+        .direct_fog_hash(enforce_utf8: false, max_file_size:)
+        .merge(extra_fog_hash_attributes(uploader:))
 
       if success_action_redirect.present?
-        hash.merge(success_action_redirect: success_action_redirect)
+        hash.merge(success_action_redirect:)
       else
-        hash.merge(success_action_status: success_action_status)
+        hash.merge(success_action_status:)
       end
     end
 

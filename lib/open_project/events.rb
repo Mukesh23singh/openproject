@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -37,30 +38,50 @@ module OpenProject
   # @note Does not include all events but it should!
   # @see OpenProject::Notifications
   module Events
-    AGGREGATED_WORK_PACKAGE_JOURNAL_READY = "aggregated_work_package_journal_ready".freeze
-    AGGREGATED_WIKI_JOURNAL_READY = "aggregated_wiki_journal_ready".freeze
-    AGGREGATED_NEWS_JOURNAL_READY = "aggregated_news_journal_ready".freeze
-    AGGREGATED_MESSAGE_JOURNAL_READY = "aggregated_message_journal_ready".freeze
+    AGGREGATED_WORK_PACKAGE_JOURNAL_READY = "aggregated_work_package_journal_ready"
+    AGGREGATED_WIKI_JOURNAL_READY = "aggregated_wiki_journal_ready"
+    AGGREGATED_NEWS_JOURNAL_READY = "aggregated_news_journal_ready"
+    AGGREGATED_MESSAGE_JOURNAL_READY = "aggregated_message_journal_ready"
 
-    ATTACHMENT_CREATED = 'attachment_created'.freeze
+    ATTACHMENT_CREATED = "attachment_created"
 
-    JOURNAL_CREATED = 'journal_created'.freeze
-    JOURNAL_AGGREGATE_BEFORE_DESTROY = 'journal_aggregate_before_destroy'.freeze
+    JOURNAL_CREATED = "journal_created"
+    JOURNAL_UPDATED = "journal_updated"
 
-    MEMBER_CREATED = 'member_created'.freeze
-    MEMBER_UPDATED = 'member_updated'.freeze
-    # Called like this for historic reasons, should be called 'member_destroyed'
-    MEMBER_DESTROYED = 'member_removed'.freeze
+    MEMBER_CREATED = "member_created"
+    MEMBER_UPDATED = "member_updated"
+    MEMBER_DESTROYED = "member_destroyed"
 
-    TIME_ENTRY_CREATED = "time_entry_created".freeze
+    OAUTH_CLIENT_TOKEN_CREATED = "oauth_client_token_created"
 
-    NEWS_COMMENT_CREATED = "news_comment_created".freeze
+    TIME_ENTRY_CREATED = "time_entry_created"
 
-    PROJECT_CREATED = "project_created".freeze
-    PROJECT_UPDATED = "project_updated".freeze
-    PROJECT_RENAMED = "project_renamed".freeze
+    NEWS_COMMENT_CREATED = "news_comment_created"
 
-    WATCHER_ADDED = 'watcher_added'.freeze
-    WATCHER_REMOVED = 'watcher_removed'.freeze
+    PROJECT_CREATED = "project_created"
+    PROJECT_UPDATED = "project_updated"
+    PROJECT_RENAMED = "project_renamed"
+    PROJECT_ARCHIVED = "project_archived"
+    PROJECT_UNARCHIVED = "project_unarchived"
+
+    PROJECT_STORAGE_CREATED = "project_storage_created"
+    PROJECT_STORAGE_UPDATED = "project_storage_updated"
+    PROJECT_STORAGE_DESTROYED = "project_storage_destroyed"
+
+    STORAGE_TURNED_UNHEALTHY = "storage_turned_unhealthy"
+    STORAGE_TURNED_HEALTHY = "storage_turned_healthy"
+
+    REMOTE_IDENTITY_CREATED = "remote_identity_created"
+
+    ROLE_UPDATED = "role_updated"
+    ROLE_DESTROYED = "role_destroyed"
+
+    WATCHER_ADDED = "watcher_added"
+    WATCHER_DESTROYED = "watcher_destroyed"
+
+    MODULE_ENABLED = "module_enabled"
+    MODULE_DISABLED = "module_disabled"
+
+    WORK_PACKAGE_SHARED = "work_package_shared"
   end
 end

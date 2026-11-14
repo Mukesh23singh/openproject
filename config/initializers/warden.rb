@@ -1,32 +1,62 @@
-require 'open_project/authentication'
+# frozen_string_literal: true
 
-# Strategies provided by OpenProject:
-require 'open_project/authentication/strategies/warden/basic_auth_failure'
-require 'open_project/authentication/strategies/warden/global_basic_auth'
-require 'open_project/authentication/strategies/warden/user_basic_auth'
-require 'open_project/authentication/strategies/warden/doorkeeper_oauth'
-require 'open_project/authentication/strategies/warden/session'
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-WS = OpenProject::Authentication::Strategies::Warden
+namespace = OpenProject::Authentication::Strategies::Warden
 
-strategies = [
-  [:basic_auth_failure, WS::BasicAuthFailure,  'Basic'],
-  [:global_basic_auth,  WS::GlobalBasicAuth,   'Basic'],
-  [:user_basic_auth,    WS::UserBasicAuth,     'Basic'],
-  [:oauth,              WS::DoorkeeperOAuth,   'OAuth'],
-  [:anonymous_fallback, WS::AnonymousFallback, 'Basic'],
-  [:session,            WS::Session,           'Session']
-]
+OpenProject::Authentication.add_strategy(:basic_auth_failure, namespace::BasicAuthFailure,  "Basic")
+OpenProject::Authentication.add_strategy(:global_basic_auth,  namespace::GlobalBasicAuth,   "Basic")
+OpenProject::Authentication.add_strategy(:user_basic_auth,    namespace::UserBasicAuth,     "Basic")
+OpenProject::Authentication.add_strategy(:user_api_token,     namespace::UserAPIToken,      "Bearer")
+OpenProject::Authentication.add_strategy(:oauth,              namespace::DoorkeeperOAuth,   "Bearer")
+OpenProject::Authentication.add_strategy(:anonymous_fallback, namespace::AnonymousFallback, "Basic")
+OpenProject::Authentication.add_strategy(:jwt_oidc,           namespace::JwtOidc,           "Bearer")
+OpenProject::Authentication.add_strategy(:session,            namespace::Session,           "Session")
 
-strategies.each do |name, clazz, auth_scheme|
-  OpenProject::Authentication.add_strategy name, clazz, auth_scheme
+OpenProject::Authentication.update_strategies(OpenProject::Authentication::Scope::API_V3, { store: false }) do |_|
+  %i[global_basic_auth
+     user_basic_auth
+     basic_auth_failure
+     user_api_token
+     oauth
+     jwt_oidc
+     session
+     anonymous_fallback]
 end
 
-include OpenProject::Authentication::Scope
+OpenProject::Authentication.update_strategies(OpenProject::Authentication::Scope::SCIM_V2, { store: false }) do |_|
+  %i[oauth jwt_oidc]
+end
 
-api_v3_options = {
-  store: false
-}
-OpenProject::Authentication.update_strategies(API_V3, api_v3_options) do |_strategies|
-  %i[global_basic_auth user_basic_auth basic_auth_failure oauth session anonymous_fallback]
+OpenProject::Authentication.update_strategies(OpenProject::Authentication::Scope::MCP_SCOPE, { store: false }) do |_|
+  %i[user_api_token oauth jwt_oidc user_basic_auth basic_auth_failure session]
+end
+
+Rails.application.configure do |app|
+  app.config.middleware.use OpenProject::Authentication::Manager, intercept_401: false # rubocop:disable Naming/VariableNumber
 end

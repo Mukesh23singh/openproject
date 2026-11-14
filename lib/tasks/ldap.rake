@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,95 +37,50 @@ namespace :ldap do
     args
   end
 
-  desc 'Synchronize users from the LDAP auth source with an optional filter' \
-       'rake ldap:sync["name=<LdapAuthSource Name>", filter=<Optional RFC2254 filter string>]'
+  desc "Synchronize existing users from the LDAP auth source" \
+       'rake ldap:sync name="<LdapAuthSource Name>" users=<login1,login2,...>'
   task sync: :environment do
     args = parse_args
     ldap = LdapAuthSource.find_by!(name: args.fetch(:name))
 
-    # Parse filter string if available
-    filter = Net::LDAP::Filter.from_rfc2254 args.fetch(:filter, 'objectClass = *')
-
-    # Open LDAP connection
-    ldap_con = ldap.send(:initialize_ldap_con, ldap.account, ldap.account_password)
-
-    User.transaction do
-      ldap_con.search(base: ldap.base_dn, filter: filter) do |entry|
-        user = User.find_or_initialize_by(login: entry[ldap.attr_login])
-        user.attributes = {
-          firstname: entry[ldap.attr_firstname],
-          lastname: entry[ldap.attr_lastname],
-          mail: entry[ldap.attr_mail],
-          admin: entry[ldap.attr_admin],
-          auth_source: ldap
-        }
-
-        if user.changed?
-          prefix = user.new_record? ? 'Created' : 'Updated'
-          Rails.logger.info "#{prefix} user #{user.login} from ldap synchronization"
-          user.save
-        end
-      end
-    end
+    logins = args.fetch(:logins, "").split(/\s*,\s*/)
+    Ldap::SynchronizeUsersService
+      .new(ldap, logins)
+      .call
   end
 
-  desc 'Synchronize a list of user IDs with the LDAP auth source' \
-       'rake ldap:sync_user_list LDAP=<LdapAuthSource Name>" USERLIST=<Path to file with newline separated USER ids>'
-  task sync_user_list: :environment do
-    file = ENV['USERLIST']
-    ldap_name = ENV['LDAP']
+  desc "Synchronize users from the LDAP auth source with an optional filter." \
+       "Note: If you omit the filter, ALL users are imported." \
+       'rake ldap:import_from_filter name="<LdapAuthSource Name>" filter=<Optional RFC2254 filter string>'
+  task import_from_filter: :environment do
+    args = parse_args
+    ldap = LdapAuthSource.find_by!(name: args.fetch(:name))
 
-    ldap = LdapAuthSource.find_by!(name: ldap_name)
+    # Parse filter string if available
+    filter = Net::LDAP::Filter.from_rfc2254 args.fetch(:filter, "objectClass = *")
 
-    # Open connection
-    puts "--> Opening LDAP connection"
-    ldap_con = ldap.instance_eval { initialize_ldap_con(account, account_password) }
-    base_dn = ldap.send :base_dn
+    Ldap::ImportUsersFromFilterService
+      .new(ldap, filter)
+      .call
+  end
 
-    attr_login = ldap.send :attr_login
-    object_filter = Net::LDAP::Filter.eq('objectClass', '*')
-    attributes = ldap.instance_eval do
-      ['dn', attr_login, attr_firstname, attr_lastname, attr_mail, attr_admin]
-    end
+  desc "Synchronize a list of user logins with the LDAP auth source" \
+       'rake ldap:import_from_user_list name=<LdapAuthSource Name>" users=<Path to file with newline separated logins>'
+  task import_from_user_list: :environment do
+    args = parse_args
+    ldap = LdapAuthSource.find_by!(name: args.fetch(:name))
+    file = args.fetch(:users)
 
     puts "--> Reading username file #{file}"
-    File.read(file).lines.each do |username|
-      # Trim and skip empty
-      username.chomp!
-      next unless username.present?
+    users = File.read(file).lines(chomp: true)
 
-      login_filter = Net::LDAP::Filter.eq(attr_login, username)
-
-      entries = ldap_con.search(base: base_dn, filter: object_filter & login_filter, attributes: attributes)
-
-      if entries.count == 0
-        warn "Did not find entry for #{username}"
-        next
-      end
-
-      if entries.count > 1
-        warn "Found multiple entries for #{username}: #{entries.map(&:dn)}. Skipping"
-        next
-      end
-
-      entry = entries.first
-      user = User.find_or_initialize_by(login: LdapAuthSource.get_attr(entry, ldap.attr_login))
-      user.attributes = ldap.send(:get_user_attributes_from_ldap_entry, entry).except(:dn)
-
-      if user.changed?
-        prefix = user.new_record? ? 'Created' : 'Updated'
-
-        if user.save
-          puts "#{prefix} user #{user.login} from ldap synchronization"
-        else
-          puts "Failed to save #{user.login}: #{user.errors.full_messages.join(', ')}."
-        end
-      end
-    end
+    Ldap::ImportUsersFromListService
+      .new(ldap, users)
+      .call
   end
 
-  desc 'Register a LDAP auth source for the given LDAP URL and attribute mapping: ' \
-       'rake ldap:register["url=<URL> name=<Name> onthefly=<true,false>map_{login,firstname,lastname,mail,admin}=attribute"]'
+  desc "Register a LDAP auth source for the given LDAP URL and attribute mapping: " \
+       'rake ldap:register["url=<URL> name=<Name> onthefly=<true,false>map_{login,firstname,lastname,mail,admin}=attribute,filter_string"]'
   task register: :environment do
     args = parse_args
 
@@ -146,7 +98,7 @@ namespace :ldap do
     source.attributes = {
       host: url.host,
       port: url.port,
-      tls_mode: url.scheme == 'ldaps' ? 'start_tls' : 'plain_ldap',
+      tls_mode: url.scheme == "ldaps" ? "start_tls" : "plain_ldap",
       account: url.user,
       account_password: url.password,
       base_dn: url.dn,
@@ -158,41 +110,12 @@ namespace :ldap do
       attr_admin: args[:map_admin]
     }
 
+    source.filter_string = args[:filter_string] if args.key?(:filter_string)
+
     if source.save
       puts "Saved LDAP auth source #{args[:name]}."
     else
       raise "Failed to save auth source: #{source.errors.full_messages.join("\n")}"
     end
-  end
-
-  desc 'Creates a dummy LDAP auth source for logging in any user using the password "dummy".'
-  task create_dummy: :environment do
-    source_name = 'DerpLAP'
-    otf_reg = ARGV.include?('onthefly_register')
-
-    source = DummyAuthSource.create name: source_name, onthefly_register: otf_reg
-
-    puts
-    if source.valid?
-      puts "Created dummy auth source called \"#{source_name}\""
-      puts 'On-the-fly registration support: ' + otf_reg.to_s
-      unless otf_reg
-        puts "use `rake ldap:create_dummy[onthefly_register]` to enable on-the-fly registration"
-      end
-    else
-      puts "Dummy auth source already exists. It's called \"#{source_name}\"."
-    end
-
-    puts
-    puts 'Note: Dummy auth sources cannot be edited, so clicking on them'
-    puts "      in the 'LDAP Authentication' view will result in an error. Bummer!"
-  end
-
-  desc 'Delete all Dummy auth sources'
-  task delete_dummies: :environment do
-    DummyAuthSource.destroy_all
-
-    puts
-    puts 'Deleted all dummy auth sources. Users who used it are out of luck! :o'
   end
 end

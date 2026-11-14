@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,6 +31,7 @@ module Members
   class BaseContract < ::ModelContract
     delegate :principal,
              :project,
+             :project_id,
              :new_record?,
              to: :model
 
@@ -39,6 +41,7 @@ module Members
     validate :roles_grantable
     validate :project_set
     validate :project_manageable
+    validate :validate_no_global_placeholder
 
     def assignable_projects
       Project
@@ -47,6 +50,12 @@ module Members
     end
 
     private
+
+    def validate_no_global_placeholder
+      return unless principal.is_a?(PlaceholderUser)
+
+      errors.add :principal, :invalid if project_id.nil?
+    end
 
     def user_allowed_to_manage
       errors.add :base, :error_unauthorized unless user_allowed_to_manage?
@@ -68,17 +77,25 @@ module Members
 
     def role_grantable?(role)
       role.builtin == Role::NON_BUILTIN &&
-        ((model.project && role.instance_of?(Role)) || (!model.project && role.instance_of?(GlobalRole)))
+        ((model.project && role.instance_of?(ProjectRole)) || (!model.project && role.instance_of?(GlobalRole)))
     end
 
-    def user_allowed_to_manage?
-      user.allowed_to?(:manage_members,
-                       model.project,
-                       global: model.project.nil?)
+    def user_allowed_to_manage? # rubocop:disable Metrics/AbcSize, Metrics/PerceivedComplexity
+      if model.project.present? && model.roles.empty?
+        user.allowed_in_any_project?(:manage_members)
+      elsif model.project.present? && model.roles.all? { |r| r.is_a?(ProjectRole) }
+        user.allowed_in_project?(:manage_members, model.project)
+      elsif model.project.nil? && model.roles.any? { |r| r.is_a?(GlobalRole) }
+        user.admin?
+      else
+        # This state is invalid to be saved so other validations will prevent this from being valid
+        # but we cannot tell whether the user is allowed to manage members for this.
+        true
+      end
     end
 
     def project_manageable_or_blank?
-      !model.project || user.allowed_to?(:manage_members, model.project)
+      !model.project || user.allowed_in_project?(:manage_members, model.project)
     end
 
     def project_set_or_admin?

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -63,36 +60,47 @@ module API
                    attribute_group: nil,
                    min_length: nil,
                    max_length: nil,
+                   minimum: nil,
+                   maximum: nil,
                    regular_expression: nil,
                    options: {},
+                   formula: nil,
                    show_if: true,
-                   description: nil)
+                   description: nil,
+                   deprecated: nil,
+                   placeholder: nil)
           getter = ->(*) do
-            schema_property_getter(type,
-                                   name_source,
-                                   required,
-                                   has_default,
-                                   writable,
-                                   attribute_group,
-                                   min_length,
-                                   max_length,
-                                   regular_expression,
-                                   options,
-                                   location,
-                                   description)
+            schema_property_getter(type:,
+                                   name_source:,
+                                   required:,
+                                   has_default:,
+                                   writable:,
+                                   attribute_group:,
+                                   min_length:,
+                                   max_length:,
+                                   minimum:,
+                                   maximum:,
+                                   regular_expression:,
+                                   options:,
+                                   formula:,
+                                   location:,
+                                   description:,
+                                   deprecated:,
+                                   placeholder:)
           end
 
           schema_property(property,
-                          getter,
-                          show_if,
-                          required,
-                          has_default,
-                          name_source,
-                          as)
+                          getter:,
+                          show_if:,
+                          required:,
+                          has_default:,
+                          name_source:,
+                          as:)
         end
 
         def schema_with_allowed_link(property,
-                                     href_callback:, type: make_type(property),
+                                     href_callback:,
+                                     type: make_type(property),
                                      name_source: property,
                                      as: camelize(property),
                                      required: true,
@@ -111,16 +119,18 @@ module API
           end
 
           schema_property(property,
-                          getter,
-                          show_if,
-                          required,
-                          has_default,
-                          name_source,
-                          as)
+                          getter:,
+                          show_if:,
+                          required:,
+                          has_default:,
+                          name_source:,
+                          as:)
         end
 
         def schema_with_allowed_collection(property,
-                                           value_representer:, link_factory:, type: make_type(property),
+                                           value_representer:,
+                                           link_factory:,
+                                           type: make_type(property),
                                            name_source: property,
                                            as: camelize(property),
                                            values_callback: -> do
@@ -130,8 +140,10 @@ module API
                                            has_default: false,
                                            writable: default_writable_property(property),
                                            attribute_group: nil,
+                                           deprecated: nil,
+                                           description: nil,
+                                           options: nil,
                                            show_if: true)
-
           getter = ->(*) do
             schema_with_allowed_collection_getter(type,
                                                   name_source,
@@ -143,16 +155,19 @@ module API
                                                   writable,
                                                   attribute_group,
                                                   values_callback,
-                                                  nil)
+                                                  nil,
+                                                  deprecated,
+                                                  description,
+                                                  options)
           end
 
           schema_property(property,
-                          getter,
-                          show_if,
-                          required,
-                          has_default,
-                          name_source,
-                          as)
+                          getter:,
+                          show_if:,
+                          required:,
+                          has_default:,
+                          name_source:,
+                          as:)
         end
 
         def schema_with_allowed_string_collection(property,
@@ -186,30 +201,30 @@ module API
           end
 
           schema_property(property,
-                          getter,
-                          show_if,
-                          required,
-                          has_default,
-                          name_source,
-                          as)
+                          getter:,
+                          show_if:,
+                          required:,
+                          has_default:,
+                          name_source:,
+                          as:)
         end
 
         def schema_property(property,
-                            getter,
-                            show_if,
-                            required,
-                            has_default,
-                            name_source,
-                            property_alias)
+                            getter:,
+                            show_if:,
+                            required:,
+                            has_default:,
+                            name_source:,
+                            as:)
           raise ArgumentError unless property
 
           property property,
-                   as: property_alias,
+                   as:,
                    exec_context: :decorator,
-                   getter: getter,
+                   getter:,
                    if: show_if,
-                   required: required,
-                   has_default: has_default,
+                   required:,
+                   has_default:,
                    name_source: lambda {
                      API::Decorators::SchemaRepresenter::InstanceMethods
                        .call_or_translate name_source, represented_class
@@ -227,7 +242,13 @@ module API
         def default_writable_property(property)
           -> do
             if represented.respond_to?(:writable?)
-              represented.writable?(property)
+              property_name = ::API::Utilities::PropertyNameConverter.to_ar_name(
+                property,
+                context: represented.model,
+                collapse_cf_name: false
+              )
+
+              represented.writable?(property_name)
             else
               false
             end
@@ -239,9 +260,9 @@ module API
 
       def self.create(represented, current_user:, self_link: nil, form_embedded: false)
         new(represented,
-            self_link: self_link,
-            current_user: current_user,
-            form_embedded: form_embedded)
+            self_link:,
+            current_user:,
+            form_embedded:)
       end
 
       def self.representable_definitions
@@ -257,11 +278,10 @@ module API
                      current_user:,
                      self_link: nil,
                      form_embedded: false)
-
         self.form_embedded = form_embedded
         self.self_link = self_link
 
-        super(represented, current_user: current_user)
+        super(represented, current_user:)
       end
 
       link :self do
@@ -275,39 +295,44 @@ module API
                     :self_link
 
       def _type
-        'Schema'
+        "Schema"
       end
 
       def _dependencies
         []
       end
 
-      def schema_property_getter(type,
-                                 name_source,
-                                 required,
-                                 has_default,
-                                 writable,
-                                 attribute_group,
-                                 min_length,
-                                 max_length,
-                                 regular_expression,
-                                 options,
-                                 location,
-                                 description)
-        name = call_or_translate(name_source)
+      def schema_property_getter(type:,
+                                 name_source:,
+                                 required:,
+                                 has_default:,
+                                 writable:,
+                                 attribute_group:,
+                                 min_length:,
+                                 max_length:,
+                                 minimum:,
+                                 maximum:,
+                                 regular_expression:,
+                                 options:,
+                                 formula:,
+                                 location:,
+                                 description:,
+                                 deprecated:,
+                                 placeholder:)
         schema = ::API::Decorators::PropertySchemaRepresenter
                  .new(type: call_or_use(type),
-                      name: name,
-                      location: location,
+                      name: call_or_translate(name_source),
+                      location:,
                       description: call_or_use(description),
                       required: call_or_use(required),
                       has_default: call_or_use(has_default),
                       writable: call_or_use(writable),
-                      attribute_group: call_or_use(attribute_group))
-        schema.min_length = min_length
-        schema.max_length = max_length
-        schema.regular_expression = regular_expression
-        schema.options = options
+                      attribute_group: call_or_use(attribute_group),
+                      deprecated:,
+                      placeholder: call_or_use(placeholder))
+
+        { min_length:, max_length:, minimum:, maximum:, regular_expression:, options:, formula: }
+          .each { |attribute, value| schema.public_send(:"#{attribute}=", value) }
 
         schema
       end
@@ -345,23 +370,22 @@ module API
                                                 writable,
                                                 attribute_group,
                                                 values_callback,
-                                                allowed_values_getter)
-
-        wrapped_link_factory = if link_factory
-                                 ->(value) { instance_exec(value, &link_factory) }
-                               else
-                                 link_factory
-                               end
-
+                                                allowed_values_getter,
+                                                deprecated = nil,
+                                                description = nil,
+                                                options = nil)
         attributes = { type: call_or_use(type),
                        name: call_or_translate(name_source),
-                       current_user: current_user,
-                       value_representer: value_representer,
-                       link_factory: wrapped_link_factory,
+                       current_user:,
+                       value_representer:,
+                       link_factory: wrap_link_factory(link_factory),
                        required: call_or_use(required),
                        has_default: call_or_use(has_default),
                        writable: call_or_use(writable),
-                       attribute_group: call_or_use(attribute_group) }
+                       attribute_group: call_or_use(attribute_group),
+                       deprecated: call_or_use(deprecated),
+                       description: call_or_use(description),
+                       options: call_or_use(options) }
 
         attributes[:allowed_values_getter] = allowed_values_getter if allowed_values_getter
 
@@ -373,6 +397,12 @@ module API
         end
 
         representer
+      end
+
+      def wrap_link_factory(link_factory)
+        return link_factory unless link_factory
+
+        ->(value) { instance_exec(value, &link_factory) }
       end
 
       def self.camelize(symbol)

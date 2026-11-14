@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,7 +30,7 @@
 FactoryBot.define do
   factory :user_password, class: UserPassword.active_type do
     association :user
-    plain_password { 'adminADMIN!' }
+    plain_password { "adminADMIN!" }
 
     factory :old_user_password do
       created_at { 1.year.ago }
@@ -37,10 +38,10 @@ FactoryBot.define do
     end
   end
 
-  factory :legacy_sha1_password, class: 'UserPassword::SHA1' do
+  factory :legacy_sha1_password, class: "UserPassword::SHA1" do
     association :user
-    type { 'UserPassword::SHA1' }
-    plain_password { 'mylegacypassword!' }
+    type { "UserPassword::SHA1" }
+    plain_password { "mylegacypassword!" }
 
     # Avoid going through the after_save hook
     # As it's no longer possible for Sha1 passwords

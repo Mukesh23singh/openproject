@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,17 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { FocusHelperService } from 'core-app/shared/directives/focus/focus-helper';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { ConfigurationService } from 'core-app/core/config/configuration.service';
+import Mousetrap from 'mousetrap';
 
 const accessKeys = {
   preview: 1,
@@ -44,19 +45,22 @@ const accessKeys = {
 
 // this could be extracted into a separate component if it grows
 const accessibleListSelector = 'table.keyboard-accessible-list';
-const accessibleRowSelector = 'table.keyboard-accessible-list tbody tr';
 
 @Injectable({
   providedIn: 'root',
 })
 export class KeyboardShortcutService {
+  private readonly PathHelper = inject(PathHelperService);
+  private readonly FocusHelper = inject(FocusHelperService);
+  private readonly currentProject = inject(CurrentProjectService);
+  private readonly configurationService = inject(ConfigurationService);
+
   // maybe move it to a .constant
-  private shortcuts:{ [name:string]:() => void } = {
-    /* eslint-disable quote-props */
+  private shortcuts:Record<string, () => void> = {
     '?': () => this.showHelpModal(),
     'g m': this.globalAction('myPagePath'),
     'g o': this.projectScoped('projectPath'),
-    'g w p': this.projectScoped('projectWorkPackagesPath'),
+    'g w p': this.projectScoped('workPackagesPath'),
     'g w i': this.projectScoped('projectWikiPath'),
     'g a': this.projectScoped('projectActivityPath'),
     'g c': this.projectScoped('projectCalendarPath'),
@@ -71,35 +75,32 @@ export class KeyboardShortcutService {
     's': this.accessKey('quickSearch'),
     'k': () => this.focusPrevItem(),
     'j': () => this.focusNextItem(),
-    /* eslint-enable quote-props */
   };
-
-  constructor(private readonly PathHelper:PathHelperService,
-    private readonly FocusHelper:FocusHelperService,
-    private readonly currentProject:CurrentProjectService) {
-    this.register();
-  }
 
   /**
    * Register the keyboard shortcuts.
    */
   public register():void {
-    _.each(this.shortcuts, (action:() => void, key:string) => Mousetrap.bind(key, action));
+    void this.configurationService.initialize().then(() => {
+      if (!this.configurationService.disableKeyboardShortcuts()) {
+        Object.entries(this.shortcuts).forEach(([key, action]) => Mousetrap.bind(key, action));
+      }
+    });
   }
 
   public accessKey(keyName:'preview'|'newWorkPackage'|'edit'|'quickSearch'|'projectSearch'|'help'|'moreMenu'|'details'):() => void {
     const key = accessKeys[keyName];
 
     return () => {
-      const elem = jQuery(`[accesskey=${key}]:first`);
-      if (elem.is('input') || elem.attr('id') === 'global-search-input') {
+      const elem = document.querySelector<HTMLElement>(`[accesskey="${key}"]`)!;
+      if (elem instanceof HTMLInputElement || elem.getAttribute('id') === 'global-search-input') {
         // timeout with delay so that the key is not
         // triggered on the input
         setTimeout(() => this.FocusHelper.focus(elem), 200);
-      } else if (elem.is('[href]')) {
-        this.clickLink(elem[0] as HTMLLinkElement);
+      } else if (elem instanceof HTMLAnchorElement) {
+        this.clickLink(elem);
       } else {
-        elem[0].click();
+        elem.click();
       }
     };
   }
@@ -119,8 +120,7 @@ export class KeyboardShortcutService {
     };
   }
 
-  // eslint-disable-next-line class-methods-use-this
-  clickLink(link:HTMLLinkElement):void {
+  clickLink(link:HTMLAnchorElement):void {
     const event = new MouseEvent('click', {
       view: window,
       bubbles: true,
@@ -138,18 +138,34 @@ export class KeyboardShortcutService {
   }
 
   focusItemOffset(offset:number):void {
-    const list = document.querySelector(accessibleListSelector);
+    const active = document.activeElement;
+    const enclosing = active?.closest(accessibleListSelector) ?? null;
+    const list = enclosing ?? this.nearestList(active, offset);
     if (!list) {
       return;
     }
 
-    const rows:HTMLElement[] = Array.from(list.querySelectorAll('tbody > tr'));
-    let index:number;
-    if (document.activeElement) {
-      index = rows.indexOf(document.activeElement as HTMLElement);
-      const target = rows[index + offset];
-      target?.focus();
+    const rows = Array.from(list.querySelectorAll<HTMLTableRowElement>('tbody.work-package--results-tbody > tr, tbody > tr.wp-table--sums-row'))
+      .filter((row) => row.checkVisibility());
+    const current = enclosing ? active?.closest('tr') ?? null : null;
+    const index = current ? rows.indexOf(current) : -1;
+    const start = !enclosing && offset < 0 ? rows.length : index;
+    for (let next = start + offset; next >= 0 && next < rows.length; next += offset) {
+      if (!rows[next].classList.contains('wp-table--sums-row')) {
+        rows[next].focus();
+        return;
+      }
     }
+  }
+
+  private nearestList(active:Element|null, offset:number):Element|null {
+    const lists = Array.from(document.querySelectorAll(accessibleListSelector)).filter((list) => list.checkVisibility());
+    const side = offset > 0 ? Node.DOCUMENT_POSITION_FOLLOWING : Node.DOCUMENT_POSITION_PRECEDING;
+    const onSide = active ? lists.filter((list) => (active.compareDocumentPosition(list) & side) !== 0) : [];
+
+    return offset > 0
+      ? onSide[0] ?? lists[0] ?? null
+      : onSide.at(-1) ?? lists.at(-1) ?? null;
   }
 
   focusNextItem():void {

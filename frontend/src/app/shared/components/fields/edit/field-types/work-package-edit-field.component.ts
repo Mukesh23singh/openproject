@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,14 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component } from '@angular/core';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 import {
   DebouncedRequestSwitchmap,
   errorNotificationHandler,
@@ -35,9 +35,15 @@ import {
 import { take } from 'rxjs/operators';
 import { ApiV3FilterBuilder } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
 import { SelectEditFieldComponent } from './select-edit-field/select-edit-field.component';
+import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
 
 @Component({
   templateUrl: './work-package-edit-field.component.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class WorkPackageEditFieldComponent extends SelectEditFieldComponent {
   /** Keep a switchmap for search term and loading state */
@@ -64,13 +70,24 @@ export class WorkPackageEditFieldComponent extends SelectEditFieldComponent {
     return this.requests.input$;
   }
 
-  protected allowedValuesFilter(query?:string):{} {
+  protected fetchAllowedValueQuery(query?:string):Promise<CollectionResource> {
+    if (this.name === 'parent') {
+      return (this.schema.allowedValues as CallableHalLink).$link.$fetch<CollectionResource>({
+        query,
+        sortBy: '[["exactMatch","desc"],["updatedAt","desc"]]',
+      });
+    }
+
+    return super.fetchAllowedValueQuery(query);
+  }
+
+  protected allowedValuesFilter(query?:string):Record<string, unknown> {
     let filterParams = super.allowedValuesFilter(query);
 
     if (query) {
       const filters:ApiV3FilterBuilder = new ApiV3FilterBuilder();
 
-      filters.add('subjectOrId', '**', [query]);
+      filters.add('typeahead', '**', [query]);
 
       filterParams = { filters: filters.toJson() };
     }

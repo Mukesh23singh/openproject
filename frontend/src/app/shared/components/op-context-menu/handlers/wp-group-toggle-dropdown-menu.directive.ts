@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,30 +20,26 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { OPContextMenuService } from 'core-app/shared/components/op-context-menu/op-context-menu.service';
-import { Directive, ElementRef } from '@angular/core';
+import { Directive, inject } from '@angular/core';
 import { OpContextMenuTrigger } from 'core-app/shared/components/op-context-menu/handlers/op-context-menu-trigger.directive';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageViewCollapsedGroupsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-collapsed-groups.service';
 
 @Directive({
+  // eslint-disable-next-line @angular-eslint/directive-selector
   selector: '[wpGroupToggleDropdown]',
+  standalone: false,
 })
 export class WorkPackageGroupToggleDropdownMenuDirective extends OpContextMenuTrigger {
-  constructor(readonly elementRef:ElementRef,
-    readonly opContextMenu:OPContextMenuService,
-    readonly I18n:I18nService,
-    readonly wpViewCollapsedGroups:WorkPackageViewCollapsedGroupsService) {
-    super(elementRef, opContextMenu);
-  }
+  readonly I18n = inject(I18nService);
+  readonly wpViewCollapsedGroups = inject(WorkPackageViewCollapsedGroupsService);
 
-  protected open(evt:JQuery.TriggeredEvent) {
+  protected open(evt:Event) {
     this.buildItems();
     this.opContextMenu.show(this, evt);
   }
@@ -61,7 +57,7 @@ export class WorkPackageGroupToggleDropdownMenuDirective extends OpContextMenuTr
         disabled: this.wpViewCollapsedGroups.allGroupsAreCollapsed,
         linkText: this.I18n.t('js.button_collapse_all'),
         icon: 'icon-minus2',
-        onClick: (evt:JQuery.TriggeredEvent) => {
+        onClick: (_evt) => {
           this.wpViewCollapsedGroups.setAllGroupsCollapseStateTo(true);
 
           return true;
@@ -71,7 +67,7 @@ export class WorkPackageGroupToggleDropdownMenuDirective extends OpContextMenuTr
         disabled: this.wpViewCollapsedGroups.allGroupsAreExpanded,
         linkText: this.I18n.t('js.button_expand_all'),
         icon: 'icon-plus',
-        onClick: (evt:JQuery.TriggeredEvent) => {
+        onClick: (_evt) => {
           this.wpViewCollapsedGroups.setAllGroupsCollapseStateTo(false);
 
           return true;

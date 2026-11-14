@@ -1,63 +1,74 @@
+---
 cs:
   js:
     grid:
-      add_widget: 'Add widget'
-      remove: 'Remove widget'
-      configure: 'Configure widget'
-      upsale:
-        text: "Some widgets, like the work package graph widget, are only available in the "
-        link: 'enterprise edition.'
+      add_widget: Přidat widget
+      configure: Konfigurovat widget
+      remove: Odstranit widget
+      widget_menu_label: Show menu options for %{widgetName} widget
       widgets:
         custom_text:
-          title: 'Vlastní text'
+          title: Vlastní text
         documents:
-          title: 'Dokumenty'
-          no_results: 'Zatím žádné dokumenty.'
+          no_results: Zatím žádné dokumenty.
+          title: Dokumenty
         members:
-          title: 'Členové'
-          no_results: 'No visible members.'
-          view_all_members: 'Zobrazit všechny členy'
-          add: 'Člen'
-          too_many: 'Displaying %{count} of %{total} members.'
+          title: Členové
+        missing_permission: Nemáte potřebná oprávnění k zobrazení tohoto widgetu.
         news:
-          title: 'Novinky'
-          at: 'v'
-          no_results: 'Žádné novinky.'
+          title: Novinky
+        not_available: Tento widget je momentálně nedostupný.
         project_description:
-          title: 'Popis projektu'
-          no_results: "No description has been written yet. One can be provided in the 'Project settings'."
-        project_details:
-          title: 'Detaily projektu'
-          no_results: 'No custom fields have been defined for projects.'
+          title: Popis
+        project_favorites:
+          no_results: V současné době nemáte žádné oblíbené projekty. Přidejte si jeden nebo více projektů do oblíbených prostřednictvím jejich přehledu nebo v seznamu projektů.
+          title: Oblíbené projekty
         project_status:
-          title: 'Stav projektu'
-          on_track: 'On track'
-          off_track: 'Off track'
-          at_risk: 'At risk'
-          not_set: 'Not set'
+          at_risk: Riziko
+          discontinued: Zrušeno
+          finished: Dokončeno
+          not_set: Nenastaveno
+          not_started: Nezahájeno
+          off_track: Mimo plán
+          on_track: Dle plánu
+          title: Stav
+        project_timeline:
+          accessible_date_range: "%{start} to %{end}"
+          accessible_gate: 'Phase gate %{name}: %{date}'
+          accessible_milestone: 'Milestone %{name}: %{date}'
+          accessible_phase: 'Phase %{name}: %{date}'
+          accessible_sprint: 'Sprint %{name}: %{date}. Status: %{status}'
+          sprint_status:
+            active: Active
+            completed: Completed
+            in_planning: In planning
+          tooltip_type_gate: Phase gate
+          tooltip_type_milestone: Milestone
+          tooltip_type_phase: Phase
+          tooltip_type_sprint: Sprint
         subprojects:
-          title: 'Podprojekty'
-          no_results: 'No subprojects.'
+          title: Dílčí položky
         time_entries_current_user:
-          title: 'My spent time'
-          displayed_days: 'Days displayed in the widget:'
+          displayed_days: 'Dny zobrazené ve widgetu:'
+          title: Můj strávený čas
         time_entries_list:
-          title: 'Strávený čas (posledních 7 dní)'
-          no_results: 'Žádné záznamy za posledních 7 dní.'
+          no_results: Žádné záznamy za posledních 7 dní.
+          title: Strávený čas (posledních 7 dní)
         work_packages_accountable:
-          title: "Pracovní balíčky, za které zodpovídám"
+          title: Pracovní balíčky, za které zodpovídám
         work_packages_assigned:
-          title: 'Pracovní balíčky přidělené mně'
-        work_packages_created:
-          title: 'Pracovní balíčky vytvořené mnou'
-        work_packages_watched:
-          title: 'Mé sledované pracovní balíčky'
-        work_packages_table:
-          title: 'Work packages table'
-        work_packages_graph:
-          title: 'Work packages graph'
+          title: Pracovní balíčky přidělené mně
         work_packages_calendar:
-          title: 'Kalendář'
+          title: Kalendář
+        work_packages_created:
+          title: Pracovní balíčky vytvořené mnou
+        work_packages_graph:
+          summary: "%{chartType} chart showing work packages which are %{description}."
+          title: Graf pracovních balíčků
         work_packages_overview:
-          title: 'Work packages overview'
-          placeholder: 'Click to edit ...'
+          placeholder: Kliekněte pro editaci...
+          title: Přehled pracovních balíčků
+        work_packages_table:
+          title: Tabulka pracovních balíčků
+        work_packages_watched:
+          title: Pracovní balíčky, které sleduji

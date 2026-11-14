@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,20 +34,22 @@
 module Projects
   class ScheduleDeletionService < ::BaseServices::BaseContracted
     def initialize(user:, model:, contract_class: ::Projects::DeleteContract)
-      super(user: user, contract_class: contract_class)
+      super(user:, contract_class:)
       self.model = model
     end
 
     private
 
-    def before_perform(_params, _service_result)
+    def before_perform(service_result)
+      return service_result if model.archived?
+
       Projects::ArchiveService
-        .new(user: user, model: model)
+        .new(user:, model:)
         .call
     end
 
     def persist(call)
-      DeleteProjectJob.perform_later(user: user, project: model)
+      DeleteProjectJob.perform_later(user:, project: model)
       call
     end
   end

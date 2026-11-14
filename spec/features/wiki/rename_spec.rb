@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,59 +22,56 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Wiki page', type: :feature, js: true do
-  let(:project) { FactoryBot.create(:project, enabled_module_names: %w[wiki]) }
+RSpec.describe "Wiki page", :js do
+  let(:project) { create(:project, :with_internal_wiki).reload }
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_wiki_pages
-                                                  rename_wiki_pages]
+    create(:user, member_with_permissions: { project => %i[view_wiki_pages edit_wiki_pages] })
   end
   let!(:wiki_page) do
-    FactoryBot.create(:wiki_page_with_content, wiki: project.wiki, title: initial_name)
+    create(:wiki_page, wiki: project.wiki, title: initial_name)
   end
-  let(:initial_name) { 'Initial name' }
-  let(:rename_name) { 'Rename name' }
+  let(:initial_name) { "Initial name" }
+  let(:rename_name) { "Rename name" }
 
   before do
     login_as(user)
   end
 
-  it 'allows renaming' do
+  it "allows renaming" do
     visit project_wiki_path(project, wiki_page)
 
-    SeleniumHubWaiter.wait
-    click_link 'More'
-    click_link 'Rename'
+    page.find_test_selector("wiki-more-dropdown-menu").click
+    page.find_test_selector("wiki-rename-action-menu-item").click
 
     SeleniumHubWaiter.wait
-    fill_in 'Title', with: rename_name
+    fill_in "Title", with: rename_name
 
-    click_button 'Rename'
+    click_button "Rename"
 
     expect(page)
-      .to have_content(rename_name)
+      .to have_text(rename_name)
 
     # One can still use the former name to find the wiki page
     visit project_wiki_path(project, initial_name)
 
-    within('#content') do
+    within("#content") do
       expect(page)
-        .to have_content(rename_name)
+        .to have_text(rename_name)
     end
 
     # But the application uses the new name preferably
-    click_link rename_name
+    within_test_selector("wiki-sidemenu-tree") do
+      click_link rename_name
+    end
 
     expect(page)
-      .to have_current_path(project_wiki_path(project, 'rename-name'))
+      .to have_current_path(project_wiki_path(project, "rename-name"))
   end
 end

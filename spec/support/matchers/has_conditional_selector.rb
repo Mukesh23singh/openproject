@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +22,37 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 # Extending Capybara to allow a flagged check for has_selector to avoid
-# lots of if/else
+# lots of if/else. Extension is available for both the `Capybara::Session`
+# and `Capybara::Node::Matchers`, thus the matcher can be used on both on the
+# `page` or any element (Capybara::Node::Element).
+#   - expect(page).to have_conditional_selector(...)
+#   - expect(input).to have_conditional_selector(...)
+
+module Capybara
+  module Node
+    module Matchers
+      def has_conditional_selector?(condition, *, **kw_args)
+        if condition
+          has_selector?(*, **kw_args)
+        else
+          has_no_selector?(*, **kw_args)
+        end
+      end
+    end
+  end
+end
 
 module Capybara
   class Session
-    def has_conditional_selector?(condition, *args)
-      if condition
-        has_selector? *args
-      else
-        has_no_selector? *args
-      end
+    def has_conditional_selector?(...)
+      @touched = true
+      current_scope.has_conditional_selector?(...)
     end
   end
 end

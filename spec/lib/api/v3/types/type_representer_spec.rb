@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,91 +22,96 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Types::TypeRepresenter do
-  let(:type) { FactoryBot.build_stubbed(:type, color: FactoryBot.build_stubbed(:color)) }
-  let(:representer) { described_class.new(type, current_user: double('current_user')) }
+RSpec.describe API::V3::Types::TypeRepresenter do
+  # Created rather than stubbed: isDefault is read from the type's base variant, which a type
+  # only owns once saved.
+  let(:type) { create(:type, color: create(:color)) }
+  let(:representer) { described_class.new(type, current_user: double("current_user")) }
 
   include API::V3::Utilities::PathHelper
 
-  context 'generation' do
-    subject { representer.to_json }
+  context "generation" do
+    subject(:generated) { representer.to_json }
 
-    describe 'links' do
-      it_behaves_like 'has a titled link' do
-        let(:link) { 'self' }
+    describe "links" do
+      it_behaves_like "has a titled link" do
+        let(:link) { "self" }
         let(:href) { api_v3_paths.type(type.id) }
         let(:title) { type.name }
       end
     end
 
-    it 'indicates its id' do
-      is_expected.to be_json_eql(type.id.to_json).at_path('id')
+    it "fulfills the documented schema" do
+      expect(generated).to match_json_schema.from_docs("type_model")
     end
 
-    it 'indicates its name' do
-      is_expected.to be_json_eql(type.name.to_json).at_path('name')
+    it "indicates its id" do
+      expect(subject).to be_json_eql(type.id.to_json).at_path("id")
     end
 
-    it 'indicates its color' do
-      is_expected.to be_json_eql(type.color.hexcode.to_json).at_path('color')
+    it "indicates its name" do
+      expect(subject).to be_json_eql(type.name.to_json).at_path("name")
     end
 
-    context 'no color set' do
-      let(:type) { FactoryBot.build_stubbed(:type, color: nil) }
+    it "indicates its color" do
+      expect(subject).to be_json_eql(type.color.hexcode.to_json).at_path("color")
+    end
 
-      it 'indicates a missing color' do
-        is_expected.to be_json_eql(nil.to_json).at_path('color')
+    context "no color set" do
+      let(:type) { create(:type, color: nil) }
+
+      it "indicates a missing color" do
+        expect(subject).to be_json_eql(nil.to_json).at_path("color")
       end
     end
 
-    it 'indicates its position' do
-      is_expected.to be_json_eql(type.position.to_json).at_path('position')
+    it "indicates its position" do
+      expect(subject).to be_json_eql(type.position.to_json).at_path("position")
     end
 
-    it 'indicates that it is not the default type' do
-      is_expected.to be_json_eql(false.to_json).at_path('isDefault')
+    it "indicates that it is not the default type" do
+      expect(subject).to be_json_eql(false.to_json).at_path("isDefault")
     end
 
-    context 'as default type' do
-      let(:type) { FactoryBot.build_stubbed(:type, is_default: true) }
+    context "as default type" do
+      let(:type) { create(:type, default_variant_enabled_in_all_projects: true) }
 
-      it 'indicates that it is the default type' do
-        is_expected.to be_json_eql(true.to_json).at_path('isDefault')
+      it "indicates that it is the default type" do
+        expect(subject).to be_json_eql(true.to_json).at_path("isDefault")
       end
     end
 
-    it 'indicates that it is not a milestone' do
-      is_expected.to be_json_eql(false.to_json).at_path('isMilestone')
+    it "indicates that it is not a milestone" do
+      expect(subject).to be_json_eql(false.to_json).at_path("isMilestone")
     end
 
-    context 'as milestone' do
-      let(:type) { FactoryBot.build_stubbed(:type, is_milestone: true) }
+    context "as milestone" do
+      let(:type) { create(:type, is_milestone: true) }
 
-      it 'indicates that it is a milestone' do
-        is_expected.to be_json_eql(true.to_json).at_path('isMilestone')
+      it "indicates that it is a milestone" do
+        expect(subject).to be_json_eql(true.to_json).at_path("isMilestone")
       end
     end
 
-    it_behaves_like 'has UTC ISO 8601 date and time' do
+    it_behaves_like "has UTC ISO 8601 date and time" do
       let(:date) { type.created_at }
-      let(:json_path) { 'createdAt' }
+      let(:json_path) { "createdAt" }
     end
 
-    it_behaves_like 'has UTC ISO 8601 date and time' do
+    it_behaves_like "has UTC ISO 8601 date and time" do
       let(:date) { type.updated_at }
-      let(:json_path) { 'updatedAt' }
+      let(:json_path) { "updatedAt" }
     end
 
-    describe 'caching' do
-      it 'is based on the representer\'s cache_key' do
+    describe "caching" do
+      it "is based on the representer's cache_key" do
         expect(OpenProject::Cache)
           .to receive(:fetch)
                 .with(representer.json_cache_key)
@@ -113,23 +120,23 @@ describe ::API::V3::Types::TypeRepresenter do
         representer.to_json
       end
 
-      describe '#json_cache_key' do
+      describe "#json_cache_key" do
         let!(:former_cache_key) { representer.json_cache_key }
 
-        it 'includes the name of the representer class' do
+        it "includes the name of the representer class" do
           expect(representer.json_cache_key)
-            .to include('API', 'V3', 'Types', 'TypeRepresenter')
+            .to include("API", "V3", "Types", "TypeRepresenter")
         end
 
-        it 'changes when the locale changes' do
+        it "changes when the locale changes" do
           I18n.with_locale(:fr) do
             expect(representer.json_cache_key)
               .not_to eql former_cache_key
           end
         end
 
-        it 'changes when the type is updated' do
-          type.updated_at = Time.now + 20.seconds
+        it "changes when the type is updated" do
+          type.updated_at = 20.seconds.from_now
 
           expect(representer.json_cache_key)
             .not_to eql former_cache_key

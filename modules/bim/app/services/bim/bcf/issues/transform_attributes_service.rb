@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,9 +34,8 @@ module Bim::Bcf
         self.project = project
       end
 
-      def call(attributes)
-        ServiceResult.new success: true,
-                          result: work_package_attributes(attributes)
+      def call(attributes, fill_defaults: true)
+        ServiceResult.success result: work_package_attributes(attributes, fill_defaults:)
       end
 
       private
@@ -50,7 +48,7 @@ module Bim::Bcf
         if attributes[:title]
           attributes[:title]
         elsif attributes[:import_options]
-          '(Imported BCF issue contained no title)'
+          "(Imported BCF issue contained no title)"
         end
       end
 
@@ -69,12 +67,12 @@ module Bim::Bcf
       ##
       # Try to find the given user by mail in the project
       def find_user(mail)
-        project.users.find_by(mail: mail)
+        project.users.find_by(mail:)
       end
 
       def type(attributes)
         type_name = attributes[:type]
-        type = project.types.find_by(name: type_name)
+        type = project.enabled_types.find_by(name: type_name)
 
         return type if type.present?
 
@@ -105,10 +103,25 @@ module Bim::Bcf
 
       ##
       # Get mapped and raw attributes from MarkupExtractor
-      # and return all values that are non-nil
-      def work_package_attributes(attributes)
+      # and return all values that are non-nil.
+      #
+      # +fill_defaults+ applies create-time type/status/priority when omitted. The BCF API
+      # passes false and supplies create vs put defaults itself via reverse_merge, so a PUT
+      # that omits topic_type is not forced onto default_create_type.
+      def work_package_attributes(attributes, fill_defaults: true) # rubocop:disable Metrics/AbcSize
+        import_options = attributes[:import_options] || {}
+        resolved_type = type(attributes)
+        resolved_status = status(attributes)
+        resolved_priority = priority(attributes)
+
+        if fill_defaults && import_options.empty?
+          resolved_type ||= DefaultWorkPackageAttributes.default_create_type(project)
+          resolved_status ||= DefaultWorkPackageAttributes.default_status(project, type: resolved_type)
+          resolved_priority ||= DefaultWorkPackageAttributes.default_priority
+        end
+
         {
-          type: type(attributes),
+          type: resolved_type,
 
           # Native attributes from the extractor
           subject: title(attributes),
@@ -118,15 +131,16 @@ module Bim::Bcf
 
           # Mapped attributes
           assigned_to: assignee(attributes),
-          status: status(attributes),
-          priority: priority(attributes)
+          status: resolved_status,
+          priority: resolved_priority
         }.compact
       end
 
       def missing_status(status_name, import_options)
-        if import_options[:unknown_statuses_action] == 'use_default'
-          ::Status.default
-        elsif import_options[:unknown_statuses_action] == 'chose' &&
+        if import_options[:unknown_statuses_action] == "use_default"
+          default_type = DefaultWorkPackageAttributes.default_create_type(project)
+          DefaultWorkPackageAttributes.default_status(project, type: default_type)
+        elsif import_options[:unknown_statuses_action] == "chose" &&
               import_options[:unknown_statuses_chose_ids].any?
           ::Status.find_by(id: import_options[:unknown_statuses_chose_ids].first)
         elsif status_name
@@ -135,9 +149,9 @@ module Bim::Bcf
       end
 
       def missing_priority(priority_name, import_options)
-        if import_options[:unknown_priorities_action] == 'use_default'
+        if import_options[:unknown_priorities_action] == "use_default"
           # NOP The 'use_default' case gets already covered by OP.
-        elsif import_options[:unknown_priorities_action] == 'chose' &&
+        elsif import_options[:unknown_priorities_action] == "chose" &&
               import_options[:unknown_priorities_chose_ids].any?
           ::IssuePriority.find_by(id: import_options[:unknown_priorities_chose_ids].first)
         elsif priority_name
@@ -145,21 +159,40 @@ module Bim::Bcf
         end
       end
 
+      # A project_type names the configuration the project applies; the work package is typed
+      # by the type itself, so the row is only the way in.
       def missing_type(type_name, import_options)
-        types = project.types
-
-        if import_options[:unknown_types_action] == 'use_default'
-          types.default&.first
-        elsif import_options[:unknown_types_action] == 'chose' &&
-              import_options[:unknown_types_chose_ids].any?
-          types.find_by(id: import_options[:unknown_types_chose_ids].first)
+        if import_options[:unknown_types_action] == "use_default"
+          project_type_for_new_projects&.type
+        elsif chosen_type_id(import_options)
+          chosen_project_type(import_options)&.type
         elsif type_name
           Type::InexistentType.new
         end
       end
 
+      def enabled_project_types
+        project.project_types.includes(:type, :variant)
+      end
+
+      def project_type_for_new_projects
+        enabled_project_types.find { |project_type| project_type.variant.enabled_in_new_projects? }
+      end
+
+      def chosen_type_id(import_options)
+        return unless import_options[:unknown_types_action] == "chose"
+
+        import_options[:unknown_types_chose_ids]&.first
+      end
+
+      def chosen_project_type(import_options)
+        chosen_id = chosen_type_id(import_options)
+
+        enabled_project_types.find { |project_type| project_type.type_id == chosen_id }
+      end
+
       def missing_assignee(assignee_name, import_options)
-        if import_options[:invalid_people_action] != 'anonymize' && assignee_name
+        if import_options[:invalid_people_action] != "anonymize" && assignee_name
           Users::InexistentUser.new
         end
       end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,16 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Workflows::BulkUpdateService < ::BaseServices::Update
-  def initialize(role:, type:)
+class Workflows::BulkUpdateService < BaseServices::BaseCallable
+  def initialize(role:, workflow:, tab:)
+    super()
     @role = role
-    @type = type
+    @workflow = workflow
+    @tab = tab
   end
 
   def call(status_transitions)
@@ -53,19 +54,19 @@ class Workflows::BulkUpdateService < ::BaseServices::Update
 
   private
 
-  attr_accessor :role, :type
+  attr_accessor :role, :workflow
 
   def build_workflows(status_transitions)
     new_workflows = []
 
     (status_transitions || {}).each do |status_id, transitions|
-      transitions.each do |new_status_id, options|
-        new_workflows << Workflow.new(type: type,
-                                      role: role,
-                                      old_status: status_map[status_id.to_i],
-                                      new_status: status_map[new_status_id.to_i],
-                                      author: options_include(options, 'author'),
-                                      assignee: options_include(options, 'assignee'))
+      transitions.each_key do |new_status_id|
+        new_workflows << Workflows::StatusTransition.new(workflow:,
+                                                         role:,
+                                                         old_status: status_map[status_id.to_i],
+                                                         new_status: status_map[new_status_id.to_i],
+                                                         author: author?,
+                                                         assignee: assignee?)
       end
     end
 
@@ -73,34 +74,37 @@ class Workflows::BulkUpdateService < ::BaseServices::Update
   end
 
   def delete_current
-    Workflow.where(role_id: role.id, type_id: type.id).delete_all
+    if author?
+      current_workflows.where(author: true).delete_all
+    elsif assignee?
+      current_workflows.where(assignee: true).delete_all
+    else
+      current_workflows.where(assignee: false, author: false).delete_all
+    end
   end
 
   def bulk_insert(workflows)
     return unless workflows.any?
 
-    columns = %w(role_id type_id old_status_id new_status_id author assignee)
-    values = workflows
-             .map { |w| "(#{w.attributes.slice(*columns).values.join(', ')})" }
-             .join(', ')
+    columns = %w(role_id workflow_id old_status_id new_status_id author assignee)
+    values = workflows.map { |w| w.attributes.slice(*columns) }
 
-    # use Workflow.insert_all in rails 6
-    sql = <<-SQL
-          INSERT
-            INTO #{Workflow.table_name}
-            (#{columns.join(', ')})
-          VALUES
-            #{values}
-    SQL
+    Workflows::StatusTransition.insert_all values
+  end
 
-    Workflow.connection.execute(sql)
+  def current_workflows
+    Workflows::StatusTransition.where(role_id: role.id, workflow_id: workflow.id)
   end
 
   def status_map
     @status_map ||= Status.all.group_by(&:id).transform_values(&:first)
   end
 
-  def options_include(options, string)
-    options.is_a?(Array) && options.include?(string) && !options.include?('always')
+  def author?
+    @tab == "author"
+  end
+
+  def assignee?
+    @tab == "assignee"
   end
 end

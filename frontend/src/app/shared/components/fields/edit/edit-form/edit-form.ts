@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injector } from '@angular/core';
+import { ApplicationRef, Injector } from '@angular/core';
 import { States } from 'core-app/core/states/states.service';
 import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
 import {
@@ -37,30 +36,37 @@ import { HalEventsService } from 'core-app/features/hal/services/hal-events.serv
 import { EditFieldHandler } from 'core-app/shared/components/fields/edit/editing-portal/edit-field-handler';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { ResourceChangeset } from 'core-app/shared/components/fields/changeset/resource-changeset';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { ErrorResource } from 'core-app/features/hal/resources/error-resource';
 import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
 import { HalError } from 'core-app/features/hal/services/hal-error';
+import { FormResource } from 'core-app/features/hal/resources/form-resource';
+import { HalResourceEditFieldHandler } from 'core-app/shared/components/fields/edit/field-handler/hal-resource-edit-field-handler';
+import { EditActivationCancelled } from './edit-activation-cancelled';
 
 export const activeFieldContainerClassName = 'inline-edit--active-field';
 export const activeFieldClassName = 'inline-edit--field';
 
 export abstract class EditForm<T extends HalResource = HalResource> {
+  public allowsFieldAutofocus(_fieldName:string):boolean {
+    return true;
+  }
+
   // Injections
-  @InjectField() states:States;
+  @LazyInject() states:States;
 
-  @InjectField() halEditing:HalResourceEditingService;
+  @LazyInject() halEditing:HalResourceEditingService;
 
-  @InjectField() halNotification:HalResourceNotificationService;
+  @LazyInject() halNotification:HalResourceNotificationService;
 
-  @InjectField() halEvents:HalEventsService;
+  @LazyInject() halEvents:HalEventsService;
 
   // All current active (open) edit fields
-  public activeFields:{ [fieldName:string]:EditFieldHandler } = {};
+  public activeFields:Record<string, EditFieldHandler> = {};
 
   // Errors of the last operation (required when adding opening fields afterwards)
-  public errorsPerAttribute:{ [fieldName:string]:string[] } = {};
+  public errorsPerAttribute:Record<string, string[]> = {};
 
   // Reference to the changeset used in this form
   public resource:T;
@@ -84,22 +90,36 @@ export abstract class EditForm<T extends HalResource = HalResource> {
   /**
    * Reset the field and re-render the current resource's value
    */
-  abstract reset(fieldName:string, focus?:boolean):void;
+  abstract reset(fieldName:string, focus?:boolean, userEnded?:boolean, closing?:EditFieldHandler):void;
 
   /**
    * Optional callback when the form is being saved
    */
-  protected onSaved(commit:ResourceChangesetCommit):void {
+  protected onSaved(_commit:ResourceChangesetCommit<T>):void {
     // Does nothing by default
   }
 
   protected abstract focusOnFirstError():void;
 
+  /** Runs after a user submit has saved or closed its fields. */
+  public onSubmitComplete():void {
+    // Forms override this hook.
+  }
+
+  // eslint-disable-next-line @typescript-eslint/class-literal-property-style -- Forms override this lifetime check.
+  protected get activationCancelled():boolean {
+    return false;
+  }
+
+  protected assertActivationActive():void {
+    if (this.activationCancelled) throw new EditActivationCancelled();
+  }
+
   /**
    * Return whether this form has any active fields
    */
   public hasActiveFields():boolean {
-    return !_.isEmpty(this.activeFields);
+    return Object.keys(this.activeFields).length > 0;
   }
 
   /**
@@ -117,42 +137,57 @@ export abstract class EditForm<T extends HalResource = HalResource> {
    * @param fieldName
    * @param noWarnings Ignore warnings if the field cannot be opened
    */
-  public activate(fieldName:string, noWarnings = false):Promise<void|EditFieldHandler> {
-    return this.loadFieldSchema(fieldName, noWarnings)
-      .then((schema:IFieldSchema) => {
-        if (!schema.writable && !noWarnings) {
-          this.halNotification.showEditingBlockedError(schema.name || fieldName);
-          return Promise.reject();
-        }
-
-        return this.renderField(fieldName, schema);
-      });
+  public async activate(fieldName:string, noWarnings = false):Promise<void|EditFieldHandler> {
+    try {
+      this.assertActivationActive();
+      const notification = this.halNotification;
+      const schema = await this.loadFieldSchema(fieldName, noWarnings);
+      this.assertActivationActive();
+      if (!schema.writable && !noWarnings) {
+        notification.showEditingBlockedError(schema.name || fieldName);
+        throw new Error(`Field ${fieldName} is not writable`);
+      }
+      return await this.renderField(fieldName, schema);
+    } catch (error:unknown) {
+      if (error instanceof EditActivationCancelled) return;
+      throw error;
+    }
   }
 
   /**
    * Activate the field unless it is marked active already
    * (e.g., already being activated).
    */
-  public activateWhenNeeded(fieldName:string):Promise<unknown> {
-    const activeField = this.activeFields[fieldName];
-    if (activeField) {
-      return Promise.resolve();
+  public async activateWhenNeeded(fieldName:string):Promise<unknown> {
+    try {
+      this.assertActivationActive();
+      if (this.activeFields[fieldName]) return;
+      await this.requireVisible(fieldName);
+      this.assertActivationActive();
+      return await this.activate(fieldName, true);
+    } catch (error:unknown) {
+      if (error instanceof EditActivationCancelled) return;
+      throw error;
     }
-
-    return this.requireVisible(fieldName).then(() => this.activate(fieldName, true));
   }
 
   /**
    * Activate all fields that are returned in validation errors
    */
-  public activateMissingFields() {
-    this.change.getForm().then((form:any) => {
-      _.each(form.validationErrors, (val:any, key:string) => {
+  public async activateMissingFields():Promise<unknown[]> {
+    if (this.activationCancelled) return [];
+    return this.change.getForm().then((form:FormResource) => {
+      if (this.activationCancelled) return [];
+      const activateFields:Promise<unknown>[] = [];
+
+      Object.entries(form.validationErrors ?? {}).forEach(([key]) => {
         if (key === 'id') {
           return;
         }
-        this.activateWhenNeeded(key);
+        activateFields.push(this.activateWhenNeeded(key));
       });
+
+      return Promise.all(activateFields);
     });
   }
 
@@ -160,48 +195,48 @@ export abstract class EditForm<T extends HalResource = HalResource> {
    * Save the active changeset.
    * @return {any}
    */
-  public async submit():Promise<T> {
-    if (this.change.isEmpty() && !isNewResource(this.resource)) {
-      this.closeEditFields();
-      return Promise.resolve(this.resource);
+  public async submit(_submittedField?:string):Promise<T> {
+    const change = this.change;
+    const resource = this.resource;
+    if (change.isEmpty() && !isNewResource(resource)) {
+      if (!this.activationCancelled) this.closeEditFields();
+      return resource;
     }
 
-    // Mark changeset as in flight
-    this.change.inFlight = true;
+    // Retain request dependencies before any field or submission await.
+    const editing = this.halEditing;
+    const notification = this.halNotification;
+    const application = this.injector.get(ApplicationRef);
 
-    // Reset old error notifcations
+    change.inFlight = true;
+    this.notifyActiveFieldStateChanged();
+    change.validateCustomFields = true;
     this.errorsPerAttribute = {};
-
-    // Notify all fields of upcoming save
-    const openFields = _.keys(this.activeFields);
-
-    // Call onSubmit handlers
-    await Promise.all(_.map(this.activeFields, (handler:EditFieldHandler) => handler.onSubmit()));
+    const openFields = Object.keys(this.activeFields);
+    await Promise.all(Object.values(this.activeFields).map((handler:EditFieldHandler) => handler.onSubmit()));
 
     return new Promise<T>((resolve, reject) => {
-      this.halEditing.save<T, ResourceChangeset<T>>(this.change)
+      editing.save<T, ResourceChangeset<T>>(change)
         .then((result) => {
-          // Close all current fields
-          this.closeEditFields(openFields);
-
+          if (!this.activationCancelled) this.closeEditFields(openFields);
           resolve(result.resource);
-
-          this.halNotification.showSave(result.resource, result.wasNew);
-          this.editMode = false;
-          this.onSaved(result);
-          this.change.inFlight = false;
-        })
-        .catch((error:ErrorResource|unknown) => {
-          this.halNotification.handleRawError(error, this.resource);
-
-          if (error instanceof HalError && error.resource) {
-            this.handleSubmissionErrors(error.resource);
-            reject();
+          notification.showSave(result.resource, result.wasNew);
+          if (!this.activationCancelled) {
+            this.editMode = false;
+            this.onSaved(result);
           }
-
-          this.change.inFlight = false;
-
-          return Promise.reject(error);
+          change.inFlight = false;
+        })
+        .catch((error:unknown) => {
+          change.inFlight = false;
+          change.validateCustomFields = false;
+          this.notifyActiveFieldStateChanged();
+          notification.handleRawError(error, resource);
+          if (!this.activationCancelled) {
+            if (error instanceof HalError && error.resource) this.handleSubmissionErrors(error.resource);
+            application.tick();
+          }
+          reject(error instanceof Error ? error : new Error('Edit form submission failed.'));
         });
     });
   }
@@ -214,12 +249,12 @@ export abstract class EditForm<T extends HalResource = HalResource> {
    */
   public closeEditFields(fields:string[]|'all' = 'all', resetChange = true) {
     if (fields === 'all') {
-      fields = _.keys(this.activeFields);
+      fields = Object.keys(this.activeFields);
     }
 
     fields.forEach((name:string) => {
       const handler = this.activeFields[name];
-      handler && handler.deactivate(false);
+      handler?.deactivate(false);
 
       if (resetChange) {
         this.change.reset(name);
@@ -233,7 +268,7 @@ export abstract class EditForm<T extends HalResource = HalResource> {
   }
 
   protected handleErroneousAttributes(error:ErrorResource):void {
-    // Get attributes withe errors
+    // Get attributes with errors
     const erroneousAttributes = error.getInvolvedAttributes();
 
     // Save erroneous fields for when new fields appear
@@ -246,20 +281,31 @@ export abstract class EditForm<T extends HalResource = HalResource> {
   }
 
   private setErrorsForFields(erroneousFields:string[]) {
-    // Accumulate errors for the given response
-    const promises:Promise<any>[] = erroneousFields.map((fieldName:string) => this.requireVisible(fieldName).then(() => {
+    if (this.activationCancelled) return;
+    const application = this.injector.get(ApplicationRef);
+    // Immediately set errors on already-active fields (synchronous, no polling needed).
+    // This handles the common case where the field is already open when the 422 arrives.
+    erroneousFields.forEach((fieldName:string) => {
       if (this.activeFields[fieldName]) {
         this.activeFields[fieldName].setErrors(this.errorsPerAttribute[fieldName] || []);
       }
+    });
 
-      return this.activateWhenNeeded(fieldName) as any;
-    }));
+    // Activate any fields that are not yet visible / open (e.g. required custom fields).
+    const promises:Promise<unknown>[] = erroneousFields.map((fieldName:string) => this.activateWhenNeeded(fieldName));
 
     Promise.all(promises)
       .then(() => {
-        setTimeout(() => this.focusOnFirstError());
+        // Run CD again after any newly required fields are activated so their
+        // portal bindings reflect the reset inFlight state in zoneless mode.
+        queueMicrotask(() => {
+          if (this.activationCancelled) return;
+          application.tick();
+          this.focusOnFirstError();
+        });
       })
-      .catch(() => {
+      .catch((error:unknown) => {
+        if (error instanceof EditActivationCancelled) return;
         console.error('Failed to activate all erroneous fields.');
       });
   }
@@ -270,43 +316,83 @@ export abstract class EditForm<T extends HalResource = HalResource> {
    * @param fieldName
    */
   protected loadFieldSchema(fieldName:string, noWarnings = false):Promise<IFieldSchema> {
-    return new Promise((resolve, reject) => {
-      this.loadFormAndCheck(fieldName, noWarnings);
-      const fieldSchema:IFieldSchema = this.change.schema.ofProperty(fieldName);
-
+    const notification = this.halNotification;
+    return this.getFormFieldSchema(fieldName).then((fieldSchema) => {
+      this.assertActivationActive();
       if (!fieldSchema) {
+        this.closeEditFields([fieldName]);
+
         throw new Error();
       }
 
-      resolve(fieldSchema);
+      if (!fieldSchema.writable && !noWarnings) {
+        notification.showEditingBlockedError(fieldSchema.name || fieldName);
+        this.closeEditFields([fieldName]);
+      }
+
+      return fieldSchema;
     });
   }
 
   /**
-   * Ensure the form gets loaded and we show an error when the field cannot be opened
+   * Load the form and return the field schema, reloading the form once if the schema is
+   * not present in the cached version (e.g. after a type change).
+   * Returns null if the schema is still absent after a forced reload.
    * @param fieldName
-   * @param noWarnings
    */
-  private loadFormAndCheck(fieldName:string, noWarnings = false) {
-    // Ensure the form is being loaded if necessary
-    this.change
-      .getForm()
-      .then(() => {
-        // Look up whether we're actually editable
-        const fieldSchema = this.change.schema.ofProperty(fieldName);
-        if (!fieldSchema.writable && !noWarnings) {
-          this.halNotification.showEditingBlockedError(fieldSchema.name || fieldName);
-          this.closeEditFields([fieldName]);
+  private getFormFieldSchema(fieldName:string):Promise<IFieldSchema|null> {
+    const change = this.change;
+    const notification = this.halNotification;
+    // Sync fast path: whatever schema the changeset currently exposes (form-derived if
+    // loaded, otherwise the pristine resource's cached schema) usually contains the
+    // field. Returning it synchronously lets the field activate without waiting on the
+    // form request — required by Capybara specs whose activate! check has a tight
+    // timeout, and by tests that intentionally disable AJAX before activating a field.
+    const cachedSchema = change.schema.ofProperty(fieldName);
+    if (cachedSchema) {
+      // Still kick off the form load (or piggy-back on an in-flight one) so the form's
+      // defaults, allowed values, and projected payload are populated for subsequent
+      // edits/submissions. We don't await it, but we do surface any error (e.g. a 409
+      // lock-version conflict when the resource was modified elsewhere) through the
+      // same notification path the awaited code-path uses — otherwise the user would
+      // open the editor without ever being told their copy is stale.
+      change.getForm().catch((error:unknown) => {
+        console.error('Background form load failed for %s: %o', fieldName, error);
+        notification.handleRawError(error, this.resource);
+      });
+      return Promise.resolve(cachedSchema);
+    }
+
+    // Cached schema doesn't know about this field. Either the form hasn't been loaded
+    // at all, or the cached form is stale (e.g. the work package type was just changed
+    // and the new type's custom fields aren't in the cached form yet). Load the form,
+    // then retry; if still missing, force a full reload once.
+    return change.getForm()
+      .then(():Promise<IFieldSchema|null> => {
+        this.assertActivationActive();
+        const fieldSchema:IFieldSchema|null = change.schema.ofProperty(fieldName);
+        if (fieldSchema) {
+          return Promise.resolve(fieldSchema);
         }
+
+        return change.getForm(true).then(
+          ():IFieldSchema|null => {
+            this.assertActivationActive();
+            return change.schema.ofProperty(fieldName);
+          },
+        );
       })
-      .catch((error:any) => {
+      .catch((error:unknown) => {
+        if (error instanceof EditActivationCancelled) throw error;
         console.error('Failed to build edit field: %o', error);
-        this.halNotification.handleRawError(error, this.resource);
-        this.closeEditFields([fieldName]);
+        notification.handleRawError(error, this.resource);
+        return null;
       });
   }
 
   private renderField(fieldName:string, schema:IFieldSchema):Promise<void|EditFieldHandler> {
+    this.assertActivationActive();
+    const notification = this.halNotification;
     const promise:Promise<EditFieldHandler> = this.activateField(this,
       schema,
       fieldName,
@@ -314,12 +400,23 @@ export abstract class EditForm<T extends HalResource = HalResource> {
 
     return promise
       .then((fieldHandler:EditFieldHandler) => {
+        this.assertActivationActive();
         this.activeFields[fieldName] = fieldHandler;
         return fieldHandler;
       })
-      .catch((error) => {
-        console.error(`Failed to render edit field:${error}`);
-        this.halNotification.handleRawError(error);
+      .catch((error:unknown) => {
+        if (error instanceof EditActivationCancelled) return;
+        console.error(`Failed to render edit field:${String(error)}`);
+        notification.handleRawError(error);
       });
+  }
+
+  private notifyActiveFieldStateChanged():void {
+    if (this.activationCancelled) return;
+    Object.values(this.activeFields).forEach((handler) => {
+      if (handler instanceof HalResourceEditFieldHandler) {
+        handler.notifyStateChanged();
+      }
+    });
   }
 }

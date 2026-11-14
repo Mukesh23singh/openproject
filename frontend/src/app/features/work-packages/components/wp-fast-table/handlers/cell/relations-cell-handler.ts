@@ -1,19 +1,47 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import { WorkPackageViewRelationColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-relation-columns.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
 import { relationCellIndicatorClassName, relationCellTdClassName } from '../../builders/relation-cell-builder';
 import { tableRowClassName } from '../../builders/rows/single-row-builder';
 import { WorkPackageTable } from '../../wp-fast-table';
 import { ClickOrEnterHandler } from '../click-or-enter-handler';
 import { TableEventComponent, TableEventHandler } from '../table-handler-registry';
+import { EventType } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/event-handler-registry';
 
 export class RelationsCellHandler extends ClickOrEnterHandler implements TableEventHandler {
   // Injections
-  @InjectField() wpTableRelationColumns:WorkPackageViewRelationColumnsService;
+  @LazyInject() wpTableRelationColumns:WorkPackageViewRelationColumnsService;
 
-  public get EVENT() {
-    return 'click.table.relationsCell, keydown.table.relationsCell';
+  public get EVENT():EventType[] {
+    return ['click'];
   }
 
   public get SELECTOR() {
@@ -21,24 +49,24 @@ export class RelationsCellHandler extends ClickOrEnterHandler implements TableEv
   }
 
   public eventScope(view:TableEventComponent) {
-    return jQuery(view.workPackageTable.tableAndTimelineContainer);
+    return view.workPackageTable.tableAndTimelineContainer;
   }
 
   constructor(public readonly injector:Injector) {
     super();
   }
 
-  protected processEvent(table:WorkPackageTable, evt:JQuery.TriggeredEvent):boolean {
+  protected processEvent(table:WorkPackageTable, evt:MouseEvent|KeyboardEvent):void {
     debugLog('Handled click on relation cell %o', evt.target);
     evt.preventDefault();
 
     // Locate the relation td
-    const td = jQuery(evt.target).closest(`.${relationCellTdClassName}`);
-    const columnId = td.data('columnId');
+    const td = (evt.target as HTMLElement).closest<HTMLTableCellElement>(`.${relationCellTdClassName}`);
+    const columnId = td?.dataset.columnId ?? '';
 
     // Locate the row
-    const rowElement = jQuery(evt.target).closest(`.${tableRowClassName}`);
-    const workPackageId = rowElement.data('workPackageId');
+    const rowElement = (evt.target as HTMLElement).closest<HTMLTableRowElement>(`.${tableRowClassName}`);
+    const workPackageId = rowElement?.dataset.workPackageId ?? '';
 
     // If currently expanded
     if (this.wpTableRelationColumns.getExpandFor(workPackageId) === columnId) {
@@ -46,7 +74,5 @@ export class RelationsCellHandler extends ClickOrEnterHandler implements TableEv
     } else {
       this.wpTableRelationColumns.setExpandFor(workPackageId, columnId);
     }
-
-    return false;
   }
 }

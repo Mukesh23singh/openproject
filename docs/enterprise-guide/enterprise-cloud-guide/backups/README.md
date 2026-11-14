@@ -2,32 +2,33 @@
 sidebar_navigation:
   title: Backups
   priority: 710
-description: Backups in the cloud edition.
-robots: index, follow
+description: Backups in the Enterprise cloud edition.
 keywords: backups
 ---
 
 # Backups
 
-Your Enterprise cloud data is backed up continuously and retained for 30 days.
-Within those 30 days we can restore your data to any point in time with a precision of 5 minutes, in case you need us to.
+## Data retention policy
 
-## Download
+Your Enterprise cloud data is continuously backed up and retained for 30 days. Within this period, we can restore your data to any point in time with a precision of 5 minutes if needed.
 
-You can yourself create backups of your OpenProject installation. Go to *Administration* and *Backup* to get started.
+> [!NOTE]
+> Currently, this applies only to cloud instances located in the openproject.com cloud environment.
 
-![administration-backup](administration-backup-2034314.png)
+> [!IMPORTANT]
+> At the moment, it is only possible to restore the **entire instance** to a previous state. Any changes made after the restored point will be lost.  
+> To help you recover lost information, the restored version will be temporarily available at a separate URL. This allows you to manually transfer the necessary data back to your production instance using **API calls or manual entry**. You will have as much time as needed to complete this process.
 
-You will then need to create a backup token by clicking **+ Backup token**.
+## Resource limitations for attachments
 
-![create-backup-token](create-backup-token.png)
+In the Enterprise cloud, backups can only include attachments if the total file size of all attachments is less than 1 GB.
 
-The system generates the token which you then fill in where requested in the field below.
+If your attachments exceed this limit, please contact us at [support@openproject.com](mailto:support@openproject.com) to manually request a complete backup, which includes an SQL dump with all attachments. Alternatively, consider deleting unused attachments to reduce your data usage below 1 GB.
 
-![backup-code](backup-code.png)
+If the total attachment size exceeds 1 GB, the **Include attachments** checkbox will be disabled, as shown in the screenshot below:
 
-After having **requested the backup**, you will receive an email notification with a link to download your backup. For this, you will need additional authentication (username and password as well as 2-Factor-Authentication if activated) to download the backup files.
+![backup-enterprise-cloud](backup-enterprise-cloud.png)
 
-In case you have trouble creating your backup, please [get in touch](mailto:support@openproject.com) with us. We can then provide a current or past backup (database + attachments) to you.
+## Backup via GUI
 
-This way you can also get your data if you decide to stop using the Enterprise cloud edition.
+For detailed instructions on using the Backup feature via the GUI, please refer to the  [System admin guide - Backup page](../../../system-admin-guide/backup/).

@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -31,6 +30,8 @@ $project-table--child-indentation: 1.1em
 $project-table--icon-distance: 5px
 $project-table--description-indention: 9px
 
+$content-padding: 10px
+
 @mixin calc-indentation-name($indentation)
   // This does not work for big font-sizes
   padding-left: calc(#{$indentation} * #{$project-table--child-indentation} + #{$project-table--start-indentation} - #{$project-table--icon-distance})
@@ -38,50 +39,6 @@ $project-table--description-indention: 9px
 @mixin calc-indentation-description($indentation)
   // This does not work for big font-sizes
   padding-left: calc(#{$indentation} * #{$project-table--child-indentation} + #{$project-table--start-indentation} + #{$project-table--description-indention})
-
-form.project-filters
-  display: none
-  &.-expanded
-    display: block
-  .advanced-filters--filter-value
-    // visibility based on operator type
-    &.hidden
-      visibility: hidden
-      height: 55px
-
-    // visibility for list value selectors
-    .multi-select
-      display: none
-    .single-select
-      display: block
-    &.multi-value
-      .multi-select
-        display: block
-      .single-select
-        display: none
-
-    // visibility for datetime_past value selectors
-    &.between-dates
-      >.on-date,
-      >.days
-        display: none
-    &.on-date
-      >.between-dates,
-      >.days
-        display: none
-    &.days
-      >.on-date,
-      >.between-dates
-        display: none
-
-    // Special input field styles
-    &.between-dates
-      input[type="text"]
-        display: inline-block
-        max-width: 10rem
-
-  .advanced-filters--controls
-    margin-top: 1rem
 
 .projects-table--hierarchy-icon
   display: none
@@ -104,6 +61,7 @@ form.project-filters
           display: none
     td.format-text
       min-width: 160px
+      word-wrap: break-word
     td.format-user
       min-width: 120px
     .buttons
@@ -112,36 +70,20 @@ form.project-filters
       .expand
         display: inline
 
-      .project-actions
-        display: inline-block
-        margin: 0
-        .menu-drop-down-container
-          text-align: left
     .archived
-      color: var(--gray-dark)
-      span.archived-label
-        text-transform: uppercase
-
-  .project-description
-    display: none
-    td
-      padding-top: 0
-      padding-bottom: 1rem
-      p
-        font-size: inherit
-        padding-left: 0
-        max-width: 800px // improve readability
-      // Hide everything else than text for now to avoid a too large table
-      .flash, pre
-        display: none !important
-
-  .project-description.-expanded
-    display: table-row
+      color: var(--fgColor-muted)
 
   td.name
-    @include text-shortener
-    a
-      white-space: nowrap
+    > .projects-table--name
+        display: flex
+        gap: var(--base-size-8, 8px)
+
+        > .projects-table--name-text
+            @include text-shortener
+            white-space: nowrap
+
+        > .projects-table--name-description
+            @extend %autocomplete-description
 
   td.project--hierarchy
     white-space: nowrap
@@ -158,17 +100,6 @@ form.project-filters
   .generic-table--sort-header
     min-width: 1rem
     max-width: 1rem
-
-// Ugly hack for now, so expanded more-menus do not get cut off. Actually that
-// should be handled from the drop down implementation with absolute positions
-// just as in the work package table.
-body.controller-projects.action-index
-  #content
-    overflow: visible
-    .generic-table--container
-      min-height: 1
-      overflow: visible
-
 
 // project list in types configuration
 #type_project_ids

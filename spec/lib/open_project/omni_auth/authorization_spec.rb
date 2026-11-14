@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe OpenProject::OmniAuth::Authorization do
-  describe '.after_login!' do
-    let(:auth_hash) { Struct.new(:uid).new 'bar' }
-    let(:user)  { FactoryBot.create :user, mail: 'foo@bar.de' }
+RSpec.describe OpenProject::OmniAuth::Authorization do
+  describe ".after_login!" do
+    let(:auth_hash) { Struct.new(:uid).new "bar" }
+    let(:user)  { create(:user, mail: "foo@bar.de") }
     let(:state) { Struct.new(:number, :user_email, :uid).new 0, nil, nil }
     let(:collector) { [] }
     let!(:existing_callbacks) { OpenProject::OmniAuth::Authorization.after_login_callbacks.dup }
@@ -67,11 +68,11 @@ describe OpenProject::OmniAuth::Authorization do
       OpenProject::OmniAuth::Authorization.after_login! user, auth_hash
 
       expect(state.number).to eq 42
-      expect(state.user_email).to eq 'foo@bar.de'
-      expect(state.uid).to eq 'bar'
+      expect(state.user_email).to eq "foo@bar.de"
+      expect(state.uid).to eq "bar"
     end
 
-    it 'it optionally passes in a context' do
+    it "optionally passes in a context" do
       context = double(:some_context)
       OpenProject::OmniAuth::Authorization.after_login! user, auth_hash, context
       expect(collector).to include(context)

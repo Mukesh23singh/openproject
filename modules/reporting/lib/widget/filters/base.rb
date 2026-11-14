@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,7 +28,7 @@
 class Widget::Filters::Base < Widget::Base
   attr_reader :filter, :filter_class
 
-  def initialize(filter)
+  def initialize(filter, **)
     if filter.instance_of?(Class)
       @filter_class = filter
       @filter = filter.new
@@ -38,5 +37,22 @@ class Widget::Filters::Base < Widget::Base
       @filter_class = filter.class
     end
     @engine = filter.engine
+
+    super
+  end
+
+  def call
+    render_filter
+  end
+
+  def render_filter
+    raise SubclassResponsibilityError, "Filter subclasses must implement this method."
+  end
+
+  def expand_comma_separated_values!
+    # In case the filter values are all written in a single string (e.g. ["12, 33"])
+    if filter.values.length === 1 && filter.values[0].instance_of?(String)
+      filter.values = filter.values[0].split(",").map(&:strip)
+    end
   end
 end

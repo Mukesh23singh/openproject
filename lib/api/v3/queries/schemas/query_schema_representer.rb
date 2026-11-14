@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module V3
@@ -37,23 +34,20 @@ module API
       module Schemas
         class QuerySchemaRepresenter < ::API::Decorators::SchemaRepresenter
           def initialize(represented, self_link: nil, current_user: nil, form_embedded: false)
-            super(represented,
-                  self_link: self_link,
-                  current_user: current_user,
-                  form_embedded: form_embedded)
+            super
           end
 
           def self.filters_schema
             ->(*) do
               {
-                'type': '[]QueryFilterInstance',
-                'name': Query.human_attribute_name('filters'),
-                'required': false,
-                'writable': true,
-                'hasDefault': true,
-                '_links': {
-                  'allowedValuesSchemas': {
-                    'href': filter_instance_schemas_href
+                type: "[]QueryFilterInstance",
+                name: Query.human_attribute_name("filters"),
+                required: false,
+                writable: true,
+                hasDefault: true,
+                _links: {
+                  allowedValuesSchemas: {
+                    href: filter_instance_schemas_href
                   }
                 }
               }
@@ -61,108 +55,123 @@ module API
           end
 
           schema :id,
-                 type: 'Integer'
+                 type: "Integer"
 
           schema :name,
-                 type: 'String',
+                 type: "String",
                  writable: true,
                  min_length: 1,
                  max_length: 255
 
           schema :created_at,
-                 type: 'DateTime'
+                 type: "DateTime"
 
           schema :updated_at,
-                 type: 'DateTime'
+                 type: "DateTime"
 
           schema :user,
-                 type: 'User',
+                 type: "User",
                  location: :link,
                  has_default: true
 
           schema_with_allowed_link :project,
-                                   type: 'Project',
+                                   type: "Project",
                                    required: false,
                                    writable: true,
                                    href_callback: ->(*) {
                                      api_v3_paths.query_available_projects
                                    }
           schema :public,
-                 type: 'Boolean',
+                 type: "Boolean",
                  required: false,
-                 writable: -> do
-                   current_user.allowed_to?(:manage_public_queries,
-                                            represented.project,
-                                            global: represented.project.nil?)
-                 end,
+                 writable: -> { allowed_to_manage_public_queries? },
                  has_default: true
 
           schema :sums,
-                 type: 'Boolean',
+                 type: "Boolean",
                  required: false,
                  writable: true,
                  has_default: true
 
           schema :timeline_visible,
-                 type: 'Boolean',
+                 type: "Boolean",
                  required: false,
                  writable: true,
-                 has_default: true
+                 has_default: true,
+                 deprecated: true
 
           schema :timeline_zoom_level,
-                 type: 'String',
+                 type: "String",
                  required: false,
                  writable: true,
-                 has_default: true
+                 has_default: true,
+                 deprecated: true
 
           schema :timeline_labels,
-                 type: 'QueryTimelineLabels',
+                 type: "QueryTimelineLabels",
+                 required: false,
+                 writable: true,
+                 has_default: true,
+                 deprecated: true
+
+          schema :timestamps,
+                 type: "[]Timestamp",
                  required: false,
                  writable: true,
                  has_default: true
 
           schema :highlighting_mode,
-                 type: 'String',
+                 type: "String",
                  required: false,
                  writable: true,
-                 has_default: true
+                 has_default: true,
+                 deprecated: true
 
           schema :display_representation,
-                 type: 'String',
+                 type: "String",
                  required: false,
                  writable: true,
-                 has_default: true
+                 has_default: true,
+                 deprecated: true
 
           schema :show_hierarchies,
-                 type: 'Boolean',
+                 type: "Boolean",
                  required: false,
                  writable: true,
-                 has_default: true
+                 has_default: true,
+                 deprecated: true
 
           schema :starred,
-                 type: 'Boolean',
+                 type: "Boolean",
                  required: false,
                  writable: false,
                  has_default: true
 
           schema :hidden,
-                 type: 'Boolean',
+                 type: "Boolean",
                  required: true,
                  writable: true,
-                 has_default: true
+                 has_default: true,
+                 deprecated: true
 
           schema :ordered_work_packages,
-                 type: 'QueryOrder',
+                 type: "QueryOrder",
                  required: false,
                  writable: true,
                  has_default: true
 
+          schema :include_subprojects,
+                 type: "Boolean",
+                 required: true,
+                 writable: true,
+                 has_default: true
+
           schema_with_allowed_collection :columns,
-                                         type: '[]QueryColumn',
+                                         type: "[]QueryColumn",
                                          required: false,
                                          writable: true,
                                          has_default: true,
-                                         values_callback: -> { represented.available_columns },
+                                         values_callback: -> { represented.displayable_columns },
                                          value_representer: ->(column) {
                                            Columns::QueryColumnsFactory.representer(column)
                                          },
@@ -176,15 +185,15 @@ module API
                                          }
 
           schema_property :filters,
-                          filters_schema,
-                          true,
-                          false,
-                          true,
-                          :filters,
-                          :filters
+                          getter: filters_schema,
+                          show_if: true,
+                          required: false,
+                          has_default: true,
+                          name_source: :filters,
+                          as: :filters
 
           schema_with_allowed_collection :group_by,
-                                         type: '[]QueryGroupBy',
+                                         type: "[]QueryGroupBy",
                                          required: false,
                                          writable: true,
                                          values_callback: -> { represented.groupable_columns },
@@ -199,7 +208,7 @@ module API
                                          }
 
           schema_with_allowed_collection :highlighted_attributes,
-                                         type: '[]QueryColumn',
+                                         type: "[]QueryColumn",
                                          required: false,
                                          writable: true,
                                          has_default: true,
@@ -218,14 +227,14 @@ module API
                                          }
 
           schema_with_allowed_collection :sort_by,
-                                         type: '[]QuerySortBy',
+                                         type: "[]QuerySortBy",
                                          required: false,
                                          writable: true,
                                          has_default: true,
                                          values_callback: -> do
                                            values = represented.sortable_columns.map do |column|
-                                             [SortBys::SortByDecorator.new(column, 'asc'),
-                                              SortBys::SortByDecorator.new(column, 'desc')]
+                                             [SortBys::SortByDecorator.new(column, "asc"),
+                                              SortBys::SortByDecorator.new(column, "desc")]
                                            end
 
                                            values.flatten
@@ -241,7 +250,7 @@ module API
                                          }
 
           schema :results,
-                 type: 'WorkPackageCollection',
+                 type: "WorkPackageCollection",
                  required: false,
                  writable: false
 
@@ -258,22 +267,26 @@ module API
           end
 
           def filters_schemas
-            # TODO: The RelatableFilter is not supported by the schema dependencies yet
-            filters = represented
-                      .available_filters
-                      .reject { |f| f.is_a?(::Queries::WorkPackages::Filter::RelatableFilter) }
-
+            filters = represented.available_filters
             QueryFilterInstanceSchemaCollectionRepresenter.new(filters,
                                                                self_link: filter_instance_schemas_href,
-                                                               form_embedded: form_embedded,
-                                                               current_user: current_user)
+                                                               form_embedded:,
+                                                               current_user:)
           end
 
           def filter_instance_schemas_href
             if represented.project
-              api_v3_paths.query_project_filter_instance_schemas(represented.project.id)
+              api_v3_paths.query_workspace_filter_instance_schemas(represented.project.id)
             else
               api_v3_paths.query_filter_instance_schemas
+            end
+          end
+
+          def allowed_to_manage_public_queries?
+            if represented.project
+              current_user.allowed_in_project?(:manage_public_queries, represented.project)
+            else
+              current_user.allowed_in_any_project?(:manage_public_queries)
             end
           end
         end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
+require "support/pages/page"
 
 module Pages
   class DestroyInfo < Page
@@ -38,34 +37,34 @@ module Pages
 
     def expect_loaded
       expect(page)
-        .to have_content("#{I18n.t(:button_delete)} #{I18n.t(:label_budget_id, id: budget.id)}: #{budget.subject}")
+        .to have_text("#{I18n.t(:button_delete)} #{budget.subject}")
     end
 
     def expect_reassign_option
       expect(page)
-        .to have_field('todo_reassign')
+        .to have_field("todo_reassign")
     end
 
     def expect_no_reassign_option
       expect(page)
-        .not_to have_field('todo_reassign')
+        .to have_no_field("todo_reassign")
     end
 
     def select_reassign_option(budget_name)
-      select(budget_name, from: 'reassign_to_id')
+      select(budget_name, from: "reassign_to_id")
     end
 
     def expect_delete_option
       expect(page)
-        .to have_field('todo_delete')
+        .to have_field("todo_delete")
     end
 
     def select_delete_option
-      choose('todo_delete')
+      choose("todo_delete")
     end
 
     def delete
-      click_button 'Apply'
+      click_button "Apply"
     end
 
     def path

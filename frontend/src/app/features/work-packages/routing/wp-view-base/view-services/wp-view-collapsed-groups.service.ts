@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,14 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { WorkPackageViewGroupByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-group-by.service';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { take } from 'rxjs/operators';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
@@ -40,7 +38,12 @@ import { WorkPackageViewBaseService } from './wp-view-base.service';
 
 @Injectable()
 export class WorkPackageViewCollapsedGroupsService extends WorkPackageViewBaseService<IGroupsCollapseEvent> {
-  readonly wpTypesToShowInCollapsedGroupHeaders:((wp:WorkPackageResource) => boolean)[];
+  readonly workPackageViewGroupByService = inject(WorkPackageViewGroupByService);
+  private schemaCacheService = inject(SchemaCacheService);
+
+  isMilestone = (workPackage:WorkPackageResource):boolean => this.schemaCacheService.of(workPackage)?.isMilestone as boolean;
+
+  readonly wpTypesToShowInCollapsedGroupHeaders:((wp:WorkPackageResource) => boolean)[] = [this.isMilestone];
 
   readonly groupTypesWithHeaderCellsWhenCollapsed = ['project'];
 
@@ -64,15 +67,6 @@ export class WorkPackageViewCollapsedGroupsService extends WorkPackageViewBaseSe
     return this.workPackageViewGroupByService.current;
   }
 
-  constructor(
-    protected readonly querySpace:IsolatedQuerySpace,
-    readonly workPackageViewGroupByService:WorkPackageViewGroupByService,
-    private schemaCacheService:SchemaCacheService,
-  ) {
-    super(querySpace);
-    this.wpTypesToShowInCollapsedGroupHeaders = [this.isMilestone];
-  }
-
   // Every time the groupedBy changes, this services is initialized
   private getDefaultState():IGroupsCollapseEvent {
     return {
@@ -83,8 +77,6 @@ export class WorkPackageViewCollapsedGroupsService extends WorkPackageViewBaseSe
       ...this.getAllGroupsCollapsedState(this.currentGroups, this.querySpace.collapsedGroups.value!),
     };
   }
-
-  isMilestone = (workPackage:WorkPackageResource):boolean => this.schemaCacheService.of(workPackage)?.isMilestone;
 
   toggleGroupCollapseState(groupIdentifier:string):void {
     const newCollapsedState = !this.config.state[groupIdentifier];
@@ -103,7 +95,7 @@ export class WorkPackageViewCollapsedGroupsService extends WorkPackageViewBaseSe
   }
 
   setAllGroupsCollapseStateTo(collapsedState:boolean):void {
-    const groupUpdatedState = this.currentGroups.reduce((updatedState:{ [key:string]:boolean }, group) => ({
+    const groupUpdatedState = this.currentGroups.reduce((updatedState:Record<string, boolean>, group) => ({
       ...updatedState,
       [group.identifier]: collapsedState,
     }), {});
@@ -139,18 +131,18 @@ export class WorkPackageViewCollapsedGroupsService extends WorkPackageViewBaseSe
     return { allGroupsAreCollapsed, allGroupsAreExpanded };
   }
 
-  initialize(query:QueryResource, results:WorkPackageCollectionResource, schema?:QuerySchemaResource) {
+  initialize(_query:QueryResource, _results:WorkPackageCollectionResource, _schema?:QuerySchemaResource) {
     // When this service is initialized (first time the table is loaded and very time the groupBy changes),
     // we need to wait until the table is ready to emit the collapseStatus. Otherwise the groups are not
     // ready in the DOM and can't be collapsed/expanded.
     this.querySpace.tableRendered.values$().pipe(take(1)).subscribe(() => this.update({ ...this.config, allGroupsChanged: true }));
   }
 
-  valueFromQuery(query:QueryResource, results:WorkPackageCollectionResource) {
+  valueFromQuery(_query:QueryResource, _results:WorkPackageCollectionResource) {
     return this.getDefaultState();
   }
 
-  applyToQuery(query:QueryResource) {
+  applyToQuery(_query:QueryResource) {
 
   }
 }

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,57 +22,59 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Users::Filters::AnyNameAttributeFilter, type: :model do
-  include_context 'filter tests'
-  let(:values) { ['A name'] }
+RSpec.describe Queries::Users::Filters::AnyNameAttributeFilter do
+  include_context "filter tests"
+  let(:values) { ["A name"] }
   let(:model) { User.user }
   let(:filter_str) { instance.send :sql_concat_name }
 
-  it_behaves_like 'basic query filter' do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :any_name_attribute }
     let(:type) { :string }
     let(:model) { User.user }
+    let(:human_name) { "Name attributes" }
 
-    describe '#allowed_values' do
-      it 'is nil' do
+    describe "#allowed_values" do
+      it "is nil" do
         expect(instance.allowed_values).to be_nil
       end
     end
 
-    describe '#available_operators' do
-      it 'supports = and !' do
+    describe "#available_operators" do
+      it "supports = and !" do
         expect(instance.available_operators)
-          .to eql [Queries::Operators::Contains, Queries::Operators::NotContains]
+          .to contain_exactly Queries::Operators::Contains,
+                              Queries::Operators::NotContains,
+                              Queries::Operators::Everywhere
       end
     end
   end
 
-  describe '#scope' do
+  describe "#apply_to" do
     context 'for "~"' do
-      let(:operator) { '~' }
+      let(:operator) { "~" }
 
-      it 'is the same as handwriting the query' do
-        expected = model.where("#{filter_str} LIKE '%#{values.first.downcase}%'")
+      it "is the same as handwriting the query" do
+        expected = model.where("unaccent(#{filter_str}) LIKE unaccent('%#{values.first.downcase}%')")
 
-        expect(instance.scope.to_sql).to eql expected.to_sql
+        expect(instance.apply_to(model).to_sql).to eql expected.to_sql
       end
     end
 
     context 'for "!~"' do
-      let(:operator) { '!~' }
+      let(:operator) { "!~" }
 
-      it 'is the same as handwriting the query' do
-        expected = model.where("#{filter_str} NOT LIKE '%#{values.first.downcase}%'")
+      it "is the same as handwriting the query" do
+        expected = model.where("unaccent(#{filter_str}) NOT LIKE unaccent('%#{values.first.downcase}%')")
 
-        expect(instance.scope.to_sql).to eql expected.to_sql
+        expect(instance.apply_to(model).to_sql).to eql expected.to_sql
       end
     end
   end

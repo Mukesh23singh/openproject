@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,46 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-module Queries
-  module Projects
-    module Filters
-      class TypeFilter < ::Queries::Projects::Filters::ProjectFilter
-        def allowed_values
-          @allowed_values ||= Type.pluck(:name, :id)
-        end
+class Queries::Projects::Filters::TypeFilter < Queries::Projects::Filters::Base
+  include Queries::Projects::Filters::FilterOnProjectType
 
-        def joins
-          :types
-        end
+  def self.key
+    :type_id
+  end
 
-        def where
-          operator_strategy.sql_for_field(values, Type.table_name, :id)
-        end
+  def allowed_values
+    @allowed_values ||= Type.order(:position).pluck(:name, :id)
+  end
 
-        def type
-          :list
-        end
+  private
 
-        def self.key
-          :type_id
-        end
-
-        private
-
-        def type_strategy
-          # Instead of getting the IDs of all the projects a user is allowed
-          # to see we only check that the value is an integer.  Non valid ids
-          # will then simply create an empty result but will not cause any
-          # harm.
-          @type_strategy ||= ::Queries::Filters::Strategies::IntegerList.new(self)
-        end
-      end
-    end
+  def project_type_column
+    :type_id
   end
 end

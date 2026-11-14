@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +20,19 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { StateService } from '@uirouter/core';
+import { truncate } from 'lodash-es';
 import { KeepTabService } from 'core-app/features/work-packages/components/wp-single-view-tabs/keep-tab/keep-tab.service';
 import { UiStateLinkBuilder } from 'core-app/features/work-packages/components/wp-fast-table/builders/ui-state-link-builder';
 import { WorkPackageDisplayField } from 'core-app/shared/components/fields/display/field-types/work-package-display-field.module';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
 
 export class LinkedWorkPackageDisplayField extends WorkPackageDisplayField {
   public text = {
@@ -38,37 +40,44 @@ export class LinkedWorkPackageDisplayField extends WorkPackageDisplayField {
     none: this.I18n.t('js.filter.noneElement'),
   };
 
-  @InjectField() $state!:StateService;
+  @LazyInject() keepTab!:KeepTabService;
 
-  @InjectField() keepTab!:KeepTabService;
+  @LazyInject() currentProject!:CurrentProjectService;
 
-  private uiStateBuilder:UiStateLinkBuilder = new UiStateLinkBuilder(this.$state, this.keepTab);
+  @LazyInject() pathHelper!:PathHelperService;
 
-  public render(element:HTMLElement, displayText:string):void {
+  @LazyInject() urlParams!:UrlParamsService;
+
+  private uiStateBuilder:UiStateLinkBuilder = new UiStateLinkBuilder(this.keepTab, this.currentProject, this.pathHelper, this.urlParams);
+
+  public render(element:HTMLElement, _displayText:string):void {
     if (this.isEmpty()) {
       element.innerText = this.placeholder;
       return;
     }
 
+    const routingId = this.wpRoutingId;
     const link = this.uiStateBuilder.linkToShow(
-      this.wpId,
+      this.wpId!,
       this.text.linkTitle,
       this.valueString,
+      routingId,
     );
 
     const title = document.createElement('span');
-    title.textContent = ` ${_.truncate(this.title, { length: 40 })}`;
+    const titleText = typeof this.title === 'string' ? this.title : '';
+    title.textContent = ` ${truncate(titleText, { length: 40 })}`;
 
     element.innerHTML = '';
-    element.appendChild(link);
+    element.appendChild(link.element);
     element.appendChild(title);
   }
 
-  public get writable():boolean {
+  public override get writable():boolean {
     return false;
   }
 
   public get valueString() {
-    return `#${this.wpId}`;
+    return this.wpFormattedId;
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,25 +22,24 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 FactoryBot.define do
-  factory :default_enumeration, class: 'Enumeration' do
+  factory :default_enumeration, class: "Enumeration" do
     initialize_with do
-      Enumeration.where(type: 'Enumeration', is_default: true).first || Enumeration.new
+      Enumeration.where(type: "Enumeration", is_default: true).first || Enumeration.new
     end
 
     active { true }
     is_default { true }
-    type { 'Enumeration' }
-    name { 'Default Enumeration' }
+    type { "Enumeration" }
+    name { "Default Enumeration" }
   end
 
-  factory :activity, class: 'TimeEntryActivity' do
+  factory :activity, class: "TimeEntryActivity" do
     sequence(:name) { |i| "Activity #{i}" }
     active { true }
     is_default { false }
@@ -51,31 +52,31 @@ FactoryBot.define do
     end
   end
 
-  factory :priority, class: 'IssuePriority' do
+  factory :priority, class: "IssuePriority" do
     sequence(:name) { |i| "Priority #{i}" }
     active { true }
 
     factory :priority_low do
-      name { 'Low' }
+      name { "Low" }
 
       # reuse existing priority with the given name
       # this prevents a validation error (name has to be unique)
-      initialize_with { IssuePriority.find_or_create_by(name: name) }
+      initialize_with { IssuePriority.find_or_create_by(name:) }
 
       factory :priority_normal do
-        name { 'Normal' }
+        name { "Normal" }
       end
 
       factory :priority_high do
-        name { 'High' }
+        name { "High" }
       end
 
       factory :priority_urgent do
-        name { 'Urgent' }
+        name { "Urgent" }
       end
 
       factory :priority_immediate do
-        name { 'Immediate' }
+        name { "Immediate" }
       end
     end
   end

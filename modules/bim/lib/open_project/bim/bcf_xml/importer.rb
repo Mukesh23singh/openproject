@@ -1,6 +1,35 @@
-require 'activerecord-import'
-require_relative 'issue_reader'
-require_relative 'aggregations'
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "activerecord-import"
+require_relative "issue_reader"
+require_relative "aggregations"
 
 module OpenProject::Bim::BcfXml
   class Importer
@@ -12,8 +41,8 @@ module OpenProject::Bim::BcfXml
       unknown_statuses_action: "use_default",
       unknown_priorities_action: "use_default",
       invalid_people_action: "anonymize",
-      unknown_mails_action: 'invite',
-      non_members_action: 'chose',
+      unknown_mails_action: "invite",
+      non_members_action: "chose",
       unknown_types_chose_ids: [],
       unknown_statuses_chose_ids: [],
       unknown_priorities_chose_ids: [],
@@ -51,10 +80,10 @@ module OpenProject::Bim::BcfXml
 
     def bcf_version_valid?
       Zip::File.open(@file) do |zip|
-        zip_entry = zip.find { |entry| entry.name.end_with?('bcf.version') }
+        zip_entry = zip.find { |entry| entry.name.end_with?("bcf.version") }
         markup = zip_entry.get_input_stream.read
-        doc = Nokogiri::XML(markup, nil, 'UTF-8')
-        bcf_version = doc.xpath('/Version').first['VersionId']
+        doc = Nokogiri::XML(markup, nil, "UTF-8")
+        bcf_version = doc.xpath("/Version").first["VersionId"]
         return Gem::Version.new(bcf_version) >= Gem::Version.new(MINIMUM_BCF_VERSION)
       end
     rescue StandardError => _e
@@ -89,8 +118,8 @@ module OpenProject::Bim::BcfXml
     end
 
     def treat_invalid_people(options)
-      if aggregations.invalid_people.any? && !(options[:invalid_people_action] == 'anonymize')
-        raise StandardError.new 'Invalid people found in import. Use valid email addresses.'
+      if aggregations.invalid_people.any? && !(options[:invalid_people_action] == "anonymize")
+        raise StandardError.new "Invalid people found in import. Use valid email addresses."
       end
     end
 
@@ -98,8 +127,8 @@ module OpenProject::Bim::BcfXml
     # Invite all unknown email addresses and add them
     def treat_unknown_mails(options)
       if treat_unknown_mails?(options)
-        raise StandardError.new 'For inviting new users you need admin privileges.' unless User.current.admin?
-        raise StandardError.new 'Enterprise Edition user limit reached.' unless enterprise_allow_new_users?
+        raise StandardError.new "For inviting new users you need admin privileges." unless User.current.admin?
+        raise StandardError.new "Enterprise Edition user limit reached." unless enterprise_allow_new_users?
 
         aggregations.unknown_mails.each do |mail|
           add_unknown_mail(mail, options)
@@ -113,8 +142,8 @@ module OpenProject::Bim::BcfXml
       aggregations.clear_instance_cache
 
       if treat_non_members?(options)
-        unless User.current.allowed_to?(:manage_members, project)
-          raise StandardError.new 'For adding members to the project you need admin privileges.'
+        unless User.current.allowed_in_project?(:manage_members, project)
+          raise StandardError.new "For adding members to the project you need admin privileges."
         end
 
         aggregations.non_members.each do |user|
@@ -126,7 +155,7 @@ module OpenProject::Bim::BcfXml
     def add_unknown_mail(mail, options)
       user = UserInvitation.invite_new_user(email: mail)
       member = Member.create(principal: user,
-                             project: project)
+                             project:)
       membership_service = ::Members::EditMembershipService.new(member,
                                                                 save: true,
                                                                 current_user: User.current)
@@ -135,7 +164,7 @@ module OpenProject::Bim::BcfXml
 
     def add_non_member(user, options)
       member = Member.create(principal: user,
-                             project: project)
+                             project:)
       membership_service = ::Members::EditMembershipService.new(member,
                                                                 save: true,
                                                                 current_user: User.current)
@@ -144,19 +173,19 @@ module OpenProject::Bim::BcfXml
 
     def treat_unknown_mails?(options)
       aggregations.unknown_mails.any? &&
-        options[:unknown_mails_action] == 'invite' &&
+        options[:unknown_mails_action] == "invite" &&
         options[:unknown_mails_invite_role_ids].any?
     end
 
     def treat_non_members?(options)
       aggregations.non_members.any? &&
-        options[:non_members_action] == 'chose' &&
+        options[:non_members_action] == "chose" &&
         options[:non_members_chose_role_ids].any?
     end
 
     def to_listing(extractor)
       keys = %i[uuid title priority status description author assignee modified_author due_date]
-      Hash[keys.map { |k| [k, extractor.public_send(k)] }].tap do |attributes|
+      keys.index_with { |k| extractor.public_send(k) }.tap do |attributes|
         attributes[:viewpoint_count] = extractor.viewpoints.count
         attributes[:comments_count]  = extractor.comments.count
         attributes[:people]          = extractor.people
@@ -172,8 +201,8 @@ module OpenProject::Bim::BcfXml
           issue = IssueReader.new(project,
                                   zip,
                                   entry,
-                                  current_user: current_user,
-                                  import_options: import_options).extract!
+                                  current_user:,
+                                  import_options:).extract!
 
           if issue.errors.blank?
             issue.save
@@ -186,7 +215,7 @@ module OpenProject::Bim::BcfXml
     # Yields topic bcf files (that contain topic entries and their uuid) from the ZIP files
     # while skipping all other entries
     def yield_markup_bcf_files(zip)
-      zip.select { |entry| entry.name.end_with?('markup.bcf') }
+      zip.select { |entry| entry.name.end_with?("markup.bcf") }
     end
 
     def enterprise_allow_new_users?

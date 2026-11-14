@@ -1,0 +1,7 @@
+---
+sl:
+  js:
+    work_packages:
+      default_queries:
+        milestones: Mejniki
+      label_gantt_chart_plural: Gantogram

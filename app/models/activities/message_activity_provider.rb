@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Activities::MessageActivityProvider < Activities::BaseActivityProvider
-  activity_provider_for type: 'messages',
+  activity_provider_for type: "messages",
                         permission: :view_messages
 
   def extend_event_query(query)
@@ -38,12 +37,13 @@ class Activities::MessageActivityProvider < Activities::BaseActivityProvider
 
   def event_query_projection
     [
-      activity_journal_projection_statement(:subject, 'message_subject'),
-      activity_journal_projection_statement(:content, 'message_content'),
-      activity_journal_projection_statement(:parent_id, 'message_parent_id'),
-      projection_statement(forums_table, :id, 'forum_id'),
-      projection_statement(forums_table, :name, 'forum_name'),
-      projection_statement(forums_table, :project_id, 'project_id')
+      activity_journal_projection_statement(:subject, "message_subject"),
+      activity_journal_projection_statement(:content, "message_content"),
+      activity_journal_projection_statement(:parent_id, "message_parent_id"),
+      projection_statement(forums_table, :id, "forum_id"),
+      projection_statement(forums_table, :name, "forum_name"),
+      projection_statement(forums_table, :project_id, "project_id"),
+      projection_statement(projects_table, :identifier, "project_identifier")
     ]
   end
 
@@ -58,19 +58,19 @@ class Activities::MessageActivityProvider < Activities::BaseActivityProvider
   end
 
   def event_description(event)
-    event['message_content']
+    event["message_content"]
   end
 
   def event_type(event)
-    event['parent_id'].blank? ? 'message' : 'reply'
+    event["message_parent_id"].blank? ? "message" : "reply"
   end
 
   def event_path(event)
-    url_helpers.topic_path(*url_helper_parameter(event))
+    url_helpers.project_forum_topic_path(url_helper_parameter(event))
   end
 
   def event_url(event)
-    url_helpers.topic_url(*url_helper_parameter(event))
+    url_helpers.project_forum_topic_url(url_helper_parameter(event))
   end
 
   private
@@ -80,12 +80,22 @@ class Activities::MessageActivityProvider < Activities::BaseActivityProvider
   end
 
   def url_helper_parameter(event)
-    is_reply = !event['parent_id'].blank?
+    parent_id = event["message_parent_id"]
 
-    if is_reply
-      { id: event['parent_id'], r: event['journable_id'], anchor: "message-#{event['journable_id']}" }
+    if parent_id.present?
+      {
+        project_id: event["project_identifier"],
+        forum_id: event["forum_id"],
+        id: parent_id,
+        r: event["journable_id"],
+        anchor: "message-#{event['journable_id']}"
+      }
     else
-      [event['journable_id']]
+      {
+        project_id: event["project_identifier"],
+        forum_id: event["forum_id"],
+        id: event["journable_id"]
+      }
     end
   end
 end

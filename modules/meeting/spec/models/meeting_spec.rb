@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,126 +22,108 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.dirname(__FILE__) + '/../spec_helper'
+require_relative "../spec_helper"
 
-describe Meeting, type: :model do
-  let(:project) { FactoryBot.create(:project, members: project_members) }
-  let(:user1) { FactoryBot.create(:user) }
-  let(:user2) { FactoryBot.create(:user) }
-  let(:meeting) { FactoryBot.create(:meeting, project: project, author: user1) }
-  let(:agenda) do
-    meeting.create_agenda text: 'Meeting Agenda text'
-    meeting.reload_agenda # avoiding stale object errors
-  end
+RSpec.describe Meeting do
+  shared_let (:user1) { create(:user) }
+  shared_let (:user2) { create(:user) }
+
+  let(:project) { create(:project, members: project_members) }
+  let(:meeting) { create(:meeting, :author_participates, project:, author: user1) }
   let(:project_members) { {} }
 
-  let(:role) { FactoryBot.create(:role, permissions: [:view_meetings]) }
+  let(:role) { create(:project_role, permissions: [:view_meetings]) }
 
   it { is_expected.to belong_to :project }
   it { is_expected.to belong_to :author }
   it { is_expected.to validate_presence_of :title }
 
-  before do
-    @m = FactoryBot.build :meeting, title: 'dingens'
-  end
+  describe "new instance" do
+    let(:meeting) { build(:meeting, project:, title: "dingens") }
 
-  describe 'to_s' do
-    it { expect(@m.to_s).to eq('dingens') }
-  end
-
-  describe 'start_date' do
-    it { expect(@m.start_date).to eq(Date.tomorrow.iso8601) }
-  end
-
-  describe 'start_month' do
-    it { expect(@m.start_month).to eq(Date.tomorrow.month) }
-  end
-
-  describe 'start_year' do
-    it { expect(@m.start_year).to eq(Date.tomorrow.year) }
-  end
-
-  describe 'end_time' do
-    it { expect(@m.end_time).to eq(Date.tomorrow + 11.hours) }
-  end
-
-  describe 'date validations' do
-    it 'marks invalid start dates' do
-      @m.start_date = '-'
-      expect(@m.start_date).to eq('-')
-      expect { @m.start_time }.to raise_error(ArgumentError)
-      expect(@m).not_to be_valid
-      expect(@m.errors.count).to eq(1)
+    describe "to_s" do
+      it { expect(meeting.to_s).to eq("dingens") }
     end
 
-    it 'marks invalid start hours' do
-      @m.start_time_hour = '-'
-      expect(@m.start_time_hour).to eq('-')
-      expect { @m.start_time }.to raise_error(ArgumentError)
-      expect(@m).not_to be_valid
-      expect(@m.errors.count).to eq(1)
+    describe "start_date" do
+      it { expect(meeting.start_date).to eq(Date.tomorrow.iso8601) }
     end
 
-    it 'is not invalid when setting date_time explicitly' do
-      @m.start_time = DateTime.now
-      expect(@m).to be_valid
+    describe "start_month" do
+      it { expect(meeting.start_month).to eq(Date.tomorrow.month) }
     end
 
-    it 'is invalid when setting date_time wrong' do
-      @m.start_time = '-'
-      expect(@m).not_to be_valid
+    describe "start_year" do
+      it { expect(meeting.start_year).to eq(Date.tomorrow.year) }
     end
 
-    it 'accepts changes after invalid dates' do
-      @m.start_date = '-'
-      expect { @m.start_time }.to raise_error(ArgumentError)
-      expect(@m).not_to be_valid
-
-      @m.start_date = Date.today.iso8601
-      expect(@m).to be_valid
-
-      @m.save!
-      expect(@m.start_time).to eq(Date.today + 10.hours)
+    describe "end_time" do
+      it { expect(meeting.end_time).to eq(Date.tomorrow + 11.hours) }
     end
-  end
 
-  describe 'all_changeable_participants' do
-    describe 'WITH a user having the view_meetings permission' do
-      let(:project_members) { { user1 => role } }
+    describe "date validations" do
+      it "marks invalid start dates" do
+        meeting.start_date = "-"
+        expect(meeting.start_date).to eq("-")
+        expect(meeting.start_time).to be_nil
+        expect(meeting).not_to be_valid
+        expect(meeting.errors.count).to eq(1)
+      end
 
-      it 'should contain the user' do
-        expect(meeting.all_changeable_participants).to eq([user1])
+      it "marks invalid start hours" do
+        meeting.start_time_hour = "-"
+        expect(meeting.start_time_hour).to eq("-")
+        expect(meeting.start_time).to be_nil
+        expect(meeting).not_to be_valid
+        expect(meeting.errors.count).to eq(1)
+      end
+
+      it "is not invalid when setting date_time explicitly" do
+        meeting.start_time = DateTime.now
+        expect(meeting).to be_valid
+      end
+
+      it "raises an error trying to set invalid time" do
+        expect { meeting.start_time = "-" }.to raise_error(Date::Error)
+      end
+
+      it "accepts changes after invalid dates" do
+        meeting.start_date = "-"
+        expect(meeting.start_time).to be_nil
+        expect(meeting).not_to be_valid
+        expect(meeting.errors[:start_date]).to contain_exactly "is not a valid date. Required format: YYYY-MM-DD."
+
+        meeting.start_date = Time.zone.today.iso8601
+        expect(meeting).to be_valid
+
+        meeting.save!
+        expect(meeting.start_time).to eq(Time.zone.today + 10.hours)
       end
     end
 
-    describe 'WITH a user not having the view_meetings permission' do
-      let(:role2) { FactoryBot.create(:role, permissions: []) }
-      let(:project_members) { { user1 => role, user2 => role2 } }
+    describe "default start_time" do
+      let(:meeting) { described_class.new(project:) }
 
-      it 'should not contain the user' do
-        expect(meeting.all_changeable_participants.include?(user2)).to be_falsey
-      end
-    end
-
-    describe 'WITH a user being locked but invited' do
-      let(:locked_user) { FactoryBot.create(:locked_user) }
-      before do
-        meeting.participants_attributes = [{ 'user_id' => locked_user.id, 'invited' => 1 }]
+      it "defaults to today, now, rounded up to the next half hour" do
+        travel_to(Time.zone.local(2026, 8, 20, 9, 12)) do
+          expect(meeting.start_time).to eq(Time.zone.local(2026, 8, 20, 9, 30))
+        end
       end
 
-      it 'should contain the user' do
-        expect(meeting.all_changeable_participants.include?(locked_user)).to be_truthy
+      it "keeps the time when already on a half-hour boundary" do
+        travel_to(Time.zone.local(2026, 8, 20, 9, 30)) do
+          expect(meeting.start_time).to eq(Time.zone.local(2026, 8, 20, 9, 30))
+        end
       end
     end
   end
 
-  describe 'participants and author as watchers' do
+  describe "participants and author as watchers" do
     let(:project_members) { { user1 => role, user2 => role } }
 
     before do
@@ -147,80 +131,380 @@ describe Meeting, type: :model do
       meeting.save!
     end
 
-    it { expect(meeting.watchers.collect(&:user)).to match_array([user1, user2]) }
+    it { expect(meeting.watchers.collect(&:user)).to contain_exactly(user1, user2) }
   end
 
-  describe '#close_agenda_and_copy_to_minutes' do
-    before do
-      agenda # creating it
-
-      meeting.close_agenda_and_copy_to_minutes!
-    end
-
-    it "should create a meeting with the agenda's text" do
-      expect(meeting.minutes.text).to eq(meeting.agenda.text)
-    end
-
-    it 'should close the agenda' do
-      expect(meeting.agenda.locked?).to be_truthy
-    end
-  end
-
-  describe 'Timezones' do
-    shared_examples 'uses that zone' do |zone|
+  describe "Timezones" do
+    shared_examples "uses that zone" do |zone|
       it do
-        @m.start_date = '2016-07-01'
-        expect(@m.start_time.zone).to eq(zone)
+        meeting.start_date = "2016-07-01"
+        expect(meeting.start_time.zone).to eq(zone)
       end
     end
 
-    context 'default zone' do
-      it_behaves_like 'uses that zone', 'UTC'
+    context "with default zone" do
+      it_behaves_like "uses that zone", "UTC"
     end
 
-    context 'other timezone set' do
-      let!(:old_time_zone) { Time.zone }
+    context "with other timezone set" do
+      current_user { build_stubbed(:user, preferences: { time_zone: "EST" }) }
 
-      before do
-        Time.zone = 'EST'
-      end
-
-      after do
-        Time.zone = old_time_zone.name
-      end
-
-      it_behaves_like 'uses that zone', 'EST'
+      it_behaves_like "uses that zone", "EST"
     end
   end
 
-  describe 'Copied meetings' do
-    let(:project_members) { { user1 => role, user2 => role } }
-
-    before do
-      meeting.start_date = '2013-03-27'
-      meeting.start_time_hour = '15:35'
-      meeting.participants.build(user: user2)
-      meeting.save!
+  describe "acts_as_watchable" do
+    it "is watchable" do
+      expect(described_class).to include(OpenProject::Acts::Watchable::InstanceMethods)
     end
 
-    it 'should have the same start_time as the original meeting' do
-      copy = meeting.copy({})
-      expect(copy.start_time).to eq(meeting.start_time)
+    it "uses the :view_meetings permission" do
+      expect(described_class.acts_as_watchable_permission).to eq(:view_meetings)
+    end
+  end
+
+  describe "duration" do
+    it "accepts a float" do
+      meeting.duration = 1.5
+      expect(meeting).to be_valid
+      expect(meeting.duration).to eq(1.5)
+      expect(meeting.formatted_duration).to eq("1.5h")
     end
 
-    it 'should delete the copied meeting author if no author is given as parameter' do
-      copy = meeting.copy({})
-      expect(copy.author).to be_nil
+    it "accepts a string to be parsed by chronic" do
+      meeting.duration = "30m"
+      expect(meeting).to be_valid
+      expect(meeting.duration).to eq(0.5)
+      expect(meeting.formatted_duration).to eq("0.5h")
     end
 
-    it 'should set the author to the provided author if one is given' do
-      copy = meeting.copy author: user2
-      expect(copy.author).to eq(user2)
+    it "doesn't raise on nil" do
+      meeting.duration = nil
+      expect(meeting).not_to be_valid
+      expect(meeting.errors[:duration]).to include("is not a number.")
+      expect(meeting.formatted_duration).to be_nil
+    end
+  end
+
+  describe "uid" do
+    it "assigns a uid on create" do
+      meeting = described_class.new(project:, author: user1)
+      expect(meeting.uid).to be_present
+      expect(meeting.uid).to include "@#{Setting.host_name}"
+    end
+  end
+
+  describe "#destroy" do
+    context "with an attachment" do
+      let!(:meeting) { create(:meeting, project: project) }
+      let!(:attachment) { create(:attachment, container: meeting) }
+
+      it "does not raise an exception (Regression #61632)" do
+        expect { meeting.destroy! }.not_to raise_error
+        expect { meeting.reload }.to raise_error(ActiveRecord::RecordNotFound)
+      end
+    end
+  end
+
+  describe "#changed_hash" do
+    let!(:first_agenda_item) { create(:meeting_agenda_item, meeting:) }
+    let!(:second_agenda_item) { create(:meeting_agenda_item, meeting:) }
+
+    it "changes when an agenda item is updated within the same second" do
+      timestamp = Time.current.change(usec: 0)
+      section = create(:meeting_section, meeting:)
+      first_agenda_item.update!(meeting_section: section, updated_at: timestamp)
+      second_agenda_item.update!(meeting_section: section, updated_at: timestamp)
+      hash_before_update = meeting.changed_hash
+
+      travel_to(timestamp + 0.5.seconds, with_usec: true) do
+        first_agenda_item.update!(title: "Updated item")
+      end
+
+      expect(meeting.changed_hash).not_to eq(hash_before_update)
     end
 
-    it 'should clear participant ids and attended flags for all copied attendees' do
-      copy = meeting.copy({})
-      expect(copy.participants.all? { |p| p.id.nil? && !p.attended }).to be_truthy
+    it "changes when an agenda item is deleted" do
+      hash_before_deletion = meeting.changed_hash
+
+      first_agenda_item.destroy!
+
+      expect(meeting.changed_hash).not_to eq(hash_before_deletion)
+    end
+
+    context "with a backlog" do
+      let!(:backlog) { create(:meeting_section, meeting:, backlog: true) }
+
+      it "does not change when a backlog item is added" do
+        hash_before_addition = meeting.changed_hash
+
+        create(:meeting_agenda_item, meeting:, meeting_section: backlog)
+
+        expect(meeting.changed_hash).to eq(hash_before_addition)
+      end
+
+      it "does not change when a backlog item is updated" do
+        backlog_item = create(:meeting_agenda_item, meeting:, meeting_section: backlog)
+        hash_before_update = meeting.changed_hash
+
+        travel_to(1.minute.from_now) { backlog_item.update!(title: "Updated backlog item") }
+
+        expect(meeting.changed_hash).to eq(hash_before_update)
+      end
+    end
+  end
+
+  describe ".templates_visible_in_project" do
+    shared_let(:ancestor_project) { create(:project) }
+    shared_let(:current_project) { create(:project, parent: ancestor_project) }
+    shared_let(:descendant_project) { create(:project, parent: current_project) }
+    shared_let(:unrelated_project) { create(:project) }
+
+    shared_let(:user) { create(:user, member_with_permissions: { current_project => [:view_meetings] }) }
+
+    subject { described_class.templates_visible_in_project(current_project, user) }
+
+    context "with templates in the same project" do
+      shared_let(:template_none) { create(:onetime_template, project: current_project, sharing: :none) }
+      shared_let(:template_descendants) { create(:onetime_template, project: current_project, sharing: :descendants) }
+      shared_let(:template_system) { create(:onetime_template, project: current_project, sharing: :system) }
+
+      it { expect(subject).to include(template_none) }
+      it { expect(subject).to include(template_descendants) }
+      it { expect(subject).to include(template_system) }
+    end
+
+    context "with templates in an unrelated project" do
+      shared_let(:template_none) { create(:onetime_template, project: unrelated_project, sharing: :none) }
+      shared_let(:template_descendants) { create(:onetime_template, project: unrelated_project, sharing: :descendants) }
+      shared_let(:template_system) { create(:onetime_template, project: unrelated_project, sharing: :system) }
+
+      it { expect(subject).not_to include(template_none) }
+      it { expect(subject).not_to include(template_descendants) }
+      it { expect(subject).to include(template_system) }
+    end
+
+    context "with templates in a descendant project" do
+      shared_let(:template_none) { create(:onetime_template, project: descendant_project, sharing: :none) }
+      shared_let(:template_descendants) { create(:onetime_template, project: descendant_project, sharing: :descendants) }
+      shared_let(:template_system) { create(:onetime_template, project: descendant_project, sharing: :system) }
+
+      it { expect(subject).not_to include(template_none) }
+      it { expect(subject).not_to include(template_descendants) }
+      it { expect(subject).to include(template_system) }
+    end
+
+    context "with templates in an ancestor project" do
+      shared_let(:template_none) { create(:onetime_template, project: ancestor_project, sharing: :none) }
+      shared_let(:template_descendants) { create(:onetime_template, project: ancestor_project, sharing: :descendants) }
+      shared_let(:template_system) { create(:onetime_template, project: ancestor_project, sharing: :system) }
+
+      it { expect(subject).not_to include(template_none) }
+      it { expect(subject).to include(template_descendants) }
+      it { expect(subject).to include(template_system) }
+    end
+  end
+
+  describe ".templates_visible_globally" do
+    shared_let(:parent_project) { create(:project) }
+    shared_let(:child_project) { create(:project, parent: parent_project) }
+    shared_let(:unrelated_project) { create(:project) }
+
+    shared_let(:user) { create(:user, member_with_permissions: { child_project => [:view_meetings] }) }
+
+    subject { described_class.templates_visible_globally(user) }
+
+    context "with templates in a project the user has access to" do
+      shared_let(:template_none) { create(:onetime_template, project: child_project, sharing: :none) }
+      shared_let(:template_descendants) { create(:onetime_template, project: child_project, sharing: :descendants) }
+      shared_let(:template_system) { create(:onetime_template, project: child_project, sharing: :system) }
+
+      it { expect(subject).to include(template_none) }
+      it { expect(subject).to include(template_descendants) }
+      it { expect(subject).to include(template_system) }
+    end
+
+    context "with templates in a project the user has no access to" do
+      shared_let(:template_none) { create(:onetime_template, project: unrelated_project, sharing: :none) }
+      shared_let(:template_descendants) { create(:onetime_template, project: unrelated_project, sharing: :descendants) }
+      shared_let(:template_system) { create(:onetime_template, project: unrelated_project, sharing: :system) }
+
+      it { expect(subject).not_to include(template_none) }
+      it { expect(subject).not_to include(template_descendants) }
+      it { expect(subject).to include(template_system) }
+    end
+
+    context "when user has child access only and parent has a :descendants template" do
+      shared_let(:template_descendants) { create(:onetime_template, project: parent_project, sharing: :descendants) }
+      shared_let(:template_none) { create(:onetime_template, project: parent_project, sharing: :none) }
+
+      it "includes the :descendants template" do
+        expect(subject).to include(template_descendants)
+      end
+
+      it "does not include the :none template from the inaccessible parent" do
+        expect(subject).not_to include(template_none)
+      end
+    end
+  end
+
+  describe "sharing" do
+    context "for a regular meeting" do
+      let(:meeting) { build(:meeting, project:, sharing: :none) }
+
+      it "is invalid" do
+        expect(meeting).not_to be_valid
+        expect(meeting.errors[:sharing]).to be_present
+      end
+    end
+
+    context "for a series template" do
+      let(:recurring) { create(:recurring_meeting, project:) }
+      let(:meeting) { build(:meeting_template, sharing: :none, recurring_meeting: recurring) }
+
+      it "is invalid" do
+        expect(meeting).not_to be_valid
+        expect(meeting.errors[:sharing]).to be_present
+      end
+    end
+
+    context "for an onetime template" do
+      let(:meeting) { build(:onetime_template, project:, sharing: :none) }
+
+      it "is valid" do
+        expect(meeting).to be_valid
+      end
+    end
+  end
+
+  describe ".from_today" do
+    subject { described_class.from_today }
+
+    let(:today) { Time.zone.today.beginning_of_day }
+
+    context "with a meeting starting today" do
+      let!(:meeting) { create(:meeting, project:, start_time: today) }
+
+      it { is_expected.to include(meeting) }
+    end
+
+    context "with a future meeting" do
+      let!(:meeting) { create(:meeting, project:, start_time: today + 1.day) }
+
+      it { is_expected.to include(meeting) }
+    end
+
+    context "with a past meeting" do
+      let!(:meeting) { create(:meeting, project:, start_time: today - 1.day) }
+
+      it { is_expected.not_to include(meeting) }
+    end
+  end
+
+  describe ".started" do
+    subject { described_class.started }
+
+    context "with an in_progress meeting" do
+      let!(:meeting) { create(:meeting, project:, state: :in_progress) }
+
+      it { is_expected.to include(meeting) }
+    end
+
+    context "with a closed meeting" do
+      let!(:meeting) { create(:meeting, project:, state: :closed) }
+
+      it { is_expected.to include(meeting) }
+    end
+
+    context "with an open meeting" do
+      let!(:meeting) { create(:meeting, project:, state: :open) }
+
+      it { is_expected.not_to include(meeting) }
+    end
+
+    context "with a draft meeting" do
+      let!(:meeting) { create(:meeting, project:, state: :draft) }
+
+      it { is_expected.not_to include(meeting) }
+    end
+
+    context "with a cancelled meeting" do
+      let!(:meeting) { create(:meeting, project:, state: :cancelled) }
+
+      it { is_expected.not_to include(meeting) }
+    end
+  end
+
+  describe ".from_today_or_recently_started" do
+    subject { described_class.from_today_or_recently_started }
+
+    let(:cutoff) { Setting.ical_feed_keep_closed_meetings_days.days }
+    let(:today) { Time.zone.today.beginning_of_day }
+
+    context "with an in_progress meeting within the cutoff" do
+      let!(:meeting) { create(:meeting, project:, state: :in_progress, start_time: today - cutoff + 1.day) }
+
+      it { is_expected.to include(meeting) }
+    end
+
+    context "with a closed meeting within the cutoff" do
+      let!(:meeting) { create(:meeting, project:, state: :closed, start_time: today - cutoff + 1.day) }
+
+      it { is_expected.to include(meeting) }
+    end
+
+    context "with an in_progress meeting beyond the cutoff" do
+      let!(:meeting) { create(:meeting, project:, state: :in_progress, start_time: today - cutoff - 1.day) }
+
+      it { is_expected.not_to include(meeting) }
+    end
+
+    context "with a closed meeting beyond the cutoff" do
+      let!(:meeting) { create(:meeting, project:, state: :closed, start_time: today - cutoff - 1.day) }
+
+      it { is_expected.not_to include(meeting) }
+    end
+  end
+
+  describe "recurrence_start_time" do
+    let(:recurring_meeting) { create(:recurring_meeting, project:) }
+
+    context "for a series template" do
+      subject(:template) { build(:meeting_template, recurring_meeting:) }
+
+      it "is valid without one" do
+        expect(template).to be_valid
+      end
+
+      it "is invalid when present" do
+        template.recurrence_start_time = Time.current
+        expect(template).not_to be_valid
+        expect(template.errors[:recurrence_start_time]).to be_present
+      end
+    end
+
+    context "for a recurring occurrence" do
+      subject(:occurrence) do
+        build(:recurring_meeting_occurrence,
+              recurring_meeting:,
+              recurrence_start_time: 1.week.from_now)
+      end
+
+      it "is valid when present" do
+        expect(occurrence).to be_valid
+      end
+
+      it "is invalid without one" do
+        occurrence.recurrence_start_time = nil
+        expect(occurrence).not_to be_valid
+        expect(occurrence.errors[:recurrence_start_time]).to be_present
+      end
+    end
+
+    context "for a regular meeting" do
+      it "imposes no constraint" do
+        expect(meeting).to be_valid
+      end
     end
   end
 end

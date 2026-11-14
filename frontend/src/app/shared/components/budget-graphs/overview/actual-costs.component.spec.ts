@@ -1,0 +1,182 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import '@openproject/primer-view-components/app/components/primer/anchored_position';
+import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { provideCharts, withDefaultRegisterables } from 'ng2-charts';
+import { within } from '@testing-library/dom';
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import PrimerColorsPlugin from 'core-app/shared/components/work-package-graphs/plugin.primer-colors';
+import { ActualCostsComponent } from './actual-costs.component';
+import type { BarTooltipContext } from '../chart.config';
+
+describe('ActualCostsComponent', () => {
+  let fixture:ComponentFixture<ActualCostsComponent>;
+  let element:HTMLElement;
+
+  const i18nStub = {
+    locale: 'en',
+    t(key:string, options:Record<string, string> = {}) {
+      const translations:Record<string, string> = {
+        'js.costs.widgets.actual_costs.chart_label': 'Actual costs by month chart',
+        'js.costs.widgets.actual_costs.chart_month': `${options.month}: ${options.values}`,
+        'js.costs.widgets.actual_costs.chart_summary': `Actual costs by month: ${options.months}.`,
+        'js.costs.widgets.actual_costs.chart_value': `${options.label}: ${options.value}`,
+      };
+
+      return translations[key] ?? key;
+    },
+  };
+
+  beforeEach(async () => {
+    i18nStub.locale = 'en';
+
+    await TestBed.configureTestingModule({
+      imports: [ActualCostsComponent],
+      providers: [
+        { provide: I18nService, useValue: i18nStub },
+        provideCharts(withDefaultRegisterables(PrimerColorsPlugin)),
+      ],
+    }).compileComponents();
+
+    fixture = TestBed.createComponent(ActualCostsComponent);
+    element = fixture.nativeElement as HTMLElement;
+  });
+
+  const renderWith = (datasets:unknown[], labels = ['2026-01-01']) => {
+    fixture.componentRef.setInput('chartData', JSON.stringify({ labels, datasets }));
+    fixture.detectChanges();
+  };
+
+  const tooltipContext = (opacity:number):BarTooltipContext => ({
+    chart: { canvas: element.querySelector('canvas')! },
+    tooltip: {
+      opacity,
+      caretX: 50,
+      caretY: 40,
+      dataPoints: [{ parsed: { x: 0, y: 10 }, dataset: { label: 'Labor' }, element: { getProps: () => ({ x: 50, y: 20, base: 120, width: 30 }) } }],
+      labelColors: [{ backgroundColor: '#123456' }],
+    },
+  } as unknown as BarTooltipContext);
+
+  it('renders the chart with a tooltip host beside the canvas', () => {
+    renderWith([{ label: 'Labor', data: [10] }]);
+
+    const canvas = element.querySelector('canvas')!;
+    expect(canvas).toBeInTheDocument();
+    expect(canvas.nextElementSibling?.tagName).toBe('DIV');
+  });
+
+  it('provides a translated name and month-by-month description for the chart', () => {
+    fixture.componentRef.setInput('currency', 'EUR');
+    renderWith(
+      [
+        { label: 'Labor', data: [1_000, 1_200] },
+        { label: 'Materials', data: [500, 0] },
+      ],
+      ['2026-01-01', '2026-02-01'],
+    );
+
+    const canvas = element.querySelector('canvas')!;
+    const descriptionId = canvas.getAttribute('aria-describedby')!;
+    const description = element.querySelector<HTMLElement>(`#${descriptionId}`)!;
+
+    expect(canvas).toHaveAttribute('role', 'img');
+    expect(canvas).toHaveAccessibleName('Actual costs by month chart');
+    expect(description).not.toBeVisible();
+    expect(description).toHaveTextContent(
+      'Actual costs by month: January 2026: Labor: €1,000, Materials: €500; February 2026: Labor: €1,200, Materials: €0.',
+    );
+    expect(canvas).toHaveTextContent(description.textContent.trim());
+  });
+
+  it('formats description values using the selected locale', () => {
+    i18nStub.locale = 'de';
+    fixture.componentRef.setInput('currency', 'EUR');
+    renderWith([{ label: 'Labor', data: [1_000] }]);
+
+    const descriptionId = element.querySelector('canvas')!.getAttribute('aria-describedby')!;
+    const description = element.querySelector<HTMLElement>(`#${descriptionId}`)!;
+    const formattedValue = new Intl.NumberFormat('de', {
+      style: 'currency',
+      currency: 'EUR',
+      maximumFractionDigits: 0,
+    }).format(1_000);
+
+    expect(description.textContent).toContain(`Labor: ${formattedValue}`);
+  });
+
+  it('uses a unique description ID for each chart', () => {
+    renderWith([{ label: 'Labor', data: [10] }]);
+    const secondFixture = TestBed.createComponent(ActualCostsComponent);
+    const secondElement = secondFixture.nativeElement as HTMLElement;
+
+    secondFixture.componentRef.setInput('chartData', JSON.stringify({
+      labels: ['2026-01-01'],
+      datasets: [{ label: 'Labor', data: [20] }],
+    }));
+    secondFixture.detectChanges();
+
+    const firstDescriptionId = element.querySelector('canvas')!.getAttribute('aria-describedby');
+    const secondDescriptionId = secondElement.querySelector('canvas')!.getAttribute('aria-describedby');
+
+    expect(firstDescriptionId).toEqual(fixture.componentInstance.chartDescriptionId);
+    expect(secondDescriptionId).toEqual(secondFixture.componentInstance.chartDescriptionId);
+    expect(firstDescriptionId).not.toEqual(secondDescriptionId);
+  });
+
+  it('renders nothing without data', () => {
+    renderWith([]);
+    expect(element.querySelector('canvas')).toBeNull();
+    expect(element.querySelector(`#${fixture.componentInstance.chartDescriptionId}`)).toBeNull();
+  });
+
+  it('drops the tooltip renderer together with its host', () => {
+    renderWith([{ label: 'Labor', data: [10] }]);
+    const removeListener = vi.spyOn(document, 'removeEventListener');
+
+    renderWith([]);
+    expect(removeListener).toHaveBeenCalledWith('scroll', expect.any(Function), expect.anything());
+
+    removeListener.mockClear();
+    renderWith([{ label: 'Labor', data: [10] }]);
+    fixture.destroy();
+    expect(removeListener).toHaveBeenCalledWith('scroll', expect.any(Function), expect.anything());
+  });
+
+  it('opens the tooltip inside its host from the Chart.js callback', () => {
+    renderWith([{ label: 'Labor', data: [10] }]);
+    const external = fixture.componentInstance.barChartOptions()!.plugins!.tooltip!.external as (context:BarTooltipContext) => void;
+
+    external(tooltipContext(1));
+
+    const popover = element.querySelector<HTMLElement>('anchored-position')!;
+    expect(popover.matches(':popover-open')).toBe(true);
+    expect(within(popover).getByText('Labor')).toBeInTheDocument();
+    expect(document.body.querySelector(':scope > anchored-position')).toBeNull();
+  });
+});

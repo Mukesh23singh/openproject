@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,18 +29,18 @@ module Grids
   module Filters
     class ScopeFilter < Filters::GridFilter
       def allowed_values
-        raise NotImplementedError, 'There would be too many candidates'
+        raise NotImplementedError, "There would be too many candidates"
       end
 
       def allowed_values_subset
         grid_configs_of_values
-          .map do |value, config|
+          .filter_map do |value, config|
           next unless config && config[:class]
 
           if config && config[:class]
             value
           end
-        end.compact
+        end
       end
 
       def type
@@ -57,7 +54,7 @@ module Grids
                         project_id_condition(config[:project_id])]
 
           "(#{conditions.compact.join(' AND ')})"
-        end.join(' OR ')
+        end.join(" OR ")
       end
 
       private
@@ -72,7 +69,7 @@ module Grids
 
         operator_strategy.sql_for_field([klass.name],
                                         self.class.model.table_name,
-                                        'type')
+                                        "type")
       end
 
       def project_id_condition(project_id)
@@ -84,7 +81,7 @@ module Grids
 
         operator_strategy.sql_for_field([project_id],
                                         self.class.model.table_name,
-                                        'project_id')
+                                        "project_id")
       end
 
       def type_strategy

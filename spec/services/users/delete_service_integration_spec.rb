@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +22,28 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::Users::DeleteService, 'Integration', type: :model do
-  let(:input_user) { FactoryBot.create(:user) }
-  let(:actor) { FactoryBot.build_stubbed(:admin) }
+RSpec.describe Users::DeleteService, "Integration", type: :model do
+  let(:input_user) { create(:user) }
+  let(:actor) { build_stubbed(:admin) }
 
   let(:instance) { described_class.new(model: input_user, user: actor) }
 
   subject { instance.call }
 
-  context 'when input user is invalid',
+  context "when input user is invalid",
           with_settings: { users_deletable_by_admins: true } do
     before do
-      input_user.update_column(:mail, '')
+      input_user.update_column(:mail, "")
     end
 
-    it 'can still delete the user' do
+    it "can still delete the user" do
       expect(input_user).not_to be_valid
 
       expect(subject).to be_success

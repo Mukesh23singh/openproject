@@ -1,0 +1,49 @@
+---
+hy:
+  are_you_sure_delete_avatar: Համոզվա՞ծ եք, որ ցանկանում եք ջնջել Ձեր ավատարը
+  avatar_deleted: Ավատարը հաջողությամբ ջնջվել է։
+  avatars:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Հատուկ ավատար
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
+    settings:
+      enable_gravatars: Միացնել օգտատերերի Gravatar-ները
+      enable_local_avatars: Միացնել օգտատերերի հատուկ ավատարները
+      gravatar_default: Կանխադրված Gravatar պատկեր
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Խնդրում ենք վերբեռնել վավեր պատկեր (jpg, png, gif)։
+  error_image_size: Պատկերը չափազանց մեծ է։
+  error_image_upload: Պատկերը պահպանելիս սխալ է տեղի ունեցել։
+  label_avatar: Ավատար
+  label_avatar_plural: Ավատարներ
+  label_choose_avatar: Ընտրեք ավատարը նիշքից
+  label_current_avatar: Ընթացիկ ավատար
+  message_avatar_uploaded: Ավատարը հաջողությամբ փոփոխվել է։
+  plugin_openproject_avatars:
+    description: Այս հավելումը թույլ է տալիս OpenProject-ի օգտատերերին վերբեռնել նկար՝ որպես ավատար օգտագործելու համար, կամ օգտվել Gravatar-ում գրանցված պատկերներից։
+    name: Ավատարներ
+  unable_to_delete_avatar: Ավատարը չհաջողվեց ջնջել։
+  wrong_file_format: Թույլատրելի ձևաչափերն են՝ jpg, png, gif։

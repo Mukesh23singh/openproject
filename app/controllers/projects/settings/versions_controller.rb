@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,6 +31,26 @@ class Projects::Settings::VersionsController < Projects::SettingsController
   menu_item :settings_versions
 
   def show
-    @versions = @project.shared_versions.order_by_semver_name
+    @query = build_query
+    @versions = @query.results.merge(@project.shared_versions)
+
+    render layout: !turbo_frame_request?
+  end
+
+  private
+
+  def build_query
+    query = ParamsToQueryService
+      .new(Version, current_user, query_class: Queries::Versions::VersionQuery)
+      .call(params)
+
+    apply_default_status_filter_and_sort(query)
+
+    query
+  end
+
+  def apply_default_status_filter_and_sort(query)
+    status_filter = query.filters.find { |f| f.name == :status }
+    query.where(:status, Queries::Operators::Equals.symbol, ["open"]) if status_filter.nil?
   end
 end

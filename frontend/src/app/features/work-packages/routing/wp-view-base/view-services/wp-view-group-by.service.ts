@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { isEqual } from 'lodash-es';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { States } from 'core-app/core/states/states.service';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { QueryColumn } from 'core-app/features/work-packages/components/wp-query/query-column';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { QueryGroupByResource } from 'core-app/features/hal/resources/query-group-by-resource';
@@ -37,10 +36,7 @@ import { WorkPackageQueryStateService } from './wp-view-base.service';
 
 @Injectable()
 export class WorkPackageViewGroupByService extends WorkPackageQueryStateService<QueryGroupByResource|null> {
-  public constructor(readonly states:States,
-    readonly querySpace:IsolatedQuerySpace) {
-    super(querySpace);
-  }
+  readonly states = inject(States);
 
   valueFromQuery(query:QueryResource) {
     return query.groupBy || null;
@@ -49,7 +45,7 @@ export class WorkPackageViewGroupByService extends WorkPackageQueryStateService<
   public hasChanged(query:QueryResource) {
     const comparer = (groupBy:QueryColumn|HalResource|null|undefined) => (groupBy ? groupBy.href : null);
 
-    return !_.isEqual(
+    return !isEqual(
       comparer(query.groupBy),
       comparer(this.current),
     );
@@ -62,7 +58,7 @@ export class WorkPackageViewGroupByService extends WorkPackageQueryStateService<
   }
 
   public isGroupable(column:QueryColumn):boolean {
-    return !!_.find(this.available, (candidate) => candidate.id === column.id);
+    return this.available.some((candidate) => candidate.id === column.id);
   }
 
   public disable() {
@@ -70,7 +66,7 @@ export class WorkPackageViewGroupByService extends WorkPackageQueryStateService<
   }
 
   public setBy(column:QueryColumn) {
-    const groupBy = _.find(this.available, (candidate) => candidate.id === column.id);
+    const groupBy = this.available.find((candidate) => candidate.id === column.id);
 
     if (groupBy) {
       this.update(groupBy);
@@ -95,6 +91,6 @@ export class WorkPackageViewGroupByService extends WorkPackageQueryStateService<
 
   public isCurrentlyGroupedBy(column:QueryColumn):boolean {
     const cur = this.current;
-    return !!(cur && cur.id === column.id);
+    return cur?.id === column.id;
   }
 }

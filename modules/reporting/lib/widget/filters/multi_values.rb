@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,50 +22,52 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-# make sure to require Widget::Filters::Base first because otherwise
-# ruby might find Base within Widget and Rails will not load it
-require_dependency 'widget/filters/base'
 class Widget::Filters::MultiValues < Widget::Filters::Base
-  def render
-    write(content_tag(:div, id: "#{filter_class.underscore_name}_arg_1", class: 'advanced-filters--filter-value') do
-      select_options = {  "data-remote-url": url_for(action: 'available_values'),
-                          "data-initially-selected": JSON::dump(Array(filter.values).flatten),
-                          style: 'vertical-align: top;', # FIXME: Do CSS
-                          name: "values[#{filter_class.underscore_name}][]",
-                          "data-loading": @options[:lazy] ? 'ajax' : '',
-                          id: "#{filter_class.underscore_name}_arg_1_val",
-                          class: 'form--select filter-value',
-                          "data-filter-name": filter_class.underscore_name }
-      box_content = ''.html_safe
+  option :lazy, optional: true
+
+  def render_filter # rubocop:disable Metrics/AbcSize
+    content_tag(:div, id: "#{filter_class.underscore_name}_arg_1", class: "advanced-filters--filter-value") do
+      select_options = {
+        "data-remote-url": url_for(action: "available_values"),
+        "data-initially-selected": JSON::dump(Array(filter.values).flatten),
+        style: "vertical-align: top;", # FIXME: Do CSS
+        name: "values[#{filter_class.underscore_name}][]",
+        "data-loading": @lazy ? "ajax" : "",
+        id: "#{filter_class.underscore_name}_arg_1_val",
+        class: "form--select filter-value",
+        "data-filter-name": filter_class.underscore_name,
+        "data-action": "change->reporting--page#selectValueChanged"
+      }
+      box_content = ActiveSupport::SafeBuffer.new
       label = label_tag "#{filter_class.underscore_name}_arg_1_val",
-                        h(filter_class.label) + ' ' + I18n.t(:label_filter_value),
-                        class: 'hidden-for-sighted'
+                        "#{h(filter_class.label)} #{I18n.t(:label_filter_value)}",
+                        class: "sr-only"
 
       box = content_tag :select, select_options, id: "#{filter_class.underscore_name}_select_1" do
-        render_widget Widget::Filters::Option, filter, to: box_content unless @options[:lazy]
+        render_widget Widget::Filters::Option, filter, to: box_content unless @lazy
       end
       plus = content_tag :a,
-                         href: '#',
-                         class: 'form-label filter_multi-select -transparent',
+                         href: "#",
+                         class: "form-label filter_multi-select -transparent",
+                         "data-action": "click->reporting--page#toggleMultiSelect",
                          "data-filter-name": filter_class.underscore_name,
                          title: I18n.t(:description_multi_select) do
         content_tag :span,
-                    '',
-                    class: 'icon-context icon-button icon-add icon4',
+                    "",
+                    class: "icon-context icon-button icon-add icon4",
                     title: I18n.t(:label_enable_multi_select) do
-          content_tag :span, I18n.t(:label_enable_multi_select), class: 'hidden-for-sighted'
+          content_tag :span, I18n.t(:label_enable_multi_select), class: "sr-only"
         end
       end
 
-      content_tag(:span, class: 'inline-label') do
+      content_tag(:span, class: "inline-label") do
         label + box + plus
       end
-    end)
+    end
   end
 end

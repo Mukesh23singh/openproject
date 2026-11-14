@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,12 +35,12 @@ class Journals::CompletedJob < ApplicationJob
       return unless supported?(journal)
 
       set(wait_until: delivery_time)
-        .perform_later(journal.id, send_mails)
+        .perform_later(journal.id, journal.updated_at, send_mails)
     end
 
     def aggregated_event(journal)
       case journal.journable_type
-      when WikiContent.name
+      when WikiPage.name
         OpenProject::Events::AGGREGATED_WIKI_JOURNAL_READY
       when WorkPackage.name
         OpenProject::Events::AGGREGATED_WORK_PACKAGE_JOURNAL_READY
@@ -63,12 +62,17 @@ class Journals::CompletedJob < ApplicationJob
     end
   end
 
-  def perform(journal_id, send_mails)
-    journal = Journal.find_by(id: journal_id)
-
-    # If the WP has been deleted the journal will have been deleted, too.
-    # Or the journal might have been replaced
-    return if journal.nil?
+  def perform(journal_id, journal_updated_at, send_mails)
+    # If the WP has been deleted, the journal will have been deleted, too.
+    # The journal might also have been updated in the meantime. This happens if
+    # the journable is updated a second time by the same user within the aggregation time.
+    # If aggregation happened, then the job scheduled when the journal was updated the second time
+    # will take care of notifying later.
+    # If another user were to update the journable even within aggregation time,
+    # the journal would not be altered. It is thus safe to consider the journal
+    # final.
+    journal = Journal.find_by(id: journal_id, updated_at: journal_updated_at)
+    return unless journal
 
     notify_journal_complete(journal, send_mails)
   end
@@ -77,7 +81,7 @@ class Journals::CompletedJob < ApplicationJob
 
   def notify_journal_complete(journal, send_mails)
     OpenProject::Notifications.send(self.class.aggregated_event(journal),
-                                    journal: journal,
+                                    journal:,
                                     send_mail: send_mails)
   end
 end

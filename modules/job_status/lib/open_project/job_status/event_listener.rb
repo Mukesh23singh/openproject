@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,23 +29,25 @@ module OpenProject
   module JobStatus
     class EventListener
       class << self
-        def register!
+        def register! # rubocop:disable Metrics/AbcSize
           # Listen to enqueues
-          ActiveSupport::Notifications.subscribe(/enqueue(_at)?\.active_job/) do |_name, job:, **_args|
+          subscribe(/enqueue(_at)?\.active_job/) do |job, _payload|
             Rails.logger.debug { "Enqueuing background job #{job.inspect}" }
             for_statused_jobs(job) { create_job_status(job) }
           end
 
           # Start of process
-          ActiveSupport::Notifications.subscribe('perform_start.active_job') do |job:, **_args|
+          subscribe("perform_start.active_job") do |job, _payload|
             Rails.logger.debug { "Background job #{job.inspect} is being started" }
             for_statused_jobs(job) { on_start(job) }
           end
 
           # Complete, or failure
-          ActiveSupport::Notifications.subscribe('perform.active_job') do |job:, exception_object: nil, **_args|
+          subscribe("perform.active_job") do |job, payload|
+            exception_object = payload[:exception_object]
+
             Rails.logger.debug do
-              successful = exception_object ? "with error #{exception_object}" : "successful"
+              successful = exception_object ? "with error #{exception_object}" : "successfully"
               "Background job #{job.inspect} was performed #{successful}."
             end
 
@@ -56,25 +55,50 @@ module OpenProject
           end
 
           # Retry stopped -> failure
-          ActiveSupport::Notifications.subscribe('retry_stopped.active_job') do |job:, error: nil, **_args|
+          subscribe("retry_stopped.active_job") do |job, payload|
+            error = payload[:error]
+
             Rails.logger.debug { "Background job #{job.inspect} no longer retrying due to: #{error}" }
             for_statused_jobs(job) { on_performed(job, error) }
           end
 
           # Retry enqueued
-          ActiveSupport::Notifications.subscribe('enqueue_retry.active_job') do |job, error: nil, **_args|
+          subscribe("enqueue_retry.active_job") do |job, payload|
+            error = payload[:error]
+
             Rails.logger.debug { "Background job #{job.inspect} is being retried after error: #{error}" }
             for_statused_jobs(job) { on_requeue(job, error) }
           end
 
           # Discarded job
-          ActiveSupport::Notifications.subscribe('discard.active_job') do |job:, error: nil, **_args|
+          subscribe("discard.active_job") do |job, payload|
+            error = payload[:error]
+
             Rails.logger.debug { "Background job #{job.inspect} is being discarded after error: #{error}" }
             for_statused_jobs(job) { on_cancelled(job, error) }
           end
         end
 
+        # Unsubscribe all existing subscribers to prevent duplicate
+        # subscriptions on reload in development env.
+        def unsubscribe_all_to_prevent_duplicates_on_reload!
+          return unless @subscribers
+
+          @subscribers.each { |subscriber| ActiveSupport::Notifications.unsubscribe(subscriber) }
+          @subscribers.clear
+        end
+
         private
+
+        def subscribe(pattern, &)
+          @subscribers ||= []
+          @subscribers << ActiveSupport::Notifications.subscribe(pattern) do |_name, _started, _call, _id, payload|
+            job = payload[:job]
+            next unless job
+
+            yield job, payload
+          end
+        end
 
         ##
         # Yiels the block if the job
@@ -100,15 +124,14 @@ module OpenProject
         # On requeuing a job after error
         def on_requeue(job, error)
           job.upsert_status status: :in_queue,
-                            message: I18n.t('background_jobs.status.error_requeue', message: error)
+                            message: I18n.t("background_jobs.status.error_requeue", message: error)
         end
 
         ##
         # On cancellation due to the given error
         def on_cancelled(job, error)
-          upsert_status job,
-                        status: :cancelled,
-                        message: I18n.t('background_jobs.status.cancelled_due_to', message: error)
+          job.upsert_status status: :cancelled,
+                            message: I18n.t("background_jobs.status.cancelled_due_to", message: error)
         end
 
         ##

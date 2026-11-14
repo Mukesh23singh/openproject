@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require_dependency 'open_project/scm/adapters'
 
 module OpenProject
   module SCM
@@ -41,7 +38,7 @@ module OpenProject
         def initialize(url, root_url = nil, _login = nil, _password = nil, path_encoding = nil, identifier = nil)
           super(url, root_url)
           @flag_report_last_commit = SCM_GIT_REPORT_LAST_COMMIT
-          @path_encoding = path_encoding.presence || 'UTF-8'
+          @path_encoding = path_encoding.presence || "UTF-8"
           @identifier = identifier
 
           if checkout? && identifier.blank?
@@ -53,15 +50,15 @@ module OpenProject
         end
 
         def checkout_command
-          'git clone'
+          "git clone"
         end
 
         def client_command
-          @client_command ||= self.class.config[:client_command] || 'git'
+          @client_command ||= self.class.config[:client_command] || "git"
         end
 
         def client_version
-          @client_version ||= (git_binary_version || [])
+          @client_version ||= git_binary_version || []
         end
 
         def scm_version_from_command_line
@@ -71,7 +68,7 @@ module OpenProject
         def git_binary_version
           scm_version = scm_version_from_command_line.dup
           if scm_version.respond_to?(:force_encoding)
-            scm_version.force_encoding('ASCII-8BIT')
+            scm_version.force_encoding("ASCII-8BIT")
           end
           m = scm_version.match(%r{\A(.*?)((\d+\.)+\d+)})
           unless m.nil?
@@ -103,14 +100,14 @@ module OpenProject
 
           # If it is not empty, it should have at least one branch
           # Any exit code != 0 will raise here
-          raise Exceptions::SCMEmpty unless branches.count > 0
+          raise Exceptions::SCMEmpty unless branches.any?
         rescue Exceptions::CommandFailed => e
           logger.error("Availability check failed due to failed Git command: #{e.message}")
           raise Exceptions::SCMUnavailable
         end
 
         ##
-        # Checks if the repository is up-to-date. It is not it's updated.
+        # Checks if the repository is up-to-date. If it is not, it's updated.
         # Checks out the repository if necessary.
         def refresh_repository!
           if checkout?
@@ -130,7 +127,7 @@ module OpenProject
         end
 
         def update_repository!
-          Rails.logger.debug "Fetching latest commits for #{checkout_path}"
+          Rails.logger.debug { "Fetching latest commits for #{checkout_path}" }
 
           Dir.chdir checkout_path do
             fetch_all
@@ -141,10 +138,10 @@ module OpenProject
             remote_branches.each do |remote_branch|
               local_branch = remote_branch.sub /^origin\//, ""
 
-              if !local_branches.include?(local_branch)
-                track_branch! local_branch, remote_branch
-              else
+              if local_branches.include?(local_branch)
                 update_branch! local_branch, remote_branch
+              else
+                track_branch! local_branch, remote_branch
               end
             end
           end
@@ -172,40 +169,45 @@ module OpenProject
           Rails.logger.info("Setting up new branch: #{local_branch} -> #{remote_branch}")
 
           capture_out(
-            ["branch", "--track", local_branch, remote_branch],
+            ["branch", "--track", "--end-of-options", local_branch, remote_branch],
             error_message: "Failed to track new branch #{remote_branch}"
           )
         end
 
         def update_branch!(local_branch, remote_branch)
-          Rails.logger.debug("Updating branch: #{local_branch}")
+          Rails.logger.debug { "Updating branch: #{local_branch}" }
 
           capture_out(
-            ["update-ref", local_branch, remote_branch],
+            ["update-ref", "--end-of-options", local_branch, remote_branch],
             error_message: "Failed update ref to #{remote_branch}"
           )
         end
 
         def info
-          Info.new(root_url: url, lastrev: lastrev('', nil))
+          Info.new(root_url: url, lastrev: lastrev("", nil))
         end
 
         def bare?
           cmd_args = %w|rev-parse --is-bare-repository|
-          capture_git(cmd_args).chomp == 'true'
+          capture_git(cmd_args).chomp == "true"
         end
 
         def checkout?
           parsed = URI.parse checkout_uri
           %w(file http https git).include? parsed.scheme
-        rescue StandardError => e
+        rescue StandardError
           false
         end
 
         def checkout_path
-          Pathname(OpenProject::Configuration.scm_local_checkout_path)
-            .join(@identifier)
-            .expand_path
+          root = Pathname(OpenProject::Configuration.scm_local_checkout_path).expand_path.to_s
+          path = Pathname(root).join(@identifier).expand_path.to_s
+
+          unless path.start_with?("#{root}/")
+            raise ArgumentError, "Checkout path escapes the configured root directory"
+          end
+
+          Pathname(path)
         end
 
         def checkout_uri
@@ -236,52 +238,64 @@ module OpenProject
           bras = branches
           return nil if bras.nil?
 
-          bras.include?('master') ? 'master' : bras.first
+          bras.include?("master") ? "master" : bras.first
         end
 
         def entries(path, identifier = nil)
           entries = Entries.new
-          path = scm_encode(@path_encoding, 'UTF-8', path)
-          args = %w|ls-tree -l|
-          args << "HEAD:#{path}" if identifier.nil?
-          args << "#{identifier}:#{path}" if identifier
+          path = scm_encode(@path_encoding, "UTF-8", path)
+          args = %w|ls-tree -l --end-of-options|
+          commit = resolve_commit(identifier) if identifier.present?
+
+          args <<
+            if commit.nil?
+              "HEAD:#{path}"
+            else
+              "#{commit}:#{path}"
+            end
 
           parse_by_line(args, binmode: true) do |line|
-            e = parse_entry(line, path, identifier)
+            e = parse_entry(line, path, commit)
             entries << e unless entries.detect { |entry| entry.name == e.name }
           end
 
           entries.sort_by_name
         end
 
-        def parse_entry(line, path, identifier)
+        def parse_entry(line, path, commit)
           if line.chomp =~ /^\d+\s+(\w+)\s+([0-9a-f]{40})\s+([0-9-]+)\t(.+)$/
             type = $1
             size = $3
             name = $4.force_encoding(@path_encoding)
-            path = encode_full_path(name, path || '')
+            path = encode_full_path(name, path || "")
 
             Entry.new(
-              name: scm_encode('UTF-8', @path_encoding, name),
-              path: path,
-              kind: type == 'tree' ? 'dir' : 'file',
-              size: type == 'tree' ? nil : size,
-              lastrev: @flag_report_last_commit ? lastrev(path, identifier) : Revision.new
+              name: scm_encode("UTF-8", @path_encoding, name),
+              path:,
+              kind: type == "tree" ? "dir" : "file",
+              size: type == "tree" ? nil : size,
+              lastrev: @flag_report_last_commit ? lastrev(path, commit) : Revision.new
             )
           end
         end
 
         def encode_full_path(name, path)
           full_path = path.empty? ? name : "#{path}/#{name}"
-          scm_encode('UTF-8', @path_encoding, full_path)
+          scm_encode("UTF-8", @path_encoding, full_path)
         end
 
-        def lastrev(path, rev)
+        def lastrev(path, commit)
           return nil if path.nil?
 
-          args = %w|log --no-color --encoding=UTF-8 --date=iso --pretty=fuller --no-merges -n 1|
-          args << rev if rev
-          args << '--' << path unless path.empty?
+          if commit.present? && !commit_hash?(commit)
+            raise ArgumentError, "input must be a valid commit hash"
+          end
+
+          path = scm_encode(@path_encoding, "UTF-8", path)
+          args = %w|log --no-abbrev-commit --no-color --encoding=UTF-8 --date=iso
+                    --pretty=fuller --no-merges -n 1 --end-of-options|
+          args << commit if commit
+          args << "--" << path unless path.empty?
           lines = capture_git(args).lines
           begin
             build_lastrev(lines)
@@ -294,13 +308,13 @@ module OpenProject
         def build_lastrev(lines)
           id = lines[0].split[1]
           author = lines[1].match('Author:\s+(.*)$')[1]
-          time = Time.parse(lines[4].match('CommitDate:\s+(.*)$')[1])
+          time = Time.zone.parse(lines[4].match('CommitDate:\s+(.*)$')[1])
 
           Revision.new(
             identifier: id,
             scmid: id,
-            author: author,
-            time: time,
+            author:,
+            time:,
             message: nil,
             paths: nil
           )
@@ -310,76 +324,19 @@ module OpenProject
           revisions = Revisions.new
           args = build_revision_args(path, identifier_from, identifier_to, options)
 
-          files = []
-          changeset = {}
-          parsing_descr = 0 # 0: not parsing desc or files, 1: parsing desc, 2: parsing files
+          parser = RevisionParser.new
           parse_by_line(args, binmode: true) do |line|
-            if line =~ /^commit ([0-9a-f]{40})$/
-              key = 'commit'
-              value = $1
-              if [1, 2].include?(parsing_descr)
-                parsing_descr = 0
-                revision = Revision.new(
-                  identifier: changeset[:commit],
-                  scmid: changeset[:commit],
-                  author: changeset[:author],
-                  time: Time.parse(changeset[:date]),
-                  message: changeset[:description],
-                  paths: files
-                )
-                if block_given?
-                  yield revision
-                else
-                  revisions << revision
-                end
-                changeset = {}
-                files = []
+            if (revision = parser.parse_line(line, @path_encoding))
+              if block_given?
+                yield revision
+              else
+                revisions << revision
               end
-              changeset[:commit] = $1
-            elsif (parsing_descr == 0) && line =~ /^(\w+):\s*(.*)$/
-              key = $1
-              value = $2
-              if key == 'Author'
-                changeset[:author] = value
-              elsif key == 'CommitDate'
-                changeset[:date] = value
-              end
-            elsif (parsing_descr == 0) && line.chomp.to_s == ''
-              parsing_descr = 1
-              changeset[:description] = ''
-            elsif [1, 2, 1, 2, 1, 2].include?(parsing_descr) &&
-                  (line =~ /^:\d+\s+\d+\s+[0-9a-f.]+\s+[0-9a-f.]+\s+(\w)\t(.+)$/)
-
-              parsing_descr = 2
-              fileaction = $1
-              filepath = $2
-              p = scm_encode('UTF-8', @path_encoding, filepath)
-              files << { action: fileaction, path: p }
-            elsif [1, 2, 1, 2, 1, 2, 1, 2, 1, 2].include?(parsing_descr) &&
-                  (line =~ /^:\d+\s+\d+\s+[0-9a-f.]+\s+[0-9a-f.]+\s+(\w)\d+\s+(\S+)\t(.+)$/)
-
-              parsing_descr = 2
-              fileaction = $1
-              filepath = $3
-              p = scm_encode('UTF-8', @path_encoding, filepath)
-              files << { action: fileaction, path: p }
-            elsif (parsing_descr == 1) && line.chomp.to_s == ''
-              parsing_descr = 2
-            elsif parsing_descr == 1
-              changeset[:description] << line[4..-1]
             end
           end
 
-          if changeset[:commit]
-            revision = Revision.new(
-              identifier: changeset[:commit],
-              scmid: changeset[:commit],
-              author: changeset[:author],
-              time: Time.parse(changeset[:date]),
-              message: changeset[:description],
-              paths: files
-            )
-
+          # Handle final changeset
+          if (revision = parser.finalize)
             if block_given?
               yield revision
             else
@@ -390,74 +347,178 @@ module OpenProject
           revisions
         end
 
+        # Parser for git log output with state machine
+        class RevisionParser
+          def initialize
+            @changeset = {}
+            @files = []
+            @parsing_descr = 0 # 0: headers, 1: description, 2: files
+          end
+
+          def parse_line(line, path_encoding)
+            case line
+            when /^commit ([0-9a-f]{40})$/
+              handle_commit_line($1)
+            when /^(\w+):\s*(.*)$/
+              handle_header_line($1, $2) if @parsing_descr == 0
+              nil
+            when /^:\d+\s+\d+\s+[0-9a-f.]+\s+[0-9a-f.]+\s+(\w)\t(.+)$/
+              handle_file_line($1, $2, path_encoding)
+              nil
+            when /^:\d+\s+\d+\s+[0-9a-f.]+\s+[0-9a-f.]+\s+(\w)\d+\s+(\S+)\t(.+)$/
+              handle_file_line($1, $3, path_encoding)
+              nil
+            else
+              handle_other_line(line)
+              nil
+            end
+          end
+
+          def finalize
+            build_revision if @changeset[:commit]
+          end
+
+          private
+
+          def handle_commit_line(commit_sha)
+            revision = build_revision if [1, 2].include?(@parsing_descr)
+            reset_state
+            @changeset[:commit] = commit_sha
+            revision
+          end
+
+          def handle_header_line(key, value)
+            case key
+            when "Author"
+              @changeset[:author] = value
+            when "CommitDate"
+              @changeset[:date] = value
+            end
+          end
+
+          def handle_file_line(action, filepath, path_encoding)
+            @parsing_descr = 2
+            encoded_path = filepath.encode("UTF-8", path_encoding, invalid: :replace, undef: :replace)
+            @files << { action:, path: encoded_path }
+          end
+
+          def handle_other_line(line)
+            if line.chomp.to_s == ""
+              @parsing_descr = @parsing_descr == 0 ? 1 : 2
+              @changeset[:description] = "" if @parsing_descr == 1
+            elsif @parsing_descr == 1
+              @changeset[:description] += line[4..]
+            end
+          end
+
+          def build_revision
+            return nil unless @changeset[:commit]
+
+            Git::Revision.new(
+              identifier: @changeset[:commit],
+              scmid: @changeset[:commit],
+              author: @changeset[:author],
+              time: Time.zone.parse(@changeset[:date]),
+              message: @changeset[:description],
+              paths: @files
+            )
+          end
+
+          def reset_state
+            @changeset = {}
+            @files = []
+            @parsing_descr = 0
+          end
+        end
+
         def build_revision_args(path, identifier_from, identifier_to, options)
-          args = %w|log --no-color --encoding=UTF-8 --raw --date=iso --pretty=fuller|
-          args << '--reverse' if options[:reverse]
-          args << '--all' if options[:all]
-          args << '-n' << options[:limit].to_i.to_s if options[:limit]
-          from_to = ''
-          from_to << "#{identifier_from}.." if identifier_from
-          from_to << identifier_to.to_s if identifier_to
-          args << from_to if from_to.present?
-          args << "--since=#{options[:since].strftime('%Y-%m-%d %H:%M:%S')}" if options[:since]
-          args << '--' << scm_encode(@path_encoding, 'UTF-8', path) if path && !path.empty?
+          args = build_revision_options(options)
+
+          range = build_revision_range(identifier_from, identifier_to)
+          args << range if range.present?
+
+          args << "--" << scm_encode(@path_encoding, "UTF-8", path) if path.present?
 
           args
         end
 
+        def build_revision_options(options)
+          args = %w|log --no-abbrev-commit --no-color --encoding=UTF-8 --raw --date=iso --pretty=fuller|
+          args << "--reverse" if options[:reverse]
+          args << "--all" if options[:all]
+          args << "-n" << options[:limit].to_i.to_s if options[:limit]
+          args << "--since=#{options[:since].strftime('%Y-%m-%d %H:%M:%S')}" if options[:since]
+
+          args
+        end
+
+        def build_revision_range(identifier_from, identifier_to)
+          from_to = ""
+
+          commit_from = resolve_commit(identifier_from) if identifier_from
+          commit_to = resolve_commit(identifier_to) if identifier_to
+
+          from_to += "#{commit_from}.." if commit_from
+          from_to += commit_to.to_s if commit_to
+
+          from_to
+        end
+
         def diff(path, identifier_from, identifier_to = nil)
-          args = []
-          if identifier_to
-            args << 'diff' << '--no-color' << identifier_to << identifier_from
-          else
-            args << 'show' << '--no-color' << identifier_from
-          end
-          args << '--' << scm_encode(@path_encoding, 'UTF-8', path) unless path.empty?
+          args = build_diff_range(identifier_from, identifier_to)
+          args << "--" << scm_encode(@path_encoding, "UTF-8", path) unless path.empty?
           capture_git(args).lines
         rescue Exceptions::CommandFailed
           nil
         end
 
-        def annotate(path, identifier = nil)
-          identifier = 'HEAD' if identifier.blank?
-          args = %w|blame --encoding=UTF-8|
-          args << '-p' << identifier << '--' << scm_encode(@path_encoding, 'UTF-8', path)
+        def annotate(path, ref = nil)
+          ref = "HEAD" if ref.blank?
+          commit = resolve_commit(ref)
+          content = fetch_blame_content(commit, path)
+          return nil if binary_content?(content)
+
+          parse_blame_content(content)
+        end
+
+        def fetch_blame_content(commit, path)
+          args = %w|blame --encoding=UTF-8 --porcelain|
+          args << commit << "--" << scm_encode(@path_encoding, "UTF-8", path)
+          capture_git(args, binmode: true)
+        end
+
+        def binary_content?(content)
+          # Quick test for null bytes to deny parsing large binary files
+          # This may not match all files, but should be a reasonable workaround
+          content.dup.force_encoding("BINARY").count("\x00") > 0
+        end
+
+        def parse_blame_content(content)
           blame = Annotate.new
-          content = capture_git(args, binmode: true)
-
-          # Deny to parse large binary files
-          # Quick test for null bytes, this may not match all files,
-          # but should be a reasonable workaround
-          return nil if content.dup.force_encoding('BINARY').count("\x00") > 0
-
-          identifier = ''
+          identifier = ""
           # git shows commit author on the first occurrence only
           authors_by_commit = {}
+
           content.scrub.split("\n").each do |line|
-            if line =~ /^([0-9a-f]{39,40})\s.*/
+            case line
+            when /^([0-9a-f]{39,40})\s.*/
               identifier = $1
-            elsif line =~ /^author (.+)/
+            when /^author (.+)/
               authors_by_commit[identifier] = $1.strip
-            elsif line =~ /^\t(.*)/
-              blame.add_line(
-                $1,
-                Revision.new(
-                  identifier: identifier,
-                  author: authors_by_commit[identifier]
-                )
-              )
-              identifier = ''
+            when /^\t(.*)/
+              blame.add_line($1, Revision.new(identifier:, author: authors_by_commit[identifier]))
+              identifier = ""
             end
           end
+
           blame
         end
 
-        def cat(path, identifier = nil)
-          if identifier.nil?
-            identifier = 'HEAD'
-          end
-          args = %w|show --no-color|
-          args << "#{identifier}:#{scm_encode(@path_encoding, 'UTF-8', path)}"
+        def cat(path, ref = nil)
+          ref = "HEAD" if ref.nil?
+          commit = resolve_commit(ref)
+          args = %w|show --no-color --end-of-options|
+          args << "#{commit}:#{scm_encode(@path_encoding, 'UTF-8', path)}"
           capture_git(args, binmode: true)
         end
 
@@ -469,6 +530,20 @@ module OpenProject
         end
 
         protected
+
+        ##
+        # Build diff range given one or two user inputs
+        # first resolving them to actual commits.
+        def build_diff_range(identifier_from, identifier_to = nil)
+          from_sha = resolve_commit(identifier_from)
+
+          if identifier_to
+            to_sha = resolve_commit(identifier_to)
+            ["diff", "--no-abbrev-commit", "--no-color", "--end-of-options", to_sha, from_sha]
+          else
+            ["show", "--no-abbrev-commit", "--no-color", "--end-of-options", from_sha]
+          end
+        end
 
         ##
         # Builds the full git arguments from the parameters
@@ -483,16 +558,16 @@ module OpenProject
         # Builds the full git arguments from the parameters
         # and calls the given block with in, out, err, thread
         # from +Open3#popen3+.
-        def popen3(args, opt = {}, &block)
+        def popen3(args, opt = {})
           opt = opt.merge(chdir: checkout_path) if checkout?
           cmd = build_git_cmd(args)
           super(cmd, opt) do |_stdin, stdout, stderr, wait_thr|
-            block.call(stdout)
+            yield(stdout)
 
             process = wait_thr.value
             if process.exitstatus != 0
               raise Exceptions::CommandFailed.new(
-                'git',
+                "git",
                 %{
                   `git #{args.join(' ')}` exited with non-zero status:
                   #{process.exitstatus} (#{stderr.read})
@@ -506,21 +581,32 @@ module OpenProject
         # Runs the given arguments through git
         # and processes the result line by line.
         #
-        def parse_by_line(cmd, opts = {}, &block)
+        def parse_by_line(cmd, opts = {}, &)
           popen3(cmd) do |io|
             io.binmode if opts[:binmode]
-            io.each_line &block
+            io.each_line(&)
           end
         end
 
         def build_git_cmd(args, opts = {})
           if client_version_above?([1, 7, 2])
-            args.unshift('-c', 'core.quotepath=false')
+            args.unshift("-c", "core.quotepath=false")
           end
 
           # make sure to use bare repository path to initialize a managed repository
-          args.unshift('--git-dir', git_dir) unless checkout? && !opts[:no_chdir]
+          args.unshift("--git-dir", git_dir) unless checkout? && !opts[:no_chdir]
           args
+        end
+
+        # Resolve any user-provided commit-ish (branch, tag, HEAD~1, etc.) to a commit SHA,
+        # so we can be sure to work with a valid commit identifier.
+        def resolve_commit(rev)
+          capture_git(["rev-parse", "--verify", "--quiet", "--end-of-options", "#{rev}^{commit}"]).strip
+        end
+
+        # Check if a value is a valid commit hash
+        def commit_hash?(value)
+          value.to_s.match?(/\A[0-9a-f]{40,64}\z/)
         end
       end
     end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,61 +22,61 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'features/page_objects/notification'
+require "spec_helper"
+require "features/page_objects/notification"
 
-describe 'Work package transitive status workflows', js: true do
+RSpec.describe "Work package transitive status workflows", :js do
   let(:dev_role) do
-    FactoryBot.create :role,
-                      permissions: %i[view_work_packages
-                                      edit_work_packages]
+    create(:project_role,
+           permissions: %i[view_work_packages
+                           edit_work_packages])
   end
   let(:dev) do
-    FactoryBot.create :user,
-                      firstname: 'Dev',
-                      lastname: 'Guy',
-                      member_in_project: project,
-                      member_through_role: dev_role
+    create(:user,
+           firstname: "Dev",
+           lastname: "Guy",
+           member_with_roles: { project => dev_role })
   end
 
-  let(:type) { FactoryBot.create :type }
-  let(:project) { FactoryBot.create(:project, types: [type]) }
+  let(:type) { create(:type) }
+  let(:project) { create(:project, types: [type]) }
 
   let(:work_package) do
-    work_package = FactoryBot.create :work_package,
-                                     project: project,
-                                     type: type,
-                                     created_at: 5.days.ago.to_date.to_s(:db)
+    work_package = create(:work_package,
+                          project:,
+                          type:,
+                          created_at: 5.days.ago.to_date.to_fs(:db))
 
-    note_journal = work_package.journals.last
-    note_journal.update(created_at: 5.days.ago.to_date.to_s)
+    note_journal = work_package.journals.reload.last
+    note_journal.update(created_at: 5.days.ago.to_date.to_s,
+                        updated_at: 5.days.ago.to_date.to_s)
 
     work_package
   end
   let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
+  let(:activity_tab) { Components::WorkPackages::Activities.new(work_package) }
 
   let(:status_from) { work_package.status }
-  let(:status_intermediate) { FactoryBot.create :status }
-  let(:status_to) { FactoryBot.create :status }
+  let(:status_intermediate) { create(:status) }
+  let(:status_to) { create(:status) }
 
   let(:workflows) do
-    FactoryBot.create :workflow,
-                      type_id: type.id,
-                      old_status: status_from,
-                      new_status: status_intermediate,
-                      role: dev_role
+    create(:workflow,
+           type_id: type.id,
+           old_status: status_from,
+           new_status: status_intermediate,
+           role: dev_role)
 
-    FactoryBot.create :workflow,
-                      type_id: type.id,
-                      old_status: status_intermediate,
-                      new_status: status_to,
-                      role: dev_role
+    create(:workflow,
+           type_id: type.id,
+           old_status: status_intermediate,
+           new_status: status_to,
+           role: dev_role)
   end
 
   before do
@@ -91,18 +91,20 @@ describe 'Work package transitive status workflows', js: true do
 
   ##
   # Regression test for #24129
-  it 'allows to move to the final status as defined in the workflow' do
+  it "allows to move to the final status as defined in the workflow" do
     wp_page.update_attributes status: status_intermediate.name
     wp_page.expect_attributes status: status_intermediate.name
 
-    wp_page.expect_activity_message "Status changed from #{status_from.name} " \
-                                    "to #{status_intermediate.name}"
+    activity_tab.expect_journal_changed_attribute(
+      text: "Status changed from #{status_from.name} to #{status_intermediate.name}"
+    )
 
     wp_page.update_attributes status: status_to.name
     wp_page.expect_attributes status: status_to.name
 
-    wp_page.expect_activity_message "Status changed from #{status_from.name} " \
-                                    "to #{status_to.name}"
+    activity_tab.expect_journal_changed_attribute(
+      text: "Status changed from #{status_from.name} to #{status_to.name}"
+    )
 
     work_package.reload
     expect(work_package.status).to eq(status_to)

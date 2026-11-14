@@ -1,21 +1,56 @@
-OpenProject::Application::routes.draw do
-  namespace 'two_factor_authentication' do
-    get :request, to: 'authentication#request_otp'
-    post :confirm, to: 'authentication#confirm_otp'
-    post :retry, to: 'authentication#retry'
-    get :backup_code, to: 'authentication#enter_backup_code'
-    post :backup_code, to: 'authentication#verify_backup_code'
+# frozen_string_literal: true
 
-    get :settings, to: 'two_factor_settings#show', as: 'settings_2fa'
-    post :settings, to: 'two_factor_settings#update', as: 'update_settings_2fa'
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+Rails.application.routes.draw do
+  namespace "two_factor_authentication" do
+    get :request, to: "authentication#request_otp"
+    post :confirm, to: "authentication#confirm_otp"
+    post :retry, to: "authentication#retry"
+    get :backup_code, to: "authentication#enter_backup_code"
+    post :backup_code, to: "authentication#verify_backup_code"
+
+    get :settings, to: "two_factor_settings#show", as: "settings_2fa"
+    post :settings, to: "two_factor_settings#update", as: "update_settings_2fa"
+
+    # Request a challenge for WebAuthn
+    get :webauthn_challenge, to: "authentication#webauthn_challenge", as: "webauthn_challenge"
   end
 
-  scope 'two_factor_authentication' do # Avoids adding the namespace prefix
-    scope 'device_registration',
-          controller: 'two_factor_authentication/forced_registration/two_factor_devices' do
-      get :new, action: :new, as: 'new_forced_2fa_device'
-      post :register, action: :register, as: 'register_forced_2fa_device'
-      match '/:device_id/confirm', action: :confirm, via: %i[get post], as: 'confirm_forced_2fa_device'
+  scope "two_factor_authentication" do # Avoids adding the namespace prefix
+    # forced registration
+    scope "device_registration", controller: "two_factor_authentication/forced_registration/two_factor_devices" do
+      get :new, action: :new, as: "new_forced_2fa_device"
+      post :register, action: :register, as: "register_forced_2fa_device"
+      match "/:device_id/confirm", action: :confirm, via: %i[get post], as: "confirm_forced_2fa_device"
+
+      # Request a challenge for WebAuthn
+      get :webauthn_challenge
     end
   end
 
@@ -23,8 +58,8 @@ OpenProject::Application::routes.draw do
     member do
       resources :two_factor_devices,
                 param: :device_id,
-                controller: 'two_factor_authentication/users/two_factor_devices',
-                as: 'user_2fa_devices',
+                controller: "two_factor_authentication/users/two_factor_devices",
+                as: "user_2fa_devices",
                 only: %i[new create destroy] do
         # Register new device ( 'create' )
         post :register, on: :collection
@@ -38,22 +73,22 @@ OpenProject::Application::routes.draw do
     end
   end
 
-  scope 'my' do
+  scope "my" do
     resource :backup_codes,
-             controller: 'two_factor_authentication/my/backup_codes',
-             as: 'my_2fa_backup_codes',
+             controller: "two_factor_authentication/my/backup_codes",
+             as: "my_2fa_backup_codes",
              only: %i[show create]
 
     resource :remember_cookie,
-             controller: 'two_factor_authentication/my/remember_cookie',
-             as: 'my_2fa_remember_cookie',
+             controller: "two_factor_authentication/my/remember_cookie",
+             as: "my_2fa_remember_cookie",
              only: [:destroy]
 
     resources :two_factor_devices,
-              controller: 'two_factor_authentication/my/two_factor_devices',
+              controller: "two_factor_authentication/my/two_factor_devices",
               param: :device_id,
-              as: 'my_2fa_devices',
-              only: %i[index new destroy] do
+              as: "my_2fa_devices",
+              only: %i[new destroy] do
       # Register new device ( 'create' )
       post :register, on: :collection
 
@@ -63,6 +98,9 @@ OpenProject::Application::routes.draw do
 
       # Make a device a default
       post :make_default, on: :member
+
+      # Request a challenge for WebAuthn
+      get :webauthn_challenge, on: :collection
     end
   end
 end

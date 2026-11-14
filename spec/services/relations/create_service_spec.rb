@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,35 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Relations::CreateService do
+RSpec.describe Relations::CreateService do
   let(:work_package1_start_date) { nil }
-  let(:work_package1_due_date) { Date.today }
+  let(:work_package1_due_date) { Date.current }
   let(:work_package2_start_date) { nil }
   let(:work_package2_due_date) { nil }
 
   let(:follows_relation) { false }
-  let(:delay) { 3 }
+  let(:lag) { 3 }
 
   let(:work_package1) do
-    FactoryBot.build_stubbed(:work_package,
-                             due_date: work_package1_due_date,
-                             start_date: work_package1_start_date)
+    build_stubbed(:work_package,
+                  subject: "work_package1",
+                  due_date: work_package1_due_date,
+                  start_date: work_package1_start_date)
   end
   let(:work_package2) do
-    FactoryBot.build_stubbed(:work_package,
-                             due_date: work_package2_due_date,
-                             start_date: work_package2_start_date)
+    build_stubbed(:work_package,
+                  subject: "work_package2",
+                  due_date: work_package2_due_date,
+                  start_date: work_package2_start_date)
   end
   let(:instance) do
-    described_class.new(user: user)
+    described_class.new(user:)
   end
   let(:relation) do
     relation = Relation.new attributes
@@ -65,21 +66,25 @@ describe Relations::CreateService do
     {
       to: work_package1,
       from: work_package2,
-      delay: delay
+      lag:
     }
   end
 
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:user) { build_stubbed(:user) }
   let(:model_valid) { true }
   let(:contract_valid) { true }
-  let(:contract) { double('contract') }
+  let(:contract) { instance_double(Relations::CreateContract) }
   let(:symbols_for_base) { [] }
 
   subject do
-    instance.call(relation)
+    instance.call(attributes)
   end
 
   before do
+    allow(Relation)
+      .to receive(:new)
+            .and_return(relation)
+
     allow(relation)
       .to receive(:save)
       .and_return(model_valid)
@@ -93,13 +98,13 @@ describe Relations::CreateService do
       .and_return(contract_valid)
   end
 
-  context 'if all valid and it is a follows relation' do
-    let(:set_schedule_service) { double('set schedule service') }
+  context "if all valid and it is a follows relation" do
+    let(:set_schedule_service) { instance_double(WorkPackages::SetScheduleService) }
     let(:set_schedule_work_package2_result) do
-      ServiceResult.new success: true, result: work_package2, errors: work_package2.errors
+      ServiceResult.success result: work_package2, errors: work_package2.errors
     end
     let(:set_schedule_result) do
-      sr = ServiceResult.new success: true, result: work_package2, errors: work_package2.errors
+      sr = ServiceResult.success result: work_package2, errors: work_package2.errors
       sr.dependent_results << set_schedule_work_package2_result
       sr
     end
@@ -107,58 +112,53 @@ describe Relations::CreateService do
     let(:follows_relation) { true }
 
     before do
-      expect(WorkPackages::SetScheduleService)
+      allow(WorkPackages::SetScheduleService)
         .to receive(:new)
-        .with(user: user, work_package: work_package1)
+        .with(user:, work_package: work_package2, switching_to_automatic_mode: [work_package2])
         .and_return(set_schedule_service)
 
-      expect(set_schedule_service)
+      allow(set_schedule_service)
         .to receive(:call)
         .and_return(set_schedule_result)
 
       allow(work_package2)
-        .to receive(:changed?)
-        .and_return(true)
-
-      expect(work_package2)
-        .to receive(:save)
-        .and_return(true)
+        .to receive_messages(changed?: true, save: true)
 
       allow(set_schedule_result)
         .to receive(:success=)
     end
 
-    it 'is successful' do
+    it "is successful" do
       expect(subject)
         .to be_success
     end
 
-    it 'returns the relation' do
+    it "returns the relation" do
       expect(subject.result)
         .to eql relation
     end
 
-    it 'has a dependent result for the from-work package' do
+    it "has a dependent result for the from-work package" do
       expect(subject.dependent_results)
-        .to match_array [set_schedule_work_package2_result]
+        .to contain_exactly(set_schedule_work_package2_result)
     end
   end
 
-  context 'if all is valid and it is not a follows relation' do
-    it 'is successful' do
+  context "if all is valid and it is not a follows relation" do
+    it "is successful" do
       expect(subject)
         .to be_success
     end
 
-    it 'returns the relation' do
+    it "returns the relation" do
       expect(subject.result)
         .to eql relation
     end
   end
 
-  context 'if the contract is invalid' do
+  context "if the contract is invalid" do
     let(:contract_valid) { false }
-    let(:contract_errors) { double('contract_errors') }
+    let(:contract_errors) { instance_double(ActiveModel::Errors) }
 
     before do
       allow(contract)
@@ -170,7 +170,7 @@ describe Relations::CreateService do
         .and_return(symbols_for_base)
     end
 
-    it 'is unsuccessful' do
+    it "is unsuccessful" do
       expect(subject)
         .to be_failure
     end
@@ -181,9 +181,9 @@ describe Relations::CreateService do
     end
   end
 
-  context 'if the model is invalid' do
+  context "if the model is invalid" do
     let(:model_valid) { false }
-    let(:model_errors) { double('model_errors') }
+    let(:model_errors) { instance_double(ActiveModel::Errors) }
 
     before do
       allow(relation)
@@ -195,7 +195,7 @@ describe Relations::CreateService do
         .and_return(symbols_for_base)
     end
 
-    it 'is unsuccessful' do
+    it "is unsuccessful" do
       expect(subject)
         .to be_failure
     end
@@ -203,64 +203,6 @@ describe Relations::CreateService do
     it "returns the model's errors" do
       expect(subject.errors)
         .to eql model_errors
-    end
-
-    context 'on a circular_dependency error' do
-      let(:symbols_for_base) { [:"typed_dag.circular_dependency"] }
-      before do
-        allow(relation)
-          .to receive(:save) do
-          relation.from == work_package1 && relation.to == work_package2
-        end
-      end
-
-      context 'for a relates relationships' do
-        let(:attributes) do
-          {
-            to: work_package1,
-            from: work_package2,
-            delay: delay,
-            relation_type: Relation::TYPE_RELATES
-          }
-        end
-
-        it 'is successful' do
-          expect(subject)
-            .to be_success
-        end
-
-        it 'switches from and to' do
-          expect(subject.result.to)
-            .to eql work_package2
-
-          expect(subject.result.from)
-            .to eql work_package1
-        end
-      end
-
-      context 'fro a different relationship' do
-        let(:attributes) do
-          {
-            to: work_package1,
-            from: work_package2,
-            delay: delay,
-            relation_type: Relation::TYPE_BLOCKED
-          }
-        end
-
-        it 'is failure' do
-          expect(subject)
-            .to be_failure
-        end
-
-        it 'leaves from and to unchanged' do
-          expect(subject.result.from)
-            .to eql work_package2
-
-          expect(subject.result.to)
-            .to eql work_package1
-        end
-      end
     end
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,66 +22,156 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'features/support/components/ui_autocomplete'
+require "support/finders/test_selector_finders"
 
 module Components
   module Projects
     class TopMenu
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
-      include ::Components::UIAutocompleteHelpers
+      include ::TestSelectorFinders
 
       def toggle
-        page.find('#projects-menu').click
+        page.find_by_id("projects-menu").click
+        wait_for_network_idle(timeout: 10)
+      end
+
+      # Ensures modal registers as #open? before proceeding
+      def toggle!
+        toggle
+        expect_open
+      end
+
+      def open?
+        page.has_selector?(search_selector)
+      end
+
+      def switch_mode(mode)
+        within_test_selector("op-header-project-select") do
+          find_button(mode).click
+        end
+      end
+
+      def expect_current_mode(mode)
+        within_test_selector("op-header-project-select") do
+          expect(page).to have_css(".SegmentedControl-item--selected", text: mode)
+        end
       end
 
       def expect_current_project(name)
-        expect(page).to have_selector('#projects-menu', text: name)
+        page.find_by_id("projects-menu", text: name)
       end
 
       def expect_open
-        expect(page).to have_selector(autocompleter_selector)
+        page.find(search_selector)
       end
 
       def expect_closed
-        expect(page).to have_no_selector(autocompleter_selector)
+        expect(page).to have_no_selector(search_selector)
       end
 
       def search(query)
-        search_autocomplete(autocompleter, query: query)
+        search_field.set query
       end
 
       def clear_search
-        autocompleter.set ''
-        autocompleter.send_keys :backspace
+        clear_input_field_contents(search_field)
       end
 
       def search_and_select(query)
-        select_autocomplete autocompleter,
-                            results_selector: autocompleter_results_selector,
-                            query: query
+        search query
+        wait_for_network_idle
+        selector = "#{results_selector} #{item_selector}"
+        item = page.first(selector, text: query, wait: 5) || page.find(selector, wait: 5)
+        item.click
       end
 
       def search_results
-        page.find autocompleter_results_selector
+        page.find results_selector, wait: 10
       end
 
-      def autocompleter
-        page.find autocompleter_selector
+      def search_field
+        page.find search_selector, wait: 10
       end
 
-      def autocompleter_results_selector
-        '.project-menu-autocomplete--results'
+      def expand_node_for(name)
+        item = page.find("#{results_selector} #{item_selector}", text: name, wait: 10)
+        item.find(:xpath, "preceding-sibling::*[contains(@class, 'TreeViewItemToggle')]").click
       end
 
-      def autocompleter_selector
-        '#project_autocompletion_input'
+      def expect_result(name, disabled: false, workspace_badge: nil)
+        selector = disabled ? item_disabled_selector : item_selector
+        item = page.find("#{results_selector} #{selector}", text: name, wait: 10)
+
+        return if workspace_badge.nil?
+
+        if workspace_badge
+          expect(item).to have_octicon
+          expect(item).to have_primer_text(workspace_badge, class: "description")
+        else
+          expect(item).to have_no_octicon
+          expect(item).to have_no_primer_text(class: "description")
+        end
+      end
+
+      def expect_no_result(name)
+        expect(page).to have_no_css("#{results_selector} #{item_selector}", text: name, wait: 5)
+      end
+
+      def expect_blankslate
+        expect(page).not_to have_test_selector("op-header-project-select--no-results", wait: 0)
+      end
+
+      def expect_item_with_hierarchy_level(hierarchy_level:, item_name:)
+        hierarchy_selector = ".TreeViewItemContainer[style*='--level: #{hierarchy_level};']"
+        expect(page)
+          .to have_css("#{results_selector} #{hierarchy_selector} #{item_selector}", text: item_name, wait: 10)
+      end
+
+      def expect_project_create_button
+        expect(page).to have_test_selector("create-project-btn")
+      end
+
+      def expect_no_project_create_button
+        expect(page).to have_no_test_selector("create-project-btn")
+      end
+
+      def expect_project_list_button
+        expect(page).to have_test_selector("list-project-btn")
+      end
+
+      def expect_no_project_list_button
+        expect(page).to have_no_test_selector("list-project-btn")
+      end
+
+      def item_selector
+        '[data-test-selector="op-header-project-select--item"]'
+      end
+
+      def item_disabled_selector
+        "#{item_selector}[aria-disabled='true']"
+      end
+
+      def results_selector
+        '[data-test-selector="op-header-project-select--list"]'
+      end
+
+      def active_item_selector
+        "#{item_selector}[aria-current='true']"
+      end
+
+      def remove_item_selector
+        "[data-test-selector='op-header-project-select--remove-item']"
+      end
+
+      def search_selector
+        "[data-test-selector='op-header-project-select--search']"
       end
     end
   end

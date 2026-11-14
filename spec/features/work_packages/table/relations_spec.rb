@@ -1,120 +1,136 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Work Package table relations', js: true do
-  let(:user) { FactoryBot.create :admin }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-  let(:type) { FactoryBot.create(:type) }
-  let(:type2) { FactoryBot.create(:type) }
-  let(:project) { FactoryBot.create(:project, types: [type, type2]) }
+require "spec_helper"
 
-  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
-  let(:relations) { ::Components::WorkPackages::Relations.new(relations) }
-  let(:columns) { ::Components::WorkPackages::Columns.new }
-  let(:wp_timeline) { Pages::WorkPackagesTimeline.new(project) }
+RSpec.describe "Work Package table child relations",
+               :js do
+  shared_let(:user) { create(:admin) }
 
-  let!(:wp_from) { FactoryBot.create(:work_package, project: project, type: type2) }
-  let!(:wp_to) { FactoryBot.create(:work_package, project: project, type: type) }
-  let!(:wp_to2) { FactoryBot.create(:work_package, project: project, type: type) }
+  shared_let(:type) { create(:type) }
+  shared_let(:project) { create(:project, types: [type]) }
 
-  let!(:relation) do
-    FactoryBot.create(:relation,
-                      from: wp_from,
-                      to: wp_to,
-                      relation_type: Relation::TYPE_FOLLOWS)
-  end
-  let!(:relation2) do
-    FactoryBot.create(:relation,
-                      from: wp_from,
-                      to: wp_to2,
-                      relation_type: Relation::TYPE_FOLLOWS)
-  end
-  let!(:query) do
-    query              = FactoryBot.build(:query, user: user, project: project)
-    query.column_names = ['subject']
+  shared_let(:query) do
+    query              = build(:query, user:, project:)
+    query.column_names = ["subject"]
     query.filters.clear
 
     query.save!
     query
   end
 
-  let(:type_column_id) { "relationsToType#{type.id}" }
-  let(:type_column_follows) { 'relationsOfTypeFollows' }
-  let(:relation_columns_allowed) { true }
+  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+  let(:relations) { Components::WorkPackages::Relations.new(relations) }
+  let(:columns) { Components::WorkPackages::Columns.new }
+
+  shared_let(:parent) { create(:work_package, subject: "Parent", project:, type:, author: user) }
+  shared_let(:child) { create(:work_package, subject: "Child", parent:, project:, type:, author: user) }
 
   before do
-    # There does not seem to appear a way to generate a valid token
-    # for testing purposes
-    if relation_columns_allowed
-      with_enterprise_token :work_package_query_relation_columns
-    end
-
     login_as(user)
   end
 
-  describe 'with relation columns allowed by the enterprise token' do
-    it 'displays expandable relation columns' do
-      # Now visiting the query for category
-      wp_table.visit_query(query)
-      wp_table.expect_work_package_listed(wp_from, wp_to, wp_to2)
+  it "toggles a relation once with Enter and restores its cell focus" do
+    wp_table.visit_query(query)
+    wp_table.expect_work_package_listed(parent)
+    columns.add("Children")
+    wp_table.focus_cell_by_keyboard(parent, :relationChild)
 
-      columns.add(type.name, finicky: true)
-      columns.add("follows", finicky: true)
+    wp_table.press_keys(:enter)
+    expect(wp_table.row(parent))
+      .to have_button(accessible_name: "Relations in Children for ##{parent.id}", aria: { expanded: true }, count: 1)
+    wp_table.expect_focus_on_cell(parent, :relationChild)
 
-      wp_from_row = wp_table.row(wp_from)
-      wp_from_to = wp_table.row(wp_to)
-
-      # Expect count for wp_from in both columns to be one
-      expect(wp_from_row).to have_selector(".#{type_column_id} .wp-table--relation-count", text: '2')
-      expect(wp_from_row).to have_selector(".#{type_column_follows} .wp-table--relation-count", text: '2')
-
-      # Expect count for wp_to in both columns to be not rendered
-      expect(wp_from_to).to have_no_selector(".#{type_column_id} .wp-table--relation-count")
-      expect(wp_from_to).to have_no_selector(".#{type_column_follows} .wp-table--relation-count")
-
-      # Expand first column
-      wp_from_row.find(".#{type_column_id} .wp-table--relation-indicator").click
-      expect(page).to have_selector(".__relations-expanded-from-#{wp_from.id}", count: 2)
-      related_row = page.first(".__relations-expanded-from-#{wp_from.id}")
-      expect(related_row).to have_selector('td.wp-table--relation-cell-td', text: "Precedes")
-
-      # Collapse
-      wp_from_row.find(".#{type_column_id} .wp-table--relation-indicator").click
-      expect(page).to have_no_selector(".__relations-expanded-from-#{wp_from.id}")
-
-      # Expand second column
-      wp_from_row.find(".#{type_column_follows} .wp-table--relation-indicator").click
-      expect(page).to have_selector(".__relations-expanded-from-#{wp_from.id}", count: 2)
-      related_row = page.first(".__relations-expanded-from-#{wp_from.id}")
-      expect(related_row).to have_selector('.wp-table--relation-cell-td', text: wp_to.type)
-
-      # Open Timeline
-      # Should be initially closed
-      wp_timeline.expect_timeline!(open: false)
-
-      # Enable timeline
-      wp_timeline.toggle_timeline
-      wp_timeline.expect_timeline!(open: true)
-
-      # 3 WPs + 2 expanded relations
-      wp_timeline.expect_row_count(5)
-
-      # Collapse
-      wp_from_row.find(".#{type_column_follows} .wp-table--relation-indicator").click
-      expect(page).to have_no_selector(".__relations-expanded-from-#{wp_from.id}")
-
-      wp_timeline.expect_row_count(3)
-    end
+    wp_table.press_keys(:enter)
+    expect(wp_table.row(parent))
+      .to have_button(accessible_name: "Relations in Children for ##{parent.id}", aria: { expanded: false }, count: 1)
+    wp_table.expect_focus_on_cell(parent, :relationChild)
   end
 
-  describe 'with relation columns disallowed by the enterprise token' do
-    let(:relation_columns_allowed) { false }
+  it "walks the relation expander from its cell before the row actions" do
+    wp_table.visit_query(query)
+    wp_table.expect_work_package_listed(parent)
+    columns.add("Children")
+    wp_table.focus_cell_by_keyboard(parent, :relationChild)
 
-    it 'has no relation columns available for selection' do
-      # Now visiting the query for category
-      wp_table.visit_query(query)
+    wp_table.press_keys(:tab)
+    expect(wp_table.row(parent))
+      .to have_button(accessible_name: "Relations in Children for ##{parent.id}", focused: true)
+    wp_table.press_keys(:tab)
+    wp_table.expect_focus_on_control(parent, "Open details view")
+  end
 
-      columns.expect_column_not_available 'follows relations'
-      columns.expect_column_not_available "Relations to #{type.name}"
+  it "displays expandable relation columns for the children of a work package" do
+    # Now visiting the query for category
+    wp_table.visit_query(query)
+    wp_table.expect_work_package_listed(parent)
+
+    columns.add("Children")
+
+    parent_row = wp_table.row(parent)
+    child_row = wp_table.row(child)
+
+    # Expect count for parent to be one
+    expect(parent_row).to have_css(".relationChild .wp-table--relation-count", text: "1")
+
+    # Expect count for child to be not rendered
+    expect(child_row).to have_no_css(".relationChild .wp-table--relation-count")
+
+    # Expand column
+    parent_row.find(".relationChild .wp-table--relation-indicator").click
+    expect(page).to have_css(".__relations-expanded-from-#{parent.id}", count: 1)
+
+    related_row = page.first(".__relations-expanded-from-#{parent.id}")
+    expect(related_row).to have_css("td.wp-table--relation-cell-td", text: "Child")
+
+    # Collapse
+    parent_row.find(".relationChild .wp-table--relation-indicator").click
+    expect(page).to have_no_css(".__relations-expanded-from-#{parent.id}")
+  end
+
+  it "opens the relation column menu from its header button by keyboard", :selenium do
+    wp_table.visit_query(query)
+    wp_table.expect_work_package_listed(parent)
+
+    columns.add("Children")
+
+    expect(page).to have_button(accessible_name: /\Achildren\z/i)
+    expect(page).to be_axe_clean.within(".wp-table--table-header:has(.relations-header--icon)")
+
+    find(:columnheader, "Children").send_keys(:enter)
+    within(:menu, "Children") do
+      expect(page).to have_selector(:menuitem, focused: true)
+      expect(page).to have_selector(:menuitem, text: "Add columns")
     end
+
+    page.send_keys(:escape)
+    expect(page).to have_no_menu("Children")
+    wp_table.expect_focus_on_column_header("Children")
   end
 end

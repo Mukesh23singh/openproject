@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,31 +22,30 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-RSpec.feature 'Work package navigation', js: true, selenium: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:project) { FactoryBot.create(:project, name: 'Some project', enabled_module_names: [:work_package_tracking]) }
-  let(:work_package) { FactoryBot.build(:work_package, project: project) }
-  let(:global_html_title) { ::Components::HtmlTitle.new }
-  let(:project_html_title) { ::Components::HtmlTitle.new project }
-  let(:wp_display) { ::Components::WorkPackages::DisplayRepresentation.new }
-  let(:wp_title_segment) do
-    "#{work_package.type.name}: #{work_package.subject} (##{work_package.id})"
-  end
+RSpec.describe "Work package navigation", :js do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project, name: "Some project", enabled_module_names: [:work_package_tracking]) }
+  let(:work_package) { build(:work_package, project:) }
+  let(:global_html_title) { Components::HtmlTitle.new }
+  let(:project_html_title) { Components::HtmlTitle.new project }
+  let(:wp_title_segment) { work_package.to_fs(:caption) }
 
   let!(:query) do
-    query = FactoryBot.build(:query, user: user, project: project)
+    query = build(:query, user:, project:)
     query.column_names = %w(id subject)
     query.name = "My fancy query"
 
     query.save!
+    create(:view_work_packages_table,
+           query:)
+
     query
   end
 
@@ -52,7 +53,7 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
     login_as(user)
   end
 
-  scenario 'all different angular based work package views' do
+  it "all different angular based work package views" do
     work_package.save!
 
     # deep link global work package index
@@ -60,7 +61,7 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
     global_work_packages.visit!
 
     global_work_packages.expect_work_package_listed(work_package)
-    global_html_title.expect_first_segment 'All open'
+    global_html_title.expect_first_segment "All open | Work Packages"
 
     # open details pane for work package
 
@@ -68,21 +69,23 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
 
     split_work_package.expect_subject
     split_work_package.expect_current_path
-    global_html_title.expect_first_segment wp_title_segment
+    global_html_title.expect_first_segment "#{wp_title_segment} | Work Packages"
 
     # Go to full screen by double click
     full_work_package = global_work_packages.open_full_screen_by_doubleclick(work_package)
 
     full_work_package.expect_subject
     full_work_package.expect_current_path
-    global_html_title.expect_first_segment wp_title_segment
+
+    global_html_title.expect_first_segment "#{wp_title_segment} | Some project"
 
     # deep link work package details pane
 
     split_work_package.visit!
     split_work_package.expect_subject
     # Should be checked in table
-    expect(global_work_packages.table_container).to have_selector(".wp-row-#{work_package.id}.-checked")
+    global_work_packages.expect_work_package_listed(work_package)
+    expect(page).to have_css("#{global_work_packages.row_selector(work_package)}.-checked")
 
     # deep link work package show
 
@@ -95,17 +98,18 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
     project_work_packages.visit!
 
     project_work_packages.expect_work_package_listed(work_package)
-    project_html_title.expect_first_segment 'All open'
+    project_html_title.expect_first_segment "All open | Work Packages"
 
     # Visit query with project wp
     project_work_packages.visit_query query
     project_work_packages.expect_work_package_listed(work_package)
-    project_html_title.expect_first_segment 'My fancy query'
+    project_html_title.expect_first_segment "My fancy query | Work Packages"
 
     # Go back to work packages without query
-    page.execute_script('window.history.back()')
+    page.go_back
+    expect(page).to have_no_css("html[aria-busy]")
     project_work_packages.expect_work_package_listed(work_package)
-    project_html_title.expect_first_segment 'All open'
+    project_html_title.expect_first_segment "All open | Work Packages"
 
     # open project work package details pane
 
@@ -113,24 +117,24 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
 
     split_project_work_package.expect_subject
     split_project_work_package.expect_current_path
-    project_html_title.expect_first_segment wp_title_segment
+    project_html_title.expect_first_segment "#{wp_title_segment} | Work Packages"
 
     # open work package full screen by button
     full_work_package = split_project_work_package.switch_to_fullscreen
 
     full_work_package.expect_subject
-    expect(current_path).to eq project_work_package_path(project, work_package, 'activity')
+    expect(page).to have_current_path project_work_package_path(project, work_package, "activity")
     project_html_title.expect_first_segment wp_title_segment
 
     # Switch tabs
     full_work_package.switch_to_tab tab: :relations
-    expect(current_path).to eq project_work_package_path(project, work_package, 'relations')
+    expect(page).to have_current_path project_work_package_path(project, work_package, "relations")
     project_html_title.expect_first_segment wp_title_segment
 
     # Back to split screen using the button
     full_work_package.go_back
     global_work_packages.expect_work_package_listed(work_package)
-    expect(current_path).to eq project_work_packages_path(project) + "/details/#{work_package.id}/relations"
+    expect(page).to have_current_path project_work_packages_path(project) + "/details/#{work_package.id}"
 
     # Link to full screen from index
     global_work_packages.open_full_screen_by_link(work_package)
@@ -143,111 +147,97 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
     full_work_package.ensure_page_loaded
   end
 
-  scenario 'loading an unknown work package ID' do
-    visit '/work_packages/999999999'
+  it "loading an unknown work package ID" do
+    unknown_id = not_existing_id(WorkPackage)
 
-    page404 = ::Pages::Page.new
-    page404.expect_toast type: :error, message: I18n.t(:notice_file_not_found)
+    visit "/work_packages/#{unknown_id}"
+    expect_flash type: :error, message: I18n.t(:notice_file_not_found)
 
-    visit "/projects/#{project.identifier}/work_packages/999999999"
-    page404.expect_and_dismiss_toaster type: :error, message: I18n.t('api_v3.errors.not_found.work_package')
+    visit "/projects/#{project.identifier}/work_packages/#{unknown_id}"
+    expect_flash type: :error, message: I18n.t(:notice_file_not_found)
   end
 
   # Regression #29994
-  scenario 'access the work package views directly from a non-angular view' do
+  it "access the work package views directly from a non-angular view" do
     visit project_path(project)
 
-    find('#main-menu-work-packages ~ .toggler').click
-    expect(page).to have_selector('.op-query-select--search-results')
-    find('.op-sidemenu--item-action', text: query.name).click
+    page.find_test_selector("main-menu-toggler--work_packages").click
+    expect(page).to have_test_selector("op-submenu--body")
+    find(".op-submenu--item-action", text: query.name).click
 
-    expect(page).not_to have_selector('.title-container', text: 'Overview')
-    expect(page).to have_field('editable-toolbar-title', with: query.name)
+    expect(page).to have_no_css(".title-container", text: "Overview")
+    expect(page).to have_field("editable-toolbar-title", with: query.name)
   end
 
-  scenario 'double clicking search result row (Regression #30247)' do
-    work_package.subject = 'Foobar'
+  it "double clicking search result row (Regression #30247)" do
+    work_package.subject = "Foobar"
     work_package.save!
-    visit search_path(q: 'Foo', work_packages: 1, scope: :all)
+    visit search_path(q: "Foo", filter: :work_packages, scope: :all)
 
-    table = ::Pages::EmbeddedWorkPackagesTable.new page.find('#content')
+    table = Pages::EmbeddedWorkPackagesTable.new page.find_by_id("content")
     table.expect_work_package_listed work_package
     full_page = table.open_full_screen_by_doubleclick work_package
 
     full_page.ensure_page_loaded
   end
 
-  scenario 'double clicking my page (Regression #30343)' do
+  it "double clicking my page (Regression #30343)" do
     work_package.author = user
-    work_package.subject = 'Foobar'
+    work_package.subject = "Foobar"
     work_package.save!
 
     visit my_page_path
 
-    page.find('.wp-table--cell-td.id a', text: work_package.id).click
+    wait_for_network_idle
 
-    full_page = ::Pages::FullWorkPackage.new work_package, work_package.project
+    page.find(".wp-table--cell-td.id a", text: work_package.id, wait: 20).click
+
+    full_page = Pages::FullWorkPackage.new work_package, work_package.project
     full_page.ensure_page_loaded
   end
 
-  scenario 'moving back from gantt to "All open" (Regression #30921)' do
-    wp_table = Pages::WorkPackagesTable.new project
-    wp_table.visit!
-
-    # Switch to gantt view
-    wp_display.expect_state 'Table'
-    wp_display.switch_to_gantt_layout
-    wp_display.expect_state 'Gantt'
-
-    # Click on All open
-    find('.op-sidemenu--item-action', text: 'All open').click
-
-    if OpenProject::Configuration.bim?
-      wp_display.expect_state 'Cards'
-    else
-      wp_display.expect_state 'Table'
-    end
-  end
-
-  describe 'moving back to filtered list after change' do
-    let!(:work_package) { FactoryBot.create(:work_package, project: project, subject: 'foo') }
+  describe "moving back to filtered list after change" do
+    let!(:work_package) { create(:work_package, project:, subject: "foo") }
     let!(:query) do
-      query = FactoryBot.build(:query, user: user, project: project)
+      query = build(:query, user:, project:)
       query.column_names = %w(id subject)
       query.name = "My fancy query"
-      query.add_filter('subject', '~', ['foo'])
+      query.add_filter("subject", "~", ["foo"])
 
       query.save!
       query
     end
 
-    it 'will filter out the work package' do
+    it "filters out the work package" do
       wp_table = Pages::WorkPackagesTable.new project
-      wp_table.visit!
+      wp_table.visit_query query
 
       wp_table.expect_work_package_listed work_package
       full_view = wp_table.open_full_screen_by_link work_package
 
       full_view.ensure_page_loaded
       subject = full_view.edit_field :subject
-      subject.update 'bar'
+      subject.update "bar"
 
-      full_view.expect_and_dismiss_toaster message: 'Successful update.'
+      full_view.expect_and_dismiss_toaster message: "Successful update."
+      work_package.reload
+      expect(work_package.subject).to eq("bar")
 
       # Go back to list
       full_view.go_back
 
+      expect(page).to have_field("editable-toolbar-title", with: query.name, wait: 10)
       wp_table.ensure_work_package_not_listed! work_package
     end
   end
 
-  context 'work package with an attachment' do
-    let!(:attachment) { FactoryBot.build(:attachment, filename: 'attachment-first.pdf') }
+  context "with work package with an attachment" do
+    let!(:attachment) { build(:attachment, filename: "attachment-first.pdf") }
     let!(:wp_with_attachment) do
-      FactoryBot.create :work_package, subject: 'WP attachment A', project: project, attachments: [attachment]
+      create(:work_package, subject: "WP attachment A", project:, attachments: [attachment])
     end
 
-    it 'will show it when navigating from table to single view' do
+    it "shows it when navigating from table to single view" do
       wp_table = Pages::WorkPackagesTable.new project
       wp_table.visit!
 
@@ -255,37 +245,16 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
       full_view = wp_table.open_full_screen_by_link wp_with_attachment
 
       full_view.ensure_page_loaded
-      expect(page).to have_selector('.work-package--attachments--filename', text: 'attachment-first.pdf', wait: 10)
+      full_view.switch_to_tab(tab: "FILES")
+      expect(page)
+        .to have_test_selector("op-files-tab--file-list-item-title", text: "attachment-first.pdf", wait: 10)
     end
   end
 
-  context 'two work packages with card view' do
-    let!(:work_package) { FactoryBot.create :work_package, project: project }
-    let!(:work_package2) { FactoryBot.create :work_package, project: project }
-    let(:display_representation) { ::Components::WorkPackages::DisplayRepresentation.new }
-    let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
-    let(:cards) { ::Pages::WorkPackageCards.new(project) }
+  context "when visiting a query that will lead to a query validation error" do
+    let(:wp_table) { Pages::WorkPackagesTable.new(project) }
 
-    it 'can move between card details using info icon (Regression #33451)' do
-      wp_table.visit!
-      wp_table.expect_work_package_listed work_package, work_package2
-      display_representation.switch_to_card_layout
-      cards.expect_work_package_listed work_package, work_package2
-
-      # move to first details
-      split = cards.open_full_screen_by_details work_package
-      split.expect_subject
-
-      # move to second details
-      split2 = cards.open_full_screen_by_details work_package2
-      split2.expect_subject
-    end
-  end
-
-  context 'when visiting a query that will lead to a query validation error' do
-    let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
-
-    it 'will output a correct error message (Regression #39880)' do
+    it "outputs a correct error message (Regression #39880)" do
       url_query =
         "query_id=%7B%22%7B%22&query_props=%7B%22c%22%3A%5B%22id%22%2C%22subject" \
         "%22%2C%22type%22%2C%22status%22%2C%22assignee%22%2C%22updatedAt%22%5D%2C" \
@@ -296,8 +265,21 @@ RSpec.feature 'Work package navigation', js: true, selenium: true do
 
       visit "/projects/#{project.identifier}/work_packages?#{url_query}"
 
-      wp_table.expect_toast message: 'Your view is erroneous and could not be processed.', type: :error
-      expect(page).to have_selector 'li', text: 'Bad request: id is invalid'
+      wp_table.expect_toast message: "Your view is erroneous and could not be processed.", type: :error
+      expect(page).to have_css "li", text: "The requested resource could not be found"
     end
+  end
+
+  # Introduced by regression #60629
+  it "can navigate correctly to non-angular pages (regression #61790)" do
+    global_work_packages = Pages::WorkPackagesTable.new
+    global_work_packages.visit!
+
+    # Navigate to the administration
+    page.find(".op-top-menu-user-avatar").click
+    page.find_test_selector("op-menu--item-action", text: "Administration").click
+
+    # Expect classes to be gone
+    expect(page).to have_no_css("body.router--work-packages-base")
   end
 end

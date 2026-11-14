@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,35 +22,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Copy
   class FiltersMapper
-    attr_reader :state, :filters, :mappers
+    attr_reader :state, :mappers
 
-    def initialize(state, filters)
+    def initialize(state)
       @state = state
-      @filters = filters
       @mappers = build_filter_mappers
     end
 
     ##
-    # Returns the mapped filter array for either
-    # hash-based APIv3 filters or filter clasess
-    def map_filters!
-      filters.each do |filter|
-        if filter.is_a?(Hash)
-          map_api_filter_hash(filter)
-        else
-          map_filter_class(filter)
-        end
+    # Returns the mapped filter array for
+    # an array of hash-based APIv3 filters
+    def map_filters(filters)
+      filters.map do |input|
+        filter = input.dup.with_indifferent_access
+        map_api_filter_hash(filter)
       end
+    end
 
-      filters
+    ##
+    # Maps the given query instance
+    def map_query!(query)
+      query.filters.each do |filter|
+        filter.values = mapped_values(filter.name, filter.values)
+      end
     end
 
     protected
@@ -64,11 +65,9 @@ module Queries::Copy
       subhash = filter[name]
       ar_name = ::API::Utilities::QueryFiltersNameConverter.to_ar_name(name, refer_to_ids: true)
 
-      subhash['values'] = mapped_values(ar_name, subhash['values'])
-    end
+      subhash["values"] = mapped_values(ar_name, subhash["values"])
 
-    def map_filter_class(filter)
-      filter.values = mapped_values(filter.name, filter.values)
+      filter
     end
 
     def mapped_values(ar_name, values)
@@ -80,6 +79,7 @@ module Queries::Copy
     def build_filter_mappers
       {
         version_id: state_mapper(:version_id_lookup),
+        target_version_id: state_mapper(:version_id_lookup),
         category_id: state_mapper(:category_id_lookup),
         parent: state_mapper(:work_package_id_lookup)
       }

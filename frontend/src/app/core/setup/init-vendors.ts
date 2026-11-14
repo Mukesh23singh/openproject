@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -30,44 +29,13 @@
 //
 // dependencies required by classic (Rails) and Angular application.
 
-// Lodash
-require('expose-loader?_!lodash');
+import moment from 'moment-timezone';
+import './init-moment-locales';
 
-// jQuery
-require('expose-loader?jQuery!jquery');
-require('jquery-ujs');
+import '@openproject/primer-view-components/app/assets/javascripts/primer_view_components.js';
 
-require('expose-loader?mousetrap!mousetrap/mousetrap.js');
+import URI from 'urijs';
+import 'urijs/src/URITemplate';
 
-// Angular dependencies
-require('expose-loader?dragula!dragula/dist/dragula.min.js');
-require('@uirouter/angular');
-
-// Jquery UI
-require('jquery-ui/ui/core.js');
-require('jquery-ui/ui/position.js');
-require('jquery-ui/ui/disable-selection.js');
-require('jquery-ui/ui/widgets/sortable.js');
-require('jquery-ui/ui/widgets/autocomplete.js');
-require('jquery-ui/ui/widgets/dialog.js');
-require('jquery-ui/ui/widgets/tooltip.js');
-
-require('expose-loader?moment!moment');
-require('moment/locale/en-gb.js');
-require('moment/locale/de.js');
-
-require('jquery.caret');
-// Text highlight for autocompleter
-require('mark.js/dist/jquery.mark.min.js');
-// Micro Text fuzzy search library
-require('fuse.js');
-
-require('moment-timezone/builds/moment-timezone-with-data.min.js');
-
-require('expose-loader?URI!urijs');
-require('urijs/src/URITemplate');
-
-require('expose-loader?I18n!core-vendor/i18n');
-
-// Localization for fullcalendar
-require('@fullcalendar/core/locales-all');
+window.moment = moment;
+window.URI = URI;

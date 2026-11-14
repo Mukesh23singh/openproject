@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,17 +30,17 @@ module API
     module Activities
       class ActivitiesAPI < ::API::OpenProjectAPI
         resources :activities do
-          route_param :id, type: Integer, desc: 'Activity ID' do
+          route_param :id, type: Integer, desc: "Activity ID" do
             after_validation do
               @activity = Journal.find(declared_params[:id])
 
-              authorize_by_with_raise @activity.journable.visible?(current_user) do
+              authorize_by_with_raise @activity.visible?(current_user) && !@activity.meeting_cause? do
                 raise API::Errors::NotFound
               end
             end
 
             get &::API::V3::Utilities::Endpoints::Show.new(model: ::Journal,
-                                                           api_name: 'Activity',
+                                                           api_name: "Activity",
                                                            instance_generator: ->(*) { @activity })
                                                       .mount
 
@@ -50,12 +49,15 @@ module API
             end
 
             patch &::API::V3::Utilities::Endpoints::Update.new(model: ::Journal,
-                                                               api_name: 'Activity',
+                                                               api_name: "Activity",
                                                                instance_generator: ->(*) { @activity },
                                                                params_modifier: ->(*) {
                                                                  { notes: declared_params[:comment] }
                                                                })
                                                           .mount
+
+            mount ::API::V3::Attachments::AttachmentsByActivityCommentAPI
+            mount ::API::V3::EmojiReactions::EmojiReactionsByActivityCommentAPI
           end
         end
       end

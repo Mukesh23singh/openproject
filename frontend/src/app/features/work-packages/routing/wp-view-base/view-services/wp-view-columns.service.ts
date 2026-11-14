@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,31 +20,25 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { isEqual } from 'lodash-es';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { States } from 'core-app/core/states/states.service';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { QueryColumn, queryColumnTypes } from 'core-app/features/work-packages/components/wp-query/query-column';
-import { combine } from 'reactivestates';
+import { combine } from '@openproject/reactivestates';
 import { mapTo, take } from 'rxjs/operators';
 import { cloneHalResourceCollection } from 'core-app/features/hal/helpers/hal-resource-builder';
 import { WorkPackageQueryStateService } from './wp-view-base.service';
+import { sharedUserColumn } from 'core-app/features/work-packages/components/wp-fast-table/builders/internal-sort-columns';
 
 @Injectable()
 export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<QueryColumn[]> {
-  public constructor(readonly states:States, readonly querySpace:IsolatedQuerySpace) {
-    super(querySpace);
-  }
-
-  public initialize(query:any, results:any, schema?:any) {
-    super.initialize(query, results, schema);
-  }
+  readonly states = inject(States);
 
   public valueFromQuery(query:QueryResource):QueryColumn[] {
     return [...query.columns];
@@ -57,7 +51,7 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
   public isCurrentlyEqualTo(a:QueryColumn[]) {
     const comparer = (columns:QueryColumn[]) => columns.map((c) => c.href);
 
-    return _.isEqual(
+    return isEqual(
       comparer(a),
       comparer(this.getColumns()),
     );
@@ -71,18 +65,35 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
     query.columns = cloneHalResourceCollection<QueryColumn>(toApply);
 
     // We can avoid reloading even with relation columns if we only removed columns
-    const onlyRemoved = _.difference(newColumns, oldColumns).length === 0;
+    const onlyRemoved = newColumns.filter((column) => !oldColumns.includes(column)).length === 0;
 
-    // Reload the table visibly if adding relation columns.
-    return !onlyRemoved && this.hasRelationColumns();
+    // Reload the table visibly if adding relation or share columns.
+    return !onlyRemoved && (this.hasRelationColumns() || this.hasShareColumn());
   }
 
   /**
    * Returns whether the current set of columns include relations
    */
   public hasRelationColumns() {
-    const relationColumns = [queryColumnTypes.RELATION_OF_TYPE, queryColumnTypes.RELATION_TO_TYPE];
-    return !!_.find(this.getColumns(), (c) => relationColumns.indexOf(c._type) >= 0);
+    const relationColumns = [
+      queryColumnTypes.RELATION_OF_TYPE,
+      queryColumnTypes.RELATION_TO_TYPE,
+    ];
+    return this.getColumns().some((c) => relationColumns.includes(c._type));
+  }
+
+  /**
+   * Returns whether the current set of columns include child relations
+   */
+  public hasChildRelationsColumn() {
+    return this.getColumns().some((c) => c._type === queryColumnTypes.RELATION_CHILD);
+  }
+
+  /**
+   * Returns whether the current set of columns include shares
+   */
+  public hasShareColumn() {
+    return this.getColumns().some((c) => c.id === sharedUserColumn.id);
   }
 
   /**
@@ -97,7 +108,7 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
    * Return the index of the given column or -1 if it is not contained.
    */
   public index(id:string):number {
-    return _.findIndex(this.getColumns(), (column) => column.id === id);
+    return this.getColumns().findIndex((column) => column.id === id);
   }
 
   /**
@@ -105,7 +116,7 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
    * @param id
    */
   public findById(id:string):QueryColumn|undefined {
-    return _.find(this.getColumns(), (column) => column.id === id);
+    return this.getColumns().find((column) => column.id === id);
   }
 
   /**
@@ -163,8 +174,8 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
   }
 
   public setColumnsById(columnIds:string[]) {
-    const mapped = columnIds.map((id) => _.find(this.all, (c) => c.id === id));
-    this.setColumns(_.compact(mapped));
+    const mapped = columnIds.map((id) => this.all.find((c) => c.id === id));
+    this.setColumns(mapped.filter((x):x is NonNullable<typeof x> => Boolean(x)));
   }
 
   /**
@@ -214,7 +225,7 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
     }
 
     if (this.index(id) === -1) {
-      const newColumn = _.find(this.all, (column) => column.id === id);
+      const newColumn = this.all.find((column) => column.id === id);
 
       if (!newColumn) {
         throw new Error('Column with provided name is not found');
@@ -272,7 +283,8 @@ export class WorkPackageViewColumnsService extends WorkPackageQueryStateService<
    * Get columns not yet selected
    */
   public get unused():QueryColumn[] {
-    return _.differenceBy(this.all, this.getColumns(), '$href');
+    const columns = this.getColumns();
+    return this.all.filter((column) => !columns.some((other) => other.$href === column.$href));
   }
 
   /**

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,26 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { DisplayFieldContext } from 'core-app/shared/components/fields/display/display-field.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import { IOPFieldSchema } from 'core-app/features/hal/interfaces';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
-export interface IFieldSchema {
-  type:string;
-  writable:boolean;
-  allowedValues?:any;
-  required?:boolean;
-  hasDefault:boolean;
-  name?:string;
-  options?:any;
+export interface IFieldSchema extends Omit<IOPFieldSchema, 'name'|'options'> {
+  name:string;
+  options?:IOPFieldSchema['options'];
+  placeholder?:string;
 }
 
 export class Field extends UntilDestroyedMixin {
   public static type:string;
 
-  public resource:any;
+  public resource:HalResource;
 
   public name:string;
 
@@ -54,7 +51,7 @@ export class Field extends UntilDestroyedMixin {
     return this.schema.name || this.name;
   }
 
-  public get value() {
+  public get value():unknown {
     return this.resource[this.name];
   }
 
@@ -74,7 +71,7 @@ export class Field extends UntilDestroyedMixin {
     return this.schema.hasDefault;
   }
 
-  public get options():boolean {
+  public get options():IFieldSchema['options'] {
     return this.schema.options;
   }
 

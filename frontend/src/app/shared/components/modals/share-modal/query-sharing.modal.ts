@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -32,19 +31,27 @@ import { HalResourceNotificationService } from 'core-app/features/hal/services/h
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { OpModalComponent } from 'core-app/shared/components/modal/modal.component';
-import { OpModalLocalsToken } from 'core-app/shared/components/modal/modal.service';
-import { OpModalLocalsMap } from 'core-app/shared/components/modal/modal.types';
-import {
-  ChangeDetectorRef, Component, ElementRef, Inject, OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
 import { QuerySharingChange } from 'core-app/shared/components/modals/share-modal/query-sharing-form.component';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 
 @Component({
   templateUrl: './query-sharing.modal.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class QuerySharingModalComponent extends OpModalComponent implements OnInit {
+  readonly I18n = inject(I18nService);
+  readonly states = inject(States);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly wpListService = inject(WorkPackagesListService);
+  readonly halNotification = inject(HalResourceNotificationService);
+  readonly toastService = inject(ToastService);
+
   public query:QueryResource;
 
   public isStarred = false;
@@ -64,19 +71,7 @@ export class QuerySharingModalComponent extends OpModalComponent implements OnIn
     close_popup: this.I18n.t('js.close_popup_title'),
   };
 
-  constructor(readonly elementRef:ElementRef,
-    @Inject(OpModalLocalsToken) public locals:OpModalLocalsMap,
-    readonly I18n:I18nService,
-    readonly states:States,
-    readonly querySpace:IsolatedQuerySpace,
-    readonly cdRef:ChangeDetectorRef,
-    readonly wpListService:WorkPackagesListService,
-    readonly halNotification:HalResourceNotificationService,
-    readonly toastService:ToastService) {
-    super(locals, cdRef, elementRef);
-  }
-
-  ngOnInit() {
+  ngOnInit():void {
     super.ngOnInit();
 
     this.query = this.querySpace.query.value!;
@@ -85,21 +80,22 @@ export class QuerySharingModalComponent extends OpModalComponent implements OnIn
     this.isPublic = this.query.public;
   }
 
-  public setValues(change:QuerySharingChange) {
+  public setValues(change:QuerySharingChange):void {
     this.isStarred = change.isStarred;
     this.isPublic = change.isPublic;
   }
 
-  public get afterFocusOn() {
-    return jQuery('#work-packages-settings-button');
+  public get afterFocusOn():HTMLElement {
+    return document.getElementById('work-packages-settings-button')!;
   }
 
-  public saveQuery($event:JQuery.TriggeredEvent) {
+  public saveQuery($event:Event):void {
     if (this.isBusy) {
       return;
     }
 
     this.isBusy = true;
+    this.cdRef.markForCheck();
     const promises = [];
 
     if (this.query.public !== this.isPublic) {
@@ -117,10 +113,12 @@ export class QuerySharingModalComponent extends OpModalComponent implements OnIn
       .then(() => {
         this.closeMe($event);
         this.isBusy = false;
+        this.cdRef.markForCheck();
       })
       .catch(() => {
-        this.toastService.addError(this.I18n.t('js.errors.query_saving'));
+        this.toastService.addError(this.I18n.t('js.error.query_saving'));
         this.isBusy = false;
+        this.cdRef.markForCheck();
       });
   }
 }

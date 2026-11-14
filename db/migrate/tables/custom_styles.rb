@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'base'
+require_relative "base"
 
 class Tables::CustomStyles < Tables::Base
   def self.table(migration)
     create_table migration do |t|
       t.string :logo
-      t.timestamps
+      t.timestamps precision: nil
       t.string :favicon
       t.string :touch_icon
+      t.string :theme, default: OpenProject::CustomStyles::ColorThemes::DEFAULT_THEME_NAME
+      t.string :theme_logo, default: nil
+      t.string :export_logo, default: nil
+      t.string :export_cover, default: nil
+      t.string :export_cover_text_color, default: nil
     end
   end
 end

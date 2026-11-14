@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative '../support/pages/work_package_github_tab'
+require "spec_helper"
+require_relative "../support/pages/work_package_github_tab"
 
-describe 'Open the GitHub tab', type: :feature, js: true do
+RSpec.describe "Open the GitHub tab", :js do
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(
+      :user,
+      member_with_roles: { project => role },
+      preferences: { warn_on_leaving_unsaved: false }
+    )
   end
   let(:role) do
-    FactoryBot.create(:role,
-                      permissions: %i(view_work_packages
-                                      add_work_package_notes
-                                      show_github_content))
+    create(:project_role,
+           permissions: %i(view_work_packages
+                           add_work_package_comments
+                           show_github_content))
   end
-  let(:project) { FactoryBot.create :project }
-  let(:work_package) { FactoryBot.create(:work_package, project: project, subject: 'A test work_package') }
+  let(:project) { create(:project) }
+  let(:work_package) { create(:work_package, project:, subject: "A test work_package") }
   let(:github_tab) { Pages::GitHubTab.new(work_package.id) }
-  let(:pull_request) { FactoryBot.create :github_pull_request, :open, work_packages: [work_package], title: 'A Test PR title' }
-  let(:check_run) { FactoryBot.create :github_check_run, github_pull_request: pull_request, name: 'a check run name' }
+  let(:pull_request) { create(:github_pull_request, :open, work_packages: [work_package], title: "A Test PR title") }
+  let(:check_run) { create(:github_check_run, github_pull_request: pull_request, name: "a check run name") }
+
+  let(:tabs) { Components::WorkPackages::Tabs.new(work_package) }
+  let(:github_tab_element) { find(".op-tab-row--link_selected", text: "GITHUB") }
 
   shared_examples_for "a github tab" do
     before do
@@ -56,75 +60,94 @@ describe 'Open the GitHub tab', type: :feature, js: true do
     # compares the clipboard content by drafting a new comment, pressing ctrl+v and
     # comparing the pasted content against the provided text
     def expect_clipboard_content(text)
-      work_package_page.switch_to_tab(tab: 'activity')
+      work_package_page.switch_to_tab(tab: "activity")
+      work_package_page.wait_for_activity_tab
 
-      work_package_page.trigger_edit_comment
-      work_package_page.update_comment(' ') # ensure the comment editor is fully loaded
+      activity_tab.type_comment(" ") # This will both open the editor and type a space
+      activity_tab.clear_comment # Clear the comment to ensure clean state
       github_tab.paste_clipboard_content
-      expect(work_package_page.add_comment_container).to have_content(text)
+      activity_tab.expect_unsaved_content(text)
 
-      work_package_page.switch_to_tab(tab: 'github')
+      work_package_page.switch_to_tab(tab: "github")
     end
 
-    it 'shows the github tab when the user is allowed to see it' do
+    it "shows the github tab when the user is allowed to see it" do
+      pending "In headless mode, the clipboard content is not copied to the clipboard, how to fix?"
       work_package_page.visit!
-      work_package_page.switch_to_tab(tab: 'github')
+      work_package_page.switch_to_tab(tab: "github")
+
+      tabs.expect_counter(github_tab_element, 1)
 
       github_tab.git_actions_menu_button.click
       github_tab.git_actions_copy_branch_name_button.click
-      expect(page).to have_text('Copied!')
+      expect(page).to have_text("Copied!")
       expect_clipboard_content("#{work_package.type.name.downcase}/#{work_package.id}-a-test-work_package")
 
-      expect(page).to have_text('A Test PR title')
-      expect(page).to have_text('a check run name')
+      expect(page).to have_text("A Test PR title")
+      expect(page).to have_text("a check run name")
     end
 
-    context 'when there are no pull requests' do
+    it "shows a commit message with newlines between title and link" do
+      work_package_page.visit!
+      work_package_page.switch_to_tab(tab: "github")
+      github_tab.git_actions_menu_button.click
+
+      commit_message_input_text = page.find_field("Commit message").value
+      expect(commit_message_input_text)
+        .to eq("[##{work_package.id}] A test work_package\n\n#{work_package_short_url(work_package)}")
+    end
+
+    context "when there are no pull requests" do
       let(:check_run) {}
       let(:pull_request) {}
 
-      it 'shows the github tab with an empty-pull-requests message' do
+      it "shows the github tab with an empty-pull-requests message" do
         work_package_page.visit!
-        work_package_page.switch_to_tab(tab: 'github')
-        expect(page).to have_content('There are no pull requests')
-        expect(page).to have_content("Link an existing PR by using the code OP##{work_package.id}")
+        work_package_page.switch_to_tab(tab: "github")
+        tabs.expect_no_counter(github_tab_element)
+        expect(page).to have_text("There are no pull requests")
+        expect(page).to have_text("Link an existing PR by using the code OP##{work_package.id}")
       end
     end
 
-    context 'when the user does not have the permissions to see the github tab' do
+    context "when the user does not have the permissions to see the github tab" do
       let(:role) do
-        FactoryBot.create(:role,
-                          permissions: %i(view_work_packages
-                                          add_work_package_notes))
+        create(:project_role,
+               permissions: %i(view_work_packages
+                               add_work_package_comments))
       end
 
-      it 'does not show the github tab' do
+      it "does not show the github tab" do
         work_package_page.visit!
 
-        github_tab.expect_tab_not_present
+        work_package_page.expect_no_tab "Github"
       end
     end
 
-    context 'when the github integration is not enabled for the project' do
-      let(:project) { FactoryBot.create(:project, disable_modules: 'github') }
+    context "when the github integration is not enabled for the project" do
+      let(:project) { create(:project, disable_modules: "github") }
 
-      it 'does not show the github tab' do
+      it "does not show the github tab" do
         work_package_page.visit!
 
-        github_tab.expect_tab_not_present
+        work_package_page.expect_no_tab "Github"
       end
     end
   end
 
-  describe 'work package full view' do
+  describe "work package full view" do
     let(:work_package_page) { Pages::FullWorkPackage.new(work_package) }
+    let(:activity_tab) { Components::WorkPackages::Activities.new(work_package) }
 
-    it_behaves_like 'a github tab'
+    it_behaves_like "a github tab"
   end
 
-  describe 'work package split view' do
-    let(:work_package_page) { Pages::SplitWorkPackage.new(work_package) }
+  describe "primerized work package split view" do
+    let(:work_package_page) { Pages::PrimerizedSplitWorkPackage.new(work_package) }
+    let(:activity_tab) { Components::WorkPackages::Activities.new(work_package) }
+    let(:tabs) { Components::WorkPackages::PrimerizedTabs.new }
+    let(:github_tab_element) { "github" }
 
-    it_behaves_like 'a github tab'
+    it_behaves_like "a github tab"
   end
 end

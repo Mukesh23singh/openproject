@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -16,146 +16,591 @@
 #GNU General Public License for more details.
 #You should have received a copy of the GNU General Public License
 #along with this program; if not, write to the Free Software
-#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 pl:
   activerecord:
     attributes:
+      project:
+        allow_multiple_active_sprints: Zezwalaj na wiele aktywnych sprintów
+        backlog_excluded_types: Wykluczone typy pakietów roboczych
+        estimation_unit: Jednostka
+        sprint_sharing: Udostępnianie sprintu
+        statuses_considered_closed: Statusy uznane za zamknięte
+      sprint:
+        duration: Czas trwania
+        finish_date: Data zakończenia
+        goal: Cel sprintu
+        name: Nazwa sprintu
+        origin: Pochodzenie
+        origin_host: Origin host
+        origin_id: Origin ID
+        origin_source: Origin source
+        origin_url: Origin URL
+        sharing: Udostępnianie
+        statuses:
+          active: Aktywne
+          completed: Ukończone
+          in_planning: W planowaniu
+        work_packages: Pakiety robocze
+      sprint_goal:
+        text: Cel sprintu
       work_package:
-        position: "Pozycja"
-        remaining_hours: "Pozostałe godziny"
-        remaining_time: "Pozostałe godziny"
-        story_points: "Historia Punktów"
-        backlogs_work_package_type: "Typ backlogu"
+        backlog_bucket: Kategoria backlogu
+        backlog_inbox: Skrzynka odbiorcza backlogu
+        backlogs_work_package_type: Typ backlogu
+        position: Pozycja
+        sprint: Sprint
+        story_points: Historia Punktów
     errors:
+      messages:
+        cannot_start_while_receiving_shared_sprints: nie można uruchomić, dopóki projekt otrzymuje udostępnione sprinty.
+        dates_required: Daty rozpoczęcia i zakończenia są wymagane do rozpoczęcia sprintu.
+        must_be_in_planning: musi być w planowaniu, aby rozpocząć.
+        only_one_active_sprint_allowed: dozwolony jest tylko jeden aktywny sprint na projekt.
       models:
+        project:
+          attributes:
+            allow_multiple_active_sprints:
+              locked_by_multiple_active_sprints: nie można zmienić, gdy uruchomionych jest wiele aktywnych sprintów.
+              requires_no_sharing: można włączyć tylko wtedy, gdy sprint ma ustawienie „Nie udostępniaj”.
+            sprint_sharing:
+              active_or_borrowed_sprint_blocks_receiving: Nie można ustawić na odbiór, ponieważ projekt ma aktywny lub wypożyczony sprint. Najpierw zamknij lub cofnij przypisanie pakietów roboczych.
+              locked_by_multiple_active_sprints: nie można zmienić, gdy włączonych jest wiele aktywnych sprintów.
+              share_all_projects_already_taken: "— nie można ustawić, ponieważ projekt „%{name}” jest już udostępniony wszystkim projektom."
+              share_all_projects_already_taken_anonymous: "— nie można ustawić, ponieważ inny projekt jest już udostępniony wszystkim projektom."
+              work_packages_still_linked_to_shared_sprints: nie można zmienić, ponieważ pakiety robocze są nadal powiązane z udostępnionymi sprintami. Najpierw cofnij ich przypisanie.
+          receiving_sprints: otrzymuje udostępnione sprinty. Nie można tworzyć własnych sprintów.
+        sprint:
+          attributes:
+            base:
+              format: "%{message}"
+              unfinished_work_packages:
+                one: "%{count} pakietu roboczego nie ukończono w tym sprincie."
+                few: "%{count} pakietów roboczych nie ukończono w tym sprincie."
+                many: "%{count} pakietu roboczego nie ukończono w tym sprincie."
+                other: "%{count} pakietu roboczego nie ukończono w tym sprincie."
+            status:
+              not_active: jest nieaktywny, więc nie można go zamknąć.
+        sprint_goal:
+          project_already_has_goal: ma już cel tego sprintu.
         work_package:
           attributes:
+            backlog_bucket:
+              backlog_bucket_from_another_project: musi należeć do tego samego projektu, co pakiet roboczy.
             blocks_ids:
-              can_only_contain_work_packages_of_current_sprint: "może zawierać tylko identyfikatory pakietów pracy w bieżącym sprincie."
-              must_block_at_least_one_work_package: "musi zawierać ID co najmniej dla jednego biletu."
-            parent_id:
-              parent_child_relationship_across_projects: "jest nieprawidłowy, ponieważ paczka prac '%{work_package_name}' jest zadaniem backlogu, a więc nie może mieć rodziciela poza bieżącym projektem."
-              type_must_be_one_of_the_following: "Musi być jeden z następujących typów: %{type_names}."
+              can_only_contain_work_packages_of_current_sprint: może zawierać tylko identyfikatory pakietów pracy w bieżącym sprincie.
+              must_block_at_least_one_work_package: musi zawierać ID co najmniej dla jednego biletu.
+            sprint:
+              not_assignable: nie można przypisać, ponieważ albo nie jest współdzielony z projektem, albo został już ukończony.
+              not_eligible_for_moving: nie jest aktywnym sprintem w projekcie, w którym znajduje się sprint, z którego przenoszony jest pakiet roboczy.
             version_id:
-              task_version_must_be_the_same_as_story_version: "musi być taka sama jak wersja story nadrzędnej."
-        sprint:
-          cannot_end_before_it_starts: "Sprint nie może się skończyć przed swoim rozpoczęciem."
+              task_version_must_be_the_same_as_story_version: musi być taka sama jak wersja story nadrzędnej.
+          backlog_bucket_xor_sprint: nie można przypisać zarówno do sprintu, jak i kategorii backlogu.
+    models:
+      backlog_bucket:
+        one: Kategoria backlogu
+        few: Kategorie backlogu
+        many: Kategorie backlogu
+        other: Kategorie backlogu
+      sprint:
+        one: Sprint
+        few: Sprinty
+        many: Sprinty
+        other: Sprinty
+      sprint_goal:
+        one: Cel sprintu
+        few: Cele sprintów
+        many: Cele sprintów
+        other: Cele sprintów
   backlogs:
-    add_new_story: "Nowe Story"
-    any: "którekolwiek"
-    backlog_settings: "Ustawienia Backlogs"
-    burndown_graph: "Wykres Burndown"
-    card_paper_size: "Rozmiar papieru do drukowania kart"
-    chart_options: "Opcje wykresu"
-    close: "Zamknij"
-    column_width: "Szerokość kolumny:"
-    date: "Dzień"
-    definition_of_done: "Definicja Zrobione"
-    generating_chart: "Generowanie wykresu..."
-    hours: "Godziny"
-    impediment: "Przeszkoda"
-    label_versions_default_fold_state: "Pokaż zwinięte wersje"
-    work_package_is_closed: "Zestaw Zadań będzie gotowy, kiedy"
-    label_is_done_status: "Status %{status_name} oznacza zrobiony"
-    no_burndown_data: "Brak danych dostępnych danych spalania. Trzeba ustawić daty początku i końca sprintu."
-    points: "Punkty"
-    positions_could_not_be_rebuilt: "Pozycje nie mogą zostać przebudowane."
-    positions_rebuilt_successfully: "Pozycje zostały przebudowane pomyślnie."
-    properties: "Właściwości"
-    rebuild: "Przebuduj"
-    rebuild_positions: "Przebuduj pozycje"
-    remaining_hours: "Pozostałe godziny"
-    remaining_hours_ideal: "Czas pozostały (idealny)"
-    show_burndown_chart: "Burndown Chart"
-    story: "Story"
-    story_points: "Historia Punktów"
-    story_points_ideal: "Story Pointy (idealne)"
-    task: "Zadanie"
-    task_color: "Kolor zadania"
-    unassigned: "Nieprzypisane"
-    x_more: "%{count} więcej..."
-  backlogs_active: "aktywne"
-  backlogs_any: "którekolwiek"
-  backlogs_card_specification: "Typy etykiet do wydruku kart"
-  backlogs_inactive: "Projekt pokazuje brak aktywności"
-  backlogs_points_burn_direction: "Punkty burn up/down"
-  backlogs_product_backlog: "Backlog produktu"
-  backlogs_product_backlog_is_empty: "Backlog produktu jest pusty"
-  backlogs_product_backlog_unsized: "W górze backlogu produktu pozostają niesortowane historie"
-  backlogs_sizing_inconsistent: "Rozmiary Story różnią się ze swoimi estymatami"
-  backlogs_sprint_notes_missing: "Zamknięte sprinty bez notatek retrospektywy/przeglądu"
-  backlogs_sprint_unestimated: "Zamknięte bądź aktywne sprinty z nieestymowanymi historiami"
-  backlogs_sprint_unsized: "Projekt ma historie w aktywnym lub niedawno zamkniętym sprintach, które nie były oszacowane"
-  backlogs_sprints: "Sprinty"
-  backlogs_story: "Story"
-  backlogs_story_type: "Typy Story"
-  backlogs_task: "Zadanie"
-  backlogs_task_type: "Typ zadania"
-  backlogs_velocity_missing: "Nie można obliczyć prędkości dla tego projektu"
-  backlogs_velocity_varies: "Prędkość w sprintach istotnie się różni"
-  backlogs_wiki_template: "Szablon dla strony wiki sprintu"
-  backlogs_empty_title: "Nie ma wersji zdefiniowanej do użycia w zaległościach"
-  backlogs_empty_action_text: "Aby rozpocząć pracę z zaległościami, utworzyć nową wersję i przypisać ją do kolumna w zaległości."
-  button_edit_wiki: "Edytuj stronę wiki"
-  error_backlogs_task_cannot_be_story: "Ustawienia są nieprawidłowe. Wybrany typ zadania nie może być również typem historii."
-  error_intro_plural: "Wystąpiły następujące błędy:"
-  error_intro_singular: "Wystąpił następujący błąd:"
-  error_outro: "Popraw błędy powyżej przed ponownym złożeniem."
-  event_sprint_description: "%{summary}: %{url}\n%{description}"
-  event_sprint_summary: "%{project}: %{summary}"
-  ideal: "idealne"
-  inclusion: "nie znajduje się na liście"
-  label_back_to_project: "Przejdź do strony projektu"
-  label_backlog: "Backlog"
-  label_backlogs: "Backlogi"
-  label_backlogs_unconfigured: "Jeszcze nie skonfigurowałeś backlogów. Przejdź do %{administration} > %{plugins}, następnie kliknij link %{configure} dla otrzymania tego dodatku. Po ustawieniu pól, wróć na tę stronę, aby zacząć korzystanie z narzędzia."
-  label_blocks_ids: "Identyfikatory zablokowanych pakietów roboczych"
-  label_burndown: "Burndown"
-  label_column_in_backlog: "Kolumna w backlogu"
-  label_hours: "godziny"
-  label_work_package_hierarchy: "Hierarchia pakietów prac"
-  label_master_backlog: "Master Backlog"
-  label_not_prioritized: "nie priorytetowo"
-  label_points: "punkty"
-  label_points_burn_down: "W dół"
-  label_points_burn_up: "W górę"
-  label_product_backlog: "backlog produktu"
-  label_select_all: "Wybierz wszystko"
-  label_sprint_backlog: "backlog sprintu"
-  label_sprint_cards: "Eksportuj karty"
-  label_sprint_impediments: "Przeszkody sprintu"
-  label_sprint_name: "Sprint \"%{name}\""
-  label_sprint_velocity: "Prędkość %{velocity} w oparciu o %{sprints} sprinty ze średnią dni %{days}"
-  label_stories: "Historie"
-  label_stories_tasks: "Historie/Zanania"
-  label_task_board: "Panel zadań"
-  label_version_setting: "Wersje"
-  label_version: 'Wersja'
-  label_webcal: "Kanał Webcal"
-  label_wiki: "Wiki"
-  permission_view_master_backlog: "Wyświetl master backlog"
-  permission_view_taskboards: "Wyświetl panel zadań"
-  permission_select_done_statuses: "Wybierz wykonane statusy"
-  permission_update_sprints: "Aktualizuj sprint"
-  points_accepted: "punkty zaakceptowane"
-  points_committed: "punkty zatwierdzone"
-  points_resolved: "punkty wyjaśnione"
-  points_to_accept: "punkty nie zaakceptowane"
-  points_to_resolve: "punkty nie wyjaśnione"
-  project_module_backlogs: "Backlogi"
-  rb_label_copy_tasks: "Kopiuj Zestaw Zadań"
-  rb_label_copy_tasks_all: "Wszystko"
-  rb_label_copy_tasks_none: "Brak"
-  rb_label_copy_tasks_open: "Otwórz"
-  rb_label_link_to_original: "Podepnij łącze do oryginalnego wątku"
-  remaining_hours: "pozostałe godziny"
-  required_burn_rate_hours: "wskaźnik wymaganego czasu nagrywania (godziny)"
-  required_burn_rate_points: "wskaźnik wymaganego czasu nagrywania (punkty)"
-  todo_work_package_description: "%{summary}: %{url}\n%{description}"
-  todo_work_package_summary: "%{type}: %{summary}"
-  version_settings_display_label: "Kolumna w backlogu"
-  version_settings_display_option_left: "w lewo"
-  version_settings_display_option_none: "Brak"
-  version_settings_display_option_right: "w prawo"
+    add_existing_work_package_dialog_component:
+      title_without_container: Dodaj istniejący pakiet roboczy
+    administration_blankslate:
+      text: Obecnie przeprojektowujemy moduł Backlogs. Ustawienia administratora dla sprintów i backlogów będą widoczne tutaj w najbliższej przyszłości. Ustawienia na poziomie projektu pozostają dostępne.
+      title: Ustawienia administratora backlogu ewoluują
+    backlog_component:
+      button_new_backlog_bucket: Nowa kategoria backlogu
+    backlog_filter_select_panel_component:
+      label_backlog_bucket_filter:
+        one: Kategoria backlogu
+        other: Kategorie backlogu
+        zero: Wszystkie kategorie backlogu
+      label_sprint_filter:
+        one: Sprint
+        other: Sprinty
+        zero: Wszystkie sprinty
+      select_panel_title: Wybierz elementy
+    blankslate_filtered_title: Żadne pakiety robocze nie spełniają kryteriów filtrowania.
+    bucket_component:
+      action_menu:
+        add_existing_work_package: Dodaj istniejący pakiet roboczy
+        add_new_work_package: Dodaj nowy pakiet roboczy
+        delete_backlog_bucket: Usuń kategorię backlogu
+        edit_backlog_bucket: Edytuj kategorię backlogu
+      blankslate_description: Aby dodać elementy, przeciągnij je tutaj
+      blankslate_title: Kategoria backlogu jest pusta
+      drop_zone_label: Aby dodać ten element, upuść go tutaj
+      label_actions: Działania kategorii backlogu
+    bucket_destroy_modal_component:
+      details: Kategoria backlogu „%{name}” zostanie usunięta, a wszystkie pakiety robocze zostaną przeniesione do skrzynki odbiorczej backlogu. Nie zostanie usunięty żaden pakiet roboczy.
+      title: Usunąć kategorię backlogu?
+    created_resolved_chart:
+      series:
+        created: Created
+        resolved: Resolved
+    estimation_unit: Jednostki
+    excluded_work_package_types_caption: 'Wybierz typy pakietów roboczych do ukrycia w backlogu. Elementy wybranych typów nie pojawią się automatycznie w backlogu, dzięki czemu bcklog skupiać się będzie się na pracy, która ma znaczenie dla Twojego zespołu. Na przykład typy takie jak Wydarzenia lub Kamienie milowe, zarządzane na wyższym poziomie, mogą być ukryte w celu utrzymania koncentracji backlogu na pozycjach umożliwiających działanie.
+
+      '
+    finish_sprint_dialog_component:
+      actions:
+        move_to_bottom_of_backlog: Przenieś je na koniec backlogu
+        move_to_sprint: Przenieś je do innego sprintu
+        move_to_top_of_backlog: Przenieś je na początek backlogu
+      body: "%{message} Co chcesz z nimi zrobić?"
+      button_complete_sprint: Ukończ sprint
+      legend: Działania dotyczące niedokończonych pakietów roboczych
+      select_sprint_label: Wybierz sprint
+      title: Są elementy będące w toku
+    inbox_component:
+      action_menu:
+        add_existing_work_package: Dodaj istniejący pakiet roboczy
+        add_new_work_package: Dodaj nowy pakiet roboczy
+      blankslate_description: Otwarte pakiety robocze, które nie należą do żadnego sprintu ani kategorii backlogu, automatycznie pojawiają się tutaj
+      blankslate_title: Skrzynka odbiorcza backlogu jest pusta
+      drop_zone_label: Aby dodać ten element, upuść go tutaj
+      label_actions: Działania skrzynki odbiorczej
+      show_more:
+        one: Show %{count} more item
+        few: Pokaż jeszcze %{count} elementy
+        many: Pokaż jeszcze %{count} elementów
+        other: Pokaż jeszcze %{count} elementu
+      title: Skrzynka odbiorcza
+    index_subheader_component:
+      label_search_by_subject: Wyszukaj pakiety robocze według tematu
+    label_burndown_chart: Wykres spalania (burndown)
+    label_is_done_status: Status %{status_name} oznacza zrobiony
+    label_sprint_board: Tablica sprintu
+    label_sprint_report: Raport dotyczący sprintu
+    move_to_bucket_dialog_component:
+      title: Przenieś do kategorii backlogu
+    move_to_sprint_dialog_component:
+      label_sprint: Sprint
+      title: Przenieś do sprintu
+    multiple_active_sprints: Wiele aktywnych sprintów
+    points_label:
+      one: punkt
+      few: punkty
+      many: punktów
+      other: punktu
+    positions_could_not_be_rebuilt: Pozycje nie mogą zostać przebudowane.
+    positions_rebuilt_successfully: Pozycje zostały przebudowane pomyślnie.
+    rebuild: Przebuduj
+    rebuild_positions: Przebuduj pozycje
+    remaining_hours: Pozostała praca
+    selected_work_packages_component:
+      label:
+        one: "%{count} selected work package"
+        few: "%{count} selected work packages"
+        many: "%{count} selected work packages"
+        other: "%{count} selected work packages"
+    sharing: Udostępnianie sprintu
+    sprint_component:
+      action_menu:
+        add_existing_work_package: Dodaj istniejący pakiet roboczy
+        add_new_work_package: Dodaj nowy pakiet roboczy
+        edit_sprint: Edytuj sprint
+      blankslate_description: Nie zaplanowano jeszcze żadnych punktów. Przeciągnij punkty tutaj, aby je dodać.
+      blankslate_title: Element %{name} jest pusty
+      drop_zone_label: Aby dodać ten element, upuść go tutaj
+      label_actions: Działania w ramach sprintu
+      label_complete_sprint: Ukończ sprint
+      label_start_sprint: Rozpocznij sprint
+      start_sprint_disabled_reason_active_sprint: Inny sprint jest już aktywny.
+      start_sprint_disabled_reason_missing_dates: Daty rozpoczęcia i zakończenia są wymagane do rozpoczęcia sprintu.
+      start_sprint_disabled_reason_receiving_shared_sprints: Nie można uruchamiać własnych sprintów tego projektu, dopóki otrzymuje on udostępnione sprinty.
+      start_sprint_disabled_reason_shared_sprint: Ten sprint pochodzi z innego projektu, który nie obsługuje wielu aktywnych sprintów.
+    sprint_form:
+      goal_caption: Cel sprintu dotyczy wyłącznie tego projektu i nie jest wspólny z innymi projektami, które również używają tego sprintu.
+      goal_for_this_project_label: "%{attribute} (dla tego projektu)"
+    sprint_form_component:
+      shared_sprint_info_banner: To jest udostępniony sprint. Wprowadzone zmiany zostaną uwzględnione we wszystkich projektach, w których jest on używany.
+      shared_sprint_warning_banner: Jest to udostępniony sprint. Nie masz uprawnień niezbędnych do jego edycji.
+    sprint_reports:
+      header_infoline_component:
+        planned_html: 'Planned: %{range}'
+      missing_dates_blankslate_component:
+        description: Sprint start and finish dates are necessary for the report to show.
+        heading: Missing sprint dates
+      navigation_component:
+        next: Dalej
+        previous: Wstecz
+      page_header_component:
+        breadcrumb: Raport
+        title: Raport dotyczący %{sprint}
+      widgets:
+        burndown_chart:
+          blankslate:
+            no_estimated_hours:
+              description: The burndown chart will appear here once the sprint has an open work package with work time estimate.
+              heading: No work to display
+            no_story_points:
+              description: The burndown chart will appear here once the sprint has an open work package with estimated story points.
+              heading: No work to display
+            not_started:
+              description: The burndown chart will appear here after the sprint starts.
+              heading: No work to display
+            too_long:
+              description: The sprint duration exceeded the 1-year limit of the burndown chart's timespan.
+              heading: No chart to display
+          series:
+            guideline: Guideline
+            projection:
+              story_points: Remaining story points (projection)
+              time: Remaining estimated time (projection)
+            remaining:
+              story_points: Remaining story points
+              time: Remaining estimated time
+          title: Burndown chart
+        burnup_chart:
+          blankslate:
+            no_estimated_hours:
+              description: The burnup chart will appear here once the sprint has received a work package with work time estimate.
+              heading: No work to display
+            no_story_points:
+              description: The burnup chart will appear here once the sprint has received a work package with estimated story points.
+              heading: No work to display
+            not_started:
+              description: The burnup chart will appear here after the sprint starts.
+              heading: No work to display
+            too_long:
+              description: The sprint duration exceeded the 1-year limit of the burnup chart's timespan.
+              heading: No chart to display
+          series:
+            completed: Completed work
+            guideline: Guideline
+            projection: Total work scope (projection)
+            scope: Total work scope
+          title: Burnup chart
+        created_resolved_chart:
+          blankslate:
+            no_work:
+              description: The created vs resolved chart will appear here once a work package has been created or resolved within the sprint.
+              heading: No work to display
+            too_long:
+              description: The sprint duration exceeded the 1-year limit of the created vs resolved chart's timespan.
+              heading: No chart to display
+          title: Created vs resolved work packages
+        epic_progress:
+          blankslate:
+            no_epics:
+              description: The epic progress chart will appear here once the sprint has received a work package tied to an epic.
+              heading: No epics to display
+            no_work:
+              description: The epic progress chart will appear here once the sprint has received a work package tied to an epic.
+              heading: No work to display
+          card:
+            progress:
+              story_points:
+                one: "%{resolved} / %{count} story point"
+                few: "%{resolved} / %{count} story points"
+                many: "%{resolved} / %{count} story points"
+                other: "%{resolved} / %{count} story points"
+              time: "%{resolved} / %{count}"
+              work_packages:
+                one: "%{resolved} / %{count} work package"
+                few: "%{resolved} / %{count} work packages"
+                many: "%{resolved} / %{count} work packages"
+                other: "%{resolved} / %{count} work packages"
+            progress_label:
+              story_points:
+                one: "%{epic}: %{resolved} of %{count} story point completed"
+                few: "%{epic}: %{resolved} of %{count} story points completed"
+                many: "%{epic}: %{resolved} of %{count} story points completed"
+                other: "%{epic}: %{resolved} of %{count} story points completed"
+              time: "%{epic}: %{resolved} of %{count} completed"
+              work_packages:
+                one: "%{epic}: %{resolved} of %{count} work package completed"
+                few: "%{epic}: %{resolved} of %{count} work packages completed"
+                many: "%{epic}: %{resolved} of %{count} work packages completed"
+                other: "%{epic}: %{resolved} of %{count} work packages completed"
+            work_package_completed: "(%{percentage})"
+          title: Epic progress
+        velocity_chart:
+          average:
+            one: 'Average of previous sprint:'
+            few: 'Average of previous %{count} sprints:'
+            many: 'Average of previous %{count} sprints:'
+            other: 'Average of previous %{count} sprints:'
+          average_legend: Average
+          committed: Committed
+          completed: Ukończony
+          story_points: "%{value} SP"
+          summary:
+            story_points:
+              one: Bar chart of committed and completed story points of the last sprint.
+              few: Bar chart of committed and completed story points of the last %{count} sprints.
+              many: Bar chart of committed and completed story points of the last %{count} sprints.
+              other: Bar chart of committed and completed story points of the last %{count} sprints.
+            time:
+              one: Bar chart of committed and completed estimated time of the last sprint.
+              few: Bar chart of committed and completed estimated time of the last %{count} sprints.
+              many: Bar chart of committed and completed estimated time of the last %{count} sprints.
+              other: Bar chart of committed and completed estimated time of the last %{count} sprints.
+          summary_average: 'Average velocity: %{average}.'
+          title: Velocity chart
+          velocity: "%{sprint}:"
+          y_axis_title:
+            story_points: Punkty historii
+            time: Szacowany czas
+        work_package_graph:
+          blankslate:
+            no_work:
+              description: The work package graph will appear here once the sprint has received a work package.
+              heading: No work to display
+          summary:
+            completed: 'Bar chart of the work packages in the sprint when it was completed, by status: %{description}.'
+            current: 'Bar chart of the work packages currently in the sprint, by status: %{description}.'
+          title: Wykres pakietów roboczych
+        work_package_overview:
+          blocks:
+            changed_after_start:
+              change_html: "+%{added} %{divider} -%{removed}"
+              heading: Zmiana zakresu
+              story_points_change_html: "+%{added} %{divider} -%{removed} story points"
+            completed:
+              heading: Ukończone
+            initially_planned:
+              heading: Pierwotnie planowano
+            unfinished:
+              heading: Niedokończone
+          breakdown_block:
+            blocks:
+              show_all: Wyświetl wszystkie
+              show_all_label: 'View all: %{heading}'
+          closed_work_packages: Zamknięte pakiety robocze
+          completed_estimated_time: Completed estimated time
+          completed_story_points: Completed story points
+          progress_summary:
+            story_points:
+              one: "%{percentage} (%{resolved} of %{count} story point)"
+              few: "%{percentage} (%{resolved} of %{count} story points)"
+              many: "%{percentage} (%{resolved} of %{count} story points)"
+              other: "%{percentage} (%{resolved} of %{count} story points)"
+            time: "%{percentage} (%{resolved} of %{count})"
+            work_packages:
+              one: "%{percentage} (%{resolved} of %{count} work package)"
+              few: "%{percentage} (%{resolved} of %{count} work packages)"
+              many: "%{percentage} (%{resolved} of %{count} work packages)"
+              other: "%{percentage} (%{resolved} of %{count} work packages)"
+          title: Work packages within the sprint
+        work_package_table:
+          added:
+            blankslate:
+              empty:
+                description: Work packages that were added after the sprint start date will appear here.
+              not_started:
+                description: Added work packages will appear here after the sprint starts.
+            title: Scope increase after sprint start
+          blankslate:
+            heading: Brak pakietów roboczych do wyświetlenia
+          completed:
+            blankslate:
+              empty:
+                description: Work packages that were completed in the sprint will appear here.
+              not_started:
+                description: Completed work packages will appear here after the sprint starts.
+            title: Completed work
+          removed:
+            blankslate:
+              empty:
+                description: Work packages that were removed after the sprint start date will appear here.
+              not_started:
+                description: Removed work packages will appear here after the sprint starts.
+            title: Scope decrease after sprint start
+          unfinished:
+            blankslate:
+              empty:
+                description: All work packages in this sprint are completed.
+                heading: Wow, all done!
+              not_started:
+                description: Unfinished work packages will appear here after the sprint starts.
+            title: Unfinished work
+    sprints:
+      date_cell_component:
+        planned: "(planned)"
+      row_component:
+        action_menu:
+          edit_sprint: Edytuj sprint
+          sprint_report: Raport dotyczący sprintu
+    sprints_component:
+      blankslate:
+        create_and_manage_description_html: Aby rozpocząć planowanie sprintu, utwórz go tutaj lub przejdź do strony %{settings_link}, aby otrzymać sprinty z innego projektu.
+        create_description_text: Aby rozpocząć planowanie sprintu, utwórz go tutaj.
+        manage_description_html: Aby rozpocząć planowanie sprintu, przejdź do strony %{settings_link}, aby otrzymać sprinty z innego projektu.
+        no_actions_description_text: Dla tego projektu nie są jeszcze dostępne żadne sprinty.
+        receive_and_manage_description_html: Ten projekt otrzymuje sprints z innego projektu. Zarządzaj tym na stronie %{settings_link}.
+        receive_description_text: Ten projekt otrzymuje sprinty udostępnione z innego projektu, ale żaden z nich nie jest obecnie dostępny.
+        settings_link_text: ustawień projektu
+        title: Nie ma jeszcze żadnych sprintów
+      button_new_sprint: Nowy sprint
+    statuses_considered_closed_caption: 'Wybierz statusy, które w Twoim przepływie pracy reprezentują zakończenie lub zamknięcie. Będą one traktowane jako status „Zamknięte” w raportach (np. wykresach burndown) oraz podczas planowania sprintów. Na przykład statusy takie jak „Zakończone”, „Rozwiązane” lub „Nie będzie naprawiane” mogą oznaczać zamknięcie zadania w Twoim procesie.
+
+      '
+    story_points:
+      one: "%{count} punkt historii"
+      few: "%{count} punkty historii"
+      many: "%{count} punktów historii"
+      other: "%{count} punktu historii"
+    types_and_statuses: Typy i statusy
+    unassigned: Nieprzypisane
+    user_preference:
+      button_update_backlogs: Zaktualizuj moduł backlogów
+      header_backlogs: Moduł backlogów
+    work_package_card_menu_component:
+      action_menu:
+        copy_work_package_id: Skopiuj identyfikator pakietu roboczego
+        move_menu: Przenieś do pozycji
+        move_to_backlog_bucket: Przenieś do kategorii backlogu
+        move_to_inbox: Przenieś do skrzynki odbiorczej backlogu
+        move_to_sprint: Przenieś do sprintu
+        no_batch_actions: No actions available for the selected work packages.
+        stale_selection: The selection has changed. Refresh it before moving work packages.
+    work_package_is_closed: Zestaw Zadań będzie gotowy, kiedy
+    work_packages:
+      add_existing_dialog:
+        invalid_target: Cel, do którego próbujesz dodać, jest nieprawidłowy.
+        target_not_found: Nie znaleziono sprint lub backlogu, do którego próbujesz dodać.
+      batch_update_service:
+        mixed_projects: Wszystkie pakiety robocze wsadu muszą należeć do tego samego projektu.
+        stale_batch: Podczas przygotowań do przeniesienia nastąpiła zmiana co najmniej jednego pakietu roboczego. Sprawdź bieżące pozycje i spróbuj ponownie.
+        stale_predecessor: Pakiet roboczy do wstawienia po przeniesieniu w inne miejsce. Sprawdź bieżące pozycje i spróbuj ponownie.
+        unavailable_target: Lista miejsc docelowych nie jest już dostępna. Załaduj ponownie stronę i ponów próbę.
+        unexpected_failure: Nie udało się przenieść pakietów roboczych. Spróbuj ponownie.
+      move:
+        moved_announcement: "%{label} przeniesiono do %{list}, pozycja %{position} z %{total}"
+      move_to_bucket_dialog:
+        no_available_destinations: There are no available backlog buckets for these work packages.
+      move_to_sprint_dialog:
+        no_available_destinations: There are no available sprints for these work packages.
+      move_collection:
+        invalid_ids: Lista pakietów roboczych do przeniesienia jest nieprawidłowa.
+        member_failed: "%{work_package}: %{reason}"
+        moved_announcement:
+          one: "%{count} work package moved to %{list}, position %{first} of %{total}"
+          few: Pakiety robocze (%{count}) przeniesiono do %{list}, pozycje od %{first} do %{last} z %{total}
+          many: Pakiety robocze (%{count}) przeniesiono do %{list}, pozycje od %{first} do %{last} z %{total}
+          other: Pakiety robocze (%{count}) przeniesiono do %{list}, pozycje od %{first} do %{last} z %{total}
+        too_many_work_packages: Jednorazowo można przenieść nie więcej pakietów roboczych niż %{max}.
+        work_packages_not_found: W tym projekcie nie udało się znaleźć co najmniej jednego pakietu roboczego.
+      update_service:
+        invalid_target_type: 'Atrybut list_type musi mieć jedną z następujących wartości: backlog_bucket z list_id, sprint z list_id lub inbox bez list_id.'
+        missing_target: Atrybut list_type lub list_id muszą być obecne.
+  ee:
+    features:
+      multiple_active_sprints: Wiele aktywnych sprintów
+      sprint_report_pro_widgets: Full sprint report
+      sprint_sharing: Udostępnianie sprintu
+    upsell:
+      multiple_active_sprints:
+        description: Aby mieć większą kontrolę i elastyczność, uruchom równolegle wiele sprintów dla różnych zespołów w Twoim projekcie.
+      sprint_report_pro_widgets:
+        description: Add more charts, customize your report and access in-depth data about planning your team’s work.
+      sprint_sharing:
+        description: Udostępnianie sprintów między projektami w celu dostosowania zespołów i koordynowania pracy w skalowanych konfiguracjach zwinnych (SAFe).
+  label_all_sprints: Wszystkie sprinty
+  label_backlog: Backlog
+  label_backlog_and_sprints: Backlog i sprinty
+  label_backlog_bucket_edit: Edytuj kategorię backlogu
+  label_backlog_bucket_new: Nowa kategoria backlogu
+  label_backlogs: Backlogi
+  label_burndown_chart: Wykres spalania (burndown)
+  label_inbox: Skrzynka odbiorcza
+  label_points_burn_down: W dół
+  label_points_burn_up: W górę
+  label_sprint_board: Tablica sprintu
+  label_sprint_edit: Edytuj sprint
+  label_sprint_new: Nowy sprint
+  label_task_board: Panel zadań
+  notice_successful_finish: Sprint został ukończony.
+  notice_successful_start: Sprint został rozpoczęty.
+  notice_unsuccessful_finish: Nie można ukończyć sprintu.
+  notice_unsuccessful_finish_with_reason: 'Nie można ukończyć sprintu: %{reason}'
+  notice_unsuccessful_start: Nie można rozpocząć sprintu.
+  notice_unsuccessful_start_with_reason: 'Nie można rozpocząć sprintu: %{reason}'
+  notice_work_package_invisible_after_move:
+    one: 'Pakiet roboczy został przeniesiony do %{backlog}, ale nie jest widoczny, ponieważ jego typ lub status są wykluczone z backlogu.
+
+      '
+    few: "%{count} pakiety robocze zostały przeniesione do %{backlog}, ale nie są widoczne, ponieważ ich typ lub status są wykluczone z backlogu.\n"
+    many: "%{count} pakietów roboczych zostało przeniesionych do %{backlog}, ale nie są widoczne, ponieważ ich typ lub status są wykluczone z backlogu.\n"
+    other: "%{count} pakietu roboczego zostało przeniesione do %{backlog}, ale nie jest widoczne, ponieważ ich typ lub status są wykluczone z backlogu.\n"
+  permission_create_sprints: Utwórz sprinty
+  permission_manage_backlogs_configuration: Manage backlogs configuration
+  permission_manage_backlogs_configuration_explanation: 'Allows configuring the backlogs module including: choosing which work package types to hide from the backlog, defining which statuses represent a closed or finished state in the project''s workflow and selecting the unit for velocity.
+
+    '
+  permission_manage_sprint_items: Zarządzaj elementami sprintu
+  permission_share_sprint: Udostępnij sprint
+  permission_start_complete_sprint: Rozpocznij/ukończ sprint
+  permission_view_sprints: Wyświetl sprinty
+  plugin_openproject_backlogs:
+    description: Moduł ten dodaje funkcje umożliwiające zwinnym zespołom pracę z OpenProject w projektach Scrum.
+    name: Backlogi OpenProject
+  project_module_backlogs: Backlogi
+  projects:
+    copy:
+      backlog_buckets: Kategorie backlogu
+      sprints: Sprinty
+    settings:
+      backlog_estimation_unit:
+        estimation_unit: Jednostka
+        options:
+          none:
+            caption: The number of work packages will be used as the default unit in charts. Some sprint report charts won't be displayed.
+            label: Brak
+          story_points:
+            caption: The cards and charts will display story points.
+            label: Punkty historii
+          time:
+            caption: The cards and charts will display work time estimates.
+            label: Work time estimate
+      backlog_sharing:
+        options:
+          no_sharing:
+            caption: Sprinty utworzone w tym projekcie będą dostępne i widoczne tylko dla tego projektu. Nie będą one również widoczne dla podprojektów.
+            label: Nie udostępniaj
+          receive_shared:
+            caption: Ten projekt może używać tylko sprintów udostępnionych przez inne projekty.
+            label: Otrzymuj udostępnione sprinty
+            warning: Ten projekt może używać tylko sprintów udostępnionych przez inne projekty. Nieużywane sprinty utworzone w tym projekcie w przeszłości nie będą już widoczne.
+          share_all_projects:
+            caption: Sprinty utworzone w tym projekcie będą dostępne dla wszystkich projektów w tym wystąpieniu. Jeśli wybierzesz tę opcję, nie będą one już dostępne dla innych projektów.
+            disabled_caption: Opcja niedostępna, ponieważ projekt „%{name}” jest obecnie udostępniany wszystkim projektom, a tylko jeden projekt może to zrobić.
+            disabled_caption_anonymous: Opcja niedostępna, ponieważ inny projekt jest obecnie udostępniany wszystkim projektom, a tylko jeden projekt może to zrobić.
+            label: Wszystkie projekty
+          share_subprojects:
+            caption: Sprinty utworzone w tym projekcie będą dostępne dla wszystkich podprojektów bieżącego projektu.
+            info: Udostępnienie sprintu spowoduje udostępnienie jego nazwy, statusu oraz daty rozpoczęcia i zakończenia we wszystkich projektach. Nie można ich modyfikować w projektach, które otrzymują i wykorzystują te sprinty.
+            label: Podprojekty
+        sprint_sharing: Udostępnij sprinty
+      backlogs:
+        estimation_unit_form_component:
+          description: Select the default unit of measuring effort, velocity and capacity that matches the workflow of your agile team. They will be shown in the backlog and sprint reports.
+          heading: Default unit of velocity, effort and capacity
+        multiple_active_sprints:
+          description: Domyślnie w ramach jednego projektu może być aktywny tylko jeden sprint. Można to zmienić, aby w ramach tego projektu mogło być aktywnych jednocześnie wiele sprintów.
+          heading: Liczba aktywnych sprintów
+        multiple_active_sprints_component:
+          cannot_turn_off: Obecnie aktywnych jest wiele sprintów. Aby powrócić do zezwalania tylko na jeden aktywny sprint naraz, najpierw upewnij się, że aktywny jest co najwyżej jeden sprint.
+          not_available_html: Wiele aktywnych sprintów jest niedostępne, gdy włączone jest <a href=%{sprint_sharing_url}>udostępnianie sprintów</a> lub ich otrzymywanie.
+        sharing_form_component:
+          disabled_due_to_multiple_active_sprints: Udostępnianie sprintów jest niedostępne, gdy włączonych jest wiele aktywnych sprintów.
+          sharing_description: Ten projekt może udostępniać własne sprinty, otrzymywać udostępnione sprinty lub obsługiwać sprinty niezależnie (bez udostępniania).
+          sharing_fallback_description: W przypadku braku korporacyjnego planu Enterprise opcje udostępniania są ograniczone do własnych sprintów projektu. Aktualnie aktywne ustawienie pozostaje aktywne.
+  query_fields:
+    backlog_inbox: Skrzynka odbiorcza backlogu
+  remaining_hours: pozostała praca

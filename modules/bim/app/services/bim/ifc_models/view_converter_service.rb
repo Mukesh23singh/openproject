@@ -1,12 +1,12 @@
 #-- copyright
-# OpenProject is a project management system.
-# Copyright (C) 2012-2018 the OpenProject Foundation (OPF)
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
 #
 # OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
-# Copyright (C) 2006-2017 Jean-Philippe Lang
+# Copyright (C) 2006-2013 Jean-Philippe Lang
 # Copyright (C) 2010-2013 the ChiliProject Team
 #
 # This program is free software; you can redistribute it and/or
@@ -20,19 +20,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
-#+
-require 'open3'
+#++
+
+require "open3"
 
 module Bim
   module IfcModels
     class ViewConverterService
       attr_reader :ifc_model, :errors
 
-      PIPELINE_COMMANDS ||= %w[IfcConvert COLLADA2GLTF gltf2xkt xeokit-metadata].freeze
+      PIPELINE_COMMANDS = %w[IfcConvert COLLADA2GLTF gltf2xkt web-ifc-xeokit-metadata].freeze
 
       def initialize(ifc_model)
         @errors = ActiveModel::Errors.new(self)
@@ -46,11 +46,9 @@ module Bim
       end
 
       def self.available_commands
-        @available_commands ||= begin
-          PIPELINE_COMMANDS.select do |command|
-            _, status = Open3.capture2e('which', command)
-            status.exitstatus.zero?
-          end
+        @available_commands ||= PIPELINE_COMMANDS.select do |command|
+          _, status = Open3.capture2e("which", command)
+          status.exitstatus.zero?
         end
       end
 
@@ -76,7 +74,7 @@ module Bim
         ifc_model.conversion_error_message = e.message
         ifc_model.save
 
-        ServiceResult.new(success: false).tap { |r| r.errors.add(:base, e.message) }
+        ServiceResult.failure.tap { |r| r.errors.add(:base, e.message) }
       ensure
         self.working_directory = nil
       end
@@ -127,23 +125,26 @@ module Bim
       def convert_to_collada(ifc_filepath)
         Rails.logger.debug { "Converting #{ifc_model.inspect} to DAE" }
 
-        convert!(ifc_filepath, 'dae') do |target_file|
+        convert!(ifc_filepath, "dae") do |target_file|
           # To include IfcSpace entities, which by default are excluded by
-          # IfcConvert, together with IfcOpeningElement, we need ot over-
+          # IfcConvert, together with IfcOpeningElement, we need to over-
           # write the default exclude parameter to only exclude
           # IfcOpeningElements.
           # https://github.com/IfcOpenShell/IfcOpenShell/wiki#ifconvert
-          Open3.capture2e('IfcConvert',
-                          '--use-element-guids',
-                          '--no-progress',
-                          '--verbose',
-                          '--threads',
-                          '4',
-                          ifc_filepath,
-                          target_file,
-                          '--exclude',
-                          'entities',
-                          'IfcOpeningElement')
+          Open3.capture2e(
+            "IfcConvert",
+            "--use-element-guids",
+            "--no-progress",
+            "--verbose",
+            "--threads",
+            "4",
+            ifc_filepath,
+            target_file,
+            "--exclude",
+            "entities",
+            "IfcOpeningElement",
+            chdir: working_directory
+          )
         end
       end
 
@@ -154,8 +155,8 @@ module Bim
       def convert_to_gltf(dae_filepath)
         Rails.logger.debug { "Converting #{ifc_model.inspect} to GLTF" }
 
-        convert!(dae_filepath, 'gltf') do |target_file|
-          Open3.capture2e('COLLADA2GLTF', '--materialsCommon', '-i', dae_filepath, '-o', target_file)
+        convert!(dae_filepath, "gltf") do |target_file|
+          Open3.capture2e("COLLADA2GLTF", "--materialsCommon", "-i", dae_filepath, "-o", target_file)
         end
       end
 
@@ -168,20 +169,20 @@ module Bim
 
         metadata_file = convert_metadata(link_to_ifc_file)
 
-        convert!(gltf_filepath, 'xkt') do |target_file|
-          Open3.capture2e('gltf2xkt', '-s', gltf_filepath, '-m', metadata_file, '-o', target_file)
+        convert!(gltf_filepath, "xkt") do |target_file|
+          Open3.capture2e("gltf2xkt", "-s", gltf_filepath, "-m", metadata_file, "-o", target_file)
         end
       end
 
       ##
-      # Call xeokit-metadata
+      # Call web-ifc-xeokit-metadata
       #
       # @param ifc_filepath {String} Path to the converted IFC model file
       def convert_metadata(ifc_filepath)
         Rails.logger.debug { "Retrieving metadata of #{ifc_model.inspect}" }
 
-        convert!(ifc_filepath, 'json') do |target_file|
-          Open3.capture2e('xeokit-metadata', ifc_filepath, target_file)
+        convert!(ifc_filepath, "json") do |target_file|
+          Open3.capture2e("web-ifc-xeokit-metadata", ifc_filepath, target_file)
         end
       end
 
@@ -190,7 +191,7 @@ module Bim
       def convert!(source_file, ext)
         raise ArgumentError, "missing working directory" unless working_directory.present?
 
-        filename = File.basename(source_file, '.*')
+        filename = File.basename(source_file, ".*")
         target_filename = "#{filename}.#{ext}"
         target_file = File.join(working_directory, target_filename)
 
@@ -206,7 +207,7 @@ module Bim
       def validate!
         unless self.class.available?
           missing = PIPELINE_COMMANDS - self.class.available_commands
-          raise I18n.t('ifc_models.conversion.missing_commands', names: missing.join(", "))
+          raise I18n.t("ifc_models.conversion.missing_commands", names: missing.join(", "))
         end
 
         true

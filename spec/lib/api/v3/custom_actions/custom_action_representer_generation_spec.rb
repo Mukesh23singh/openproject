@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,58 +22,57 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::CustomActions::CustomActionRepresenter do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::CustomActions::CustomActionRepresenter do
+  include API::V3::Utilities::PathHelper
 
-  let(:custom_action) { FactoryBot.build_stubbed(:custom_action) }
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:automation) { build_stubbed(:automation, :with_button_trigger) }
+  let(:user) { build_stubbed(:user) }
 
   let(:representer) do
-    described_class.new(custom_action, current_user: user, embed_links: true)
+    described_class.new(automation, current_user: user, embed_links: true)
   end
 
   subject { representer.to_json }
 
-  context 'properties' do
-    it 'has a _type property' do
-      is_expected
-        .to be_json_eql('CustomAction'.to_json)
-        .at_path('_type')
+  context "properties" do
+    it "has a _type property" do
+      expect(subject)
+        .to be_json_eql("CustomAction".to_json)
+        .at_path("_type")
     end
 
-    it 'has a name property' do
-      is_expected
-        .to be_json_eql(custom_action.name.to_json)
-        .at_path('name')
+    it "has a name property" do
+      expect(subject)
+        .to be_json_eql(automation.name.to_json)
+        .at_path("name")
     end
 
-    it 'has a description property' do
-      is_expected
-        .to be_json_eql(custom_action.description.to_json)
-        .at_path('description')
+    it "has a description property" do
+      expect(subject)
+        .to be_json_eql(automation.description.to_json)
+        .at_path("description")
     end
   end
 
-  context 'links' do
-    it_behaves_like 'has a titled link' do
-      let(:link) { 'self' }
-      let(:href) { api_v3_paths.custom_action(custom_action.id) }
-      let(:title) { custom_action.name }
+  context "links" do
+    it_behaves_like "has a titled link" do
+      let(:link) { "self" }
+      let(:href) { api_v3_paths.custom_action(automation.id) }
+      let(:title) { automation.name }
     end
 
-    it_behaves_like 'has a titled link' do
-      let(:link) { 'executeImmediately' }
-      let(:href) { api_v3_paths.custom_action_execute(custom_action.id) }
-      let(:title) { "Execute #{custom_action.name}" }
-      let(:method) { 'post' }
+    it_behaves_like "has a titled link" do
+      let(:link) { "executeImmediately" }
+      let(:href) { api_v3_paths.custom_action_execute(automation.id) }
+      let(:title) { "Execute #{automation.name}" }
+      let(:method) { "post" }
     end
   end
 end

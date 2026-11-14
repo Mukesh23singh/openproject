@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -60,33 +57,45 @@
 # - sensible default changed to "application/binary"
 # - removed references to paperclip
 
-require 'open3'
+require "open3"
+require "shellwords"
 
 module OpenProject
   class FileCommandContentTypeDetector
-    SENSIBLE_DEFAULT = 'application/binary'
+    SENSIBLE_DEFAULT = "application/binary"
 
     def initialize(filename)
       @filename = filename
     end
 
+    # Returns [mime_type, charset_or_nil], e.g.:
+    #   ["text/plain", "utf-8"]
+    #   ["image/png",  nil]
     def detect
-      type_from_file_command
+      @detect ||= parse_file_command
     end
 
     private
 
-    def type_from_file_command
+    def parse_file_command
       # On BSDs, `file` doesn't give a result code of 1 if the file doesn't exist.
-      type, status = Open3.capture2('file', '-b', '--mime', @filename)
+      type, status = Open3.capture2("file", "-b", "--mime", "--", @filename)
+      return [SENSIBLE_DEFAULT, nil] if type.nil? || status.to_i > 0 || type.match(/\(.*?\)/)
 
-      if type.nil? || status.to_i > 0 || type.match(/\(.*?\)/)
-        type = SENSIBLE_DEFAULT
-      end
-      type.split(/[:;\s]+/)[0]
+      extract_mime_and_charset(type.strip)
     rescue StandardError => e
       Rails.logger.info { "Failed to get mime type from #{@filename}: #{e} #{e.message}" }
-      SENSIBLE_DEFAULT
+      [SENSIBLE_DEFAULT, nil]
+    end
+
+    def extract_mime_and_charset(type)
+      parts = type.split(";").map(&:strip)
+      mime = parts.first
+      charset = parts.drop(1)
+                     .filter_map { |p| p.match(/\Acharset=([^\s;]+)\z/)&.[](1) }
+                     .first
+      charset = nil if charset == "binary"
+      [mime, charset]
     end
   end
 end

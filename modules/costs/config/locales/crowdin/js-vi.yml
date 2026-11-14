@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -19,14 +19,23 @@
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 vi:
   js:
+    button_log_costs: Ghi lại chi phí đơn vị
+    costs:
+      widgets:
+        actual_costs:
+          chart_label: Actual costs by month chart
+          chart_month: "%{month}: %{values}"
+          chart_summary: 'Actual costs by month: %{months}.'
+          chart_value: "%{label}: %{value}"
+    label_hour: giờ
+    label_hours: giờ
+    text_are_you_sure: Bạn có chắc không?
     work_packages:
-      property_groups:
-        costs: "Chi phí"
       properties:
-        overallCosts: "Tổng chi phí"
-        spentUnits: "Spent units"
-    button_log_costs: "Log unit costs"
-    label_hour: "giờ"
-    label_hours: "hours"
+        overallCosts: Chi phí tổng cộng
+        spentUnits: Đơn vị đã chi
+      property_groups:
+        costs: chi phí

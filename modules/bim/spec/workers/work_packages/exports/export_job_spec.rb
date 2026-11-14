@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,30 +20,29 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackages::ExportJob do
-  let(:user) { FactoryBot.build_stubbed(:user) }
-  let(:attachment) { double('Attachment', id: 1234) }
+RSpec.describe WorkPackages::ExportJob do
+  let(:user) { build_stubbed(:user) }
+  let(:attachment) { double("Attachment", id: 1234) }
   let(:export) do
-    FactoryBot.build_stubbed(:work_packages_export)
+    build_stubbed(:work_packages_export)
   end
-  let(:query) { FactoryBot.build_stubbed(:query) }
+  let(:query) { build_stubbed(:query) }
 
-  let(:job) { described_class.new(jobs_args) }
+  let(:job) { described_class.new(**jobs_args) }
   let(:jobs_args) do
     {
-      export: export,
-      mime_type: mime_type,
-      user: user,
+      export:,
+      mime_type:,
+      user:,
       options: {},
-      query: query,
+      query:,
       query_attributes: {}
     }
   end
@@ -54,39 +51,48 @@ describe WorkPackages::ExportJob do
     job.tap(&:perform_now)
   end
 
-  describe '#perform' do
-    context 'with the bcf mime type' do
+  describe "#perform" do
+    context "with the bcf mime type" do
       let(:mime_type) { :bcf }
       let(:exporter) { OpenProject::Bim::BcfXml::Exporter }
       let(:exporter_instance) { instance_double(exporter) }
 
-      it 'issues an OpenProject::Bim::BcfXml::Exporter export' do
-        result = Exports::Result.new(format: 'blubs',
+      it "issues an OpenProject::Bim::BcfXml::Exporter export" do
+        result = Exports::Result.new(format: "blubs",
                                      title: "some_title.#{mime_type}",
-                                     content: 'some content',
+                                     content: "some content",
                                      mime_type: "application/octet-stream")
 
-        service = double('attachments create service')
+        service = double("attachments create service")
 
-        expect(Attachments::CreateService)
-          .to receive(:bypass_whitelist)
-                .with(user: user)
+        allow(Attachments::CreateService)
+          .to receive(:bypass_allowlist)
                 .and_return(service)
 
-        expect(Exports::CleanupOutdatedJob)
+        allow(Exports::CleanupOutdatedJob)
           .to receive(:perform_after_grace)
 
-        expect(service)
+        allow(service)
           .to(receive(:call))
-          .and_return(ServiceResult.new(result: attachment, success: true))
+          .and_return(ServiceResult.success(result: attachment))
 
         allow(exporter).to receive(:new).and_return(exporter_instance)
         allow(exporter_instance).to receive(:export!).and_return(result)
 
         # expect to create a status
         expect(subject.job_status).to be_present
-        expect(subject.job_status[:status]).to eq 'success'
-        expect(subject.job_status[:payload]['download']).to eq '/api/v3/attachments/1234/content'
+        expect(subject.job_status[:status]).to eq "success"
+        expect(subject.job_status[:payload]["download"]).to eq "/api/v3/attachments/1234/content"
+
+        expect(Attachments::CreateService)
+          .to have_received(:bypass_allowlist)
+                .with(user:)
+
+        expect(Exports::CleanupOutdatedJob)
+          .to have_received(:perform_after_grace)
+
+        expect(service)
+          .to have_received(:call)
       end
     end
   end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,8 +28,9 @@
 module API
   module V3
     module Relations
+      # TODO: Usage of this is to be replaced by its paginated equivalent once the front end
+      # handles paginated responses.
       class RelationCollectionRepresenter < ::API::Decorators::UnpaginatedCollection
-        self.to_eager_load = ::API::V3::Relations::RelationRepresenter.to_eager_load
       end
     end
   end

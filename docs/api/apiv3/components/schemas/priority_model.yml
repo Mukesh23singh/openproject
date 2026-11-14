@@ -6,8 +6,7 @@ properties:
     type: integer
     description: Priority id
     readOnly: true
-    minimum: 0
-    exclusiveMinimum: true
+    exclusiveMinimum: 0
   name:
     type: string
     description: Priority name
@@ -17,8 +16,7 @@ properties:
     type: integer
     description: Sort index of the priority
     readOnly: true
-    minimum: 0
-    exclusiveMinimum: true
+    exclusiveMinimum: 0
   isDefault:
     type: boolean
     description: Indicates whether this is the default value
@@ -29,24 +27,24 @@ properties:
   _links:
     type: object
     required:
-    - self
+      - self
     properties:
       self:
         allOf:
-        - "$ref": "./link.yml"
-        - description: |-
-            This priority
+          - $ref: "./link.yml"
+          - description: |-
+              This priority
 
-            **Resource**: Priority
-          readOnly: true
-example:
-  _type: Priority
-  _links:
-    self:
-      href: "/api/v3/priorities/1"
-      title: Low
-  id: 1
-  name: Low
-  position: 1
-  isDefault: false
-  isActive: true
+              **Resource**: Priority
+            readOnly: true
+examples:
+  - _type: Priority
+    _links:
+      self:
+        href: "/api/v3/priorities/1"
+        title: Low
+    id: 1
+    name: Low
+    position: 1
+    isDefault: false
+    isActive: true

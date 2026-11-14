@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,26 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 documents resource', type: :request do
+RSpec.describe "API v3 documents resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
   let(:current_user) do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
-  let(:document) { FactoryBot.create(:document, project: project) }
-  let(:invisible_document) { FactoryBot.create(:document, project: other_project) }
-  let(:project) { FactoryBot.create(:project) }
-  let(:other_project) { FactoryBot.create(:project) }
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:document) { create(:document, project:) }
+  let(:invisible_document) { create(:document, project: other_project) }
+  let(:project) { create(:project) }
+  let(:other_project) { create(:project) }
+  let(:role) { create(:project_role, permissions:) }
   let(:permissions) { %i(view_documents) }
 
   subject(:response) { last_response }
@@ -49,7 +50,7 @@ describe 'API v3 documents resource', type: :request do
     login_as(current_user)
   end
 
-  describe 'GET /api/v3/documents' do
+  describe "GET /api/v3/documents" do
     let(:path) { api_v3_paths.documents }
 
     before do
@@ -59,58 +60,147 @@ describe 'API v3 documents resource', type: :request do
       get path
     end
 
-    it 'returns 200 OK' do
+    it "returns 200 OK" do
       expect(subject.status)
-        .to eql(200)
+        .to be(200)
     end
 
-    it 'returns a Collection of visible documents' do
+    it "returns a Collection of visible documents" do
       expect(subject.body)
-        .to be_json_eql('Collection'.to_json)
-        .at_path('_type')
+        .to be_json_eql("Collection".to_json)
+        .at_path("_type")
 
       expect(subject.body)
         .to be_json_eql(1.to_json)
-        .at_path('total')
+        .at_path("total")
 
       expect(subject.body)
-        .to be_json_eql('Document'.to_json)
-        .at_path('_embedded/elements/0/_type')
+        .to be_json_eql("Document".to_json)
+        .at_path("_embedded/elements/0/_type")
 
       expect(subject.body)
         .to be_json_eql(document.title.to_json)
-        .at_path('_embedded/elements/0/title')
+        .at_path("_embedded/elements/0/title")
     end
   end
 
-  describe 'GET /api/v3/documents/:id' do
+  describe "GET /api/v3/documents/:id" do
     let(:path) { api_v3_paths.document(document.id) }
 
     before do
       get path
     end
 
-    it 'returns 200 OK' do
+    it "returns 200 OK" do
       expect(subject.status)
-        .to eql(200)
+        .to be(200)
     end
 
-    it 'returns the document' do
+    it "returns the document" do
       expect(subject.body)
-        .to be_json_eql('Document'.to_json)
-        .at_path('_type')
+        .to be_json_eql("Document".to_json)
+        .at_path("_type")
 
       expect(subject.body)
         .to be_json_eql(document.id.to_json)
-        .at_path('id')
+        .at_path("id")
     end
 
-    context 'when lacking permissions' do
+    context "when the document has content_binary" do
+      before do
+        document.update!(content_binary: "base64string")
+
+        get path
+      end
+
+      it "includes content_binary field" do
+        expect(subject.body)
+          .to be_json_eql(document.content_binary.to_json)
+          .at_path("contentBinary")
+      end
+    end
+
+    context "when lacking permissions" do
       let(:permissions) { [] }
 
-      it 'returns 404 NOT FOUND' do
+      it "returns 404 NOT FOUND" do
         expect(subject.status)
-          .to eql(404)
+          .to be(404)
+      end
+    end
+  end
+
+  describe "PATCH /api/v3/documents/:id" do
+    let(:path) { api_v3_paths.document(document.id) }
+    let(:permissions) { %i(view_documents manage_documents) }
+    let(:request_body) do
+      {
+        title: "Updated Document Title",
+        content_binary: "dGVzdCBkYXRh" # base64 encoded "test data"
+      }
+    end
+
+    before do
+      patch path, request_body.to_json, "CONTENT_TYPE" => "application/json"
+    end
+
+    it "returns 200 OK" do
+      expect(subject.status).to be(200)
+    end
+
+    it "updates the document and returns updated document" do
+      expect(subject.body)
+        .to be_json_eql("Document".to_json)
+        .at_path("_type")
+
+      expect(subject.body)
+        .to be_json_eql("Updated Document Title".to_json)
+        .at_path("title")
+
+      expect(subject.body)
+        .to be_json_eql("dGVzdCBkYXRh".to_json)
+        .at_path("contentBinary")
+    end
+
+    context "when lacking edit permissions" do
+      let(:permissions) { %i(view_documents) }
+
+      it "returns 403 FORBIDDEN" do
+        expect(subject.status)
+          .to be(403)
+      end
+
+      context "when trying to move document to another project where user can manage documents" do
+        let(:target_project) { create(:project) }
+        let(:target_role) { create(:project_role, permissions: %i(view_documents manage_documents)) }
+        let(:request_body) do
+          {
+            project_id: target_project.id,
+            title: "Moved Document Title"
+          }
+        end
+
+        before do
+          create(:member, principal: current_user, project: target_project, roles: [target_role])
+          document # ensure the source document exists before patching
+        end
+
+        it "returns 403 FORBIDDEN" do
+          expect(subject.status).to be(403)
+        end
+
+        it "does not move the document to another project" do
+          expect(document.reload.project_id).to eq(project.id)
+        end
+      end
+    end
+
+    context "when lacking view permissions" do
+      let(:permissions) { [] }
+
+      it "returns 404 NOT FOUND" do
+        expect(subject.status)
+          .to be(404)
       end
     end
   end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -57,31 +56,31 @@ class ParseSchemaFilterParamsService
   private
 
   def check_error_in_filter(filter)
-    if !filter.first['id']
+    if !filter.first["id"]
       :id_filter_required
-    elsif filter.first['id']['operator'] != '='
+    elsif filter.first["id"]["operator"] != "="
       :unsupported_operator
-    elsif filter.first['id']['values'].any? { |id_string| !id_string.match(/\d+-\d+/) }
+    elsif filter.first["id"]["values"].any? { |id_string| !id_string.match(/\d+-\d+/) }
       :invalid_values
     end
   end
 
   def parse_ids(filter)
-    ids_string = filter.first['id']['values']
+    ids_string = filter.first["id"]["values"]
 
     ids_string.map do |id_string|
-      id_string.split('-')
+      id_string.split("-")
     end
   end
 
   def error(message)
     errors = ActiveModel::Errors.new(self)
     errors.add(:base, message)
-    ServiceResult.new(errors: errors)
+    ServiceResult.failure(errors:)
   end
 
   def success(result)
-    ServiceResult.new(success: true, result: result)
+    ServiceResult.success(result:)
   end
 
   def valid_project_type_pairs(filter)

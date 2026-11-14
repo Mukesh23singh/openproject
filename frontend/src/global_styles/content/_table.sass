@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -34,26 +33,14 @@
 
 $input-elements: input, 'input.form--text-field', select, 'select.form--select', '.form--field-affix', 'a.button'
 
-$toolbar-height: 80px
-$toolbar-height--mobile: 100px
-
 .generic-table--flex-container
   display: flex
   flex-direction: column
-  // Calculate table size by subtracting the space above
-  max-height: calc(100vh - #{var(--header-height)} - #{$toolbar-height})
-
-  @media screen and (max-width: 679px)
-    max-height: calc(100vh - #{var(--header-height)} - #{$toolbar-height--mobile})
-
-  .generic-table--container
-    display: contents
-  .generic-table
-    position: relative
+  flex: 1
 
 .generic-table--container
   position:     relative
-  height:       100%
+  height:       initial
   width:        100%
   overflow:
     x: hidden
@@ -61,6 +48,12 @@ $toolbar-height--mobile: 100px
 
   &.-with-footer
     padding-bottom: var(--generic-table--footer-height)
+
+  &_visible-overflow
+    overflow: visible
+
+  &_height-100
+    height: 100%
 
 .generic-table--results-container
   height:       100%
@@ -86,12 +79,12 @@ table.generic-table
   border-collapse: collapse
   width:  100%
   margin: 0
-  font-size: var(--generic-table--font-size)
+  font-size: 0.875rem
 
   col
     &:hover,
     &.hover
-      background:   #f8f8f8
+      background:   var(--bgColor-muted)
 
   thead
     height: var(--generic-table--header-height)
@@ -101,13 +94,18 @@ table.generic-table
         background: none
     th
       font-size: var(--generic-table--header-font-size)
+      font-weight: var(--base-text-weight-bold)
       text-transform: uppercase
       text-align: left
       line-height: 34px
       padding: 0
+      border-bottom: 1px solid var(--borderColor-default)
       // This is needed for a bug in FF as described here
       // https://www.456bereastreet.com/archive/201305/firefox_and_the_magical_text-overflowellipsis_z-index/
       z-index: 1
+
+      action-menu
+        text-transform: none
 
       &.-right
         text-align: right
@@ -122,49 +120,58 @@ table.generic-table
       .-required:after
         @include default-transition
         content:  '*'
-        color:    var(--primary-color-dark)
         padding:  0 0.2rem
 
       &.-max
         .generic-table--sort-header
           max-width: none
 
-    .sort
-      &.asc:after
-        @include icon-font-common
-        @include icon-mixin-sort-ascending
-        margin-left: 5px
-        font-size: 1.2em
-        vertical-align: text-bottom
-
-      &.desc:after
-        @include icon-font-common
-        @include icon-mixin-sort-descending
-        margin-left: 5px
-        font-size: 1.2em
-        vertical-align: text-bottom
+    .generic-table--sort-indicator
+      flex: 0 0 auto
+      margin-inline-start: var(--base-size-12)
+      vertical-align: text-bottom
 
   tfoot
-    tr
-      background: #f6f7f8
     td
-      font-weight: bold
+      font-weight: var(--base-text-weight-bold)
 
   tbody
     tr:not(.-no-highlighting)
-      border-bottom: 1px solid var(--table-row-border-color)
+      border-bottom: 1px solid var(--borderColor-default)
 
     @media screen
-      td:not(.-no-ellipsis)
+      th[scope="row"]:not(.-no-ellipsis),
+      td:not(.-no-ellipsis):not(.buttons)
         @include text-shortener
 
+    .project td
+      > span,
+      > a
+        // Because of the way table-cell display works,
+        // the easiest way to properly center-align inline
+        // elements is to just push them down a pixel.
+        position: relative
+        top: 1px
+
+    th[scope="row"]
+      font-weight: var(--base-text-weight-bold)
+
+    th[scope="row"],
     td
       max-width: 300px
       text-align: left
       line-height: 1.6
       padding-top: 0.5rem
       padding-bottom: 0.5rem
-      vertical-align: middle
+
+      &.form--td
+        vertical-align: middle
+
+      &.-centered
+       text-align: center
+
+      &.-right
+        text-align: right
 
       // Center input fields and select boxes vertically in tables
       .form--field
@@ -174,10 +181,12 @@ table.generic-table
         #{$inputElement}~.form-label
           vertical-align: middle
 
-      input[type="checkbox"], input[type="radio"]
+      // N.B. we only adjust margin on non-Primerized controls
+      input[type="checkbox"]:not(.FormControl-checkbox),
+      input[type="radio"]:not(.FormControl-radio)
         margin-top: -0.25rem
 
-      // In the interactive table the behaviour is like this:
+      // In the interactive table the behavior is like this:
       // * if there is more space available than is required to render
       //   all columns, the container width is set to 100%.
       //   Then, td.-max will take up all space available and it will cause all other
@@ -187,15 +196,20 @@ table.generic-table
       //   then the container width is set to the width calculated by summing up
       //   all the column widths. For td.-max, the max-width will be taken to be
       //   the column width because of the combination of max-width and width: 100%.
-      // as a result, td.-max will aways have at least a width of max-width, but it can
+      // as a result, td.-max will always have at least a width of max-width, but it can
       // become even wider.
       &.-max
         @media screen
           width: 100%
           max-width: 500px
 
+      @each $size in (200, 300)
+        &.-min-#{$size}
+          @media screen
+            min-width: #{$size}px
+
       // The avatar image is not taken into the width calculation of the table cell by the browser.
-         That is why we add the space manually.
+      // That is why we add the space manually.
       &.-contains-avatar
         text-overflow: clip
         .wp-table--cell-container
@@ -211,18 +225,54 @@ table.generic-table
         white-space: nowrap
 
       &.-no-highlighting
-        background-color: $body-background
+        background-color: var(--body-background)
 
-    p
-      padding: 0 8px
-      margin: 0
+      // fixed column width helpers
+      &.-w-abs-45
+        width: 45px
 
+      &.-w-rel-20
+        width: 20%
+
+      &.-mw-abs-200
+        max-width: 200px //override the default max-width for appropriate text ellipsis
+
+      &.-w-rel-40
+        width: 40%
+
+      &.-mw-abs-400
+        max-width: 400px //override the default max-width for appropriate text ellipsis
+
+      &.-w-rel-60
+        width: 60%
+
+      &.-mw-abs-600
+        max-width: 600px //override the default max-width for appropriate text ellipsis
+
+      &.-w-rel-80
+        width: 80%
+
+      &.-mw-abs-800
+        max-width: 800px //override the default max-width for appropriate text ellipsis
 
 // Enable sticky headers
 thead.-sticky th
   position: sticky
   top: 0
-  background: white
+  background: var(--body-background)
+
+// Sticky cells paint over their row's outline, so they draw the row's focus ring
+thead.-sticky tr:focus-visible > th
+  --row-focus-ring: var(--focus-outlineColor, #0969da)
+  box-shadow: inset var(--row-focus-left, 0) 0 0 var(--row-focus-ring), inset var(--row-focus-right, 0) 0 0 var(--row-focus-ring), inset 0 2px 0 var(--row-focus-ring), inset 0 -2px 0 var(--row-focus-ring)
+
+  &:first-child:dir(ltr),
+  &:last-child:dir(rtl)
+    --row-focus-left: 2px
+
+  &:last-child:dir(ltr),
+  &:first-child:dir(rtl)
+    --row-focus-right: -2px
 
 
 .generic-table--footer-outer
@@ -233,26 +283,31 @@ thead.-sticky th
 
 .generic-table--header-outer,
 .generic-table--sort-header-outer
-  padding:      0 12px 0 6px
   line-height:  var(--generic-table--header-height)
   height:  var(--generic-table--header-height)
   z-index:      1
-  border-bottom: 1px solid var(--table-row-border-color)
 
   &:hover,
   &.hover
-    background:   #f8f8f8
+    background:   var(--bgColor-muted)
 
   &_no-highlighting
     &:hover,
     &.hover
       background: initial
 
+.generic-table--sort-header-outer
+  padding:      0 12px 0 6px
+  &.generic-table--header_no-padding
+    padding: 0
+
+.generic-table--header-outer,
 .generic-table--empty-header
-  padding:       0 6px
+  padding: 0 6px
+
+.generic-table--empty-header
   height:        var(--generic-table--header-height)
   line-height:   var(--generic-table--header-height)
-  border-bottom: 1px solid var(--table-row-border-color)
   z-index:       1
 
   // In case the table header contains invisible content for screen readers
@@ -278,20 +333,26 @@ thead.-sticky th
   max-width: 300px
   display: flex
 
+  &_no-min-width
+    min-width: initial
+  &_centered
+    justify-content: center
+
+  &--error-indicator
+    margin-left: var(--base-size-8)
+
   & > a
     flex: 1 1
     width: 100%
-    font-weight: bold
+    font-weight: var(--base-text-weight-bold)
     @include text-shortener
-    &.op-link_inactive
-      color: var(--button--active-font-color)
 
   & > op-icon
     flex: 0 0 0
     padding-left: 15px
 
   #startDate
-    margin-left: 24px
+    margin-left: $work-package--start-date-display-field-padding-left
 
 .generic-table--sort-header-outer
   .dropdown-indicator
@@ -305,9 +366,9 @@ thead.-sticky th
     visibility: visible
 
 .generic-table--no-results-container
-  background:   $gray-light
-  border:       1px solid $gray
-  border-radius: $global-radius
+  background: var(--bgColor-neutral-muted)
+  border: 1px solid var(--borderColor-neutral-muted)
+  border-radius: 4px
   padding:      14px 14px 14px 36px
   display:      block
 
@@ -338,3 +399,8 @@ thead.-sticky th
 
   p:last-child
     margin-bottom: 0
+
+.generic-table
+  &--action-menu-button.leading-visual-icon-header
+    position: relative
+    top: 2px

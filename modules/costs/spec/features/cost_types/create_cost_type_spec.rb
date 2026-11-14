@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'creating a cost type', type: :feature, js: true do
-  let!(:user) { FactoryBot.create :admin }
+RSpec.describe "creating a cost type", :js do
+  let!(:user) { create(:admin) }
   let!(:cost_type) do
-    type = FactoryBot.create :cost_type, name: 'Translations'
-    FactoryBot.create :cost_rate, cost_type: type, rate: 1.00
+    type = create(:cost_type, name: "Translations")
+    create(:cost_rate, cost_type: type, rate: 1.00)
     type
   end
 
@@ -40,61 +39,61 @@ describe 'creating a cost type', type: :feature, js: true do
     login_as user
   end
 
-  it 'can create a cost type' do
-    visit "/cost_types/new"
+  it "can create a cost type" do
+    visit "/admin/cost_types/new"
 
-    fill_in 'cost_type_name', with: 'Test day rate'
-    fill_in 'cost_type_unit', with: 'dayUnit'
-    fill_in 'cost_type_unit_plural', with: 'dayUnitPlural'
-    fill_in 'cost_type_new_rate_attributes_0_rate', with: '1,000.25'
+    fill_in "cost_type_name", with: "Test day rate"
+    fill_in "cost_type_unit", with: "dayUnit"
+    fill_in "cost_type_unit_plural", with: "dayUnitPlural"
+    fill_in "cost_type_current_rate", with: "1,000.25"
 
     sleep 1
 
-    scroll_to_and_click(find('button.-with-icon.icon-checkmark'))
+    scroll_to_and_click(find("[data-test-selector='op-cost-type-form--submit']"))
 
     expect_angular_frontend_initialized
-    expect(page).to have_selector '.generic-table', wait: 10
+    expect(page).to have_css ".generic-table", wait: 10
 
-    cost_type_row = find('tr', text: 'Test day rate')
+    cost_type_row = find("tr", text: "Test day rate")
 
-    expect(cost_type_row).to have_selector('td a', text: 'Test day rate')
-    expect(cost_type_row).to have_selector('td', text: 'dayUnit')
-    expect(cost_type_row).to have_selector('td', text: 'dayUnitPlural')
-    expect(cost_type_row).to have_selector('td.currency', text: '1,000.25')
+    expect(cost_type_row).to have_css("td a", text: "Test day rate")
+    expect(cost_type_row).to have_css("td", text: "dayUnit")
+    expect(cost_type_row).to have_css("td", text: "dayUnitPlural")
+    expect(cost_type_row).to have_css("td.currency", text: "1,000.25")
 
     cost_type = CostType.last
-    expect(cost_type.name).to eq 'Test day rate'
+    expect(cost_type.name).to eq "Test day rate"
     cost_rate = cost_type.rates.last
     expect(cost_rate.rate).to eq 1000.25
   end
 
-  context 'with german locale' do
-    let(:user) { FactoryBot.create(:admin, language: :de) }
+  context "with german locale" do
+    let(:user) { create(:admin, language: :de) }
 
-    it 'creates the entry with german number separators' do
-      visit "/cost_types/new"
+    it "creates the entry with german number separators" do
+      visit "/admin/cost_types/new"
 
-      fill_in 'cost_type_name', with: 'Test day rate'
-      fill_in 'cost_type_unit', with: 'dayUnit'
-      fill_in 'cost_type_unit_plural', with: 'dayUnitPlural'
-      fill_in 'cost_type_new_rate_attributes_0_rate', with: '1.000,25'
+      fill_in "cost_type_name", with: "Test day rate"
+      fill_in "cost_type_unit", with: "dayUnit"
+      fill_in "cost_type_unit_plural", with: "dayUnitPlural"
+      fill_in "cost_type_current_rate", with: "1.000,25"
 
       sleep 1
 
-      scroll_to_and_click(find('button.-with-icon.icon-checkmark'))
+      scroll_to_and_click(find("[data-test-selector='op-cost-type-form--submit']"))
 
       expect_angular_frontend_initialized
-      expect(page).to have_selector '.generic-table', wait: 10
+      expect(page).to have_css ".generic-table", wait: 10
 
-      cost_type_row = find('tr', text: 'Test day rate')
+      cost_type_row = find("tr", text: "Test day rate")
 
-      expect(cost_type_row).to have_selector('td a', text: 'Test day rate')
-      expect(cost_type_row).to have_selector('td', text: 'dayUnit')
-      expect(cost_type_row).to have_selector('td', text: 'dayUnitPlural')
-      expect(cost_type_row).to have_selector('td.currency', text: '1.000,25')
+      expect(cost_type_row).to have_css("td a", text: "Test day rate")
+      expect(cost_type_row).to have_css("td", text: "dayUnit")
+      expect(cost_type_row).to have_css("td", text: "dayUnitPlural")
+      expect(cost_type_row).to have_css("td.currency", text: "1.000,25")
 
       cost_type = CostType.last
-      expect(cost_type.name).to eq 'Test day rate'
+      expect(cost_type.name).to eq "Test day rate"
       cost_rate = cost_type.rates.last
       expect(cost_rate.rate).to eq 1000.25
     end

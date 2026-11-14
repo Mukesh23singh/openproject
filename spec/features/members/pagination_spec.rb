@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,92 +22,86 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'members pagination', type: :feature, js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "members pagination", :js do
+  shared_let(:admin) { create(:admin) }
   let(:project) do
-    FactoryBot.create :project,
-                      name: 'Project 1',
-                      identifier: 'project1',
-                      members: project_members
+    create(:project,
+           name: "Project 1",
+           identifier: "project1",
+           members: project_members)
   end
-  let(:project_members) {
+  let(:project_members) do
     {
       bob => manager,
       alice => developer
     }
-  }
+  end
 
-  let!(:peter) { FactoryBot.create :user, firstname: 'Peter', lastname: 'Pan' }
-  let(:bob)   { FactoryBot.create :user, firstname: 'Bob', lastname: 'Bobbit' }
-  let(:alice) { FactoryBot.create :user, firstname: 'Alice', lastname: 'Alison' }
+  let!(:peter) { create(:user, firstname: "Peter", lastname: "Pan") }
+  let(:bob)   { create(:user, firstname: "Bob", lastname: "Bobbit") }
+  let(:alice) { create(:user, firstname: "Alice", lastname: "Alison") }
 
-  let(:manager)   { FactoryBot.create :role, name: 'Manager' }
-  let(:developer) { FactoryBot.create :role, name: 'Developer' }
+  let(:manager)   { create(:project_role, name: "Manager") }
+  let(:developer) { create(:project_role, name: "Developer") }
 
   let(:members_page) { Pages::Members.new project.identifier }
 
   current_user { admin }
 
-  context 'when adding a member' do
-    it 'paginates' do
+  context "when adding a member" do
+    it "paginates" do
       members_page.set_items_per_page! 2
 
       members_page.visit!
-      SeleniumHubWaiter.wait
-      expect(members_page).to have_user 'Alice Alison' # members are sorted by last name desc
-      members_page.add_user! 'Peter Pan', as: 'Manager'
+      expect(members_page).to have_user "Alice Alison", wait: 20 # members are sorted by last name desc
+      members_page.add_user! "Peter Pan", as: "Manager"
 
-      SeleniumHubWaiter.wait
       members_page.go_to_page! 2
-      expect(members_page).to have_user 'Peter Pan'
+      expect(members_page).to have_user "Peter Pan"
     end
   end
 
-  context 'when removing a member' do
-    let(:project_members) {
+  context "when removing a member" do
+    let(:project_members) do
       {
         bob => manager,
         alice => developer,
         peter => manager
       }
-    }
+    end
 
-    it 'paginates' do
+    it "paginates" do
       members_page.set_items_per_page! 1
 
       members_page.visit!
-      SeleniumHubWaiter.wait
-      members_page.remove_user! 'Alice Alison'
-      expect(members_page).to have_user 'Bob Bobbit'
+      members_page.remove_user! "Alice Alison"
+      expect_and_dismiss_flash message: "Removed Alice Alison from project"
+      expect(members_page).to have_user "Bob Bobbit"
 
-      SeleniumHubWaiter.wait
       members_page.go_to_page! 2
-      expect(members_page).to have_user 'Peter Pan'
+      expect(members_page).to have_user "Peter Pan"
     end
   end
 
-  context 'when updating a member' do
-    it 'paginates' do
+  context "when updating a member" do
+    it "paginates" do
       members_page.set_items_per_page! 1
 
       members_page.visit!
-      SeleniumHubWaiter.wait
       members_page.go_to_page! 2
-      members_page.edit_user! 'Bob Bobbit', add_roles: ['Developer']
-      expect(page).to have_text 'Successful update'
-      expect(members_page).to have_user 'Bob Bobbit', roles: ['Developer', 'Manager']
+      members_page.edit_user! "Bob Bobbit", add_roles: ["Developer"]
+      expect(page).to have_text "Successful update"
+      expect(members_page).to have_user "Bob Bobbit", roles: ["Developer", "Manager"]
 
-      SeleniumHubWaiter.wait
       members_page.go_to_page! 1
-      expect(members_page).to have_user 'Alice Alison'
+      expect(members_page).to have_user "Alice Alison"
     end
   end
 end

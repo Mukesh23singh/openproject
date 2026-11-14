@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,146 +22,141 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Memberships::MembershipRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Memberships::MembershipRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
   let(:member) do
-    FactoryBot.build_stubbed(:member,
-                             member_roles: [member_role1, member_role2, member_role2, marked_member_role],
-                             principal: principal,
-                             project: project)
+    build_stubbed(:member,
+                  member_roles: [member_role1, member_role2, member_role2, marked_member_role],
+                  principal:,
+                  project: workspace)
   end
-  let(:project) { FactoryBot.build_stubbed(:project) }
+  let(:workspace) { build_stubbed(:project) }
   let(:roles) { [role1, role2] }
-  let(:role1) { FactoryBot.build_stubbed(:role) }
-  let(:member_role1) { FactoryBot.build_stubbed(:member_role, role: role1) }
-  let(:role2) { FactoryBot.build_stubbed(:role) }
-  let(:member_role2) { FactoryBot.build_stubbed(:member_role, role: role2) }
-  let(:marked_role) { FactoryBot.build_stubbed(:role) }
+  let(:role1) { build_stubbed(:project_role) }
+  let(:member_role1) { build_stubbed(:member_role, role: role1) }
+  let(:role2) { build_stubbed(:project_role) }
+  let(:member_role2) { build_stubbed(:member_role, role: role2) }
+  let(:marked_role) { build_stubbed(:project_role) }
   let(:marked_member_role) do
-    FactoryBot.build_stubbed(:member_role, role: marked_role).tap do |mr|
+    build_stubbed(:member_role, role: marked_role).tap do |mr|
       allow(mr)
         .to receive(:marked_for_destruction?)
         .and_return(true)
     end
   end
   let(:principal) { user }
-  let(:user) { FactoryBot.build_stubbed(:user) }
-  let(:group) { FactoryBot.build_stubbed(:group) }
-  let(:current_user) { FactoryBot.build_stubbed(:user) }
+  let(:user) { build_stubbed(:user) }
+  let(:group) { build_stubbed(:group) }
+  let(:current_user) { build_stubbed(:user) }
   let(:permissions) do
     [:manage_members]
   end
+  let(:embed_links) { true }
   let(:representer) do
-    described_class.create(member, current_user: current_user, embed_links: true)
+    described_class.create(member, current_user:, embed_links:)
   end
 
   subject { representer.to_json }
 
   before do
-    allow(current_user)
-      .to receive(:allowed_to?) do |permission, context_project|
-      project == context_project && permissions.include?(permission)
+    mock_permissions_for(current_user) do |mock|
+      mock.allow_in_project *permissions, project: workspace || build_stubbed(:project)
     end
   end
 
-  describe '_links' do
-    describe 'self' do
-      it_behaves_like 'has a titled link' do
-        let(:link) { 'self' }
+  describe "_links" do
+    describe "self" do
+      it_behaves_like "has a titled link" do
+        let(:link) { "self" }
         let(:href) { api_v3_paths.membership member.id }
         let(:title) { user.name }
       end
     end
 
-    describe 'schema' do
-      it_behaves_like 'has an untitled link' do
-        let(:link) { 'schema' }
+    describe "schema" do
+      it_behaves_like "has an untitled link" do
+        let(:link) { "schema" }
         let(:href) { api_v3_paths.membership_schema }
       end
     end
 
-    describe 'to update' do
-      context 'if manage members permissions are granted' do
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'update' }
+    describe "to update" do
+      context "if manage members permissions are granted" do
+        it_behaves_like "has an untitled link" do
+          let(:link) { "update" }
           let(:href) { api_v3_paths.membership_form(member.id) }
         end
       end
 
-      describe 'if manage members permissions are lacking' do
+      describe "if manage members permissions are lacking" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'update' }
+        it_behaves_like "has no link" do
+          let(:link) { "update" }
         end
       end
     end
 
-    describe 'to updateImmediately' do
-      context 'if manage members permissions are granted' do
-        it_behaves_like 'has an untitled link' do
-          let(:link) { 'updateImmediately' }
+    describe "to updateImmediately" do
+      context "if manage members permissions are granted" do
+        it_behaves_like "has an untitled link" do
+          let(:link) { "updateImmediately" }
           let(:href) { api_v3_paths.membership(member.id) }
         end
       end
 
-      describe 'if manage members permissions are lacking' do
+      describe "if manage members permissions are lacking" do
         let(:permissions) { [] }
 
-        it_behaves_like 'has no link' do
-          let(:link) { 'updateImmediately' }
+        it_behaves_like "has no link" do
+          let(:link) { "updateImmediately" }
         end
       end
     end
 
-    describe 'project' do
-      it_behaves_like 'has a titled link' do
-        let(:link) { 'project' }
-        let(:href) { api_v3_paths.project(project.id) }
-        let(:title) { project.name }
-      end
+    describe "project" do
+      it_behaves_like "has workspace linked"
 
-      context 'for a global member' do
-        let(:project) { nil }
+      context "for a global membership" do
+        let(:workspace) { nil }
 
-        it_behaves_like 'has an empty link' do
-          let(:link) { 'project' }
+        it_behaves_like "has an empty link" do
+          let(:link) { "project" }
         end
       end
     end
 
-    describe 'principal' do
-      context 'for a user principal' do
-        it_behaves_like 'has a titled link' do
-          let(:link) { 'principal' }
+    describe "principal" do
+      context "for a user principal" do
+        it_behaves_like "has a titled link" do
+          let(:link) { "principal" }
           let(:href) { api_v3_paths.user(user.id) }
           let(:title) { user.name }
         end
       end
 
-      context 'for a group principal' do
+      context "for a group principal" do
         let(:principal) { group }
 
-        it_behaves_like 'has a titled link' do
-          let(:link) { 'principal' }
+        it_behaves_like "has a titled link" do
+          let(:link) { "principal" }
           let(:href) { api_v3_paths.group(group.id) }
           let(:title) { group.name }
         end
       end
     end
 
-    describe 'roles' do
-      it_behaves_like 'has a link collection' do
-        let(:link) { 'roles' }
+    describe "roles" do
+      it_behaves_like "has a link collection" do
+        let(:link) { "roles" }
         # excludes member_roles marked for destruction
         # and duplicates
         let(:hrefs) do
@@ -178,101 +175,93 @@ describe ::API::V3::Memberships::MembershipRepresenter, 'rendering' do
     end
   end
 
-  describe 'properties' do
-    it_behaves_like 'property', :_type do
-      let(:value) { 'Membership' }
+  describe "properties" do
+    it_behaves_like "property", :_type do
+      let(:value) { "Membership" }
     end
 
-    it_behaves_like 'property', :id do
+    it_behaves_like "property", :id do
       let(:value) { member.id }
     end
 
-    describe 'createdAt' do
-      it_behaves_like 'has UTC ISO 8601 date and time' do
+    describe "createdAt" do
+      it_behaves_like "has UTC ISO 8601 date and time" do
         let(:date) { member.created_at }
-        let(:json_path) { 'createdAt' }
+        let(:json_path) { "createdAt" }
       end
     end
 
-    describe 'updatedAt' do
-      it_behaves_like 'has UTC ISO 8601 date and time' do
+    describe "updatedAt" do
+      it_behaves_like "has UTC ISO 8601 date and time" do
         let(:date) { member.updated_at }
-        let(:json_path) { 'updatedAt' }
+        let(:json_path) { "updatedAt" }
       end
     end
   end
 
-  describe '_embedded' do
-    describe 'project' do
-      let(:embedded_path) { '_embedded/project' }
+  describe "_embedded" do
+    describe "project" do
+      let(:embedded_path) { "_embedded/project" }
 
-      it 'has the project embedded' do
-        is_expected
-          .to be_json_eql('Project'.to_json)
-          .at_path("#{embedded_path}/_type")
+      it_behaves_like "has workspace embedded"
 
-        is_expected
-          .to be_json_eql(project.name.to_json)
-          .at_path("#{embedded_path}/name")
-      end
+      context "for a global member" do
+        let(:workspace) { nil }
 
-      context 'for a global member' do
-        let(:project) { nil }
-
-        it 'has no project embedded' do
-          is_expected
+        it "has no workspace embedded" do
+          expect(subject)
             .not_to have_json_path(embedded_path)
         end
       end
     end
 
-    describe 'principal' do
-      let(:embedded_path) { '_embedded/principal' }
+    describe "principal" do
+      let(:embedded_path) { "_embedded/principal" }
 
-      context 'for a user principal' do
-        it 'has the user embedded' do
-          is_expected
-            .to be_json_eql('User'.to_json)
+      context "for a user principal" do
+        it "has the user embedded" do
+          expect(subject)
+            .to be_json_eql("User".to_json)
             .at_path("#{embedded_path}/_type")
 
-          is_expected
+          expect(subject)
             .to be_json_eql(user.name.to_json)
             .at_path("#{embedded_path}/name")
         end
       end
 
-      context 'for a group principal' do
+      context "for a group principal" do
         let(:principal) { group }
 
-        it 'has the group embedded' do
-          is_expected
-            .to be_json_eql('Group'.to_json)
+        it "has the group embedded" do
+          expect(subject)
+            .to be_json_eql("Group".to_json)
             .at_path("#{embedded_path}/_type")
 
-          is_expected
+          expect(subject)
             .to be_json_eql(group.name.to_json)
             .at_path("#{embedded_path}/name")
         end
       end
     end
 
-    describe 'roles' do
-      let(:embedded_path) { '_embedded/roles' }
+    describe "roles" do
+      let(:embedded_path) { "_embedded/roles" }
 
-      it 'has an array of roles embedded that excludes member_roles marked for destruction' do
-        is_expected
-          .to be_json_eql('Role'.to_json)
+      it "has an array of roles embedded that excludes member_roles marked for destruction" do
+        expect(subject)
+          .to be_json_eql("Role".to_json)
           .at_path("#{embedded_path}/0/_type")
 
-        is_expected
+        expect(subject)
           .to be_json_eql(role1.name.to_json)
           .at_path("#{embedded_path}/0/name")
 
-        is_expected
-          .to be_json_eql('Role'.to_json)
+        expect(subject)
+          .to be_json_eql("Role".to_json)
           .at_path("#{embedded_path}/1/_type")
 
-        is_expected
+        expect(subject)
           .to be_json_eql(role2.name.to_json)
           .at_path("#{embedded_path}/1/name")
       end

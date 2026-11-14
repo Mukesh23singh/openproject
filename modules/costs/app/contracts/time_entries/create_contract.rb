@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,18 +28,31 @@
 module TimeEntries
   class CreateContract < BaseContract
     validate :user_allowed_to_add
-    validate :validate_user_current_user
 
     private
 
     def user_allowed_to_add
-      if model.project && !user.allowed_to?(:log_time, model.project)
-        errors.add :base, :error_unauthorized
-      end
+      return unless model.project && model.user
+      return if allowed_to_log_for_others?
+      return if allowed_to_log_to_himself?
+
+      errors.add :base, :error_unauthorized, message: :cannot_log_for_this_work_package
     end
 
-    def validate_user_current_user
-      errors.add :user_id, :not_current_user if model.user != user
+    def allowed_to_log_for_others?
+      user.allowed_in_project?(:log_time, model.project)
+    end
+
+    def allowed_to_log_to_himself?
+      model.user == user && allowed_to_log_own?
+    end
+
+    def allowed_to_log_own?
+      case model.entity
+      when WorkPackage then user.allowed_in_work_package?(:log_own_time, model.entity)
+      when Meeting then user.allowed_in_project?(:log_own_time, model.project)
+      else false
+      end
     end
   end
 end

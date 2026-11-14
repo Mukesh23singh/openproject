@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,13 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-import { AfterViewInit, Component, ElementRef } from '@angular/core';
-import * as moment from 'moment';
+
+import { AfterViewInit, ChangeDetectionStrategy, Component, DestroyRef, ElementRef, inject } from '@angular/core';
+import moment, { Moment } from 'moment';
 import { TimelineZoomLevel } from 'core-app/features/hal/resources/query-resource';
 import { WorkPackageTimelineTableController } from '../container/wp-timeline-container.directive';
 import {
@@ -36,125 +36,150 @@ import {
   timelineGridElementCssClass,
   TimelineViewParameters,
 } from '../wp-timeline';
-import Moment = moment.Moment;
+import { WeekdayService } from 'core-app/core/days/weekday.service';
 
-function checkForWeekendHighlight(date:Moment, cell:HTMLElement) {
-  const day = date.day();
-
-  // Sunday = 0
-  // Monday = 6
-  if (day === 0 || day === 6) {
-    cell.classList.add('grid-weekend');
-  }
-}
+import { WorkPackageTable } from 'core-app/features/work-packages/components/wp-fast-table/wp-fast-table';
+import { TableUiWork } from 'core-app/features/work-packages/components/wp-fast-table/table-ui-work';
+import { onDestroySafely } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-timeline-grid',
   template: '<div class="wp-table-timeline--grid"></div>',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
+// eslint-disable-next-line @angular-eslint/component-class-suffix
 export class WorkPackageTableTimelineGrid implements AfterViewInit {
+  readonly destroyRef = inject(DestroyRef);
+  private table:WorkPackageTable;
+  private uiWork:TableUiWork;
+
+  private prepareAttachment():boolean {
+    const controller = this.wpTimeline;
+    const table = controller.workPackageTable;
+    if (this.destroyRef.destroyed || controller.destroyed || !table) return false;
+    if (this.table !== table) {
+      this.uiWork?.cancel();
+      this.table = table;
+      this.uiWork = new TableUiWork(table.destroyRef,
+        () => !this.destroyRef.destroyed && !controller.destroyed && controller.workPackageTable === table);
+    }
+    return true;
+  }
+
+  private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  wpTimeline = inject(WorkPackageTimelineTableController);
+  private weekdaysService = inject(WeekdayService);
+
   private activeZoomLevel:TimelineZoomLevel;
 
-  private gridContainer:JQuery;
+  private gridContainer:HTMLElement;
 
-  constructor(private elementRef:ElementRef,
-    public wpTimeline:WorkPackageTimelineTableController) {
+  ngAfterViewInit():void {
+    const element = this.elementRef.nativeElement;
+    this.gridContainer = element.querySelector<HTMLElement>('.wp-table-timeline--grid')!;
+    if (this.destroyRef.destroyed) return;
+    const release = this.wpTimeline.onRefreshRequested('grid', (vp:TimelineViewParameters) => this.refreshView(vp));
+    onDestroySafely(this.destroyRef, release);
+    onDestroySafely(this.destroyRef, () => this.uiWork?.cancel());
   }
 
-  ngAfterViewInit() {
-    const $element = jQuery(this.elementRef.nativeElement);
-    this.gridContainer = $element.find('.wp-table-timeline--grid');
-    this.wpTimeline.onRefreshRequested('grid', (vp:TimelineViewParameters) => this.refreshView(vp));
-  }
-
-  refreshView(vp:TimelineViewParameters) {
+  refreshView(vp:TimelineViewParameters):void {
+    if (!this.prepareAttachment()) return;
     this.renderLabels(vp);
   }
 
-  private renderLabels(vp:TimelineViewParameters) {
-    if (this.activeZoomLevel === vp.settings.zoomLevel) {
-      return;
-    }
-
-    this.gridContainer.empty();
+  private renderLabels(vp:TimelineViewParameters):void {
+    this.gridContainer.innerHTML = '';
 
     switch (vp.settings.zoomLevel) {
       case 'days':
-        return this.renderLabelsDays(vp);
+        this.renderLabelsDays(vp);
+        break;
       case 'weeks':
-        return this.renderLabelsWeeks(vp);
+        this.renderLabelsWeeks(vp);
+        break;
       case 'months':
-        return this.renderLabelsMonths(vp);
+        this.renderLabelsMonths(vp);
+        break;
       case 'quarters':
-        return this.renderLabelsQuarters(vp);
+        this.renderLabelsQuarters(vp);
+        break;
       case 'years':
-        return this.renderLabelsYears(vp);
+        this.renderLabelsYears(vp);
+        break;
+      default:
+        return;
     }
 
     this.activeZoomLevel = vp.settings.zoomLevel;
   }
 
-  private renderLabelsDays(vp:TimelineViewParameters) {
+  private renderLabelsDays(vp:TimelineViewParameters):void {
     this.renderTimeSlices(vp, 'day', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
       cell.style.paddingTop = '1px';
-      checkForWeekendHighlight(start, cell);
+      this.checkForNonWorkingDayHighlight(start, cell);
     });
 
     this.renderTimeSlices(vp, 'year', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
       cell.style.zIndex = '2';
     });
   }
 
-  private renderLabelsWeeks(vp:TimelineViewParameters) {
+  private renderLabelsWeeks(vp:TimelineViewParameters):void {
     this.renderTimeSlices(vp, 'day', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      checkForWeekendHighlight(start, cell);
+      this.checkForNonWorkingDayHighlight(start, cell);
     });
 
     this.renderTimeSlices(vp, 'week', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
     });
 
     this.renderTimeSlices(vp, 'year', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
       cell.style.zIndex = '2';
     });
   }
 
-  private renderLabelsMonths(vp:TimelineViewParameters) {
-    this.renderTimeSlices(vp, 'week', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
+  private renderLabelsMonths(vp:TimelineViewParameters):void {
+    this.renderTimeSlices(vp, 'week', vp.dateDisplayStart, vp.dateDisplayEnd, () => {
     });
 
     this.renderTimeSlices(vp, 'month', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
     });
 
     this.renderTimeSlices(vp, 'year', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
       cell.style.zIndex = '2';
     });
   }
 
-  private renderLabelsQuarters(vp:TimelineViewParameters) {
-    this.renderTimeSlices(vp, 'month', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
+  private renderLabelsQuarters(vp:TimelineViewParameters):void {
+    this.renderTimeSlices(vp, 'month', vp.dateDisplayStart, vp.dateDisplayEnd, () => {
     });
 
     this.renderTimeSlices(vp, 'quarter', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
     });
 
     this.renderTimeSlices(vp, 'year', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
       cell.style.zIndex = '2';
     });
   }
 
-  private renderLabelsYears(vp:TimelineViewParameters) {
-    this.renderTimeSlices(vp, 'month', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
+  private renderLabelsYears(vp:TimelineViewParameters):void {
+    this.renderTimeSlices(vp, 'month', vp.dateDisplayStart, vp.dateDisplayEnd, () => {
     });
 
     this.renderTimeSlices(vp, 'year', vp.dateDisplayStart, vp.dateDisplayEnd, (start, cell) => {
-      cell.classList.add('-grid-highlight');
+      cell.classList.add('wp-timeline--grid-element_highlight');
     });
   }
 
@@ -162,7 +187,8 @@ export class WorkPackageTableTimelineGrid implements AfterViewInit {
     unit:moment.unitOfTime.DurationConstructor,
     startView:Moment,
     endView:Moment,
-    cellCallback:(start:Moment, cell:HTMLElement) => void) {
+    cellCallback:(start:Moment, cell:HTMLElement) => void):void {
+    if (!this.prepareAttachment()) return;
     const { inViewportAndBoundaries, rest } = getTimeSlicesForHeader(vp, unit, startView, endView);
 
     for (const [start, end] of inViewportAndBoundaries) {
@@ -170,18 +196,27 @@ export class WorkPackageTableTimelineGrid implements AfterViewInit {
       cell.classList.add(timelineElementCssClass, timelineGridElementCssClass);
       cell.style.left = calculatePositionValueForDayCount(vp, start.diff(startView, 'days'));
       cell.style.width = calculatePositionValueForDayCount(vp, end.diff(start, 'days') + 1);
-      this.gridContainer[0].appendChild(cell);
+      this.gridContainer.appendChild(cell);
       cellCallback(start, cell);
     }
-    setTimeout(() => {
+    const uiWork = this.uiWork;
+    uiWork.task(() => {
       for (const [start, end] of rest) {
         const cell = document.createElement('div');
         cell.classList.add(timelineElementCssClass, timelineGridElementCssClass);
         cell.style.left = calculatePositionValueForDayCount(vp, start.diff(startView, 'days'));
         cell.style.width = calculatePositionValueForDayCount(vp, end.diff(start, 'days') + 1);
-        this.gridContainer[0].appendChild(cell);
+        this.gridContainer.appendChild(cell);
         cellCallback(start, cell);
       }
-    }, 0);
+    });
+  }
+
+  private checkForNonWorkingDayHighlight(date:Moment, cell:HTMLElement) {
+    const day = date.toDate();
+    if (this.weekdaysService.isNonWorkingDay(day) || this.wpTimeline.isNonWorkingDay(day)) {
+      cell.classList.add('wp-timeline--non-working-day');
+      cell.dataset.testSelector = `wp-timeline--non-working-day_${day.getDate()}-${day.getMonth() + 1}-${day.getFullYear()}`;
+    }
   }
 }

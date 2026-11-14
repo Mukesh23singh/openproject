@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,6 +31,8 @@
 # considered to be one outside of this contract.
 module WikiPages
   class BaseContract < ::ModelContract
+    include ::Attachments::ValidateReplacements
+
     attribute :wiki
     attribute :title
     attribute :slug
@@ -39,45 +42,30 @@ module WikiPages
 
     validate :validate_author_is_set
     validate :validate_wiki_is_set
-    validate :validate_content_is_set
     validate :validate_user_edit_allowed
     validate :validate_user_protect_permission
 
     private
 
     def validate_user_edit_allowed
-      if model.project && !user.allowed_to?(:edit_wiki_pages, model.project) ||
-         (model.protected_was && !user.allowed_to?(:protect_wiki_pages, model.project))
+      if (model.project && !user.allowed_in_project?(:edit_wiki_pages, model.project)) ||
+         (model.protected_was && !user.allowed_in_project?(:manage_wiki, model.project))
         errors.add :base, :error_unauthorized
       end
     end
 
     def validate_author_is_set
-      errors.add :author, :blank if model.content&.author.nil?
+      errors.add :author, :blank if model.author.nil?
     end
 
     def validate_wiki_is_set
       errors.add :wiki, :blank if model.wiki.nil?
     end
 
-    def validate_content_is_set
-      errors.add :content, :blank if model.content.nil?
-    end
-
     def validate_user_protect_permission
-      if model.protected_changed? && !user.allowed_to?(:protect_wiki_pages, model.project)
+      if model.protected_changed? && !user.allowed_in_project?(:manage_wiki, model.project)
         errors.add :protected, :error_unauthorized
       end
-    end
-
-    def changed_by_user
-      content_changed = if model.content
-                          model.content.respond_to?(:changed_by_user) ? model.content.changed_by_user : model.content.changed
-                        else
-                          []
-                        end
-
-      super + content_changed
     end
   end
 end

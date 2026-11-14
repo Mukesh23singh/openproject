@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,88 +30,118 @@
 module WorkPackage::Journalized
   extend ActiveSupport::Concern
 
+  class_methods do
+    def internal_journals_visible_condition(user = User.current)
+      projects = Project.allowed_to(user, :view_internal_comments).with_internal_comments_enabled.select(:id)
+
+      "(#{Journal.table_name}.restricted = FALSE OR #{table_name}.project_id IN (#{projects.to_sql}))"
+    end
+  end
+
+  def last_loaded_visible_journal(user = User.current)
+    return unless journals.loaded?
+
+    visible = internal_journals_visible?(user) ? journals : journals.reject(&:internal?)
+    visible.max_by(&:version)
+  end
+
+  def internal_journals_visible?(user = User.current)
+    project.internal_comments_enabled? && user.allowed_in_project?(:view_internal_comments, project)
+  end
+
+  # This one is here only to ease reading
+  module JournalizedProcs
+    def self.event_title
+      Proc.new do |o|
+        title = o.to_s
+        title += " (#{o.status.name})" if o.status.present?
+
+        title
+      end
+    end
+
+    def self.event_name
+      Proc.new do |o|
+        I18n.t(o.event_type.underscore, scope: "events")
+      end
+    end
+
+    def self.event_type
+      Proc.new do |o|
+        journal = o.last_journal
+        t = "work_package"
+
+        t += if journal && journal.details.empty? && !journal.initial?
+               "-note"
+             else
+               status = Status.find_by(id: o.status_id)
+
+               status.try(:closed?) ? "-closed" : "-edit"
+             end
+        t
+      end
+    end
+
+    def self.event_url
+      Proc.new do |o|
+        { controller: :work_packages, action: :show, id: o.display_id }
+      end
+    end
+  end
+
   included do
-    acts_as_journalized data_sql: ->(journable) do
-      <<~SQL
-        LEFT OUTER JOIN
-          (
-            #{Relation.hierarchy.direct.where(to_id: journable.id).limit(1).select('from_id parent_id, to_id').to_sql}
-          ) parent_relation
-        ON
-          #{journable.class.table_name}.id = parent_relation.to_id
-      SQL
-    end
-
-    # This one is here only to ease reading
-    module JournalizedProcs
-      def self.event_title
-        Proc.new do |o|
-          title = o.to_s
-          title << " (#{o.status.name})" if o.status.present?
-
-          title
+    acts_as_journalized journals_association_extension: proc {
+      def internal_visible
+        if proxy_association.owner.internal_journals_visible?
+          all
+        else
+          where(internal: false)
         end
       end
-
-      def self.event_name
-        Proc.new do |o|
-          I18n.t(o.event_type.underscore, scope: 'events')
-        end
-      end
-
-      def self.event_type
-        Proc.new do |o|
-          journal = o.last_journal
-          t = 'work_package'
-
-          t << if journal && journal.details.empty? && !journal.initial?
-                 '-note'
-               else
-                 status = Status.find_by(id: o.status_id)
-
-                 status.try(:is_closed?) ? '-closed' : '-edit'
-               end
-          t
-        end
-      end
-
-      def self.event_url
-        Proc.new do |o|
-          { controller: :work_packages, action: :show, id: o.id }
-        end
-      end
-    end
+    }
 
     acts_as_event title: JournalizedProcs.event_title,
                   type: JournalizedProcs.event_type,
                   name: JournalizedProcs.event_name,
                   url: JournalizedProcs.event_url
 
-    register_journal_formatter(:cost_association) do |value, journable, field|
-      association = journable.class.reflect_on_association(field.to_sym)
-      if association
-        record = association.class_name.constantize.find_by_id(value.to_i)
-        record&.subject
-      end
-    end
-
-    register_on_journal_formatter(:id, 'parent_id')
-    register_on_journal_formatter(:fraction, 'estimated_hours')
-    register_on_journal_formatter(:fraction, 'derived_estimated_hours')
-    register_on_journal_formatter(:decimal, 'done_ratio')
-    register_on_journal_formatter(:diff, 'description')
-    register_on_journal_formatter(:schedule_manually, 'schedule_manually')
-    register_on_journal_formatter(:attachment, /attachments_?\d+/)
-    register_on_journal_formatter(:custom_field, /custom_fields_\d+/)
-    register_on_journal_formatter(:cost_association, 'budget_id')
+    register_journal_formatted_fields "estimated_hours", "derived_estimated_hours",
+                                      "remaining_hours", "derived_remaining_hours",
+                                      formatter_key: :chronic_duration
+    register_journal_formatted_fields "done_ratio", "derived_done_ratio", formatter_key: :percentage
+    register_journal_formatted_fields "description", formatter_key: :diff
+    register_journal_formatted_fields "schedule_manually", formatter_key: :schedule_manually
+    register_journal_formatted_fields /\Aattachments_?\d+\z/, formatter_key: :attachment
+    register_journal_formatted_fields /\Acustom_fields_\d+\z/,
+                                      formatter_key: :custom_field,
+                                      view_permission: ->(custom_field) do
+                                        custom_field.nil? ||
+                                        visible_work_package_custom_field_ids(project).include?(custom_field.id)
+                                      end
+    register_journal_formatted_fields "ignore_non_working_days", formatter_key: :ignore_non_working_days
+    register_journal_formatted_fields "cause", formatter_key: :cause
+    register_journal_formatted_fields /\Afile_links_?\d+\z/, formatter_key: :file_link
+    register_journal_formatted_fields "project_phase_definition_id",
+                                      formatter_key: :project_phase_definition,
+                                      view_permission: :view_project_phases
+    register_journal_formatted_fields "target_versions", formatter_key: :target_versions
+    register_journal_formatted_fields "observed_in_versions", formatter_key: :observed_in_versions
+    register_journal_formatted_fields "labels", formatter_key: :labels
 
     # Joined
-    register_on_journal_formatter :named_association, :parent_id, :project_id,
-                                  :status_id, :type_id,
-                                  :assigned_to_id, :priority_id,
-                                  :category_id, :version_id,
-                                  :author_id, :responsible_id
-    register_on_journal_formatter :datetime, :start_date, :due_date
-    register_on_journal_formatter :plaintext, :subject
+    register_journal_formatted_fields :parent_id, :project_id,
+                                      :budget_id,
+                                      :status_id, :type_id,
+                                      :priority_id,
+                                      # version_id is no longer written. To be dropped with the db column.
+                                      :category_id, :version_id,
+                                      formatter_key: :named_association
+    # People are named in the attribute table of the same work package, so the
+    # journal does not withhold them from readers outside their projects.
+    register_journal_formatted_fields :assigned_to_id, :author_id, :responsible_id,
+                                      formatter_key: :public_named_association
+    register_journal_formatted_fields :start_date, :due_date, formatter_key: :datetime
+    register_journal_formatted_fields :subject, formatter_key: :plaintext
+    register_journal_formatted_fields :duration, formatter_key: :day_count
   end
 end

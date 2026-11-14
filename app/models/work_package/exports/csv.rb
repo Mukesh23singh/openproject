@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,8 +30,17 @@
 module WorkPackage::Exports
   class CSV < QueryExporter
     include ::Exports::Concerns::CSV
+    include AdditionalColumns
 
     alias :records :work_packages
+
+    def get_columns
+      if with_descriptions
+        super + [description_column]
+      else
+        super
+      end
+    end
 
     private
 
@@ -40,21 +48,12 @@ module WorkPackage::Exports
       query.new_record? ? I18n.t(:label_work_package_plural) : query.name
     end
 
-    def csv_headers
-      super + [WorkPackage.human_attribute_name(:description)]
+    def with_descriptions
+      ActiveModel::Type::Boolean.new.cast(options[:show_descriptions])
     end
 
-    # fetch all row values
-    def csv_row(work_package)
-      super.tap do |row|
-        if row.any?
-          row << if work_package.description
-                   work_package.description.squish
-                 else
-                   ''
-                 end
-        end
-      end
+    def description_column
+      Queries::WorkPackages::Selects::PropertySelect.new(:description)
     end
   end
 end

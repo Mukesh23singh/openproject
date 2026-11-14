@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,53 +22,52 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'edit placeholder users', type: :feature, js: true do
-  shared_let(:placeholder_user) { FactoryBot.create :placeholder_user, name: 'UX Developer' }
+RSpec.describe "edit placeholder users", :js do
+  shared_let(:placeholder_user) { create(:placeholder_user, name: "UX Developer") }
 
-  shared_examples 'placeholders edit flow' do
-    it 'can edit name' do
+  shared_examples "placeholders edit flow" do
+    it "can edit name" do
       visit edit_placeholder_user_path(placeholder_user)
 
-      expect(page).to have_selector '#placeholder_user_name'
+      expect(page).to have_css "#placeholder_user_name"
 
-      fill_in 'placeholder_user[name]', with: 'NewName', fill_options: { clear: :backspace }
+      fill_in "placeholder_user[name]", with: "NewName", fill_options: { clear: :backspace }
 
-      click_on 'Save'
+      click_on "Save"
 
-      expect(page).to have_selector('.flash.notice', text: 'Successful update.')
+      expect_flash(message: "Successful update.")
 
       placeholder_user.reload
 
-      expect(placeholder_user.name).to eq 'NewName'
+      expect(placeholder_user.name).to eq "NewName"
     end
   end
 
-  context 'as admin' do
-    current_user { FactoryBot.create :admin }
+  context "as admin" do
+    current_user { create(:admin) }
 
-    it_behaves_like 'placeholders edit flow'
+    it_behaves_like "placeholders edit flow"
   end
 
-  context 'as user with global permission' do
-    current_user { FactoryBot.create :user, global_permission: %i[manage_placeholder_user] }
+  context "as user with global permission" do
+    current_user { create(:user, global_permissions: %i[manage_placeholder_user]) }
 
-    it_behaves_like 'placeholders edit flow'
+    it_behaves_like "placeholders edit flow"
   end
 
-  context 'as user without global permission' do
-    current_user { FactoryBot.create :user }
+  context "as user without global permission" do
+    current_user { create(:user) }
 
-    it 'returns an error' do
+    it "returns an error" do
       visit edit_placeholder_user_path(placeholder_user)
-      expect(page).to have_text 'You are not authorized to access this page.'
+      expect(page).to have_text "You are not authorized to access this page."
     end
   end
 end

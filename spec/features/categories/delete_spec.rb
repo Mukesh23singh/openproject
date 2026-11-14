@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,58 +22,56 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'features/categories/categories_page'
+require "spec_helper"
+require "features/categories/categories_page"
 
-describe 'Deletion', type: :feature do
+RSpec.describe "Deletion", :js do
   let(:current_user) do
-    FactoryBot.create :user,
-                      member_in_project: category.project,
-                      member_with_permissions: %i[manage_categories]
+    create(:user,
+           member_with_permissions: { category.project => %i[manage_categories] })
   end
-  let(:category) { FactoryBot.create :category }
+  let(:category) { create(:category) }
   let(:categories_page) { CategoriesPage.new(category.project) }
-  let(:delete_button) { 'a.icon-delete' }
+  let(:delete_button) { "a.icon-delete" }
   let(:confirm_deletion_button) { 'input[type="submit"]' }
 
   before { allow(User).to receive(:current).and_return current_user }
 
-  shared_context 'delete category' do
+  shared_context "delete category" do
     before do
       categories_page.visit_settings
 
-      expect(page).to have_selector(delete_button)
-
-      find(delete_button).click
+      accept_alert do
+        find(delete_button).click
+      end
     end
   end
 
-  shared_examples_for 'deleted category' do
-    it { expect(page).to have_selector('div.generic-table--no-results-container') }
+  shared_examples_for "deleted category" do
+    it { expect(page).to have_css("div.generic-table--no-results-container") }
 
     it { expect(page).to have_no_selector(delete_button) }
   end
 
-  describe 'w/o work package' do
-    include_context 'delete category'
+  describe "w/o work package" do
+    include_context "delete category"
 
-    it_behaves_like 'deleted category'
+    it_behaves_like "deleted category"
   end
 
-  describe 'with work package' do
+  describe "with work package" do
     let!(:work_package) do
-      FactoryBot.create :work_package,
-                        project: category.project,
-                        category: category
+      create(:work_package,
+             project: category.project,
+             category:)
     end
 
-    include_context 'delete category'
+    include_context "delete category"
 
     before do
       expect(page).to have_selector(confirm_deletion_button)
@@ -79,6 +79,6 @@ describe 'Deletion', type: :feature do
       find(confirm_deletion_button).click
     end
 
-    it_behaves_like 'deleted category'
+    it_behaves_like "deleted category"
   end
 end

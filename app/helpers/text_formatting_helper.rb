@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module TextFormattingHelper
+  include OpenProject::TextFormatting
   extend Forwardable
+
   def_delegators :current_formatting_helper,
                  :wikitoolbar_for
 
@@ -75,5 +76,21 @@ module TextFormattingHelper
     else
       project_preview_context(object, project)
     end
+  end
+
+  def truncate_formatted_text(text, length: 120, replace_newlines: true)
+    stripped_text = strip_tags(format_text(text.to_s))
+    stripped_text = truncate_multiline(stripped_text, length) if length
+    stripped_text = stripped_text.html_safe_gsub(/\A[[:space:]]+|[[:space:]]+\z/, "")
+
+    return stripped_text unless replace_newlines
+
+    stripped_text.html_safe_gsub(/[\r\n]+/, "<br />")
+  end
+
+  def truncate_multiline(string, length)
+    return string unless string.to_s.length > length
+
+    string[0, length].concat("...")
   end
 end

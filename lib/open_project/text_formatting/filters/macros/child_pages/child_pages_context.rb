@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,15 +32,15 @@ module OpenProject::TextFormatting::Filters::Macros::ChildPages
     attr_reader(:page_value, :include_parent, :user, :page)
 
     def initialize(macro, pipeline_context)
-      @page_value = macro['data-page']
-      @include_parent = macro['data-include-parent'].to_s == 'true'
+      @page_value = macro["data-page"]
+      @include_parent = macro["data-include-parent"].to_s == "true"
       @user = pipeline_context[:current_user]
       @page = fetch_page(pipeline_context)
     end
 
     def check
-      if @page.nil? || !@user.allowed_to?(:view_wiki_pages, @page.wiki.project)
-        raise I18n.t('macros.wiki_child_pages.errors.page_not_found', name: @page_value)
+      if @page.nil? || !@user.allowed_in_project?(:view_wiki_pages, @page.wiki.project)
+        raise I18n.t("macros.wiki_child_pages.errors.page_not_found", name: @page_value)
       end
     end
 
@@ -50,8 +49,8 @@ module OpenProject::TextFormatting::Filters::Macros::ChildPages
     def fetch_page(pipeline_context)
       if page_value.present?
         Wiki.find_page(page_value, project: pipeline_context[:project])
-      elsif pipeline_context[:object].is_a?(WikiContent)
-        pipeline_context[:object].page
+      elsif pipeline_context[:object]
+        pipeline_context[:object]
       end
     end
   end

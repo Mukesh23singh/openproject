@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,43 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples_for 'has ISO 8601 date only' do
-  it 'exists' do
-    is_expected.to have_json_path(json_path)
+RSpec.shared_examples_for "has ISO 8601 date only" do
+  it "exists" do
+    expect(subject).to have_json_path(json_path)
   end
 
-  it 'indicates date only as ISO 8601' do
-    called_with_expected = false
-    expect(::API::V3::Utilities::DateTimeFormatter).to receive(:format_date) do |actual, *_|
-      called_with_expected = true if actual.eql? date
-    end.at_least(:once)
+  it "indicates date only as ISO 8601" do
+    allow(API::V3::Utilities::DateTimeFormatter).to receive(:format_date)
 
-    subject # we need to resolve the subject for calls to occur
-    expect(called_with_expected).to be_truthy
+    subject
+
+    expect(API::V3::Utilities::DateTimeFormatter)
+      .to have_received(:format_date)
+      .with(date, anything)
+      .at_least(:once)
   end
 end
 
-shared_examples_for 'has UTC ISO 8601 date and time' do
-  it 'exists' do
-    is_expected.to have_json_path(json_path)
+RSpec.shared_examples_for "has UTC ISO 8601 date and time" do
+  it "exists" do
+    expect(subject).to have_json_path(json_path)
   end
 
-  it 'indicates date and time as ISO 8601' do
-    called_with_expected = false
-    expect(::API::V3::Utilities::DateTimeFormatter).to receive(:format_datetime) do |actual, *_|
-      # ActiveSupport flaws :eql? we circumvent that by calling utc (which is equally valid)
-      called_with_expected = true if actual.utc.eql? date.utc
-    end.at_least(:once)
+  it "indicates date and time as ISO 8601" do
+    allow(API::V3::Utilities::DateTimeFormatter).to receive(:format_datetime)
 
-    subject # we need to resolve the subject for calls to occur
-    expect(called_with_expected).to be_truthy
+    subject
+
+    expect(API::V3::Utilities::DateTimeFormatter)
+      .to have_received(:format_datetime)
+      .with(date.utc, anything)
+      .at_least(:once)
   end
 end

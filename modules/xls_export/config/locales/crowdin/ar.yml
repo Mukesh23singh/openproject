@@ -1,13 +1,17 @@
+---
 ar:
-  export_to_excel: "Export XLS"
-  print_with_description: "Print preview with description"
-  sentence_separator_or: "أو"
-  different_formats: Different formats
+  different_formats: نسق مختلف
   export:
     format:
-      xls: "XLS"
-      xls_with_descriptions: "XLS with descriptions"
-      xls_with_relations: "XLS with relations"
+      xls: XLS
+      xls_with_descriptions: XLS مع مواصفات
+      xls_with_relations: XLS مع العلاقات
+  export_to_excel: تصدير XLS
+  plugin_openproject_xls_export:
+    description: تصدير قوائم التذاكر كجداول Excel (.xls).
+    name: تصدير OpenProject إلى ملف XLS
+  print_with_description: معاينة الطباعة مع الوصف
+  sentence_separator_or: أو
   xls_export:
-    child_of: child of
-    parent_of: parent of
+    child_of: فرع من
+    parent_of: أصل لـ

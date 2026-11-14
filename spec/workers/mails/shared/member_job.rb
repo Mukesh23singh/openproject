@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,89 +22,90 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples 'member job' do
+RSpec.shared_examples "member job" do
   subject(:run_job) do
-    described_class.perform_now(current_user: current_user,
-                                member: member,
-                                message: message)
+    described_class.perform_now(current_user:,
+                                member:,
+                                message:)
   end
 
   let(:member) do
-    FactoryBot.build_stubbed(:member,
-                             project: project,
-                             principal: principal)
+    build_stubbed(:member,
+                  project:,
+                  principal:)
   end
-  let(:project) { FactoryBot.build_stubbed(:project) }
+  let(:project) { build_stubbed(:project) }
   let(:principal) { user }
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:user) { build_stubbed(:user) }
   let(:group_users) { [user] }
   let(:group_member_roles) do
-    [FactoryBot.build_stubbed(:member_role,
-                              role: role,
-                              inherited_from: nil)]
+    [build_stubbed(:member_role,
+                   role:,
+                   inherited_from: nil)]
   end
   let(:group_user_member_roles) do
-    [FactoryBot.build_stubbed(:member_role,
-                              role: role,
-                              inherited_from: nil)]
+    [build_stubbed(:member_role,
+                   role:,
+                   inherited_from: nil)]
   end
 
   let(:group_user_member) do
-    FactoryBot.build_stubbed(:member,
-                             project: project,
-                             principal: user,
-                             member_roles: group_user_member_roles) do |gum|
+    build_stubbed(:member,
+                  project:,
+                  principal: user,
+                  member_roles: group_user_member_roles) do |gum|
       group_user_members << gum
     end
   end
   let(:group) do
-    FactoryBot.build_stubbed(:group).tap do |g|
+    build_stubbed(:group).tap do |g|
       scope = group_user_members
 
-      allow(Member)
-        .to receive(:of)
-              .with(project)
-              .and_return(scope)
+      without_partial_double_verification do
+        allow(Member)
+          .to receive(:of_project)
+                .with(project)
+                .and_return(scope)
 
-      allow(scope)
-        .to receive(:where)
-              .with(principal: group_users)
-              .and_return(scope)
+        allow(scope)
+          .to receive(:where)
+                .with(principal: group_users)
+                .and_return(scope)
 
-      allow(scope)
-        .to receive(:includes)
-              .and_return(scope)
+        allow(scope)
+          .to receive(:includes)
+                .and_return(scope)
 
-      allow(g)
-        .to receive(:users)
-              .and_return(group_users)
+        allow(g)
+          .to receive(:users)
+                .and_return(group_users)
+      end
     end
   end
   let(:group_user_members) { [] }
-  let(:role) { FactoryBot.build_stubbed(:role) }
+  let(:role) { build_stubbed(:project_role) }
   let(:member_role_inherited_from) { nil }
   let(:message) { "Some message" }
 
-  current_user { FactoryBot.build_stubbed(:user) }
+  current_user { build_stubbed(:user) }
 
   before do
     %i[added_project updated_global updated_project].each do |mails|
       allow(MemberMailer)
         .to receive(mails)
-              .and_return(double('mail', deliver_now: nil))  # rubocop:disable Rspec/VerifiedDoubles
+              .and_return(double("mail", deliver_now: nil)) # rubocop:disable RSpec/VerifiedDoubles
     end
   end
 
-  shared_examples_for 'sends no mail' do
-    it 'sends no mail' do
+  shared_examples_for "sends no mail" do
+    it "sends no mail" do
       run_job
 
       %i[added_project updated_global updated_project].each do |mails|
@@ -112,11 +115,11 @@ shared_examples 'member job' do
     end
   end
 
-  context 'with a global membership' do
+  context "with a global membership" do
     let(:project) { nil }
 
-    context 'with sending enabled' do
-      it 'sends mail' do
+    context "with sending enabled" do
+      it "sends mail" do
         run_job
 
         expect(MemberMailer)
@@ -125,17 +128,17 @@ shared_examples 'member job' do
       end
     end
 
-    context 'with sending disabled' do
+    context "with sending disabled" do
       let(:principal) do
-        FactoryBot.create :user,
-                          notification_settings: [
-                            FactoryBot.build(:notification_setting,
-                                             NotificationSetting::MEMBERSHIP_ADDED => false,
-                                             NotificationSetting::MEMBERSHIP_UPDATED => false)
-                          ]
+        create(:user,
+               notification_settings: [
+                 build(:notification_setting,
+                       NotificationSetting::MEMBERSHIP_ADDED => false,
+                       NotificationSetting::MEMBERSHIP_UPDATED => false)
+               ])
       end
 
-      it 'still sends mail due to the message present' do
+      it "still sends mail due to the message present" do
         run_job
 
         expect(MemberMailer)
@@ -143,23 +146,23 @@ shared_examples 'member job' do
                 .with(current_user, member, message)
       end
 
-      context 'when the message is nil' do
-        let(:message) { '' }
+      context "when the message is nil" do
+        let(:message) { "" }
 
-        it_behaves_like 'sends no mail'
+        it_behaves_like "sends no mail"
       end
     end
 
-    context 'with the current user being the membership user' do
+    context "with the current user being the membership user" do
       let(:user) { current_user }
 
-      it_behaves_like 'sends no mail'
+      it_behaves_like "sends no mail"
     end
   end
 
-  context 'with a user membership' do
-    context 'with sending enabled' do
-      it 'sends mail' do
+  context "with a user membership" do
+    context "with sending enabled" do
+      it "sends mail" do
         run_job
 
         expect(MemberMailer)
@@ -168,10 +171,10 @@ shared_examples 'member job' do
       end
     end
 
-    context 'with the current user being the member user' do
+    context "with the current user being the member user" do
       let(:user) { current_user }
 
-      it_behaves_like 'sends no mail'
+      it_behaves_like "sends no mail"
     end
   end
 end

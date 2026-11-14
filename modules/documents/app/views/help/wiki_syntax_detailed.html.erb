@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
@@ -49,7 +48,7 @@ See COPYRIGHT and LICENSE files for more details.
     .CodeRay .fu { color:#06B; font-weight:bold }
 
     .CodeRay .il { background: #eee }
-    .CodeRay .il .idl { font-weight: bold; color: #888 }
+    .CodeRay .il .idl { font-weight: 600; color: #888 }
 
     .CodeRay .iv { color:#33B }
     .CodeRay .r  { color:#080; font-weight:bold }
@@ -59,29 +58,29 @@ See COPYRIGHT and LICENSE files for more details.
 <% end %>
 
 <% html_title "Wiki Formatting" %>
-<h1><a name="1" class="wiki-page"></a>Wiki Formatting</h1>
+<h1 id="1">Wiki Formatting</h1>
 
-    <h2><a name="2" class="wiki-page"></a>Links</h2>
+    <h2 id="2">Links</h2>
 
-        <h3><a name="3" class="wiki-page"></a>OpenProject links</h3>
+        <h3 id="3">OpenProject links</h3>
 
         <p>OpenProject allows hyperlinking between issues, changesets and wiki pages from anywhere wiki formatting is used.</p>
         <ul>
-            <li><strong>#124</strong> displays a link to an issue: <del><a href="#" class="issue" title="bulk edit doesn't change the category or version properties (Closed)">#124</a></del> (link is striked-through if the issue is closed)</li>
-            <li><strong>##124</strong> displays a link to an issue with context information: <a href="/issues/12" class="issue status-1 priority-2 overdue created-by-me" title="Issue subject (New)">#12 New: Issue subject</a> 2012-05-14 - 2012-05-23 (User Name - assigned to)</li>
+            <li><strong>#124</strong> displays a link to an issue: <del><a href="/issues/124" class="issue">#124</a></del> (link is striked-through if the issue is closed)</li>
+            <li><strong>##124</strong> displays a link to an issue with context information: <a href="/issues/12" class="issue status-1 priority-2 overdue created-by-me">#12 New: Issue subject</a> 2012-05-14 - 2012-05-23 (User Name - assigned to)</li>
             <li><strong>###124</strong> displays a link to an issue with context information and an excerpt (first 3 lines) of the description</li>
-            <li><strong>r758</strong> displays a link to a changeset: <a href="#" class="changeset" title="Search engine now only searches objects the user is allowed to view.">r758</a></li>
-            <li><strong>commit:c6f4d0fd</strong> displays a link to a changeset with a non-numeric hash: <a href="#" class="changeset">c6f4d0fd</a></li>
-            <li><strong>sandbox:r758</strong> displays a link to a changeset of another project: <a href="#" class="changeset" title="Search engine now only searches objects the user is allowed to view.">sandbox:r758</a></li>
-            <li><strong>sandbox:c6f4d0fd</strong> displays a link to a changeset with a non-numeric hash: <a href="#" class="changeset">sandbox:c6f4d0fd</a></li>
+            <li><strong>r758</strong> displays a link to a changeset: <a href="/repositories/revision/758" class="changeset">r758</a></li>
+            <li><strong>commit:c6f4d0fd</strong> displays a link to a changeset with a non-numeric hash: <a href="/repositories/revision/c6f4d0fd" class="changeset">c6f4d0fd</a></li>
+            <li><strong>sandbox:r758</strong> displays a link to a changeset of another project: <a href="/projects/sandbox/repository/revision/758" class="changeset">sandbox:r758</a></li>
+            <li><strong>sandbox:c6f4d0fd</strong> displays a link to a changeset with a non-numeric hash: <a href="/projects/sandbox/repository/revision/c6f4d0fd" class="changeset">sandbox:c6f4d0fd</a></li>
         </ul>
 
         <p>Wiki links:</p>
 
         <ul>
-            <li><strong>[[Guide]]</strong> displays a link to the page named 'Guide': <a href="#" class="wiki-page">Guide</a></li>
-            <li><strong>[[Guide#further-reading]]</strong> takes you to the anchor "further-reading". Headings get automatically assigned anchors so that you can refer to them: <a href="#" class="wiki-page">Guide</a></li>
-            <li><strong>[[Guide|User manual]]</strong> displays a link to the same page but with a different text: <a href="#" class="wiki-page">User manual</a></li>
+            <li><strong>[[Guide]]</strong> displays a link to the page named 'Guide': <a href="/projects/demo/wiki/Guide" class="wiki-page">Guide</a></li>
+            <li><strong>[[Guide#further-reading]]</strong> takes you to the anchor "further-reading". Headings get automatically assigned anchors so that you can refer to them: <a href="/projects/demo/wiki/Guide#further-reading" class="wiki-page">Guide</a></li>
+            <li><strong>[[Guide|User manual]]</strong> displays a link to the same page but with a different text: <a href="/projects/demo/wiki/Guide" class="wiki-page">User manual</a></li>
         </ul>
 
         <p>You can also link to pages of an other project wiki:</p>
@@ -91,7 +90,7 @@ See COPYRIGHT and LICENSE files for more details.
             <li><strong>[[sandbox:]]</strong> displays a link to the Sandbox wiki main page</li>
         </ul>
 
-        <p>Wiki links are displayed in red if the page doesn't exist yet, eg: <a href="#" class="wiki-page new">Nonexistent page</a>.</p>
+        <p>Wiki links are displayed in red if the page doesn't exist yet, eg: <a href="/projects/demo/wiki/Nonexistent_page" class="wiki-page new">Nonexistent page</a>.</p>
 
         <p>Links to other resources:</p>
 
@@ -152,15 +151,13 @@ See COPYRIGHT and LICENSE files for more details.
                 </ul></li>
         </ul>
 
-
         <p>Escaping:</p>
 
         <ul>
             <li>You can prevent OpenProject links from being parsed by preceding them with an exclamation mark: !</li>
         </ul>
 
-
-        <h3><a name="4" class="wiki-page"></a>External links</h3>
+        <h3 id="4">External links</h3>
 
         <p>HTTP URLs and email addresses are automatically turned into clickable links:</p>
 
@@ -178,13 +175,11 @@ https://www.openproject.org, someone@foo.bar
 
         <p>displays: <a href="https://www.openproject.org" class="external">OpenProject web site</a></p>
 
-
-    <h2><a name="5" class="wiki-page"></a>Text formatting</h2>
-
+    <h2 id="5">Text formatting</h2>
 
     <p>For things such as headlines, bold, tables, lists, OpenProject supports Textile syntax.  See <a class="external" href="http://www.textism.com/tools/textile/">http://www.textism.com/tools/textile/</a> for information on using any of these features.  A few samples are included below, but the engine is capable of much more of that.</p>
 
-        <h3><a name="6" class="wiki-page"></a>Font style</h3>
+        <h3 id="6">Font style</h3>
 
 <pre>
 * *bold*
@@ -204,15 +199,15 @@ https://www.openproject.org, someone@foo.bar
             <li><del>strike-through</del></li>
         </ul>
 
-        <h3><a name="7" class="wiki-page"></a>Inline images</h3>
+        <h3 id="7">Inline images</h3>
 
         <ul>
             <li><strong>!image_url!</strong> displays an image located at image_url (textile syntax)</li>
-            <li><strong>!>image_url!</strong> right floating image</li>
+            <li><strong>!&gt;image_url!</strong> right floating image</li>
             <li>If you have an image attached to your wiki page, it can be displayed inline using its filename: <strong>!attached_image.png!</strong></li>
         </ul>
 
-        <h3><a name="8" class="wiki-page"></a>Headings</h3>
+        <h3 id="8">Headings</h3>
 
 <pre>
 h1. Heading
@@ -222,18 +217,16 @@ h3. Subsubheading
 
         <p>OpenProject assigns an anchor to each of those headings thus you can link to them with "#Heading", "#Subheading" and so forth.</p>
 
-
-        <h3><a name="9" class="wiki-page"></a>Paragraphs</h3>
+        <h3 id="9">Paragraphs</h3>
 
 <pre>
-p>. right aligned
+p&gt;. right aligned
 p=. centered
 </pre>
 
         <p style="text-align:center;">This is a centered paragraph.</p>
 
-
-        <h3><a name="10" class="wiki-page"></a>Blockquotes</h3>
+        <h3 id="10">Blockquotes</h3>
 
         <p>Start the paragraph with <strong>bq.</strong></p>
 
@@ -245,27 +238,25 @@ To go live, all you need to add is a database and a web server.
         <p>Display:</p>
 
         <blockquote>
-                <p>Rails is a full-stack framework for developing database-backed web applications according to the Model-View-Control pattern.<br />To go live, all you need to add is a database and a web server.</p>
+                <p>Rails is a full-stack framework for developing database-backed web applications according to the Model-View-Control pattern.<br>To go live, all you need to add is a database and a web server.</p>
         </blockquote>
 
-
-        <h3><a name="11" class="wiki-page"></a>Table of content</h3>
+        <h3 id="11">Table of content</h3>
 
 <pre>
-{{toc}} => left aligned toc
-{{>toc}} => right aligned toc
+{{toc}} =&gt; left aligned toc
+{{&gt;toc}} =&gt; right aligned toc
 </pre>
 
-    <h2><a name="12" class="wiki-page"></a>Macros</h2>
+    <h2 id="12">Macros</h2>
 
     <p>OpenProject has the following builtin macros:</p>
 
-    <p><dl><dt><code>hello_world</code></dt><dd><p>Sample macro.</p></dd><dt><code>include</code></dt><dd><p>Include a wiki page. Example:</p>
+    <dl><dt><code>hello_world</code></dt><dd><p>Sample macro.</p></dd><dt><code>include</code></dt><dd><p>Include a wiki page. Example:</p>
 
-    <pre><code>{{include(Foo)}}</code></pre></dd><dt><code>macro_list</code></dt><dd><p>Displays a list of all available macros, including description if available.</p></dd></dl></p>
+    <pre><code>{{include(Foo)}}</code></pre></dd><dt><code>macro_list</code></dt><dd><p>Displays a list of all available macros, including description if available.</p></dd></dl>
 
-
-    <h2><a name="13" class="wiki-page"></a>Code highlighting</h2>
+    <h2 id="13">Code highlighting</h2>
 
     <p>Code highlightment relies on <a href="http://coderay.rubychan.de/" class="external">CodeRay</a>, a fast syntax highlighting library written completely in Ruby. It currently supports c, cpp, css, delphi, groovy, html, java, javascript, json, php, python, rhtml, ruby, scheme, sql, xml and yaml languages.</p>
 

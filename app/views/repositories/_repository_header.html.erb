@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,71 +20,63 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<% content_for :header_tags do %>
-  <meta name="required_script" content="repository_navigation" />
+<opce-persistent-toggle data-identifier="repository.checkout_instructions"></opce-persistent-toggle>
+
+<%= render(Repositories::PageHeaderComponent.new(repository: @repository, empty: empty, path: @path, rev: @rev, project: @project)) %>
+<% if @instructions && @instructions.available? %>
+  <%=
+    render(Primer::OpenProject::FlexLayout.new(align_items: :flex_end, mb: 2)) do |container|
+      container.with_column(mr: 2, classes: "repository--checkout-container") do
+        render(Primer::OpenProject::InputGroup.new(input_width: :large)) do |group|
+          group.with_text_input(
+            id: "repository-checkout-url",
+            name: "repository-checkout-url",
+            label: @instructions.checkout_command,
+            value: @instructions.checkout_url(true),
+            readonly: true
+          )
+          group.with_trailing_action_clipboard_copy_button(
+            value: @instructions.checkout_url(true),
+            aria: { label: t(:button_copy_to_clipboard) }
+          )
+        end
+      end
+
+      container.with_column do
+        render(
+          Primer::Beta::IconButton.new(
+            icon: :info,
+            tag: :a,
+            id: "repository--checkout-instructions-toggle",
+            classes: "persistent-toggle--click-handler",
+            aria: { label: t("repositories.checkout.show_instructions") },
+            title: t("repositories.checkout.show_instructions")
+          )
+        )
+      end
+    end
+  %>
 <% end %>
 
-<persistent-toggle data-identifier="repository.checkout_instructions"></persistent-toggle>
-<%= toolbar title: t('repositories.named_repository',
-                     vendor_name: @repository.class.vendor_name) do %>
-  <% if @instructions && @instructions.available? %>
-  <li class="toolbar-item toolbar-input-group hidden-for-mobile">
-    <div class="toolbar-input-group--affix -prepend">
-      <span><%= @instructions.checkout_command %></span>
-    </div>
-    <input id="repository-checkout-url"
-           type="text" class="-clickable" size="40"
-           value="<%= @instructions.checkout_url(true) %>"
-           readonly>
-    <% csp_onclick('this.focus(); this.select();', '#repository-checkout-url') %>
-    <copy-to-clipboard click-target=".repository-checkout-copy-button"
-                       clipboard-target="#repository-checkout-url">
-    </copy-to-clipboard>
-    <button class="repository-checkout-copy-button toolbar-input--affix toolbar-input-group--affix -append"
-            title="<%= t(:label_copy_to_clipboard) %>">
-      <%= op_icon('icon-copy') %>
-      <span class="hidden-for-sighted"><%= t(:label_copy_to_clipboard) %></span>
-    </button>
-  </li>
-  <li class="toolbar-item -icon-only">
-    <a id="repository--checkout-instructions-toggle"
-       class="persistent-toggle--click-handler button"
-       title="<%= t('repositories.checkout.show_instructions') %>">
-      <%= op_icon('button--icon icon-info1') %>
-    </a>
-  </li>
-  <% end %>
-  <% if !empty && User.current.allowed_to?(:browse_repository, @project) %>
-  <li class="toolbar-item -icon-only">
-    <%= link_to stats_project_repository_path(@project),
-        class: 'button', title: t(:label_statistics) do %>
-      <%= op_icon('button--icon icon-chart1') %>
-    <% end %>
-  </li>
-  <% end %>
-  <%= call_hook(:repositories_navigation_toolbar,
-                { repository: @repository, project: @project, repository_empty: empty }) %>
-  <% if User.current.allowed_to?(:manage_repository, @project) %>
-    <li class="toolbar-item -icon-only">
-      <%= link_to project_settings_repository_path(@project),
-          class: 'button', title: t(:label_setting_plural) do %>
-        <%= op_icon('button--icon icon-settings') %>
-      <% end %>
-    </li>
-  <% end %>
-<% end %>
+<%= call_hook(
+      :repositories_navigation_toolbar,
+      { repository: @repository, project: @project, repository_empty: empty }
+    ) %>
 
-
+<%
+  # @rev is revision or git branch or tag.
+  rev_text = @changeset.nil? ? @rev : format_revision(@changeset)
+%>
+<span>
+  <%= "(#{t('repositories.at_identifier', identifier: rev_text)})" if rev_text.present? %>
+</span>
 <% if @instructions %>
-  <%= render partial: 'checkout_instructions',
+  <%= render partial: "checkout_instructions",
              locals: { repository: @repository, instructions: @instructions } %>
 <% end %>
-
-

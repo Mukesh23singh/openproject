@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,38 +32,64 @@ module WikiHelper
                                    ids: true,
                                    placeholder: true)
     s = if placeholder
-          [["-- #{t('label_no_parent_page')} --", '']]
+          [["-- #{t('label_no_parent_page')} --", ""]]
         else
           []
         end
 
     s + wiki_page_options_for_select_of_level(pages.group_by(&:parent),
-                                              ids: ids)
+                                              ids:)
   end
 
-  def breadcrumb_for_page(page, action = nil)
-    related_pages = page.ancestors.reverse
-
-    if action
-      related_pages += [page]
+  def wiki_page_cancel_href(page, project)
+    if page.new_record?
+      url_for(controller: "/wiki", action: "index", project_id: project.identifier)
+    else
+      url_for(controller: "/wiki", action: "show", project_id: project.identifier, id: page)
     end
-
-    paths = related_pages.map { |parent| link_to h(parent.breadcrumb_title), project_wiki_path(parent, parent.project) }
-
-    paths += if action
-               [action]
-             else
-               [h(page.breadcrumb_title)]
-             end
-
-    breadcrumb_paths(*paths)
   end
 
-  def nl2br(content)
-    content.gsub(/(?:\n\r?|\r\n?)/, '<br />').html_safe
+  def breadcrumb_for_page(project, page, action = nil)
+    breadcrumbs = []
+    breadcrumbs << project_breadcrumb(project)
+    breadcrumbs << wiki_module_breadcrumb(project, page)
+    breadcrumbs += ancestor_breadcrumbs(page)
+    breadcrumbs << wiki_page_breadcrumb(page) if action
+    breadcrumbs << h(page.breadcrumb_title) unless action
+    breadcrumbs << action if action
+    breadcrumbs
   end
 
   private
+
+  def project_breadcrumb(project)
+    { href: project_overview_path(project), text: project.name }
+  end
+
+  def wiki_module_breadcrumb(project, page)
+    {
+      href: toc_project_wiki_path(project, page),
+      text: Wiki.human_model_name
+    }
+  end
+
+  def wiki_page_breadcrumb(page)
+    {
+      href: project_wiki_path(page.project, page),
+      text: page.breadcrumb_title
+    }
+  end
+
+  def ancestor_breadcrumbs(page)
+    return [] unless page&.ancestors&.any?
+
+    page.ancestors.reverse.map do |parent|
+      {
+        href: project_wiki_path(page.project, parent),
+        text: parent.breadcrumb_title
+      }
+    end
+  end
 
   def wiki_page_options_for_select_of_level(pages,
                                             parent: nil,
@@ -74,14 +99,14 @@ module WikiHelper
 
     pages[parent].inject([]) do |s, page|
       s << wiki_page_option(page, level, ids)
-      s += wiki_page_options_for_select_of_level(pages, parent: page, level: level + 1, ids: ids)
+      s += wiki_page_options_for_select_of_level(pages, parent: page, level: level + 1, ids:)
       s
     end
   end
 
   def wiki_page_option(page, level, ids)
-    indent = level.positive? ? ('&nbsp;' * level * 2 + '&#187; ') : ''
+    indent = level.positive? ? "#{"\u00A0" * level * 2}» " : ""
     id = ids ? page.id : page.title
-    [(indent + h(page.title)).html_safe, id]
+    [indent + page.title, id]
   end
 end

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require 'api/v3/projects/project_collection_representer'
 
 module API
   module V3
@@ -34,21 +31,18 @@ module API
       class AvailableProjectsOnEditAPI < ::API::OpenProjectAPI
         resource :available_projects do
           after_validation do
-            authorize(:edit_work_packages, context: @work_package.project)
+            authorize_in_work_package(:edit_work_packages, work_package: @work_package)
           end
 
-          get do
-            checked_permissions = Projects::ProjectCollectionRepresenter.checked_permissions
-            current_user.preload_projects_allowed_to(checked_permissions)
-
-            available_projects = WorkPackage
-                                 .allowed_target_projects_on_move(current_user)
-                                 .includes(Projects::ProjectCollectionRepresenter.to_eager_load)
-            self_link = api_v3_paths.available_projects_on_edit(@work_package.id)
-            Projects::ProjectCollectionRepresenter.new(available_projects,
-                                                       self_link: self_link,
-                                                       current_user: current_user)
-          end
+          get &::API::V3::Utilities::Endpoints::SqlFallbackedIndex
+                 .new(model: Project,
+                      self_path: -> { api_v3_paths.available_projects_on_edit(@work_package.id) },
+                      scope: -> {
+                        WorkPackage
+                          .allowed_target_projects_on_move(current_user)
+                          .includes(Projects::ProjectCollectionRepresenter.to_eager_load)
+                      })
+                 .mount
         end
       end
     end

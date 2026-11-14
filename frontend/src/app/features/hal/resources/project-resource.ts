@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +20,26 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { InputState } from '@openproject/reactivestates';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { ICKEditorContext } from 'core-app/shared/components/editor/components/ckeditor/ckeditor.types';
 
 export class ProjectResource extends HalResource {
+  public get identifier():string {
+    return this.$source.identifier as string;
+  }
+
   public get state() {
-    return this.states.projects.get(this.id!) as any;
+    return this.states.projects.get(this.id!) as unknown as InputState<this>;
   }
 
   public getEditorContext(fieldName:string):ICKEditorContext {
-    if (['statusExplanation', 'description'].indexOf(fieldName) !== -1) {
+    if (['statusExplanation', 'description'].includes(fieldName)) {
       return { type: 'full', macros: 'resource' };
     }
 
@@ -46,6 +50,6 @@ export class ProjectResource extends HalResource {
    * Exclude the schema _link from the linkable Resources.
    */
   public $linkableKeys():string[] {
-    return _.without(super.$linkableKeys(), 'schema');
+    return super.$linkableKeys().filter((key) => key !== 'schema');
   }
 }

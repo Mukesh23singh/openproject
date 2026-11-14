@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,22 +37,20 @@ module API
         private
 
         def parse_attributes(request_body)
-          ::API::V3::WorkPackages::WorkPackagePayloadRepresenter
-            .create_class(struct, current_user)
-            .new(struct, current_user: current_user)
+          attributes = ::API::V3::WorkPackages::WorkPackagePayloadRepresenter
+            .create(struct, current_user:)
             .from_hash(Hash(request_body))
             .to_h
             .reverse_merge(lock_version: nil)
+
+          meta = attributes.delete(:meta) || {}
+          attributes[:validate_custom_fields] = meta[:validate_custom_fields] if meta[:validate_custom_fields]
+
+          attributes
         end
 
         def struct
           ParsingStruct.new
-        end
-
-        class ParsingStruct < OpenStruct
-          def available_custom_fields
-            @available_custom_fields ||= WorkPackageCustomField.all.to_a
-          end
         end
       end
     end

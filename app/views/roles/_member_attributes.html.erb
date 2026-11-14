@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +20,17 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
-<div class="form--field">
-  <%= f.check_box :assignable %>
-</div>
 <% if role.new_record? && roles.any? %>
   <div class="form--field">
     <%= styled_label_tag :copy_workflow_from, t(:label_copy_workflow_from) %>
     <div class="form--field-container">
-      <%= styled_select_tag(:copy_workflow_from, content_tag("option") + options_from_collection_for_select(@roles.select{|r| !r.is_a?(GlobalRole)}, :id, :name), container_class: '-slim') %>
+      <%= styled_select_tag(:copy_workflow_from, content_tag("option") + options_from_collection_for_select(@roles.reject { |r| r.is_a?(GlobalRole) }, :id, :name), container_class: "-slim") %>
     </div>
   </div>
 <% end %>

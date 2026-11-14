@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::AssigneeOrGroupFilter, type: :model do
+RSpec.describe Queries::WorkPackages::Filter::AssigneeOrGroupFilter do
   let(:instance) do
     filter = described_class.create!
     filter.values = values
@@ -36,28 +37,28 @@ describe Queries::WorkPackages::Filter::AssigneeOrGroupFilter, type: :model do
     filter
   end
 
-  let(:operator) { '=' }
+  let(:operator) { "=" }
   let(:values) { [] }
 
-  describe 'where filter results' do
-    let(:work_package) { FactoryBot.create(:work_package, assigned_to: assignee) }
-    let(:assignee) { FactoryBot.create(:user) }
-    let(:group) { FactoryBot.create(:group, members: group_members) }
+  describe "where filter results" do
+    let(:work_package) { create(:work_package, assigned_to: assignee) }
+    let(:assignee) { create(:user) }
+    let(:group) { create(:group, members: group_members) }
     let(:group_members) { [] }
 
     subject { WorkPackage.where(instance.where) }
 
-    context 'for the user value' do
+    context "for the user value" do
       let(:values) { [assignee.id.to_s] }
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
-    context 'for the me value with the user being logged in' do
-      let(:values) { ['me'] }
+    context "for the me value with the user being logged in" do
+      let(:values) { ["me"] }
 
       before do
         allow(User)
@@ -65,52 +66,63 @@ describe Queries::WorkPackages::Filter::AssigneeOrGroupFilter, type: :model do
           .and_return(assignee)
       end
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
-    context 'for the me value with another user being logged in' do
-      let(:values) { ['me'] }
+    context "for the me value with another user being logged in" do
+      let(:values) { ["me"] }
 
       before do
         allow(User)
           .to receive(:current)
-          .and_return(FactoryBot.create(:user))
+          .and_return(create(:user))
       end
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
 
-    context 'for a group value with the group being assignee' do
+    context "for a group value with the group being assignee" do
       let(:assignee) { group }
       let(:values) { [group.id.to_s] }
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
-    context 'for a group value with a group member being assignee' do
+    context "for a group value with a group member being assignee" do
       let(:values) { [group.id.to_s] }
       let(:group_members) { [assignee] }
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
-    context 'for a group value with no group member being assignee' do
+    context "for a placeholder user with it being assignee" do
+      let(:placeholder_user) { create(:placeholder_user) }
+      let(:assignee) { placeholder_user }
+      let(:values) { [placeholder_user.id.to_s] }
+
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
+      end
+    end
+
+    context "for a group value with no group member being assignee" do
       let(:values) { [group.id.to_s] }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
@@ -118,68 +130,65 @@ describe Queries::WorkPackages::Filter::AssigneeOrGroupFilter, type: :model do
     context "for a user value with the user's group being assignee" do
       let(:values) { [user.id.to_s] }
       let(:assignee) { group }
-      let(:user) { FactoryBot.create(:user) }
-      let!(:group) { FactoryBot.create(:group, members: user) }
+      let(:user) { create(:user) }
+      let!(:group) { create(:group, members: user) }
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
     context "for a user value with the user not being member of the assigned group" do
       let(:values) { [user.id.to_s] }
       let(:assignee) { group }
-      let(:user) { FactoryBot.create(:user) }
+      let(:user) { create(:user) }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
 
-    context 'for an unmatched value' do
-      let(:values) { ['0'] }
+    context "for an unmatched value" do
+      let(:values) { ["0"] }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
   end
 
-  it_behaves_like 'basic query filter' do
+  it_behaves_like "basic query filter" do
     let(:type) { :list_optional }
     let(:class_key) { :assignee_or_group }
-    let(:human_name) { I18n.t('query_fields.assignee_or_group') }
+    let(:human_name) { I18n.t("query_fields.assignee_or_group") }
 
-    describe '#valid_values!' do
-      let(:user) { FactoryBot.build_stubbed(:user) }
+    describe "#valid_values!" do
+      let(:user) { build_stubbed(:user) }
       let(:loader) do
-        loader = double('loader')
+        loader = double("loader")
 
         allow(loader)
-          .to receive(:user_values)
-          .and_return([[user.name, user.id.to_s]])
-        allow(loader)
-          .to receive(:group_values)
-          .and_return([])
+          .to receive(:principal_values)
+          .and_return([[nil, user.id.to_s]])
 
         loader
       end
 
       before do
-        allow(::Queries::WorkPackages::Filter::PrincipalLoader)
+        allow(Queries::WorkPackages::Filter::PrincipalLoader)
           .to receive(:new)
           .and_return(loader)
 
-        instance.values = [user.id.to_s, '99999']
+        instance.values = [user.id.to_s, "99999"]
       end
 
-      it 'remove the invalid value' do
+      it "remove the invalid value" do
         instance.valid_values!
 
-        expect(instance.values).to match_array [user.id.to_s]
+        expect(instance.values).to contain_exactly(user.id.to_s)
       end
     end
   end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,28 +22,27 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'work_packages/auto_completes/index.html.erb', type: :view do
+RSpec.describe "work_packages/auto_completes/index.html.erb" do
   let(:work_package) do
-    FactoryBot.build(:work_package,
-                     subject: '<script>alert("do not alert this");</script>')
+    build(:work_package,
+          subject: '<script>alert("do not alert this");</script>')
   end
 
-  it 'escapes work package subject in auto-completion' do
+  it "escapes work package subject in auto-completion" do
     assign :work_packages, [work_package]
     render
     # there are items
-    expect(rendered).to have_selector 'li'
+    expect(rendered).to have_css "li"
     # but there is not script tag
-    expect(rendered).not_to have_selector 'script'
+    expect(rendered).to have_no_css "script"
     # normal text should be included
-    expect(rendered).to include 'do not alert this'
+    expect(rendered).to include "do not alert this"
   end
 end

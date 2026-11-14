@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,21 +20,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/cost_types/cost_type_representer'
+require "api/v3/cost_types/cost_type_representer"
 
 module API
   module V3
     module CostEntries
       class CostEntriesByWorkPackageAPI < ::API::OpenProjectAPI
         after_validation do
-          authorize_any(%i[view_cost_entries view_own_cost_entries],
-                        projects: @work_package.project)
+          authorize_in_projects(%i[view_cost_entries view_own_cost_entries],
+                                projects: @work_package.project)
           @cost_helper = ::Costs::AttributesHelper.new(@work_package, current_user)
         end
 
@@ -47,13 +44,13 @@ module API
             CostEntryCollectionRepresenter.new(cost_entries,
                                                cost_entries.count,
                                                self_link: path,
-                                               current_user: current_user)
+                                               current_user:)
           end
         end
 
         resources :summarized_costs_by_type do
           get do
-            WorkPackageCostsByTypeRepresenter.new(@work_package, current_user: current_user)
+            WorkPackageCostsByTypeRepresenter.new(@work_package, current_user:)
           end
         end
       end

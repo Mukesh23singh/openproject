@@ -1,4 +1,11 @@
+---
 hu:
+  activerecord:
+    models:
+      grids/overview:
+        one: Overview
+        other: Overviews
   overviews:
-    label: 'Áttekintés'
-  permission_manage_overview: 'Áttekintő nézet szerkesztése'
+    label_dashboard: Vezérlőpult
+    label_home: "%{workspace_type} főoldal"
+    label_overview: Áttekintés

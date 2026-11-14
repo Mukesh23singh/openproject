@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,41 +22,61 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class DocumentsController < ApplicationController
   include AttachableServiceCall
+  include FlashMessagesOutputSafetyHelper
+  include PaginationHelper
+  include OpTurbo::ComponentStream
+
   default_search_scope :documents
-  model_object Document
-  before_action :find_project_by_project_id, only: %i[index new create]
-  before_action :find_model_object, except: %i[index new create]
-  before_action :find_project_from_association, except: %i[index new create]
+
+  helper_method :document_html_title_parts
+
+  before_action :find_project_by_project_id, only: %i[index search new create]
+  before_action :find_document, except: %i[index search new create]
   before_action :authorize
 
   def index
-    @group_by = %w(category date title author).include?(params[:group_by]) ? params[:group_by] : 'category'
-    documents = @project.documents
-    @grouped =
-      case @group_by
-      when 'date'
-        documents.group_by { |d| d.updated_at.to_date }
-      when 'title'
-        documents.group_by { |d| d.title.first.upcase }
-      when 'author'
-        documents.with_attachments.group_by { |d| d.attachments.last.author }
-      else
-        documents.includes(:category).group_by(&:category)
-      end
+    @documents = list_documents_query
+      .includes(:type)
+      .paginate(page: page_param, per_page: per_page_param)
+  end
 
-    render layout: false if request.xhr?
+  def search
+    index
+    replace_via_turbo_stream component: Documents::TableComponent.new(rows: @documents, project: @project)
+    current_url = url_for(params.permit(:controller, :filters, :sortBy).merge(action: "index"))
+    turbo_streams << turbo_stream.push_state(current_url)
+
+    respond_with_turbo_streams
   end
 
   def show
-    @attachments = @document.attachments.order(Arel.sql('created_at DESC'))
+    @attachments = @document.attachments.order(Arel.sql("created_at DESC"))
+
+    if @document.real_time_collaboration_available?
+      setup_collaboration_context
+      derive_show_edit_state_from_params
+    end
+  end
+
+  def render_avatars
+    user_ids = params[:user_ids]
+    @users = User.visible.where(id: user_ids)
+    update_via_turbo_stream(component: Documents::ShowEditView::PageHeader::LiveUsersComponent.new(users: @users))
+
+    respond_with_turbo_streams
+  end
+
+  def render_last_saved_at
+    update_via_turbo_stream(component: Documents::ShowEditView::PageHeader::LiveSavedAtComponent.new(@document))
+
+    respond_with_turbo_streams
   end
 
   def new
@@ -64,22 +84,28 @@ class DocumentsController < ApplicationController
     @document.attributes = document_params
   end
 
-  def create
-    call = attachable_create_call ::Documents::CreateService,
-                                  args: document_params.merge(project: @project)
+  def edit
+    render_400 unless @document.classic?
+  end
 
-    if call.success?
-      flash[:notice] = I18n.t(:notice_successful_create)
-      redirect_to project_documents_path(@project)
+  def edit_title
+    update_header_component_via_turbo_stream(state: :edit)
+
+    respond_with_turbo_streams
+  end
+
+  def create
+    if document_params[:kind] == "classic"
+      create_classic_document
     else
-      @document = call.result
-      @errors = call.errors
-      render action: 'new'
+      create_collaborative_document
     end
   end
 
-  def edit
-    @categories = DocumentCategory.all
+  def cancel_title_edit
+    update_header_component_via_turbo_stream(state: :show)
+
+    respond_with_turbo_streams
   end
 
   def update
@@ -89,22 +115,131 @@ class DocumentsController < ApplicationController
 
     if call.success?
       flash[:notice] = I18n.t(:notice_successful_update)
-      redirect_to action: 'show', id: @document
+      redirect_to action: "show", id: @document
     else
       @document = call.result
-      @errors = call.errors
-      render action: 'edit'
+      render action: :edit, status: :unprocessable_entity
     end
   end
 
+  def update_title
+    call = Documents::UpdateService
+      .new(user: current_user, model: @document)
+      .call(document_params.slice(:title))
+
+    state = call.success? ? :show : :edit
+    update_header_component_via_turbo_stream(state:)
+    set_page_title_via_turbo_stream(*document_html_title_parts, project: @project) if call.success?
+
+    respond_with_turbo_streams
+  end
+
+  def update_type
+    service_call = Documents::UpdateService
+      .new(user: current_user, model: @document)
+      .call(type_id: params[:type_id])
+
+    if service_call.success?
+      update_via_turbo_stream(
+        component: Documents::ShowEditView::PageHeader::InfoLineComponent.new(@document)
+      )
+    else
+      render_error_flash_message_via_turbo_stream(
+        message: service_call.errors.full_messages
+      )
+      @turbo_status = :unprocessable_entity
+    end
+
+    respond_with_turbo_streams
+  end
+
+  def delete_dialog
+    respond_with_dialog Documents::DeleteDialogComponent.new(@document)
+  end
+
   def destroy
-    @document.destroy
-    redirect_to controller: '/documents', action: 'index', project_id: @project
+    service_call = Documents::DeleteService
+      .new(user: current_user, model: @document)
+      .call
+
+    if service_call.success?
+      flash[:notice] = I18n.t(:notice_successful_delete)
+    else
+      flash[:error] = join_flash_messages(service_call.errors.full_messages)
+    end
+
+    redirect_to project_documents_path(@project), status: :see_other
   end
 
   private
 
+  def document_html_title_parts
+    [I18n.t(:label_document_plural), @document.title]
+  end
+
+  def find_document
+    @document = Document.visible.find(params[:id])
+    @project = @document.project
+  end
+
   def document_params
-    params.fetch(:document, {}).permit('category_id', 'title', 'description')
+    params.fetch(:document, {}).permit("type_id", "title", "description", "content_binary", "kind")
+  end
+
+  def list_documents_query
+    @query = ParamsToQueryService.new(Document, current_user).call(params)
+    @query.where(:project_id, "=", [@project.id])
+    @query.order(updated_at: :desc) unless params[:sortBy]
+
+    @query.results
+  end
+
+  def create_classic_document
+    call = attachable_create_call ::Documents::CreateService,
+                                  args: document_params.merge(project: @project)
+
+    if call.success?
+      flash[:notice] = I18n.t(:notice_successful_create)
+      redirect_to project_documents_path(@project)
+    else
+      @document = call.result
+      render action: :new, status: :unprocessable_entity
+    end
+  end
+
+  def create_collaborative_document
+    call = ::Documents::CreateService
+        .new(user: current_user)
+        .call(title: I18n.t(:label_document_new), project: @project, type_id: DocumentType.default.id)
+
+    redirect_to document_path(call.result, state: :edit)
+  end
+
+  def setup_collaboration_context # rubocop:disable Metrics/AbcSize
+    return unless current_user.allowed_in_project?(:view_documents, @project)
+
+    token_result = Documents::OAuth::TokenWithMetadataService
+      .new(user: current_user, document: @document)
+      .call
+
+    if token_result.failure?
+      Rails.logger.error("Failed to generate token payload for document #{@document.id}: #{token_result.errors}")
+      return
+    end
+
+    @token_payload = token_result.result[:encrypted_token]
+    @resource_url = token_result.result[:resource_url]
+    @readonly = token_result.result[:readonly]
+    @token_expires_in_seconds = token_result.result[:expires_in_seconds]
+  end
+
+  def update_header_component_via_turbo_stream(state: :show)
+    update_via_turbo_stream(
+      component: Documents::ShowEditView::PageHeaderComponent.new(@document, project: @project, state:)
+    )
+  end
+
+  def derive_show_edit_state_from_params
+    @state = params[:state] == "edit" ? :edit : :show
   end
 end

@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -46,7 +45,6 @@
 
 // WP single view styles
 @import work_packages/single_view/single_view
-@import work_packages/single_view/attachments
 @import work_packages/single_view/work_package_comment
 
 // WP fullscreen specific styles
@@ -55,6 +53,13 @@
 // Tabs
 @import work_packages/tabs/activities
 @import work_packages/tabs/relations
+@import work_packages/tabs/files_tab
+@import work_packages/tabs/tab_content
+
+// Shared
+@import work_packages/shared/file_list
+@import work_packages/shared/file_picker
+@import work_packages/shared/file_section
 
 // Table configuration
 @import work_packages/table_configuration_modal
@@ -65,3 +70,5 @@
 // Resizer
 @import work_packages/resizer/resizer
 
+// Generic Datepicker modal styles
+@import work_packages/datepicker_modal

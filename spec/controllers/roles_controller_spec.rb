@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,356 +22,215 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe RolesController, type: :controller do
-  let(:user) do
-    FactoryBot.build_stubbed(:admin)
-  end
-  let(:params) do
-    {
-      role: {
-        name: 'A role name',
-        permissions: ['add_work_packages', 'edit_work_packages', 'log_time', ''],
-        assignable: '0'
-      },
-      copy_workflow_from: '5'
-    }
-  end
+RSpec.describe RolesController do
+  let(:user) { create(:admin) }
+  let(:public_permissions) { OpenProject::AccessControl.public_permissions.map(&:name) }
 
-  before do
-    login_as(user)
-  end
+  current_user { user }
 
-  describe '#create' do
-    let(:new_role) { double('role double') }
-    let(:service_call) { ServiceResult.new(success: true, result: new_role) }
-    let(:create_params) do
-      cp = ActionController::Parameters.new(params[:role])
-                 .merge(global_role: nil, copy_workflow_from: '5')
-      cp.permit!
+  describe "#create" do
+    let(:name) { "A role name" }
+    let(:permissions) { %w(view_work_packages edit_work_packages) }
+    let(:params) { { role: { name:, permissions: permissions + [""] } } }
 
-      cp
-    end
-    let(:create_service) do
-      service_double = double('create service')
+    context "for a project role" do
+      it "persists the role and redirects with a success message" do
+        expect { post :create, params: }.to change(ProjectRole, :count).by(1)
 
-      expect(Roles::CreateService)
-        .to receive(:new)
-        .with(user: user)
-        .and_return(service_double)
-
-      expect(service_double)
-        .to receive(:call)
-        .with(create_params)
-        .and_return(service_call)
-    end
-
-    before do
-      create_service
-
-      post :create, params: params
-    end
-
-    context 'success' do
-      context 'for a member role' do
-        it 'redirects to roles#index' do
-          expect(response)
-            .to redirect_to(roles_path)
-        end
-
-        it 'has a flash message' do
-          expect(flash[:notice])
-            .to eql I18n.t(:notice_successful_create)
-        end
-      end
-
-      context 'for a global role' do
-        let(:params) do
-          {
-            role: {
-              name: 'A role name',
-              permissions: ['add_work_packages', 'edit_work_packages', 'log_time', ''],
-              assignable: '0'
-            },
-            global_role: '1',
-            copy_workflow_from: '5'
-          }
-        end
-        let(:create_params) do
-          cp = ActionController::Parameters.new(params[:role])
-                 .merge(global_role: '1', copy_workflow_from: '5')
-          cp.permit!
-
-          cp
-        end
-
-        it 'redirects to roles#index' do
-          expect(response)
-            .to redirect_to(roles_path)
-        end
-
-        it 'has a flash message' do
-          expect(flash[:notice])
-            .to eql I18n.t(:notice_successful_create)
-        end
+        role = ProjectRole.find_by!(name:)
+        expect(role.permissions).to match_array(permissions.map(&:to_sym) | public_permissions)
+        expect(response).to redirect_to(roles_path)
+        expect(flash[:notice]).to eq I18n.t(:notice_successful_create)
       end
     end
 
-    context 'failure' do
-      let(:service_call) { ServiceResult.new(success: false, result: new_role) }
+    context "for a global role" do
+      let(:permissions) { %w(view_user_email) }
+      let(:params) { super().merge(global_role: "1") }
 
-      it 'returns a 200 OK' do
-        expect(response.status)
-          .to eql(200)
+      it "persists a global role and redirects with a success message" do
+        expect { post :create, params: }.to change(GlobalRole, :count).by(1)
+
+        expect(GlobalRole.find_by!(name:).permissions).to eq [:view_user_email]
+        expect(response).to redirect_to(roles_path)
+        expect(flash[:notice]).to eq I18n.t(:notice_successful_create)
       end
+    end
 
-      it 'renders the new template' do
-        expect(response)
-          .to render_template('roles/new')
+    context "when copying workflows" do
+      let!(:transition) { create(:status_transition, type: create(:type)) }
+      let(:params) { super().merge(copy_workflow_from: transition.role_id.to_s) }
+
+      it "copies the source role's transitions to the new role" do
+        post(:create, params:)
+
+        role = ProjectRole.find_by!(name:)
+        expect(role.workflow_status_transitions)
+          .to contain_exactly(have_attributes(workflow_id: transition.workflow_id,
+                                              old_status_id: transition.old_status_id,
+                                              new_status_id: transition.new_status_id))
+        expect(response).to redirect_to(roles_path)
       end
+    end
 
-      it 'has the service call assigned' do
-        expect(assigns[:call])
-          .to eql service_call
-      end
+    context "with an invalid name" do
+      let(:name) { "" }
 
-      it 'has the role assigned' do
-        expect(assigns[:role])
-          .to eql new_role
+      it "renders the new form with validation errors without creating a role" do
+        expect { post :create, params: }.not_to change(Role, :count)
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to render_template("roles/new")
+        expect(assigns(:role)).to be_a(ProjectRole)
+        expect(assigns(:role)).to be_new_record
+        expect(assigns(:call).errors[:name]).to be_present
       end
     end
   end
 
-  describe '#update' do
+  describe "#update" do
+    let!(:role) { create(:project_role, name: "Original name", permissions: [:add_work_packages]) }
+    let(:name) { "Updated role name" }
+    let(:params) do
+      { id: role.id, role: { name:, permissions: ["view_work_packages", "edit_work_packages", ""] } }
+    end
+
+    it "persists the changes and redirects with a success message" do
+      put(:update, params:)
+
+      expect(role.reload.name).to eq name
+      expect(role.permissions).to match_array(%i(view_work_packages edit_work_packages) | public_permissions)
+      expect(response).to redirect_to(roles_path)
+      expect(response).to have_http_status(:see_other)
+      expect(flash[:notice]).to eq I18n.t(:notice_successful_update)
+    end
+
+    context "with an invalid name" do
+      let(:name) { "" }
+
+      it "renders edit with validation errors and preserves the stored role" do
+        original_permissions = role.permissions
+
+        put(:update, params:)
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to render_template("roles/edit")
+        expect(assigns(:role)).to eq role
+        expect(assigns(:role).name).to eq ""
+        expect(assigns(:call).errors[:name]).to be_present
+        expect(role.reload.name).to eq "Original name"
+        expect(role.permissions).to match_array(original_permissions)
+      end
+    end
+  end
+
+  describe "#bulk_update" do
+    let!(:cleared_role) { create(:project_role, permissions: [:add_work_packages]) }
+    let!(:updated_role) { create(:project_role, permissions: [:add_work_packages]) }
+    let!(:omitted_role) { create(:project_role, permissions: [:add_work_packages]) }
+    let!(:global_role) { create(:global_role) }
+    let!(:hidden_role) { create(:work_package_role, permissions: [:view_work_packages]) }
+    let(:permissions) { %w(view_work_packages edit_work_packages) }
     let(:params) do
       {
-        id: role.id,
-        role: {
-          name: 'A role name',
-          permissions: ['add_work_packages', 'edit_work_packages', 'log_time', ''],
-          assignable: '0'
+        permissions: {
+          cleared_role.id.to_s => "",
+          updated_role.id.to_s => permissions,
+          global_role.id.to_s => ["view_user_email"]
         }
       }
     end
-    let(:role) do
-      double('role double', id: 6).tap do |d|
-        allow(Role)
-          .to receive(:find)
-          .with(d.id.to_s)
-          .and_return(d)
-      end
-    end
-    let(:service_call) { ServiceResult.new(success: true, result: role) }
-    let(:update_params) do
-      cp = ActionController::Parameters.new(params[:role])
-      cp.permit!
 
-      cp
-    end
-    let(:update_service) do
-      service_double = double('update service')
+    it "updates visible roles, clears empty or omitted permissions, and leaves hidden roles unchanged" do
+      put(:bulk_update, params:)
 
-      expect(Roles::UpdateService)
-        .to receive(:new)
-        .with(user: user, model: role)
-        .and_return(service_double)
-
-      expect(service_double)
-        .to receive(:call)
-        .with(update_params)
-        .and_return(service_call)
+      expect(cleared_role.reload.permissions).to match_array(public_permissions)
+      expect(updated_role.reload.permissions).to match_array(permissions.map(&:to_sym) | public_permissions)
+      expect(omitted_role.reload.permissions).to match_array(public_permissions)
+      expect(global_role.reload.permissions).to eq [:view_user_email]
+      expect(hidden_role.reload.permissions).to eq [:view_work_packages]
+      expect(response).to redirect_to(roles_path)
+      expect(response).to have_http_status(:see_other)
+      expect(flash[:notice]).to eq I18n.t(:notice_successful_update)
     end
 
-    before do
-      update_service
+    context "with a missing permission dependency" do
+      let(:permissions) { %w(edit_work_packages) }
 
-      put :update, params: params
-    end
+      it "renders the report with validation errors" do
+        original_permissions = updated_role.permissions
 
-    context 'success' do
-      it 'redirects to roles#index' do
-        expect(response)
-          .to redirect_to(roles_path)
-      end
+        put(:bulk_update, params:)
 
-      it 'has a flash message' do
-        expect(flash[:notice])
-          .to eql I18n.t(:notice_successful_update)
-      end
-    end
-
-    context 'failure' do
-      let(:service_call) { ServiceResult.new(success: false, result: role) }
-
-      it 'returns a 200 OK' do
-        expect(response.status)
-          .to eql(200)
-      end
-
-      it 'renders the edit template' do
-        expect(response)
-          .to render_template('roles/edit')
-      end
-
-      it 'has the service call assigned' do
-        expect(assigns[:call])
-          .to eql service_call
-      end
-
-      it 'has the role assigned' do
-        expect(assigns[:role])
-          .to eql role
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response).to render_template("roles/report")
+        expect(assigns(:roles)).to contain_exactly(cleared_role, updated_role, omitted_role, global_role)
+        failed_calls = assigns(:calls).reject(&:success?)
+        expect(failed_calls.map(&:result)).to contain_exactly(updated_role)
+        expect(failed_calls.first.errors[:permissions]).to be_present
+        expect(updated_role.reload.permissions).to match_array(original_permissions)
       end
     end
   end
 
-  describe '#bulk_update' do
-    let(:params) do
-      {
-        permissions: { '0' => '', '1' => ['edit_work_packages'], '3' => %w(add_work_packages delete_work_packages) }
-      }
-    end
-    let(:role0) do
-      double('role double', id: 0)
-    end
-    let(:role1) do
-      double('role double', id: 1)
-    end
-    let(:role2) do
-      double('role double', id: 2)
-    end
-    let(:role3) do
-      double('role double', id: 3)
-    end
-    let(:roles) do
-      [role0, role1, role2, role3]
+  describe "#destroy" do
+    let!(:role) { create(:project_role, permissions: [:read_files]) }
+
+    context "with a deletable role" do
+      it "deletes the role and schedules storage integration management" do
+        expect { delete :destroy, params: { id: role.id } }
+          .to change(Role, :count).by(-1)
+          .and have_enqueued_job(Storages::ManageStorageIntegrationsJob)
+
+        expect(response).to redirect_to(roles_path)
+        expect(response).to have_http_status(:see_other)
+        expect(flash[:notice]).to eq I18n.t(:notice_successful_delete)
+      end
     end
 
-    let!(:roles_scope) do
-      allow(Role)
-        .to receive(:order)
-        .and_return(roles)
-    end
+    context "with a built-in role" do
+      let!(:role) { create(:non_member, permissions: [:read_files]) }
 
-    let(:service_call0) { ServiceResult.new(success: true, result: role0) }
-    let(:service_call1) { ServiceResult.new(success: true, result: role1) }
-    let(:service_call2) { ServiceResult.new(success: true, result: role2) }
-    let(:service_call3) { ServiceResult.new(success: true, result: role3) }
-    let(:update_params0) do
-      { permissions: [] }
-    end
-    let(:update_service0) do
-      service_double = double('update service')
+      it "preserves the role and redirects with a flash error" do
+        expect { delete :destroy, params: { id: role.id } }.not_to change(Role, :count)
 
-      expect(Roles::UpdateService)
-        .to receive(:new)
-        .with(user: user, model: role0)
-        .and_return(service_double)
-
-      expect(service_double)
-        .to receive(:call)
-        .with(update_params0)
-        .and_return(service_call0)
+        expect(enqueued_jobs).to be_empty
+        expect(response).to redirect_to(roles_path)
+        expect(response).to have_http_status(:see_other)
+        expect(flash[:error]).to eq I18n.t(:error_can_not_remove_role)
+      end
     end
-    let(:update_params1) do
-      { permissions: params[:permissions]['1'] }
-    end
-    let(:update_service1) do
-      service_double = double('update service')
+  end
 
-      expect(Roles::UpdateService)
-        .to receive(:new)
-        .with(user: user, model: role1)
-        .and_return(service_double)
-
-      expect(service_double)
-        .to receive(:call)
-        .with(update_params1)
-        .and_return(service_call1)
-    end
-    let(:update_params2) do
-      { permissions: [] }
-    end
-    let(:update_service2) do
-      service_double = double('update service')
-
-      expect(Roles::UpdateService)
-        .to receive(:new)
-        .with(user: user, model: role2)
-        .and_return(service_double)
-
-      expect(service_double)
-        .to receive(:call)
-        .with(update_params2)
-        .and_return(service_call2)
-    end
-    let(:update_params3) do
-      { permissions: params[:permissions]['3'] }
-    end
-    let(:update_service3) do
-      service_double = double('update service')
-
-      expect(Roles::UpdateService)
-        .to receive(:new)
-        .with(user: user, model: role3)
-        .and_return(service_double)
-
-      expect(service_double)
-        .to receive(:call)
-        .with(update_params3)
-        .and_return(service_call3)
-    end
+  describe "#report" do
+    let!(:builtin_role) { create(:non_member) }
+    let!(:global_role) { create(:global_role) }
+    let!(:project_role) { create(:project_role) }
+    let!(:hidden_role) { create(:work_package_role) }
 
     before do
-      update_service0
-      update_service1
-      update_service2
-      update_service3
-
-      put :bulk_update, params: params
+      get :report
     end
 
-    context 'success' do
-      it 'redirects to roles#index' do
-        expect(response)
-          .to redirect_to(roles_path)
-      end
-
-      it 'has a flash message' do
-        expect(flash[:notice])
-          .to eql I18n.t(:notice_successful_update)
-      end
+    it "renders the report" do
+      expect(response).to have_http_status(:ok)
+      expect(response).to render_template(:report)
     end
 
-    context 'failure' do
-      let(:service_call2) { ServiceResult.new(success: false, result: role2) }
+    it "assigns visible, non-public permissions" do
+      expect(assigns(:permissions))
+        .to match_array(OpenProject::AccessControl.permissions.reject(&:public?).select(&:visible?))
+    end
 
-      it 'returns a 200 OK' do
-        expect(response.status)
-          .to eql(200)
-      end
-
-      it 'renders the report template' do
-        expect(response)
-          .to render_template('roles/report')
-      end
-
-      it 'has the service call assigned' do
-        expect(assigns[:calls])
-          .to match_array [service_call0, service_call1, service_call2, service_call3]
-      end
-
-      it 'has the roles assigned' do
-        expect(assigns[:roles])
-          .to match_array roles
-      end
+    it "assigns visible roles ordered by built-in status and position" do
+      expect(assigns(:roles)).to eq [global_role, project_role, builtin_role]
     end
   end
 end

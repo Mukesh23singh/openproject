@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,15 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class CategoriesController < ApplicationController
   menu_item :settings_categories
-  model_object Category
-  before_action :find_model_object, except: %i[new create]
-  before_action :find_project_from_association, except: %i[new create]
+
+  before_action :find_category_and_project, except: %i[new create]
   before_action :find_project, only: %i[new create]
   before_action :authorize
 
@@ -45,24 +43,10 @@ class CategoriesController < ApplicationController
     @category.attributes = permitted_params.category
 
     if @category.save
-      respond_to do |format|
-        format.html do
-          flash[:notice] = I18n.t(:notice_successful_create)
-          redirect_to project_settings_categories_path(@project)
-        end
-        format.js do
-          render locals: { project: @project, category: @category }
-        end
-      end
+      flash[:notice] = I18n.t(:notice_successful_create)
+      redirect_to project_settings_categories_path(@project)
     else
-      respond_to do |format|
-        format.html do
-          render action: :new
-        end
-        format.js do
-          render(:update) { |page| page.alert(@category.errors.full_messages.join('\n')) }
-        end
-      end
+      render action: :new, status: :unprocessable_entity
     end
   end
 
@@ -72,38 +56,35 @@ class CategoriesController < ApplicationController
       flash[:notice] = I18n.t(:notice_successful_update)
       redirect_to project_settings_categories_path(@project)
     else
-      render action: 'edit'
+      render action: :edit, status: :unprocessable_entity
     end
   end
 
-  def destroy
+  def destroy # rubocop:disable Metrics/AbcSize
     @issue_count = @category.work_packages.size
     if @issue_count == 0
       # No issue assigned to this category
       @category.destroy
-      redirect_to project_settings_categories_path(@project)
+      redirect_to project_settings_categories_path(@project), status: :see_other
       return
     elsif params[:todo]
-      reassign_to = @project.categories.find_by(id: params[:reassign_to_id]) if params[:todo] == 'reassign'
+      reassign_to = @project.categories.find_by(id: params[:reassign_to_id]) if params[:todo] == "reassign"
       @category.destroy(reassign_to)
-      redirect_to project_settings_categories_path(@project)
+      redirect_to project_settings_categories_path(@project), status: :see_other
       return
     end
     @categories = @project.categories - [@category]
+    render status: :unprocessable_entity
   end
 
   private
 
-  # Wrap ApplicationController's find_model_object method to set
-  # @category instead of just @category
-  def find_model_object
-    super
-    @category = @object
+  def find_category_and_project
+    @category = Category.find(params[:id])
+    @project = @category.project
   end
 
   def find_project
-    @project = Project.find(params[:project_id])
-  rescue ActiveRecord::RecordNotFound
-    render_404
+    @project = Project.visible.find(params[:project_id])
   end
 end

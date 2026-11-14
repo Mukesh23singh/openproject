@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative '../filters'
+require_relative "../filters"
 
 module Components
   module WorkPackages
@@ -39,28 +40,24 @@ module Components
         end
 
         def open
-          modal.open_and_switch_to 'Filters'
+          modal.open_and_switch_to "Filters"
           expect_open
         end
 
-        def save
-          modal.save
-        end
+        delegate :save, to: :modal
 
         def expect_filter_count(count)
           within(modal.selector) do
-            expect(page).to have_selector('.advanced-filters--filter', count: count)
+            expect(page).to have_css(".advanced-filters--filter", count:)
           end
         end
 
         def expect_open
           modal.expect_open
-          expect(page).to have_selector('.op-tab-row--link_selected', text: 'FILTERS')
+          expect(page).to have_css(".op-tab-row--link_selected", text: "FILTERS")
         end
 
-        def expect_closed
-          modal.expect_closed
-        end
+        delegate :expect_closed, to: :modal
       end
     end
   end

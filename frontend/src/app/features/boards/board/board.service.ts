@@ -1,23 +1,48 @@
-import { Injectable } from '@angular/core';
-import { BoardListsService } from 'core-app/features/boards/board/board-list/board-lists.service';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, inject } from '@angular/core';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
-import { Board, BoardType } from 'core-app/features/boards/board/board';
+import { Board } from 'core-app/features/boards/board/board';
 import { GridWidgetResource } from 'core-app/features/hal/resources/grid-widget-resource';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { BoardActionsRegistryService } from 'core-app/features/boards/board/board-actions/board-actions-registry.service';
-import { BehaviorSubject, Observable } from 'rxjs';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-
-export interface CreateBoardParams {
-  type:BoardType;
-  boardName?:string;
-  attribute?:string;
-}
+import { BehaviorSubject, firstValueFrom, Observable } from 'rxjs';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 
 @Injectable({ providedIn: 'root' })
 export class BoardService {
+  protected apiV3Service = inject(ApiV3Service);
+  protected PathHelper = inject(PathHelperService);
+  protected CurrentProject = inject(CurrentProjectService);
+  protected halResourceService = inject(HalResourceService);
+  protected I18n = inject(I18nService);
+
   public currentBoard$:BehaviorSubject<string|null> = new BehaviorSubject<string|null>(null);
 
   private loadAllPromise:Promise<Board[]>|undefined;
@@ -25,18 +50,9 @@ export class BoardService {
   private text = {
     unnamed_board: this.I18n.t('js.boards.label_unnamed_board'),
     action_board: (attr:string) => this.I18n.t('js.boards.board_type.action_by_attribute',
-      { attribute: this.I18n.t(`js.boards.board_type.action_type.${attr}`) }),
+      { attribute: this.I18n.t<string>(`js.boards.board_type.action_type.${attr}`) }),
     unnamed_list: this.I18n.t('js.boards.label_unnamed_list'),
   };
-
-  constructor(protected apiV3Service:APIV3Service,
-    protected PathHelper:PathHelperService,
-    protected CurrentProject:CurrentProjectService,
-    protected halResourceService:HalResourceService,
-    protected boardActions:BoardActionsRegistryService,
-    protected I18n:I18nService,
-    protected boardsList:BoardListsService) {
-  }
 
   /**
    * Return all boards in the current scope of the project
@@ -44,15 +60,16 @@ export class BoardService {
    * @param projectIdentifier
    */
   public loadAllBoards(projectIdentifier:string|null = this.CurrentProject.identifier, force = false) {
-    if (!(force || this.loadAllPromise === undefined)) {
-      return this.loadAllPromise;
+    if (force || this.loadAllPromise === undefined) {
+      this.loadAllPromise = firstValueFrom(
+        this
+          .apiV3Service
+          .boards
+          .allInScope(projectIdentifier!),
+      );
     }
 
-    return this.loadAllPromise = this
-      .apiV3Service
-      .boards
-      .allInScope(projectIdentifier!)
-      .toPromise();
+    return this.loadAllPromise;
   }
 
   /**
@@ -74,49 +91,14 @@ export class BoardService {
       .save(board);
   }
 
-  /**
-   * Create a new board
-   * @param name
-   */
-  public async create(params:CreateBoardParams):Promise<Board> {
-    const board = await this
-      .apiV3Service
-      .boards
-      .create(params.type, this.boardName(params), this.CurrentProject.identifier!, params.attribute).toPromise();
-
-    if (params.type === 'free') {
-      await this.boardsList.addFreeQuery(board, { name: this.text.unnamed_list });
-    } else {
-      await this.boardActions.get(params.attribute!).addInitialColumnsForAction(board);
-    }
-
-    await this.save(board).toPromise();
-
-    return board;
-  }
-
   public delete(board:Board):Promise<unknown> {
-    return this
-      .apiV3Service
-      .boards
-      .id(board)
-      .delete()
-      .toPromise();
-  }
-
-  /**
-   * Build a default board name
-   */
-  private boardName(params:CreateBoardParams) {
-    if (params.boardName) {
-      return params.boardName;
-    }
-
-    if (params.type === 'action') {
-      return this.text.action_board(params.attribute!);
-    }
-
-    return this.text.unnamed_board;
+    return firstValueFrom(
+      this
+        .apiV3Service
+        .boards
+        .id(board)
+        .delete(),
+    );
   }
 
   /**

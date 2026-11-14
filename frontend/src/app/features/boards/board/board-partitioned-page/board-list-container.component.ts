@@ -1,37 +1,103 @@
-import { Component, ElementRef, Injector, OnInit, QueryList, ViewChild, ViewChildren } from '@angular/core';
-import { Observable, Subscription } from 'rxjs';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import {
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  inject,
+  Input,
+  Injector,
+  OnInit,
+  QueryList,
+  ViewChild,
+  ViewChildren,
+} from '@angular/core';
+import { EMPTY, Observable, Subscription } from 'rxjs';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { BoardListComponent } from 'core-app/features/boards/board/board-list/board-list.component';
-import { StateService } from '@uirouter/core';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { BoardListsService } from 'core-app/features/boards/board/board-list/board-lists.service';
 import { OpModalService } from 'core-app/shared/components/modal/modal.service';
 import { BoardService } from 'core-app/features/boards/board/board.service';
-import { BannersService } from 'core-app/core/enterprise/banners.service';
-import { DragAndDropService } from 'core-app/shared/helpers/drag-and-drop/drag-and-drop.service';
+import { OpSortableListsDirective } from 'core-app/shared/directives/sortable-lists/sortable-lists.directive';
 import { QueryUpdatedService } from 'core-app/features/boards/board/query-updated/query-updated.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
 import { Board, BoardWidgetOption } from 'core-app/features/boards/board/board';
 import { CdkDragDrop, moveItemInArray } from '@angular/cdk/drag-drop';
 import { GridWidgetResource } from 'core-app/features/hal/resources/grid-widget-resource';
-import { BoardPartitionedPageComponent } from 'core-app/features/boards/board/board-partitioned-page/board-partitioned-page.component';
+import {
+  BoardPartitionedPageComponent,
+} from 'core-app/features/boards/board/board-partitioned-page/board-partitioned-page.component';
 import { AddListModalComponent } from 'core-app/features/boards/board/add-list-modal/add-list-modal.component';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { BoardListCrossSelectionService } from 'core-app/features/boards/board/board-list/board-list-cross-selection.service';
-import { filter, tap } from 'rxjs/operators';
-import { BoardActionsRegistryService } from 'core-app/features/boards/board/board-actions/board-actions-registry.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { WorkPackageStatesInitializationService } from 'core-app/features/work-packages/components/wp-list/wp-states-initialization.service';
+import {
+  BoardListCrossSelectionService,
+} from 'core-app/features/boards/board/board-list/board-list-cross-selection.service';
+import { catchError, filter, finalize, tap } from 'rxjs/operators';
+import {
+  BoardActionsRegistryService,
+} from 'core-app/features/boards/board/board-actions/board-actions-registry.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { States } from 'core-app/core/states/states.service';
+import { resolveRoutingId } from 'core-app/features/work-packages/helpers/work-package-id-resolvers';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
+  selector: 'board-list-container',
   templateUrl: './board-list-container.component.html',
   styleUrls: ['./board-list-container.component.sass'],
   providers: [
     BoardListCrossSelectionService,
   ],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class BoardListContainerComponent extends UntilDestroyedMixin implements OnInit {
+  readonly I18n = inject(I18nService);
+  readonly toastService = inject(ToastService);
+  readonly halNotification = inject(HalResourceNotificationService);
+  readonly boardComponent = inject(BoardPartitionedPageComponent);
+  readonly BoardList = inject(BoardListsService);
+  readonly boardActionRegistry = inject(BoardActionsRegistryService);
+  readonly opModalService = inject(OpModalService);
+  readonly injector = inject(Injector);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly Boards = inject(BoardService);
+  readonly boardListCrossSelectionService = inject(BoardListCrossSelectionService);
+  readonly apiv3Service = inject(ApiV3Service);
+  readonly QueryUpdated = inject(QueryUpdatedService);
+  readonly pathHelper = inject(PathHelperService);
+  readonly currentProject = inject(CurrentProjectService);
+
+  @Input() boardId:string;
   text = {
     delete: this.I18n.t('js.button_delete'),
     areYouSure: this.I18n.t('js.text_are_you_sure'),
@@ -39,8 +105,6 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
     updateSuccessful: this.I18n.t('js.notice_successful_update'),
     loadingError: 'No such board found',
     addList: this.I18n.t('js.boards.add_list'),
-    upsaleBoards: this.I18n.t('js.boards.upsale.teaser_text'),
-    upsaleCheckOutLink: this.I18n.t('js.work_packages.table_configuration.upsale.check_out_link'),
     unnamedList: this.I18n.t('js.boards.label_unnamed_list'),
     hiddenListWarning: this.I18n.t('js.boards.text_hidden_list_warning'),
   };
@@ -48,13 +112,18 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
   /** Container reference */
   public _container:HTMLElement;
 
+  /** Shared sortable root spanning all board lists, for cross-column card drags */
+  @ViewChild(OpSortableListsDirective) private sortableRoot?:OpSortableListsDirective;
+
   @ViewChild('container')
-  set container(v:ElementRef|undefined) {
+  set container(v:ElementRef<HTMLElement>|undefined) {
     // ViewChild reference may be undefined initially
     // due to ngIf
     if (v !== undefined) {
       if (this._container === undefined) {
-        this.Drag.addScrollContainer(v.nativeElement);
+        // Deferred one microtask so `sortableRoot` (same element, resolved in
+        // the same query pass) is guaranteed to be set before this runs.
+        void Promise.resolve().then(() => this.sortableRoot?.addScrollContainer(v.nativeElement));
       }
       setTimeout(() => (this._container = v.nativeElement));
     }
@@ -69,32 +138,14 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
 
   boardWidgets:GridWidgetResource[] = [];
 
-  showHiddenListWarning:boolean = false;
+  showHiddenListWarning = false;
 
   private currentQueryUpdatedMonitoring:Subscription;
 
-  constructor(readonly I18n:I18nService,
-    readonly state:StateService,
-    readonly toastService:ToastService,
-    readonly halNotification:HalResourceNotificationService,
-    readonly boardComponent:BoardPartitionedPageComponent,
-    readonly BoardList:BoardListsService,
-    readonly boardActionRegistry:BoardActionsRegistryService,
-    readonly opModalService:OpModalService,
-    readonly injector:Injector,
-    readonly apiV3Service:APIV3Service,
-    readonly Boards:BoardService,
-    readonly Banner:BannersService,
-    readonly boardListCrossSelectionService:BoardListCrossSelectionService,
-    readonly wpStatesInitialization:WorkPackageStatesInitializationService,
-    readonly Drag:DragAndDropService,
-    readonly apiv3Service:APIV3Service,
-    readonly QueryUpdated:QueryUpdatedService) {
-    super();
-  }
+  private readonly wpStates = inject(States);
 
   ngOnInit():void {
-    const id:string = this.state.params.board_id.toString();
+    const id:string = this.boardId;
     this.board$ = this
       .apiV3Service
       .boards
@@ -111,10 +162,18 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
       .pipe(
         this.untilDestroyed(),
         filter((state) => state.focusedWorkPackage !== null),
-        filter(() => this.state.includes(`${this.state.current.data.baseRoute}.details`)),
+        filter(() => window.location.pathname.includes('/details/')),
       ).subscribe((selection) => {
-      // Update split screen
-        this.state.go(`${this.state.current.data.baseRoute}.details`, { workPackageId: selection.focusedWorkPackage });
+        // Update split screen
+        const routingId = resolveRoutingId(this.wpStates, selection.focusedWorkPackage!);
+        const base = this.pathHelper.boardDetailsPath(this.currentProject.identifier, id, routingId);
+        const currentPath = window.location.pathname;
+        if (currentPath === base || currentPath.startsWith(`${base}/`)) {
+          return;
+        }
+
+        const search = window.location.search;
+        Turbo.visit(search ? `${base}${search}` : base, { frame: 'content-bodyRight', action: 'advance' });
       });
   }
 
@@ -128,12 +187,12 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
     this.saveBoard(board);
   }
 
-  addList(board:Board):any {
+  addList(board:Board):Promise<unknown>|undefined {
     if (board.isFree) {
       return this.BoardList
         .addFreeQuery(board, { name: this.text.unnamedList })
         .then((board) => this.Boards.save(board).toPromise())
-        .catch((error) => this.showError(error));
+        .catch((error) => this.showError(error as string));
     }
     const active = this.getActionFiltersFromWidget(board);
     this.opModalService.show(
@@ -141,25 +200,31 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
       this.injector,
       { board, active },
     );
+    return undefined;
   }
 
   changeVisibilityOfList(board:Board, boardWidget:GridWidgetResource, visible:boolean) {
     if (!visible) {
       this.showHiddenListWarning = true;
-      this.boardWidgets = this.boardWidgets.filter(widget => widget.id !== boardWidget.id);
+      this.boardWidgets = this.boardWidgets.filter((widget) => widget.id !== boardWidget.id);
     }
   }
 
-  showBoardListView() {
-    return !this.Banner.eeShowBanners;
-  }
-
-  opReferrer(board:Board) {
-    return board.isFree ? 'boards#free' : 'boards#status';
-  }
-
   saveBoard(board:Board):void {
-    this.boardComponent.boardSaver.request(board);
+    this.Boards
+      .save(board)
+      .pipe(
+        catchError((error) => {
+          this.halNotification.handleRawError(error);
+          return EMPTY;
+        }),
+        finalize(() => {
+          this.boardComponent.toolbarDisabled = false;
+          this.boardComponent.cdRef.detectChanges();
+        }),
+      ).subscribe(() => {
+        this.toastService.addSuccess(this.text.updateSuccessful);
+      });
   }
 
   private setupQueryUpdatedMonitoring(board:Board) {
@@ -192,7 +257,7 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
 
           return id === listId;
         })
-        .forEach((listComponent) => listComponent.refreshQueryUnlessCaused(query, false));
+        .forEach((listComponent) => listComponent.refreshQueryIfOutdated(query, false));
     });
   }
 
@@ -208,12 +273,15 @@ export class BoardListContainerComponent extends UntilDestroyedMixin implements 
       .map((widget) => {
         const service = this.boardActionRegistry.get(board.actionAttribute!);
         const { filterName } = service;
-        const options:BoardWidgetOption = widget.options as any;
-        const filter = _.find(options.filters, (filter) => !!filter[filterName]);
+        const idFilterName = `${filterName}_id`;
+        const options = widget.options as unknown as BoardWidgetOption;
+        const instance = options.filters.find((f) => !!f[filterName] || !!f[idFilterName]);
 
-        if (filter) {
-          return (filter[filterName].values[0] || null) as any;
+        if (instance) {
+          return ((instance[filterName] || instance[idFilterName])?.values[0] || null) as unknown as string|null;
         }
+
+        return null;
       })
       .filter((value) => value !== undefined);
   }

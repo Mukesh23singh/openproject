@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +20,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Widget::Settings::Fieldset < Widget::Base
-  dont_cache!
+  option :type, default: -> { "filter" }
 
-  def render_with_options(options, &block)
-    @type = options.delete(:type) || 'filter'
+  def initialize(...)
+    super
+
     @id = @type.to_s
     @label = :"label_#{@type}"
-    super(options, &block)
   end
 
-  def render
-    hash = self.hash
-    write(content_tag(:fieldset,
-                      id: @id,
-                      class: 'form--fieldset -collapsible') do
-            html = content_tag(:legend,
-                               show_at_id: hash.to_s,
-                               icon: "#{@type}-legend-icon",
-                               tooltip: "#{@type}-legend-tip",
-                               class: 'form--fieldset-legend',
-                               id: hash.to_s) do
-              content_tag(:a, href: '#') { I18n.t(@label) }
-            end
-            html + yield
-          end)
+  def call
+    render Primer::OpenProject::CollapsibleSection.new(id: @id, display: :block, mb: 3) do |section|
+      section.with_title(tag: :h3) { I18n.t(@label) }
+      section.with_collapsible_content { content }
+    end
   end
 end

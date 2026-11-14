@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,63 +22,63 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
+
 module DemoData
   class WikiSeeder < Seeder
-    attr_reader :project, :key
+    attr_reader :project
+    alias_method :project_data, :seed_data
 
-    def initialize(project, key)
+    def initialize(project, project_data)
+      super(project_data)
       @project = project
-      @key = key
     end
 
     def seed_data!
-      text = project_data_for(key, 'wiki')
+      text = project_data.lookup("wiki")
+      return if text.blank?
 
-      return if text.is_a?(String) && text.start_with?("translation missing")
-
-      user = User.admin.first
+      create_project_wiki!
 
       if text.is_a? String
         text = [{ title: "Wiki", content: text }]
       end
 
-      print_status '    ↳ Creating wikis'
+      print_status "    ↳ Creating wikis"
 
       Array(text).each do |data|
         create_wiki_page!(
           data,
-          project: project,
-          user: user
+          project:
         )
       end
-
-      puts
     end
 
-    def create_wiki_page!(data, project:, user:, parent: nil)
-      wiki_page = WikiPage.create!(
+    def create_project_wiki!
+      Wiki.create!(project: project, start_page: "Wiki") unless Wiki.exists?(project:)
+
+      project.reload
+    end
+
+    def create_wiki_page!(data, project:, parent: nil)
+      WikiPage.create!(
         wiki: project.wiki,
         title: data[:title],
-        parent: parent
-      )
-
-      print_status '.'
-      WikiContent.create!(
-        page: wiki_page,
-        author: user,
+        parent:,
+        author: admin_user,
         text: data[:content]
       )
+
+      print_status "."
 
       if data[:children]
         Array(data[:children]).each do |child_data|
           create_wiki_page!(
             child_data,
-            project: project,
-            user: user,
+            project:,
             parent: wiki_page
           )
         end

@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,92 +20,45 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { delegate } from '@knowledgecode/delegate';
+
 export class PlannedCostsFormAugment {
+  static listen():void {
+    delegate(document).on('click', '.costs--edit-planned-costs-btn', (evt) => {
+      const link = evt.target as HTMLElement;
+      const form = link.nextElementSibling as HTMLElement;
 
-  public obj:JQuery;
-  public objId:string;
-  public objName:string;
-  public placeholder:string;
+      link.hidden = true;
+      form.hidden = false;
+      PlannedCostsFormAugment.toggleRateHint(form, true);
 
-  static listen() {
-    jQuery(document).on('click', '.costs--edit-planned-costs-btn', (evt) => {
-      const form = jQuery(evt.target as any).closest('cost-unit-subform') as JQuery;
-      new PlannedCostsFormAugment(form);
+      const input = form.querySelector('input') as HTMLInputElement;
+      input.disabled = false;
+    });
+
+    delegate(document).on('click', '.costs--edit-planned-costs-cancel-btn', (evt) => {
+      const form = (evt.target as HTMLElement).closest('.costs--edit-form') as HTMLElement;
+      const link = form.previousElementSibling as HTMLElement;
+
+      link.hidden = false;
+      form.hidden = true;
+      PlannedCostsFormAugment.toggleRateHint(form, false);
+
+      const input = form.querySelector('input') as HTMLInputElement;
+      input.disabled = true;
     });
   }
 
-  constructor(public $element:JQuery) {
-    this.objId = this.$element.attr('obj-id')!;
-    this.objName = this.$element.attr('obj-name')!;
-    this.obj = jQuery(`#${this.objId}_costs`) as any;
-    this.placeholder = this.$element.data('placeholder');
+  private static toggleRateHint(form:HTMLElement, hidden:boolean):void {
+    const hint = form.closest('td')?.querySelector<HTMLElement>('.costs--rate-hint');
 
-    this.makeEditable();
-  }
-
-  public makeEditable() {
-    this.edit_and_focus();
-  }
-
-  private edit_and_focus() {
-    this.edit();
-
-    jQuery('#' + this.objId + '_costs_edit').trigger('focus');
-    jQuery('#' + this.objId + '_costs_edit').trigger('select');
-  }
-
-  private getCurrency() {
-    return jQuery('#' + this.objId + '_currency').val();
-  }
-
-  private getValue() {
-    let costValueElement = jQuery('#' + this.objId + '_cost_value');
-    return costValueElement.length > 0 ? costValueElement.val() : '0.00';
-  }
-
-  private edit() {
-    this.obj.hide();
-
-    const id = this.obj[0].id;
-    const currency = this.getCurrency();
-    const value = this.getValue();
-    const name = this.objName;
-    const placeholder = this.placeholder;
-
-    const template = `
-      <section class="form--section" id="${id}_section">
-        <div class="form--field">
-          <div class="form--field-container">
-            <div id="${id}_cancel" class="form--field-affix -transparent icon icon-close"></div>
-            <div id="${id}_editor" class="form--text-field-container">
-                <input id="${id}_edit"
-                       class="form--text-field"
-                       name="${name}"
-                       value="${value}"
-                       placeholder="${placeholder}"
-                       class="currency"
-                       type="text" />
-            </div>
-            <div class="form--field-affix" id="${id}_affix">${currency}</div>
-          </div>
-        </div>
-      </section>
-    `;
-
-    jQuery(template).insertAfter(this.obj);
-
-    const that = this;
-    jQuery('#' + id + '_cancel').on('click', function () {
-      jQuery('#' + id + '_section').remove();
-      that.obj.show();
-      return false;
-    });
+    if (hint) {
+      hint.hidden = hidden;
+    }
   }
 }
-

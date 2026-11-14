@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -33,7 +32,6 @@ import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { CustomActionResource } from 'core-app/features/hal/resources/custom-action-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { WikiPageResource } from 'core-app/features/hal/resources/wiki-page-resource';
-import { MeetingContentResource } from 'core-app/features/hal/resources/meeting-content-resource';
 import { PostResource } from 'core-app/features/hal/resources/post-resource';
 import { StatusResource } from 'core-app/features/hal/resources/status-resource';
 import { AttachmentCollectionResource } from 'core-app/features/hal/resources/attachment-collection-resource';
@@ -56,18 +54,23 @@ import {
   HalResourceFactoryConfigInterface,
   HalResourceService,
 } from 'core-app/features/hal/services/hal-resource.service';
-import { QueryFilterInstanceSchemaResource } from 'core-app/features/hal/resources/query-filter-instance-schema-resource';
+import {
+  QueryFilterInstanceSchemaResource,
+} from 'core-app/features/hal/resources/query-filter-instance-schema-resource';
 import { ErrorResource } from 'core-app/features/hal/resources/error-resource';
 import { SchemaDependencyResource } from 'core-app/features/hal/resources/schema-dependency-resource';
 import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
 import { RelationResource } from 'core-app/features/hal/resources/relation-resource';
 import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
+import { MeetingResource } from 'core-app/features/hal/resources/meeting-resource';
+import { ActivityCommentResource } from '../resources/activity-comment-resource';
 
-const halResourceDefaultConfig:{ [typeName:string]:HalResourceFactoryConfigInterface } = {
+const halResourceDefaultConfig:Record<string, HalResourceFactoryConfigInterface> = {
   WorkPackage: {
     cls: WorkPackageResource,
     attrTypes: {
+      author: 'User',
       parent: 'WorkPackage',
       ancestors: 'WorkPackage',
       children: 'WorkPackage',
@@ -84,7 +87,7 @@ const halResourceDefaultConfig:{ [typeName:string]:HalResourceFactoryConfigInter
     },
   },
   'Activity::Comment': {
-    cls: HalResource,
+    cls: ActivityCommentResource,
     attrTypes: {
       user: 'User',
     },
@@ -179,13 +182,19 @@ const halResourceDefaultConfig:{ [typeName:string]:HalResourceFactoryConfigInter
   WikiPage: {
     cls: WikiPageResource,
   },
-  MeetingContent: {
-    cls: MeetingContentResource,
+  Meeting: {
+    cls: MeetingResource,
   },
   Post: {
     cls: PostResource,
   },
   Project: {
+    cls: ProjectResource,
+  },
+  Portfolio: {
+    cls: ProjectResource,
+  },
+  Program: {
     cls: ProjectResource,
   },
   Role: {
@@ -213,6 +222,6 @@ const halResourceDefaultConfig:{ [typeName:string]:HalResourceFactoryConfigInter
 
 export function initializeHalResourceConfig(halResourceService:HalResourceService) {
   return () => {
-    _.each(halResourceDefaultConfig, (value, key) => halResourceService.registerResource(key, value));
+    Object.entries(halResourceDefaultConfig).forEach(([key, value]) => halResourceService.registerResource(key, value));
   };
 }

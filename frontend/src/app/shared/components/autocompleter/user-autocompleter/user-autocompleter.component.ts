@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,173 +20,166 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { keyBy } from 'lodash-es';
 import {
-  Component, ElementRef, EventEmitter, Injector, Input, OnInit, Output, ViewChild,
+  ChangeDetectionStrategy,
+  Component,
+  EventEmitter,
+  forwardRef,
+  inject,
+  Input,
+  OnInit,
+  Output,
+  ViewEncapsulation,
 } from '@angular/core';
-import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
+import { filter, map } from 'rxjs/operators';
+import { ControlValueAccessor, NG_VALUE_ACCESSOR } from '@angular/forms';
+import { ID } from '@datorama/akita';
+import { OpInviteUserDialogService } from 'core-app/features/invite-user-modal/invite-user-dialog.service';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { IHALCollection } from 'core-app/core/apiv3/types/hal-collection.type';
 import {
-  DebouncedRequestSwitchmap,
-  errorNotificationHandler,
-} from 'core-app/shared/helpers/rxjs/debounced-input-switchmap';
-import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
-import { NgSelectComponent } from '@ng-select/ng-select';
-import { UserResource } from 'core-app/features/hal/resources/user-resource';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { ApiV3FilterBuilder, FilterOperator } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
+  OpAutocompleterComponent,
+} from 'core-app/shared/components/autocompleter/op-autocompleter/op-autocompleter.component';
+import { ApiV3FilterBuilder } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
+import { addFiltersToPath } from 'core-app/core/apiv3/helpers/add-filters-to-path';
+import {
+  UserAutocompleterTemplateComponent,
+} from 'core-app/shared/components/autocompleter/user-autocompleter/user-autocompleter-template.component';
+import { IUser } from 'core-app/core/state/principals/user.model';
+import { compareByAttribute } from 'core-app/shared/helpers/angular/tracking-functions';
+import { isRecord } from 'core-app/shared/helpers/type-guards';
 
-export const usersAutocompleterSelector = 'user-autocompleter';
+export const usersAutocompleterSelector = 'op-user-autocompleter';
 
-export interface UserAutocompleteItem {
+export interface IUserAutocompleteItem {
+  id:ID;
   name:string;
-  id:string|null;
+  email?:string|null;
   href:string|null;
+  avatar?:string|null;
 }
 
 @Component({
-  templateUrl: './user-autocompleter.component.html',
+  templateUrl: '../op-autocompleter/op-autocompleter.component.html',
   selector: usersAutocompleterSelector,
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  providers: [
+    {
+      provide: NG_VALUE_ACCESSOR,
+      useExisting: forwardRef(() => UserAutocompleterComponent),
+      multi: true,
+    },
+  ],
+  styleUrls: ['./user-autocompleter.component.sass'],
+  encapsulation: ViewEncapsulation.None,
+  standalone: false,
 })
-export class UserAutocompleterComponent implements OnInit {
-  userTracker = (item:any) => item.href || item.id;
+export class UserAutocompleterComponent extends OpAutocompleterComponent<IUserAutocompleteItem> implements OnInit, ControlValueAccessor {
+  @Input() public inviteUserToProject:string|undefined;
 
-  @ViewChild(NgSelectComponent, { static: true }) public ngSelectComponent:NgSelectComponent;
+  @Input() public isOpenedInModal = false;
+  @Input() public hoverCards = true;
 
-  @Output() public onChange = new EventEmitter<void>();
-
-  @Input() public clearAfterSelection = false;
-
-  // Load all users as default
   @Input() public url:string = this.apiV3Service.users.path;
 
-  @Input() public allowEmpty = false;
+  @Input() public additionalOptions:IUserAutocompleteItem[]|null = null;
 
-  @Input() public appendTo = '';
+  @Output() public userInvited = new EventEmitter<HalResource>();
 
-  @Input() public multiple = false;
+  readonly opInviteUserDialogService = inject(OpInviteUserDialogService);
 
-  @Input() public initialSelection:number|null = null;
+  getOptionsFn = this.getAvailableUsers.bind(this);
 
-  // Update an input field after changing, used when externally loaded
-  private updateInputField:HTMLInputElement|undefined;
+  ngOnInit():void {
+    super.ngOnInit();
 
-  /** Keep a switchmap for search term and loading state */
-  public requests = new DebouncedRequestSwitchmap<string, UserAutocompleteItem>(
-    (searchTerm:string) => this.getAvailableUsers(this.url, searchTerm),
-    errorNotificationHandler(this.halNotification),
-  );
+    this.applyTemplates(UserAutocompleterTemplateComponent, {
+      inviteUserToProject: this.inviteUserToProject,
+      isOpenedInModal: this.isOpenedInModal,
+      hoverCards: this.hoverCards,
+    });
 
-  public inputFilters:ApiV3FilterBuilder = new ApiV3FilterBuilder();
-
-  constructor(protected elementRef:ElementRef,
-    protected halResourceService:HalResourceService,
-    protected I18n:I18nService,
-    protected halNotification:HalResourceNotificationService,
-    readonly pathHelper:PathHelperService,
-    readonly apiV3Service:APIV3Service,
-    readonly injector:Injector) {
-  }
-
-  ngOnInit() {
-    const input = this.elementRef.nativeElement.dataset.updateInput;
-    const { allowEmpty } = this.elementRef.nativeElement.dataset;
-    const { appendTo } = this.elementRef.nativeElement.dataset;
-    const { multiple } = this.elementRef.nativeElement.dataset;
-    const { url } = this.elementRef.nativeElement.dataset;
-
-    if (input) {
-      this.updateInputField = document.getElementsByName(input)[0] as HTMLInputElement|undefined;
-      this.setInitialSelection();
-    }
-
-    const filterInput = this.elementRef.nativeElement.dataset.additionalFilter;
-    if (filterInput) {
-      JSON.parse(filterInput).forEach((filter:{ selector:string; operator:FilterOperator, values:string[] }) => {
-        this.inputFilters.add(filter.selector, filter.operator, filter.values);
+    this
+      .opInviteUserDialogService
+      .close
+      .pipe(
+        this.untilDestroyed(),
+        filter((user) => !!user),
+      )
+      .subscribe((user:HalResource) => {
+        this.userInvited.emit(user);
       });
-    }
-
-    if (allowEmpty === 'true') {
-      this.allowEmpty = true;
-    }
-
-    if (appendTo) {
-      this.appendTo = appendTo;
-    }
-
-    if (multiple === 'true') {
-      this.multiple = true;
-    }
-
-    if (url) {
-      this.url = url;
-    }
   }
 
-  public onFocus() {
-    if (!this.requests.lastRequestedValue) {
-      this.requests.input$.next('');
-    }
-  }
+  public getAvailableUsers(searchTerm?:string):Observable<IUserAutocompleteItem[]> {
+    const filteredURL = this.buildFilteredURL(searchTerm);
 
-  public onModelChange(user:any) {
-    if (user) {
-      this.onChange.emit(user);
-      this.requests.input$.next('');
+    filteredURL.searchParams.set('pageSize', '-1');
+    filteredURL.searchParams.set('select', 'elements/id,elements/name,elements/email,elements/self,total,count,pageSize');
 
-      if (this.clearAfterSelection) {
-        this.ngSelectComponent.clearItem(user);
-      }
-
-      if (this.updateInputField) {
-        if (this.multiple) {
-          this.updateInputField.value = user.map((u:UserResource) => u.id);
-        } else {
-          this.updateInputField.value = user.id;
-        }
-      }
-    }
-  }
-
-  protected getAvailableUsers(url:string, searchTerm:any):Observable<UserAutocompleteItem[]> {
-    // Need to clone the filters to not add additional filters on every
-    // search term being processed.
-    const searchFilters = this.inputFilters.clone();
-
-    if (searchTerm && searchTerm.length) {
-      searchFilters.add('name', '~', [searchTerm]);
-    }
-
-    return this.halResourceService
-      .get(url, { filters: searchFilters.toJson() })
+    return this
+      .http
+      .get<IHALCollection<IUser>>(filteredURL.toString())
       .pipe(
         map((res) => {
-          const options = res.elements.map((el:any) => ({
-            name: el.name, id: el.id, href: el.href, avatar: el.avatar,
-          }));
+          const seen = new Set<string|number>();
+          return res._embedded.elements.filter((el) => {
+            const key = el._links.self?.href || el.id;
+            if (seen.has(key)) { return false; }
+            seen.add(key);
+            return true;
+          });
+        }),
+        map((users) => {
+          const mapped:IUserAutocompleteItem[] = users.map((user) => {
+              return { id: user.id, name: user.name, href: user._links.self?.href, email: user.email };
+          });
 
-          if (this.allowEmpty) {
-            options.unshift({ name: this.I18n.t('js.timelines.filter.noneSelection'), href: null, id: null });
+          if (this.additionalOptions) {
+            return this.additionalOptions.concat(mapped);
           }
 
-          return options;
-        }),
+          return mapped;
+          }),
       );
   }
 
-  private setInitialSelection() {
-    if (this.updateInputField) {
-      const id = parseInt(this.updateInputField.value);
-      this.initialSelection = isNaN(id) ? null : id;
+  protected buildFilteredURL(searchTerm?:string):URL {
+    const filterObject = keyBy(this.filters, 'name');
+    const searchFilters = ApiV3FilterBuilder.fromFilterObject(filterObject);
+
+    if (searchTerm?.length) {
+      searchFilters.add(this.searchKey || 'name', '~', [searchTerm]);
     }
+
+    return addFiltersToPath(this.url, searchFilters);
+  }
+
+  public addNewObjectFn(searchString:string):IUserAutocompleteItem {
+    return {
+      id: searchString,
+      name: searchString,
+      href: null,
+      avatar: null,
+    };
+  }
+
+  protected defaultTrackByFunction():(item:unknown) => unknown {
+    return (item) => {
+      if (!isRecord(item)) return undefined;
+      if (item.href) return item.href;
+      return item.name;
+    };
+  }
+
+  protected defaultCompareWithFunction():(a:unknown, b:unknown) => boolean {
+    return compareByAttribute('href', 'name');
   }
 }

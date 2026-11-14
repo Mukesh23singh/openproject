@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,43 +22,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './../support//board_index_page'
-require_relative './../support/board_page'
+require "spec_helper"
+require_relative "../support//board_index_page"
+require_relative "../support/board_page"
 
-describe 'Custom field filter in boards', type: :feature, js: true do
+# Drags cards with the Selenium action API. Boards specs move to Cuprite in their own review.
+RSpec.describe "Custom field filter in boards",
+               :js,
+               :selenium do
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user,
+           member_with_roles: { project => role })
   end
-  let(:type) { FactoryBot.create(:type_standard) }
-  let(:project) { FactoryBot.create(:project, types: [type], enabled_module_names: %i[work_package_tracking board_view]) }
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:type) { create(:type_task) }
+  let(:project) { create(:project, types: [type], enabled_module_names: %i[work_package_tracking board_view]) }
+  let(:role) { create(:project_role, permissions:) }
 
   let(:board_index) { Pages::BoardIndex.new(project) }
 
   let(:permissions) do
-    %i[show_board_views manage_board_views add_work_packages
+    %i[show_board_views manage_board_views add_work_packages save_queries
        edit_work_packages view_work_packages manage_public_queries]
   end
 
-  let!(:priority) { FactoryBot.create :default_priority }
-  let!(:open_status) { FactoryBot.create :default_status, name: 'Open' }
-  let!(:closed_status) { FactoryBot.create :status, is_closed: true, name: 'Closed' }
+  let!(:priority) { create(:default_priority) }
+  let!(:open_status) { create(:default_status, name: "Open") }
+  let!(:closed_status) { create(:status, category: "closed", name: "Closed") }
 
   let!(:work_package) do
-    wp = FactoryBot.build :work_package,
-                          project: project,
-                          type: type,
-                          subject: 'Foo',
-                          status: open_status
+    wp = build(:work_package,
+               project:,
+               type:,
+               subject: "Foo",
+               status: open_status)
 
     wp.custom_field_values = {
       custom_field.id => %w[B].map { |s| custom_value_for(s) }
@@ -66,15 +69,29 @@ describe 'Custom field filter in boards', type: :feature, js: true do
     wp
   end
 
-  let(:filters) { ::Components::WorkPackages::Filters.new }
+  let!(:workflow_open_to_closed) do
+    create(:workflow,
+           type:,
+           role:,
+           old_status_id: open_status.id,
+           new_status_id: closed_status.id)
+  end
+  let!(:workflow_closed_to_open) do
+    create(:workflow,
+           type:,
+           role:,
+           old_status_id: closed_status.id,
+           new_status_id: open_status.id)
+  end
+
+  let(:filters) { Components::WorkPackages::Filters.new }
 
   let(:custom_field) do
-    FactoryBot.create(
+    create(
       :list_wp_custom_field,
       name: "Ingredients",
       multi_value: true,
       types: [type],
-      projects: [project],
       possible_values: %w[A B C]
     )
   end
@@ -84,49 +101,49 @@ describe 'Custom field filter in boards', type: :feature, js: true do
   end
 
   before do
-    with_enterprise_token :board_view
     project
     login_as(user)
   end
 
-  it 'can add a case-insensitive list (Regression #35744)' do
+  it "can add a case-insensitive list (Regression #35744)" do
     board_index.visit!
 
     # Create new board
-    board_page = board_index.create_board action: :Status
+    board_page = board_index.create_board action: "Kanban"
 
     # expect lists of default status
-    board_page.expect_list 'Open'
+    board_page.expect_list "Open"
 
     # Add a filter for CF value A and B
     filters.expect_filter_count 0
     filters.open
 
     filters.add_filter_by(custom_field.name,
-                          'is',
-                          ['A', 'B'],
-                          "customField#{custom_field.id}")
+                          "is (OR)",
+                          %w[A B],
+                          custom_field.attribute_name(:camel_case))
 
     board_page.expect_changed
 
     # Save that filter
     board_page.save
 
-    board_page.add_list option: 'Closed', query: 'closed'
-    board_page.expect_list 'Closed'
+    board_page.add_list option: "Closed", query: "closed"
+    board_page.expect_list "Closed"
+    board_page.wait_for_lists_reload
 
     # Expect card to be present
-    board_page.expect_card('Open', 'Foo', present: true)
+    board_page.expect_card("Open", "Foo", present: true)
 
     # Move card to list closed
-    board_page.move_card(0, from: 'Open', to: 'Closed')
+    board_page.move_card(0, from: "Open", to: "Closed")
 
-    board_page.expect_card('Closed', 'Foo', present: true)
-    board_page.expect_card('Open', 'Foo', present: false)
+    board_page.expect_card("Closed", "Foo", present: true)
+    board_page.expect_card("Open", "Foo", present: false)
 
     # Expect custom field to be unchanged
     work_package.reload
-    cv = work_package.custom_value_for(custom_field).typed_value
-    expect(cv).to eq 'B'
+    cv = work_package.custom_value_for(custom_field).map(&:typed_value)
+    expect(cv).to eq ["B"]
   end
 end

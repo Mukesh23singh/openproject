@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,6 +34,8 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
     projects_table[:id]
       .eq(members_table[:project_id])
       .and(members_table[:user_id].eq(user.id))
+      .and(members_table[:entity_type].eq(nil))
+      .and(members_table[:entity_id].eq(nil))
       .and(project_active_condition)
   end
 
@@ -95,11 +96,11 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
   end
 
   def self.permission_roles_table
-    Role.arel_table.alias('permission_roles')
+    Role.arel_table.alias("permission_roles")
   end
 
   def self.assigned_roles_table
-    Role.arel_table.alias('assigned_roles')
+    Role.arel_table.alias("assigned_roles")
   end
 
   def self.role_has_permission_and_is_assigned(user, action)
@@ -140,16 +141,20 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
   end
 
   def self.action_project_modules(action)
-    permissions(action).map(&:project_module).compact.uniq
+    permissions(action).filter_map(&:project_module).uniq
   end
 
   def self.action_public?(action)
     permissions(action).all?(&:public?)
   end
 
+  def self.granted_to_admin?(user, action)
+    user.admin? && OpenProject::AccessControl.grant_to_admin?(action)
+  end
+
   transformations.register :all,
-                           :members_join do |statement, user|
-    if user.admin?
+                           :members_join do |statement, user, action|
+    if granted_to_admin?(user, action)
       statement
     else
       statement
@@ -172,7 +177,7 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
   transformations.register :all,
                            :role_permissions_join,
                            after: [:enabled_modules_join] do |statement, user, action|
-    if action_public?(action) || user.admin?
+    if action_public?(action) || granted_to_admin?(user, action)
       statement
     else
       statement.join(role_permissions_table)
@@ -182,8 +187,8 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
 
   transformations.register :all,
                            :members_member_roles_join,
-                           after: [:members_join] do |statement, user|
-    if user.admin?
+                           after: [:members_join] do |statement, user, action|
+    if granted_to_admin?(user, action)
       statement
     else
       statement.outer_join(member_roles_table)
@@ -194,7 +199,7 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
   transformations.register :all,
                            :permission_roles_join,
                            after: [:role_permissions_join] do |statement, user, action|
-    if action_public?(action) || user.admin?
+    if action_public?(action) || granted_to_admin?(user, action)
       statement
     else
       statement.join(permission_roles_table)
@@ -206,7 +211,7 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
                            :assigned_roles_join,
                            after: %i[permission_roles_join
                                      members_member_roles_join] do |statement, user, action|
-    if user.admin?
+    if granted_to_admin?(user, action)
       statement
     else
       statement.outer_join(assigned_roles_table)
@@ -215,8 +220,8 @@ class Authorization::ProjectQuery < Authorization::AbstractQuery
   end
 
   transformations.register :all,
-                           :assigned_role_exists_condition do |statement, user|
-    if user.admin?
+                           :assigned_role_exists_condition do |statement, user, action|
+    if granted_to_admin?(user, action)
       statement.where(project_active_condition)
     else
       statement.where(assigned_roles_table[:id].not_eq(nil))

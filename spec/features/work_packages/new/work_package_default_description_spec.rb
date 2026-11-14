@@ -1,19 +1,50 @@
-require 'spec_helper'
-require 'support/edit_fields/edit_field'
-require 'features/work_packages/work_packages_page'
-require 'features/page_objects/notification'
+# frozen_string_literal: true
 
-describe 'new work package', js: true, with_mail: false do
-  let(:type_task) { FactoryBot.create(:type_task, description: "# New Task template\n\nHello there") }
-  let(:type_feature) { FactoryBot.create(:type_feature, description: "", is_default: true) }
-  let(:type_bug) { FactoryBot.create(:type_bug, description: "# New Bug template\n\nGeneral Kenobi") }
-  let!(:status) { FactoryBot.create(:status, is_default: true) }
-  let!(:priority) { FactoryBot.create(:priority, is_default: true) }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+require "support/edit_fields/edit_field"
+require "features/work_packages/work_packages_page"
+require "features/page_objects/notification"
+
+RSpec.describe "new work package", :js do
+  include_context "with axe on Cuprite"
+
+  let(:type_task) { create(:type_task, default_work_package_description: "# New Task template\n\nHello there") }
+  let(:type_feature) { create(:type_feature, default_work_package_description: "") }
+  let(:type_bug) { create(:type_bug, default_work_package_description: "# New Bug template\n\nGeneral Kenobi") }
+  let!(:status) { create(:status, is_default: true) }
+  let!(:priority) { create(:priority, is_default: true) }
   let!(:project) do
-    FactoryBot.create(:project, types: [type_feature, type_task, type_bug], no_types: true)
+    create(:project, types: [type_feature, type_task, type_bug], no_types: true)
   end
 
-  let(:user) { FactoryBot.create :admin }
+  let(:user) { create(:admin) }
 
   let(:subject_field) { wp_page.edit_field :subject }
   let(:description_field) { wp_page.edit_field :description }
@@ -26,68 +57,76 @@ describe 'new work package', js: true, with_mail: false do
   # Changes in the description shall not be overridden.
   def change_type_and_expect_description(set_project: false)
     if !set_project
-      expect(page).to have_selector('.inline-edit--container.type', text: type_feature.name)
+      expect(page).to have_css(".inline-edit--container.type", text: type_feature.name)
     end
-    expect(page).to have_selector('.inline-edit--container.description', text: '')
+    expect(page).to have_css(".inline-edit--container.description", text: "")
 
     type_field.openSelectField
     type_field.set_value type_task
-    expect(page).to have_selector('.inline-edit--container.description h1', text: 'New Task template')
+    loading_indicator_saveguard
+    expect(page).to have_css(".inline-edit--container.description h1", text: "New Task template")
 
     type_field.openSelectField
     type_field.set_value type_bug
-    expect(page).to have_selector('.inline-edit--container.description h1', text: 'New Bug template')
+    loading_indicator_saveguard
+    expect(page).to have_css(".inline-edit--container.description h1", text: "New Bug template")
 
-    description_field.set_value 'Something different than the default.'
+    wait_for_browser_event("work-package-updated") do
+      description_field.set_value "Something different than the default."
+    end
+    description_field.expect_value "Something different than the default."
 
     type_field.openSelectField
     type_field.set_value type_task
-    expect(page).to have_no_selector('.inline-edit--container.description h1', text: 'New Task template', wait: 5)
-
-    description_field.set_value ''
+    loading_indicator_saveguard
+    expect(page).to have_css(".inline-edit--container.description", text: "Something different than the default.")
 
     type_field.openSelectField
     type_field.set_value type_bug
-    expect(page).to have_selector('.inline-edit--container.description h1', text: 'New Bug template')
+    loading_indicator_saveguard
+    expect(page).to have_css(".inline-edit--container.description", text: "Something different than the default.")
 
     if set_project
       project_field.openSelectField
-      project_field.set_value project
-      sleep 1
+      wait_for_browser_event("work-package-form-updated") do
+        project_field.set_value project
+      end
     end
 
-    scroll_to_and_click find('#work-packages--edit-actions-save')
-    wp_page.expect_toast message: 'Successful creation.'
+    scroll_to_and_click find_by_id("work-packages--edit-actions-save")
+    wp_page.expect_toast message: "Successful creation."
 
-    expect(page).to have_selector('.inline-edit--display-field.description h1', text: 'New Bug template')
+    expect(page).to have_css(".inline-edit--display-field.description", text: "Something different than the default.")
   end
 
   before do
     login_as(user)
   end
 
-  describe 'global work package create' do
-    it 'shows the template after selection of project and type' do
-      visit '/work_packages/new'
+  describe "global work package create" do
+    it "shows the template after selection of project and type" do
+      visit "/work_packages/new"
       wp_page.expect_fully_loaded
+      expect(page).to have_button(accessible_name: "Settings", exact: true)
+      expect(page).to be_axe_clean.within(".toolbar-items")
 
-      subject_field.set_value 'Foobar!'
+      subject_field.set_value "Foobar!"
 
       change_type_and_expect_description set_project: true
     end
   end
 
-  describe 'project work package create' do
+  describe "project work package create" do
     let(:wp_table) { Pages::WorkPackagesTable.new project }
-    let(:wp_page) { Pages::SplitWorkPackageCreate.new project: project }
+    let(:wp_page) { Pages::SplitWorkPackageCreate.new project: }
 
-    it 'shows the template after selection of project and type' do
+    it "shows the template after selection of project and type" do
       wp_table.visit!
       wp_table.create_wp_by_button type_feature
 
       wp_page.expect_fully_loaded
 
-      subject_field.set_value 'Foobar!'
+      subject_field.set_value "Foobar!"
 
       type_field.activate!
 

@@ -1,91 +1,189 @@
-import { Injectable } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { withTooltip } from 'core-app/shared/helpers/tooltip-helper';
+import { take } from 'lodash-es';
+import { Injectable, inject } from '@angular/core';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { ColorsService } from 'core-app/shared/components/colors/colors.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { colorModes, ColorsService } from 'core-app/shared/components/colors/colors.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import { IPrincipal } from 'core-app/core/state/principals/principal.model';
 import { PrincipalLike } from './principal-types';
-import { PrincipalHelper } from './principal-helper';
-import PrincipalType = PrincipalHelper.PrincipalType;
+import { hrefFromPrincipal, PrincipalType, typeFromHref } from './principal-helper';
 
 export type AvatarSize = 'default'|'medium'|'mini';
+
+export interface HoverCardOptions {
+  isActivated:boolean,
+  url?:string;
+}
 
 export interface AvatarOptions {
   hide:boolean;
   size:AvatarSize;
+  imageAltText?:string;
+  imageUrl?:string;
+  fallbackImageUrl?:string;
 }
 
 export interface NameOptions {
   hide:boolean;
   link:boolean;
+  classes?:string;
 }
 
 @Injectable({ providedIn: 'root' })
 export class PrincipalRendererService {
-  constructor(private pathHelper:PathHelperService,
-    private apiV3Service:APIV3Service,
-    private colors:ColorsService) {
+  private pathHelper = inject(PathHelperService);
+  private apiV3Service = inject(ApiV3Service);
+  private colors = inject(ColorsService);
 
+  renderAbbreviated(
+    container:HTMLElement,
+    users:(PrincipalLike|IPrincipal)[],
+    maxCount = 2,
+    name:NameOptions = { hide: false, link: false },
+    avatar:AvatarOptions = { hide: false, size: 'medium' },
+    hoverCard:HoverCardOptions = { isActivated: true },
+  ):void {
+    const wrapper = document.createElement('div');
+    const principals = document.createElement('div');
+    wrapper.classList.add('op-principal-list');
+    principals.classList.add('op-principal-list--principals');
+    wrapper.appendChild(principals);
+    container.appendChild(wrapper);
+
+    const valueForDisplay = take(users, maxCount);
+    this.renderMultiple(
+      principals,
+      valueForDisplay,
+      name,
+      avatar,
+      hoverCard,
+      false,
+    );
+
+    if (users.length > maxCount) {
+      const badge = document.createElement('span');
+      badge.classList.add('op-principal-list--badge', 'badge');
+      badge.textContent = users.length.toString();
+      wrapper.appendChild(badge);
+    }
   }
 
   renderMultiple(
     container:HTMLElement,
-    users:PrincipalLike[],
+    users:(PrincipalLike|IPrincipal)[],
     name:NameOptions = { hide: false, link: false },
     avatar:AvatarOptions = { hide: false, size: 'default' },
+    hoverCard:HoverCardOptions = { isActivated: true },
     multiLine = false,
   ):void {
-    container.classList.add('op-principal');
-    const list = document.createElement('span');
-
     for (let i = 0; i < users.length; i++) {
       const userElement = document.createElement('span');
       if (multiLine) {
+        container.classList.add('-multiline');
         userElement.classList.add('op-principal--multi-line');
       }
 
-      this.render(userElement, users[i], name, avatar);
+      this.render(userElement, users[i], name, avatar, hoverCard);
 
-      list.appendChild(userElement);
+      container.appendChild(userElement);
 
       if (!multiLine && i < users.length - 1) {
         const sep = document.createElement('span');
         sep.textContent = ', ';
-        list.appendChild(sep);
+        sep.classList.add('op-principal-list--separator');
+        container.appendChild(sep);
       }
     }
-
-    container.appendChild(list);
   }
 
   render(
     container:HTMLElement,
-    principal:PrincipalLike,
+    principal:PrincipalLike|IPrincipal,
     name:NameOptions = { hide: false, link: true },
     avatar:AvatarOptions = { hide: false, size: 'default' },
+    hoverCard:HoverCardOptions = { isActivated: true },
+    title:string|null = null,
   ):void {
+    container.dataset.testSelector ??= 'op-principal';
     container.classList.add('op-principal');
-    const type = PrincipalHelper.typeFromHref(principal.href || '') as PrincipalType;
+    const type = typeFromHref(hrefFromPrincipal(principal))!;
 
     if (!avatar.hide) {
-      const el = this.renderAvatar(principal, avatar, type);
+      const el = this.renderAvatar(principal, avatar, hoverCard, type, !name.hide);
       container.appendChild(el);
     }
 
     if (!name.hide) {
-      const el = this.renderName(principal, type, name.link);
-      container.appendChild(el);
+      const el = this.renderName(principal, type, name.link, avatar.hide, title ?? principal.name, name.classes);
+      this.setHoverCardAttributes(el, hoverCard, principal, type);
+      const hint = title && title !== principal.name ? title : '';
+      const nameElement = name.link ? withTooltip(el, hint, 'description') : el;
+      container.appendChild(nameElement);
     }
   }
 
   private renderAvatar(
-    principal:PrincipalLike,
+    principal:PrincipalLike|IPrincipal,
     options:AvatarOptions,
+    hoverCard:HoverCardOptions,
     type:PrincipalType,
-  ) {
+    ariaHidden:boolean,
+  ):HTMLElement {
+    // The backend always returns a displayable image for users and groups (an
+    // uploaded image, a Gravatar, or a generated initials avatar), so there is
+    // nothing to compute or swap in locally here, unlike for placeholder users.
+    if (type === 'user' || type === 'group') {
+      const url = options.imageUrl ?? this.principalAvatarUrl(principal, type);
+      if (url) {
+        return this.renderPrincipalAvatarImage(principal, options, hoverCard, type, ariaHidden, url);
+      }
+    }
+
+    return this.renderFallbackAvatar(principal, options, hoverCard, type, ariaHidden);
+  }
+
+  private renderFallbackAvatar(
+    principal:PrincipalLike|IPrincipal,
+    options:AvatarOptions,
+    hoverCard:HoverCardOptions,
+    type:PrincipalType,
+    ariaHidden:boolean,
+  ):HTMLElement {
     const userInitials = this.getInitials(principal.name);
-    const colorCode = this.colors.toHsl(principal.name);
+    const colorMode = this.colors.colorMode();
+    const text = `${principal.id}${principal.name}`;
+    const colorCode = this.colors.toHsl(text);
 
     const fallback = document.createElement('div');
+    fallback.classList.add('op-principal--avatar');
     fallback.classList.add('op-avatar');
     fallback.classList.add(`op-avatar_${options.size}`);
     fallback.classList.add(`op-avatar_${type.replace('_', '-')}`);
@@ -93,53 +191,98 @@ export class PrincipalRendererService {
     fallback.title = principal.name;
     fallback.textContent = userInitials;
 
-    if (type === 'placeholder_user') {
+    this.setHoverCardAttributes(fallback, hoverCard, principal, type);
+
+    if (ariaHidden) {
+      fallback.setAttribute('aria-hidden', 'true');
+    } else {
+      fallback.setAttribute('role', 'img');
+      fallback.setAttribute('aria-label', options.imageAltText ?? principal.name);
+    }
+
+    if (type === 'placeholder_user' && colorMode !== colorModes.lightHighContrast) {
       fallback.style.color = colorCode;
       fallback.style.borderColor = colorCode;
     } else {
       fallback.style.background = colorCode;
     }
 
-    // Image avatars are only supported for users
-    if (type === 'user') {
-      this.renderUserAvatar(principal, fallback, options);
-    }
-
     return fallback;
   }
 
-  private renderUserAvatar(principal:PrincipalLike, fallback:HTMLElement, options:AvatarOptions):void {
-    const url = this.userAvatarUrl(principal);
-
-    if (!url) {
-      return;
-    }
-
+  private renderPrincipalAvatarImage(
+    principal:PrincipalLike|IPrincipal,
+    options:AvatarOptions,
+    hoverCard:HoverCardOptions,
+    type:PrincipalType,
+    ariaHidden:boolean,
+    url:string,
+  ):HTMLImageElement {
     const image = new Image();
+    image.classList.add('op-principal--avatar');
     image.classList.add('op-avatar');
     image.classList.add(`op-avatar_${options.size}`);
+    image.classList.add(`op-avatar_${type.replace('_', '-')}`);
+
+    this.setHoverCardAttributes(image, hoverCard, principal, type);
+
     image.src = url;
     image.title = principal.name;
-    image.alt = principal.name;
-    image.onload = () => {
-      fallback.replaceWith(image);
-      // eslint-disable-next-line no-param-reassign
-      (fallback as unknown) = undefined;
+    if (ariaHidden) {
+      image.alt = '';
+      image.setAttribute('aria-hidden', 'true');
+    } else {
+      image.alt = options.imageAltText ?? principal.name;
+    }
+    // Avatars are never meaningfully draggable; suppressing the browser's native
+    // image drag stops it from pre-empting Pragmatic DnD card reordering.
+    image.draggable = false;
+    // For users, the backend tries the uploaded image or a redirect to Gravatar
+    // first; either can fail (e.g. no Gravatar registered for the user's
+    // email). Retrying once with `fallback=true` asks the backend to skip
+    // straight to the generated initials avatar, which always succeeds,
+    // without us having to check upfront. Groups have no Gravatar to fail
+    // against, so this retry is a harmless no-op for them.
+    image.onerror = () => {
+      image.onerror = null;
+      const fallbackUrl = (type === 'user' || type === 'group' ? this.principalAvatarUrl(principal, type) : null) ?? url;
+      image.src = options.fallbackImageUrl ?? `${fallbackUrl}${fallbackUrl.includes('?') ? '&' : '?'}fallback=true`;
     };
+
+    return image;
   }
 
-  private userAvatarUrl(principal:PrincipalLike):string|null {
-    const id = principal.id || idFromLink(principal.href || '');
-    return id ? this.apiV3Service.users.id(id).avatar.toString() : null;
+  private principalAvatarUrl(principal:PrincipalLike|IPrincipal, type:'user'|'group'):string|null {
+    const id = principal.id ?? idFromLink(hrefFromPrincipal(principal));
+    if (!id) {
+      return null;
+    }
+
+    const endpoint = type === 'user' ? this.apiV3Service.users : this.apiV3Service.groups;
+    return endpoint.id(id).avatar.toString();
   }
 
-  private renderName(principal:PrincipalLike, type:PrincipalType, asLink = true) {
+  private userHoverCardUrl(principal:PrincipalLike|IPrincipal):string|null {
+    const id = principal.id ?? idFromLink(hrefFromPrincipal(principal));
+    return id ? this.pathHelper.userHoverCardPath(id) : null;
+  }
+
+  private renderName(
+    principal:PrincipalLike|IPrincipal,
+    type:PrincipalType,
+    asLink = true,
+    standalone = false,
+    title = '',
+    classes = '',
+  ) {
     if (asLink) {
       const link = document.createElement('a');
       link.textContent = principal.name;
       link.href = this.principalURL(principal, type);
-      link.target = '_blank';
       link.classList.add('op-principal--name');
+      if (standalone) {
+        link.classList.add('op-principal--name_standalone');
+      }
 
       return link;
     }
@@ -147,11 +290,19 @@ export class PrincipalRendererService {
     const span = document.createElement('span');
     span.textContent = principal.name;
     span.classList.add('op-principal--name');
+    if (standalone) {
+      span.classList.add('op-principal--name_standalone');
+    }
+    span.title = title;
+    classes !== '' && classes.split(' ').forEach((cls) => {
+      span.classList.add(cls);
+    });
     return span;
   }
 
-  private principalURL(principal:PrincipalLike, type:PrincipalType):string {
-    const id = principal.id || (principal.href ? idFromLink(principal.href) : '');
+  private principalURL(principal:PrincipalLike|IPrincipal, type:PrincipalType):string {
+    const href = hrefFromPrincipal(principal);
+    const id = principal.id ?? (href ? idFromLink(href) : '');
 
     switch (type) {
       case 'group':
@@ -166,11 +317,41 @@ export class PrincipalRendererService {
   }
 
   private getInitials(name:string):string {
+    // Spread to iterate by code points to not split multibyte characters such as emojis
     const characters = [...name];
-    const lastSpace = name.lastIndexOf(' ');
+    const lastSpace = characters.lastIndexOf(' ');
     const first = characters[0]?.toUpperCase();
-    const last = name[lastSpace + 1]?.toUpperCase();
 
+    if (lastSpace === -1) {
+      return first;
+    }
+
+    const last = characters[lastSpace + 1]?.toUpperCase();
     return [first, last].join('');
+  }
+
+  private setHoverCardAttributes(element:HTMLElement, options:HoverCardOptions, principal:PrincipalLike|IPrincipal, type:PrincipalType):void {
+    // Only actual users provide a hover card with additional info
+    if (type !== 'user') {
+      return;
+    }
+
+    if (!options.isActivated) {
+      return;
+    }
+
+    if (!options?.url) {
+      // In some cases, there is no URL given although a hover card is expected. For example when the principle
+      // is rendered from an angular template. We try to infer the URL here.
+      const url = this.userHoverCardUrl(principal);
+      if (url) {
+        options.url = url;
+      } else {
+        return;
+      }
+    }
+
+    element.setAttribute('data-hover-card-trigger-target', 'trigger');
+    element.setAttribute('data-hover-card-url', options.url);
   }
 }

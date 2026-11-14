@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,14 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Component,
-  ElementRef,
-  EventEmitter,
-  Injector,
-  Input,
-  OnDestroy,
-  OnInit,
-  Optional,
-  Output,
-} from '@angular/core';
-import { StateService, Transition, TransitionService } from '@uirouter/core';
-import { ConfigurationService } from 'core-app/core/config/configuration.service';
+import { ApplicationRef, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, Injector, Input, OnDestroy, OnInit, Output, inject } from '@angular/core';
 import { EditableAttributeFieldComponent } from 'core-app/shared/components/fields/edit/field/editable-attribute-field.component';
-import { input } from 'reactivestates';
+import { input } from '@openproject/reactivestates';
 import { filter, map, take } from 'rxjs/operators';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import {
@@ -52,60 +39,48 @@ import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
 import { EditFieldHandler } from 'core-app/shared/components/fields/edit/editing-portal/edit-field-handler';
 import { EditingPortalService } from 'core-app/shared/components/fields/edit/editing-portal/editing-portal-service';
-import { EditFormRoutingService } from 'core-app/shared/components/fields/edit/edit-form/edit-form-routing.service';
 import { ResourceChangesetCommit } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { GlobalEditFormChangesTrackerService } from 'core-app/shared/components/fields/edit/services/global-edit-form-changes-tracker/global-edit-form-changes-tracker.service';
+import { firstValueFrom } from 'rxjs';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'edit-form,[edit-form]',
-  template: '<ng-content></ng-content>',
+  template: '<ng-content />',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class EditFormComponent extends EditForm<HalResource> implements OnInit, OnDestroy {
-  @Input('resource') resource:HalResource;
+export class EditFormComponent<T extends HalResource = HalResource> extends EditForm<T> implements OnInit, OnDestroy {
+  readonly injector:Injector;
+  protected readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private appRef = inject(ApplicationRef);
+  private readonly cdRef = inject(ChangeDetectorRef);
+  protected readonly editingPortalService = inject(EditingPortalService);
+  protected readonly I18n = inject(I18nService);
+  private globalEditFormChangesTrackerService = inject(GlobalEditFormChangesTrackerService);
 
+  @Input() resource:T;
+
+  // eslint-disable-next-line @angular-eslint/no-input-rename
   @Input('inEditMode') initializeEditMode = false;
 
-  @Input('skippedFields') skippedFields:string[] = [];
+  @Input() skippedFields:string[] = [];
 
-  @Output('onSaved') onSavedEmitter = new EventEmitter<{ savedResource:HalResource, isInitial:boolean }>();
+  // eslint-disable-next-line @angular-eslint/no-output-on-prefix, @angular-eslint/no-output-rename
+  @Output('onSaved') onSavedEmitter = new EventEmitter<{ savedResource:T, isInitial:boolean }>();
 
-  public fields:{ [attribute:string]:EditableAttributeFieldComponent } = {};
+  public fields:Record<string, EditableAttributeFieldComponent> = {};
 
   private registeredFields = input<string[]>();
 
-  private unregisterListener:Function;
+  constructor() {
+    const injector = inject(Injector);
 
-  constructor(public readonly injector:Injector,
-    protected readonly elementRef:ElementRef,
-    protected readonly $transitions:TransitionService,
-    protected readonly ConfigurationService:ConfigurationService,
-    protected readonly editingPortalService:EditingPortalService,
-    protected readonly $state:StateService,
-    protected readonly I18n:I18nService,
-    @Optional() protected readonly editFormRouting:EditFormRoutingService,
-    private globalEditFormChangesTrackerService:GlobalEditFormChangesTrackerService) {
     super(injector);
-
-    const confirmText = I18n.t('js.work_packages.confirm_edit_cancel');
-    const requiresConfirmation = ConfigurationService.warnOnLeavingUnsaved();
-
-    this.unregisterListener = $transitions.onBefore({}, (transition:Transition) => {
-      if (!this.editing) {
-        return undefined;
-      }
-
-      // Show confirmation message when transitioning to a new state
-      // that's not within the edit mode.
-      if (!this.editFormRouting || this.editFormRouting.blockedTransition(transition)) {
-        if (requiresConfirmation && !window.confirm(confirmText)) {
-          return false;
-        }
-
-        this.cancel(false);
-      }
-
-      return true;
-    });
+    this.injector = injector;
   }
 
   ngOnInit() {
@@ -118,7 +93,6 @@ export class EditFormComponent extends EditForm<HalResource> implements OnInit, 
   }
 
   ngOnDestroy() {
-    this.unregisterListener();
     this.globalEditFormChangesTrackerService.removeFromActiveForms(this);
   }
 
@@ -143,7 +117,7 @@ export class EditFormComponent extends EditForm<HalResource> implements OnInit, 
     ctrl.deactivate(focus);
   }
 
-  public onSaved(commit:ResourceChangesetCommit) {
+  public onSaved(commit:ResourceChangesetCommit<T>) {
     this.cancel(false);
     this.onSavedEmitter.emit({ savedResource: commit.resource, isInitial: commit.wasNew });
   }
@@ -176,7 +150,7 @@ export class EditFormComponent extends EditForm<HalResource> implements OnInit, 
 
   public register(field:EditableAttributeFieldComponent) {
     this.fields[field.fieldName] = field;
-    this.registeredFields.putValue(_.keys(this.fields));
+    this.registeredFields.putValue(Object.keys(this.fields));
 
     const shouldActivate = (this.editMode && !this.skipField(field) || this.activeFields[field.fieldName]);
 
@@ -186,32 +160,31 @@ export class EditFormComponent extends EditForm<HalResource> implements OnInit, 
   }
 
   public waitForField(name:string):Promise<EditableAttributeFieldComponent> {
-    return this.registeredFields
+    return firstValueFrom(this.registeredFields
       .values$()
       .pipe(
-        filter((keys) => keys.indexOf(name) >= 0),
+        filter((keys) => keys.includes(name)),
         take(1),
         map(() => this.fields[name]),
-      )
-      .toPromise();
+      ));
   }
 
   public start() {
-    _.each(this.fields, (ctrl) => this.activate(ctrl.fieldName));
+    Object.values(this.fields).forEach((ctrl) => { void this.activate(ctrl.fieldName); });
   }
 
   protected focusOnFirstError():void {
+    this.cdRef.detectChanges();
     // Focus the first field that is erroneous
-    jQuery(this.elementRef.nativeElement)
-      .find(`.${activeFieldContainerClassName}.-error .${activeFieldClassName}`)
-      .first()
-      .trigger('focus');
+    this.elementRef.nativeElement
+      .querySelector<HTMLElement>(`.${activeFieldContainerClassName}.-error .${activeFieldClassName}`)
+      ?.focus();
   }
 
   private skipField(field:EditableAttributeFieldComponent) {
     const { fieldName } = field;
 
-    const isSkipField = this.skippedFields.indexOf(fieldName) !== -1;
+    const isSkipField = this.skippedFields.includes(fieldName);
 
     // Only skip status or type
     if (!isSkipField) {

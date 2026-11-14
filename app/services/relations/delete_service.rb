@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,10 +22,26 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Relations::DeleteService < ::BaseServices::Delete; end
+class Relations::DeleteService < BaseServices::Delete
+  include Relations::Concerns::Rescheduling
+
+  def after_perform(_call)
+    result = super
+    if result.success? && deleted_relation.follows?
+      reschedule_result = reschedule_successor(deleted_relation)
+      result.merge!(reschedule_result)
+    end
+    result
+  end
+
+  private
+
+  def deleted_relation
+    model
+  end
+end

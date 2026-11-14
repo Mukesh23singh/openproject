@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -82,30 +79,35 @@ module OpenProject
   class ContentTypeDetector
     # application/binary is more secure than application/octet-stream
     # see: http://security.stackexchange.com/q/12896
-    SENSIBLE_DEFAULT = 'application/binary'
-    EMPTY_TYPE = 'inode/x-empty'
+    SENSIBLE_DEFAULT = "application/binary"
+    EMPTY_TYPE = "inode/x-empty"
+
+    # Returns a String describing the file's content type
+    def self.detect(filename)
+      new(filename).detect
+    end
 
     def initialize(filename)
       @filename = filename
     end
 
-    # Returns a String describing the file's content type
-    def detect
-      if blank_name?
-        SENSIBLE_DEFAULT
-      elsif empty_file?
-        EMPTY_TYPE
-      elsif calculated_type_matches.any?
-        calculated_type_matches.first
-      else
-        type_from_file_command || SENSIBLE_DEFAULT
-      end.to_s
+    # Returns [mime_type, charset_or_nil], running the file command once.
+    def detect_with_charset
+      return [SENSIBLE_DEFAULT, nil] if blank_name?
+      return [EMPTY_TYPE, nil] if empty_file?
+
+      raw_mime, charset = FileCommandContentTypeDetector.new(@filename).detect
+      [resolve_mime(raw_mime), charset]
     end
+
+    # Detecting only the mime type is effectively the
+    # first argument of +detect_with_charset+
+    def detect = detect_with_charset.first
 
     private
 
     def empty_file?
-      File.exists?(@filename) && File.size(@filename) == 0
+      File.exist?(@filename) && File.size(@filename) == 0
     end
 
     alias :empty? :empty_file?
@@ -118,12 +120,9 @@ module OpenProject
       MIME::Types.type_for(@filename).map(&:content_type)
     end
 
-    def calculated_type_matches
-      possible_types.select { |content_type| content_type == type_from_file_command }
-    end
-
-    def type_from_file_command
-      @type_from_file_command ||= FileCommandContentTypeDetector.new(@filename).detect
+    def resolve_mime(raw_mime)
+      matches = possible_types.select { |ct| ct == raw_mime }
+      (matches.first || raw_mime || SENSIBLE_DEFAULT).to_s
     end
   end
 end

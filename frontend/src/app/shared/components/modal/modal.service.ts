@@ -1,68 +1,85 @@
-import {
-  ApplicationRef,
-  ComponentFactoryResolver,
-  ComponentRef,
-  Injectable,
-  InjectionToken,
-  Injector,
-} from '@angular/core';
-import {
-  ComponentPortal, ComponentType, DomPortalOutlet, PortalInjector,
-} from '@angular/cdk/portal';
-import { TransitionService } from '@uirouter/core';
-import { OpModalComponent } from 'core-app/shared/components/modal/modal.component';
-import { FocusHelperService } from 'core-app/shared/directives/focus/focus-helper';
-import { KeyCodes } from 'core-app/shared/helpers/keyCodes.enum';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
 
-export const OpModalLocalsToken = new InjectionToken<any>('OP_MODAL_LOCALS');
+import { ComponentType } from '@angular/cdk/portal';
+import { Injectable, InjectionToken, Injector, inject } from '@angular/core';
+import { BehaviorSubject, Observable } from 'rxjs';
+import { filter, take } from 'rxjs/operators';
+
+import { OpModalComponent } from 'core-app/shared/components/modal/modal.component';
+import { PortalOutletTarget } from 'core-app/shared/components/modal/portal-outlet-target.enum';
+
+export const OpModalLocalsToken = new InjectionToken<never>('OP_MODAL_LOCALS');
+
+export interface ModalData {
+  modal:ComponentType<OpModalComponent>;
+  injector:Injector;
+  notFullscreen:boolean;
+  mobileTopPosition:boolean;
+  target:PortalOutletTarget;
+}
 
 @Injectable({ providedIn: 'root' })
 export class OpModalService {
-  public active:OpModalComponent|null = null;
+  private readonly injector = inject(Injector);
 
-  // Hold a reference to the DOM node we're using as a host
-  private portalHostElement:HTMLElement;
+  public activeModalInstance$ = new BehaviorSubject<OpModalComponent|null>(null);
 
-  // And a reference to the actual portal host interface on top of the element
-  private bodyPortalHost:DomPortalOutlet;
+  public activeModalData$ = new BehaviorSubject<ModalData|null>(null);
 
-  // Remember when we're opening a new modal to avoid the outside click bubbling up.
-  private opening = false;
-
-  constructor(private componentFactoryResolver:ComponentFactoryResolver,
-    readonly FocusHelper:FocusHelperService,
-    private appRef:ApplicationRef,
-    private $transitions:TransitionService,
-    private injector:Injector) {
-    const hostElement = this.portalHostElement = document.createElement('div');
-    hostElement.classList.add('op-modal-overlay');
-    document.body.appendChild(hostElement);
-
-    // Listen to keyups on window to close context menus
-    jQuery(window).on('keydown', (evt:JQuery.TriggeredEvent) => {
-      if (this.active && this.active.closeOnEscape && evt.which === KeyCodes.ESCAPE) {
-        this.active.closeOnEscapeFunction(evt);
+  constructor() {
+    // Listen to keystrokes on window to close context menus
+    window.addEventListener('keydown', (evt:KeyboardEvent) => {
+      if (evt.key !== 'Escape' || evt.defaultPrevented) {
+        return;
       }
 
-      return true;
+      this.close();
     });
+  }
 
-    // Listen to any click when should close outside modal
-    jQuery(window).on('click', (evt:JQuery.TriggeredEvent) => {
-      if (this.active
-        && !this.opening
-        && this.active.closeOnOutsideClick
-        && this.activeModal[0] === evt.target as Element) {
-        this.close();
-      }
-    });
+  /**
+   * Checks whether there is currently an active modal. Only shows the requested modal if this is not the case.
+   * Will return null if showing the modal is denied.
+   * @see show
+   */
+  public showIfNotActive<T extends OpModalComponent>(
+    modal:ComponentType<T>,
+    injector:Injector|'global',
+    locals:Record<string, unknown> = {},
+    notFullscreen = false,
+    mobileTopPosition = false,
+    target = PortalOutletTarget.Default,
+  ):Observable<T>|null {
+    if (this.activeModalInstance$.value) {
+      return null;
+    }
 
-    this.bodyPortalHost = new DomPortalOutlet(
-      hostElement,
-      this.componentFactoryResolver,
-      this.appRef,
-      this.injector,
-    );
+    return this.show(modal, injector, locals, notFullscreen, mobileTopPosition, target);
   }
 
   /**
@@ -72,84 +89,62 @@ export class OpModalService {
    * @param injector The injector to pass into the component. Ensure this is the hierarchical injector if needed.
    *                 Can be passed 'global' to take the default (global!) injector of this service.
    * @param locals A map to be injected via token into the component.
-   * @param notFullScreen Whether the modal is treated as non-overlay
+   * @param notFullscreen
+   * @param mobileTopPosition
+   * @param target An optional target override for the modal portal outlet
    */
   public show<T extends OpModalComponent>(
     modal:ComponentType<T>,
     injector:Injector|'global',
     locals:Record<string, unknown> = {},
-    notFullScreen = false,
-  ):T {
+    notFullscreen = false,
+    mobileTopPosition = false,
+    target = PortalOutletTarget.Default,
+  ):Observable<T> {
     this.close();
-
-    // Prevent closing events during the opening time frame.
-    this.opening = true;
 
     // Allow users to pass the global injector when deliberately requested.
     if (injector === 'global') {
       injector = this.injector;
     }
 
-    // Create a portal for the given component class and render it
-    const portal = new ComponentPortal(modal, null, this.injectorFor(injector, locals));
-    const ref:ComponentRef<OpModalComponent> = this.bodyPortalHost.attach(portal) as ComponentRef<OpModalComponent>;
-    const instance = ref.instance as T;
-    this.active = instance;
-    this.portalHostElement.classList.add('op-modal-overlay_active');
-    if (notFullScreen) {
-      this.portalHostElement.classList.add('op-modal-overlay_not-full-screen');
-    }
+    this.activeModalData$.next({
+      modal,
+      injector: this.injectorFor(injector, locals),
+      notFullscreen,
+      mobileTopPosition,
+      target,
+    });
 
-    setTimeout(() => {
-      // Focus on the first element
-      this.active && this.active.onOpen(this.activeModal);
-
-      // Mark that we've opened the modal now
-      this.opening = false;
-
-      // Trigger another round of change detection in the modal
-      ref.changeDetectorRef.detectChanges();
-    }, 20);
-
-    return this.active as T;
-  }
-
-  public isActive(modal:OpModalComponent) {
-    return this.active && this.active === modal;
+    return this.activeModalInstance$
+      .pipe(
+        filter((m) => m instanceof modal),
+        take(1),
+      ) as Observable<T>;
   }
 
   /**
    * Closes currently open modal window
    */
-  public close() {
-    // Detach any component currently in the portal
-    if (this.active && this.active.onClose()) {
-      this.active.closingEvent.emit(this.active);
-      this.bodyPortalHost.detach();
-      this.portalHostElement.classList.remove('op-modal-overlay_active');
-      this.portalHostElement.classList.remove('op-modal-overlay_not-full-screen');
-      this.active = null;
-    }
-  }
-
-  public get activeModal():JQuery {
-    return jQuery(this.portalHostElement).find('.op-modal');
+  public close():void {
+    this.activeModalData$.next(null);
   }
 
   /**
    * Create an augmented injector that is equal to this service's injector + the additional data
    * passed into +show+.
    * This allows callers to pass data into the newly created modal.
-   *
    */
   private injectorFor(injector:Injector, data:Record<string, unknown>) {
-    const injectorTokens = new WeakMap();
     // Pass the service because otherwise we're getting a cyclic dependency between the portal
     // host service and the bound portal
     data.service = this;
 
-    injectorTokens.set(OpModalLocalsToken, data);
-
-    return new PortalInjector(injector, injectorTokens);
+    return Injector.create({
+      providers: [
+        { provide: OpModalLocalsToken, useValue: data },
+      ],
+      parent: injector,
+    });
   }
 }

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,42 +20,61 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.expand_path(File.dirname(__FILE__) + '/../spec_helper.rb')
+require_relative "../spec_helper"
 
-describe HourlyRatesController do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe HourlyRatesController do
+  let(:user) { create(:user, member_with_permissions: { project => permissions }) }
+  let(:permissions) { [:view_hourly_rates] }
+  let(:project) { create(:project) }
 
-  let(:user) { FactoryBot.create(:user) }
-  let(:default_rate) { FactoryBot.create(:default_hourly_rate, user: user) }
+  describe "#show" do
+    before do
+      login_as(user)
+    end
 
-  describe 'PUT update' do
-    describe 'WHEN trying to update with an invalid rate value' do
-      let(:params) do
-        {
-          id: user.id,
-          user: { 'existing_rate_attributes' => { default_rate.id.to_s => { 'valid_from' => default_rate.valid_from.to_s,
-                                                                            'rate' => '2d5' } } }
-        }
+    context "when accessing the hourly rates of a user with a non existing project" do
+      it "responds with 404" do
+        get :show, params: { project_id: "this-does-not-exist", id: user.id }
+        expect(response).to have_http_status(:not_found)
       end
-      before do
-        as_logged_in_user admin do
-          post :update, params: params
-        end
-      end
+    end
 
-      it 'should render the edit template' do
-        expect(response).to render_template('edit')
-      end
+    context "when accessing the hourly rates of a user without being a member of the project" do
+      let(:user) { create(:user) }
 
-      it 'should display an error message' do
-        actual_message = assigns(:user).default_rates.first.errors.messages[:rate].first
-        expect(actual_message).to eq(I18n.t('activerecord.errors.messages.not_a_number'))
+      it "responds with 404" do
+        get :show, params: { project_id: project.id, id: user.id }
+        expect(response).to have_http_status(:not_found)
+      end
+    end
+
+    context "when accessing the hourly rates of a user being a member of the project without permission to view hourly rates" do
+      let(:permissions) { [] }
+
+      it "responds with 403" do
+        get :show, params: { project_id: project.id, id: user.id }
+        expect(response).to have_http_status(:forbidden)
+      end
+    end
+
+    context "when accessing the hourly rates of a user with permission to view hourly rates in the project" do
+      it "responds with 200" do
+        get :show, params: { project_id: project.id, id: user.id }
+        expect(response).to have_http_status(:ok)
+      end
+    end
+
+    context "when accessing the hourly rates of a user that is not visible to me" do
+      let(:other_user) { create(:user) }
+
+      it "responds with 404" do
+        get :show, params: { project_id: project.id, id: other_user.id }
+        expect(response).to have_http_status(:not_found)
       end
     end
   end

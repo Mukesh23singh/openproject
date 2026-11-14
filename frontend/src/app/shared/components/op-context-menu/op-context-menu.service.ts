@@ -1,19 +1,47 @@
-import {
-  ApplicationRef, ComponentFactoryResolver, Injectable, Injector,
-} from '@angular/core';
-import { ComponentPortal, DomPortalOutlet, PortalInjector } from '@angular/cdk/portal';
-import { TransitionService } from '@uirouter/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { ApplicationRef, Injectable, Injector, inject } from '@angular/core';
+import { ComponentPortal, ComponentType, DomPortalOutlet } from '@angular/cdk/portal';
 import { OpContextMenuHandler } from 'core-app/shared/components/op-context-menu/op-context-menu-handler';
 import {
+  OpContextMenuCloseReason,
   OpContextMenuLocalsMap,
   OpContextMenuLocalsToken,
 } from 'core-app/shared/components/op-context-menu/op-context-menu.types';
 import { OPContextMenuComponent } from 'core-app/shared/components/op-context-menu/op-context-menu.component';
-import { KeyCodes } from 'core-app/shared/helpers/keyCodes.enum';
 import { FocusHelperService } from 'core-app/shared/directives/focus/focus-helper';
 
 @Injectable({ providedIn: 'root' })
 export class OPContextMenuService {
+  readonly FocusHelper = inject(FocusHelperService);
+  private appRef = inject(ApplicationRef);
+  private injector = inject(Injector);
+
   public active:OpContextMenuHandler|null = null;
 
   // Hold a reference to the DOM node we're using as a host
@@ -24,74 +52,119 @@ export class OPContextMenuService {
 
   // Allow temporarily disabling the close handler
   private isOpening = false;
+  private openSeq = 0;
 
-  constructor(private componentFactoryResolver:ComponentFactoryResolver,
-    readonly FocusHelper:FocusHelperService,
-    private appRef:ApplicationRef,
-    private $transitions:TransitionService,
-    private injector:Injector) {
+  private pointerPressedInMenu = false;
+
+  public register() {
+    const existing = document.querySelector('.op-context-menu--overlay');
+    existing?.remove();
+
     const hostElement = this.portalHostElement = document.createElement('div');
     hostElement.classList.add('op-context-menu--overlay');
     document.body.appendChild(hostElement);
+    hostElement.addEventListener('pointerdown', () => { this.pointerPressedInMenu = true; });
+    // Keyboard requests also fire a native contextmenu at the menu item that just took focus.
+    hostElement.addEventListener('contextmenu', (evt) => {
+      if (!this.pointerPressedInMenu) evt.preventDefault();
+    });
 
     this.bodyPortalHost = new DomPortalOutlet(
       hostElement,
-      this.componentFactoryResolver,
       this.appRef,
       this.injector,
     );
 
-    // Close context menus on state change
-    $transitions.onStart({}, () => this.close());
-
     // Listen to keyups on window to close context menus
-    jQuery(window).on('keydown', (evt:JQuery.TriggeredEvent) => {
-      if (this.active && evt.which === KeyCodes.ESCAPE) {
-        this.close();
+    window.addEventListener('keydown', (evt) => {
+      if (this.active && evt.key === 'Escape') {
+        // Escape may cancel a pending open; a click outside may not, as the opening click itself bubbles to the wrapper.
+        this.openSeq += 1;
+        this.isOpening = false;
+        this.close(true, 'escape');
       }
 
       return true;
     });
 
-    // Listen to any click and close the active context menu
-    const that = this;
-    document.getElementById('wrapper')!.addEventListener('click', (evt:Event) => {
-      if (that.active && !that.portalHostElement.contains(evt.target as Element)) {
-        that.close();
-      }
-    }, true);
+    const wrapper = document.getElementById('wrapper');
+    if (wrapper) {
+      // Listen to any click and close the active context menu
+      wrapper.addEventListener('click', (evt:Event) => {
+        if (this.active && !this.portalHostElement.contains(evt.target as Element)) {
+          this.close(false, 'outside');
+        }
+      });
+      // Listen if it scrolles then close the active context menu
+      wrapper.addEventListener('scroll', (evt:Event) => {
+        if (this.active && !this.portalHostElement.contains(evt.target as Element)) {
+          this.close(false, 'scroll');
+        }
+      }, true);
+    }
   }
 
   /**
    * Open a ContextMenu reference and append it to the portal
-   * @param contextMenu A reference to a context menu handler
+   * @param menu A reference to a context menu handler
+   * @param event The event that triggered the context menu for positioning
+   * @param component The context menu component to mount
+   *
    */
-  public show(menu:OpContextMenuHandler, event:JQuery.TriggeredEvent, component:any = OPContextMenuComponent) {
+  public show(menu:OpContextMenuHandler, event:Event, component:ComponentType<unknown> = OPContextMenuComponent):void {
     this.close();
-
-    // Create a portal for the given component class and render it
     this.isOpening = true;
+    this.pointerPressedInMenu = false;
+    const seq = this.openSeq += 1;
+
+    // Create and attach portal
     const portal = new ComponentPortal(component, null, this.injectorFor(menu.locals));
     this.bodyPortalHost.attach(portal);
-    this.portalHostElement.style.display = 'block';
+
+    // Avoid flicker until positioned
+    const hostEl = this.portalHostElement;
+    hostEl.style.visibility = 'hidden';
+    hostEl.style.display = 'block';
     this.active = menu;
 
-    setTimeout(() => {
-      this.reposition(event);
-      // Focus on the first element
-      this.active && this.active.onOpen(this.activeMenu);
-      this.isOpening = false;
+    // Wait one frame to ensure component DOM exists, then position
+    requestAnimationFrame(() => {
+      if (!this.active || this.openSeq !== seq) {
+        this.isOpening = false;
+        return;
+      }
+
+      void this.reposition(event)
+        .then(() => {
+          if (this.active && this.openSeq === seq) {
+            hostEl.style.visibility = 'visible';
+            requestAnimationFrame(() => {
+              // Defer onOpen to next frame to ensure styles are applied
+              if (this.active && this.openSeq === seq) {
+                this.active.onOpen(this.activeMenu);
+              }
+            });
+          }
+        })
+        .catch((err) => {
+          // Fail-safe: close if positioning fails
+          console.error('Context menu positioning failed:', err);
+          if (this.openSeq === seq) this.close();
+        })
+        .finally(() => {
+          if (this.openSeq === seq) this.isOpening = false;
+        });
     });
   }
 
-  public isActive(menu:OpContextMenuHandler) {
-    return this.active && this.active === menu;
+  public isActive(menu:OpContextMenuHandler):boolean {
+    return !!this.active && this.active === menu;
   }
 
   /**
    * Closes all currently open context menus.
    */
-  public close() {
+  public close(focus = false, reason?:OpContextMenuCloseReason):void {
     if (this.isOpening) {
       return;
     }
@@ -99,22 +172,28 @@ export class OPContextMenuService {
     // Detach any component currently in the portal
     this.bodyPortalHost.detach();
     this.portalHostElement.style.display = 'none';
-    this.active && this.active.onClose();
+    this.active?.onClose(focus, reason);
     this.active = null;
   }
 
-  public reposition(event:JQuery.TriggeredEvent) {
+  public reposition(event:Event):Promise<void> {
     if (!this.active) {
-      return;
+      return Promise.resolve();
     }
 
-    this.activeMenu
-      .position(this.active.positionArgs(event))
-      .css('visibility', 'visible');
+    return this.active.computePosition(this.activeMenu, event)
+      .then(({ x, y }) => {
+        Object.assign(this.activeMenu.style, {
+          left: `${x}px`,
+          top: `${y}px`,
+          position: 'absolute',
+          visibility: 'visible'
+        });
+      });
   }
 
-  public get activeMenu():JQuery {
-    return jQuery(this.portalHostElement).find('.dropdown');
+  public get activeMenu():HTMLElement {
+    return this.portalHostElement.querySelector('.dropdown')!;
   }
 
   /**
@@ -123,16 +202,18 @@ export class OPContextMenuService {
    * This allows callers to pass data into the newly created context menu component.
    *
    * @param {OpContextMenuLocalsMap} data
-   * @returns {PortalInjector}
+   * @returns {Injector}
    */
   private injectorFor(data:OpContextMenuLocalsMap) {
-    const injectorTokens = new WeakMap();
     // Pass the service because otherwise we're getting a cyclic dependency between the portal
     // host service and the bound portal
     data.service = this;
 
-    injectorTokens.set(OpContextMenuLocalsToken, data);
-
-    return new PortalInjector(this.injector, injectorTokens);
+    return Injector.create({
+      providers: [
+        { provide: OpContextMenuLocalsToken, useValue: data },
+      ],
+      parent: this.injector,
+    });
   }
 }

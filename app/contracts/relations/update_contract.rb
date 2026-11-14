@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require 'relations/base_contract'
 
 module Relations
   class UpdateContract < BaseContract
@@ -38,11 +35,11 @@ module Relations
     private
 
     def from_immutable
-      errors.add :from, :error_readonly if from_id_changed_and_not_swapped?
+      errors.add :from_id, :error_readonly if from_id_changed_and_not_swapped?
     end
 
     def to_immutable
-      errors.add :to, :error_readonly if to_id_changed_and_not_swapped?
+      errors.add :to_id, :error_readonly if to_id_changed_and_not_swapped?
     end
 
     def from_id_changed_and_not_swapped?

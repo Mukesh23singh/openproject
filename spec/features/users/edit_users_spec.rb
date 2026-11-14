@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,108 +22,210 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'edit users', type: :feature, js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "edit users", :js do
+  shared_let(:admin) { create(:admin) }
   let(:current_user) { admin }
-  let(:user) { FactoryBot.create :user, mail: 'foo@example.com' }
+  let(:user) { create(:user, mail: "foo@example.com") }
 
-  let!(:auth_source) { FactoryBot.create :auth_source }
+  let!(:auth_source) { create(:ldap_auth_source) }
 
   before do
     allow(User).to receive(:current).and_return current_user
   end
 
   def auth_select
-    find :css, 'select#user_auth_source_id'
+    find "select#user_ldap_auth_source_id"
   end
 
   def user_password
-    find :css, 'input#user_password'
+    find "input#user_password"
   end
 
-  context 'with internal authentication' do
+  describe "custom fields" do
+    let!(:section) { create(:user_custom_field_section, name: "Professional info") }
+    let!(:string_cf) { create(:user_custom_field, :string, name: "Job title", user_custom_field_section: section) }
+    let!(:admin_only_cf) do
+      create(:user_custom_field, :string, name: "Internal code", admin_only: true, user_custom_field_section: section)
+    end
+
+    before { visit edit_user_path(user) }
+
+    it "saves a custom field value" do
+      within "fieldset", text: "Professional info" do
+        fill_in "Job title", with: "Software Engineer"
+        fill_in "Internal code", with: "SE"
+      end
+      click_on "Save"
+
+      expect(page).to have_text("Successful update")
+      expect(user.reload.custom_value_for(string_cf)&.value).to eq("Software Engineer")
+      expect(user.custom_value_for(admin_only_cf)&.value).to eq("SE")
+    end
+  end
+
+  context "with internal authentication" do
     before do
       visit edit_user_path(user)
     end
 
-    it 'shows internal authentication being selected including password settings' do
-      expect(auth_select.value).to eq '' # selected internal
+    it "shows internal authentication being selected including password settings" do
+      expect(auth_select.value).to eq "" # selected internal
       expect(user_password).to be_visible
     end
 
-    it 'hides password settings when switching to an LDAP auth source' do
+    it "hides password settings when switching to an LDAP auth source" do
       auth_select.select auth_source.name
 
-      expect(page).not_to have_selector('input#user_password')
+      expect(page).to have_no_field("#user_password")
+    end
+
+    # send_information defaults to unchecked — the admin must explicitly opt in
+    # to emailing the password.
+    context "when the admin is about to email credentials to the user" do
+      it "is not locked on page load because send_information defaults to unchecked" do
+        expect(find_by_id("user_force_password_change")).not_to be_disabled
+      end
+
+      it "locks force_password_change when send_information is checked" do
+        check "send_information"
+
+        expect(find_by_id("user_force_password_change")).to be_checked
+        expect(find_by_id("user_force_password_change")).to be_disabled
+      end
+
+      it "unlocks force_password_change when send_information is unchecked again" do
+        check "send_information"
+        expect(find_by_id("user_force_password_change")).to be_disabled
+
+        uncheck "send_information"
+        expect(find_by_id("user_force_password_change")).not_to be_disabled
+      end
+
+      it "locks force_password_change and forces send_information when assign_random_password is checked" do
+        check "user_assign_random_password"
+
+        expect(find_by_id("send_information")).to be_checked
+        expect(find_by_id("send_information")).to be_disabled
+        expect(find_by_id("user_force_password_change")).to be_checked
+        expect(find_by_id("user_force_password_change")).to be_disabled
+      end
+
+      it "saves force_password_change as true when the email is sent" do
+        check "send_information"
+
+        user_password.set("SomePass!123")
+        find_by_id("user_password_confirmation").set("SomePass!123")
+
+        click_on "Save"
+
+        expect_flash(message: I18n.t(:notice_successful_update))
+        expect(user.reload.force_password_change).to be(true)
+      end
+
+      it "does not force a password change when send_information is left unchecked" do
+        user_password.set("SomePass!123")
+        find_by_id("user_password_confirmation").set("SomePass!123")
+
+        click_on "Save"
+
+        expect_flash(message: I18n.t(:notice_successful_update))
+        expect(user.reload.force_password_change).to be(false)
+      end
     end
   end
 
-  context 'with external authentication' do
+  context "with external authentication" do
     before do
-      user.auth_source = auth_source
+      user.ldap_auth_source = auth_source
       user.save!
 
       visit edit_user_path(user)
     end
 
-    it 'shows external authentication being selected and no password settings' do
+    it "shows external authentication being selected and no password settings" do
       expect(auth_select.value).to eq auth_source.id.to_s
-      expect(page).not_to have_selector('input#user_password')
+      expect(page).to have_no_field("#user_password")
     end
 
-    it 'shows password settings when switching back to internal authentication' do
-      auth_select.select I18n.t('label_internal')
+    it "shows password settings when switching back to internal authentication" do
+      auth_select.select I18n.t("label_internal")
 
       expect(user_password).to be_visible
     end
   end
 
-  context 'as global user' do
-    shared_let(:global_manage_user) { FactoryBot.create :user, global_permission: :manage_user }
+  def have_visible_tab(label)
+    have_css(".tabnav-tab", text: label)
+  end
+
+  context "as admin" do
+    let(:another_admin) { create(:admin) }
+
+    it "can edit attributes of an admin user" do
+      visit edit_user_path(another_admin)
+
+      expect(page).to have_visible_tab("General")
+    end
+  end
+
+  context "as global user" do
+    shared_let(:global_manage_user) { create(:user, global_permissions: %i[view_all_principals manage_user create_user]) }
     let(:current_user) { global_manage_user }
 
-    it 'can too edit the user' do
+    it "can too edit the user" do
       visit edit_user_path(user)
 
-      expect(page).to have_no_selector('.admin-overview-menu-item', text: 'Overview')
-      expect(page).to have_no_selector('.users-and-permissions-menu-item', text: 'Users & Permissions')
-      expect(page).to have_selector('.users-menu-item.selected', text: 'Users')
+      expect(page).to have_visible_tab("General")
 
-      expect(page).to have_selector 'select#user_auth_source_id'
-      expect(page).to have_no_selector 'input#user_password'
+      expect(page).to have_no_css(".admin-overview-menu-item", text: "Overview")
+      expect(page).to have_no_css(".users-and-permissions-menu-item", text: "Users and permissions")
+      expect(page).to have_css(".users-menu-item.selected", text: "Users")
 
-      expect(page).to have_selector '#user_login'
-      expect(page).to have_selector '#user_firstname'
-      expect(page).to have_selector '#user_lastname'
-      expect(page).to have_selector '#user_mail'
+      expect(page).to have_select(id: "user_ldap_auth_source_id")
+      expect(page).to have_no_field "#user_password"
 
-      fill_in 'user[firstname]', with: 'NewName', fill_options: { clear: :backspace }
-      select auth_source.name, from: 'user[auth_source_id]'
+      expect(page).to have_css "#user_login"
+      expect(page).to have_css "#user_firstname"
+      expect(page).to have_css "#user_lastname"
+      expect(page).to have_css "#user_mail"
 
-      click_on 'Save'
+      firstname_field = find_by_id("user_firstname")
+      firstname_field.value.length.times do
+        firstname_field.send_keys(:backspace)
+      end
+      firstname_field.set "NewName"
+      select auth_source.name, from: "user[ldap_auth_source_id]"
 
-      expect(page).to have_selector('.flash.notice', text: 'Successful update.')
+      click_button "Save"
+
+      expect_flash(message: "Successful update.")
 
       user.reload
 
-      expect(user.firstname).to eq 'NewName'
-      expect(user.auth_source).to eq auth_source
+      expect(user.firstname).to eq "NewName"
+      expect(user.ldap_auth_source).to eq auth_source
     end
 
-    it 'can reinvite the user' do
+    it "can reinvite the user" do
       visit edit_user_path(user)
 
-      click_on 'Send invitation'
+      click_on "Send invitation"
 
-      expect(page).to have_selector('.flash.notice', text: 'An invitation has been sent to foo@example.com')
+      expect_flash(message: "An invitation has been sent to foo@example.com")
+    end
+
+    it "can not edit attributes of an admin user" do
+      visit edit_user_path(admin)
+
+      expect(page).to have_visible_tab("Projects")
+      expect(page).not_to have_visible_tab("General")
     end
   end
 end

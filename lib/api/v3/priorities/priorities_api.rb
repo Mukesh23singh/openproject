@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/priorities/priority_collection_representer'
-require 'api/v3/priorities/priority_representer'
+require "api/v3/priorities/priority_collection_representer"
+require "api/v3/priorities/priority_representer"
 
 module API
   module V3
@@ -37,7 +34,7 @@ module API
       class PrioritiesAPI < ::API::OpenProjectAPI
         resources :priorities do
           after_validation do
-            authorize(:view_work_packages, global: true)
+            authorize_in_any_work_package(:view_work_packages)
 
             @priorities = IssuePriority.all
           end
@@ -45,16 +42,16 @@ module API
           get do
             PriorityCollectionRepresenter.new(@priorities,
                                               self_link: api_v3_paths.priorities,
-                                              current_user: current_user)
+                                              current_user:)
           end
 
-          route_param :id, type: Integer, desc: 'Priority ID' do
+          route_param :id, type: Integer, desc: "Priority ID" do
             after_validation do
               @priority = IssuePriority.find(params[:id])
             end
 
             get do
-              PriorityRepresenter.new(@priority, current_user: current_user)
+              PriorityRepresenter.new(@priority, current_user:)
             end
           end
         end

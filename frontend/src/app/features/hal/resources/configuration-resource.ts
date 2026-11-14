@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,45 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { type DurationFormat } from 'core-app/shared/helpers/chronic_duration';
+
+export interface ConfigurationUserPreferences {
+  timeZone:string;
+  commentSortDescending:boolean;
+  disableKeyboardShortcuts:boolean;
+  requireDoubleClickForInlineEdit:boolean;
+  warnOnLeavingUnsaved:boolean;
+  autoHidePopups:boolean;
+}
 
 export class ConfigurationResource extends HalResource {
-  public perPageOptions:Array<number>;
+  // Embedded `_embedded.userPreferences`, exposed as a property by the HAL initializer
+  public userPreferences:ConfigurationUserPreferences;
+
+  // `_links.prepareAttachment`, present only when direct uploads are enabled
+  public prepareAttachment?:{ href:string };
+
+  // Top-level body attributes
+  public maximumAttachmentFileSize:number;
+  public maximumAPIV3PageSize:number;
+  public perPageOptions:number[];
+  public allowedLinkProtocols?:string[];
+  public dateFormat:string|null;
+  public timeFormat:string|null;
+  public durationFormat:DurationFormat;
+  public hoursPerDay:number;
+  public daysPerMonth:number;
+  public userDefaultTimezone:string|null;
+  public startOfWeek:number|null;
+  public wikisAvailable:boolean;
+  public hostName:string;
+  public activeFeatureFlags:string[];
+  public availableFeatures:string[];
+  public triallingFeatures:string[];
 }

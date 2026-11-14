@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,52 +20,51 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe TimeEntries::Scopes::OfUserAndDay, type: :model do
-  let(:user) { FactoryBot.create(:user) }
+RSpec.describe TimeEntries::Scopes::OfUserAndDay do
+  let(:user) { create(:user) }
   let(:spent_on) { Date.today }
   let!(:time_entry) do
-    FactoryBot.create(:time_entry,
-                      user: user,
-                      spent_on: spent_on)
+    create(:time_entry,
+           user:,
+           spent_on:)
   end
   let!(:other_time_entry) do
-    FactoryBot.create(:time_entry,
-                      user: user,
-                      spent_on: spent_on)
+    create(:time_entry,
+           user:,
+           spent_on:)
   end
   let!(:other_user_time_entry) do
-    FactoryBot.create(:time_entry,
-                      user: FactoryBot.create(:user),
-                      spent_on: spent_on)
+    create(:time_entry,
+           user: create(:user),
+           spent_on:)
   end
   let!(:other_date_time_entry) do
-    FactoryBot.create(:time_entry,
-                      user: user,
-                      spent_on: spent_on - 3.days)
+    create(:time_entry,
+           user:,
+           spent_on: spent_on - 3.days)
   end
 
-  describe '.of_user_and_day' do
+  describe ".of_user_and_day" do
     subject { TimeEntry.of_user_and_day(user, spent_on) }
 
-    it 'are all the time entries of the user on the date' do
-      is_expected
-        .to match_array([time_entry, other_time_entry])
+    it "are all the time entries of the user on the date" do
+      expect(subject)
+        .to contain_exactly(time_entry, other_time_entry)
     end
 
-    context 'if excluding a time entry' do
+    context "if excluding a time entry" do
       subject { TimeEntry.of_user_and_day(user, spent_on, excluding: other_time_entry) }
 
-      it 'does not include the time entry' do
-        is_expected
-          .to match_array([time_entry])
+      it "does not include the time entry" do
+        expect(subject)
+          .to contain_exactly(time_entry)
       end
     end
   end

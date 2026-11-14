@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,31 +22,38 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Localization', type: :feature, with_settings: { login_required?: false,
-                                                          available_languages: %i[de en],
-                                                          default_language: 'en' } do
-  it 'set localization' do
-    Capybara.current_session.driver.header('Accept-Language', 'de,de-de;q=0.8,en-us;q=0.5,en;q=0.3')
+RSpec.describe "Localization", with_settings: { login_required?: false,
+                                                available_languages: %w[de en],
+                                                default_language: "en" } do
+  context "with a HTTP header Accept-Language having a valid supported language" do
+    before do
+      Capybara.current_session.driver.header("Accept-Language", "de,de-de;q=0.8,en-us;q=0.5,en;q=0.3")
+    end
 
-    # a french user
-    visit projects_path
+    it "uses the language from HTTP header Accept-Language" do
+      visit projects_path
 
-    expect(page)
-      .to have_content('Projekte')
+      expect(page)
+        .to have_text("Projekte")
+    end
+  end
 
-    # not a supported language: default language should be used
-    Capybara.current_session.driver.header('Accept-Language', 'zz')
-    visit projects_path
+  context "with a HTTP header Accept-Language having an unsupported language" do
+    before do
+      Capybara.current_session.driver.header("Accept-Language", "zz")
+    end
 
-    expect(page)
-      .to have_content('Projects')
+    it "uses the default language configured in administration" do
+      visit projects_path
+
+      expect(page).to have_text("Projects")
+    end
   end
 end

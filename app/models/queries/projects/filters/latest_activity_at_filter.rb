@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Queries::Projects::Filters::LatestActivityAtFilter < Queries::Projects::Filters::ProjectFilter
-  self.model = Project.with_latest_activity
-
+class Queries::Projects::Filters::LatestActivityAtFilter < Queries::Projects::Filters::Base
   def type
     :datetime_past
   end
@@ -48,7 +45,11 @@ class Queries::Projects::Filters::LatestActivityAtFilter < Queries::Projects::Fi
   end
 
   def human_name
-    I18n.t('activerecord.attributes.project.latest_activity_at')
+    I18n.t("activerecord.attributes.project.latest_activity_at")
+  end
+
+  def apply_to(query_scope)
+    super.with_latest_activity
   end
 
   def where

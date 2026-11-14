@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,32 +20,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/plugins/auth_plugin'
+require "open_project/plugins/auth_plugin"
 
 module OmniAuth
+  # OmniAuth decides request vs callback by comparing
+  # the current path to +request_path+ / +callback_path+, which it derives from
+  # +name+ and then memoizes later on.
+  # For this reason, we need to verride the on_request_path and on_callback_path? methods
+  # to make sure we match our provider strategy class from the request (e.g., /auth/saml)
   module FlexibleStrategy
-    def on_auth_path?
-      possible_auth_path? && (match_provider! || false) && super
+    def on_request_path?
+      possible_auth_path? && match_provider! && super
+    end
+
+    def on_callback_path?
+      possible_auth_path? && match_provider! && super
     end
 
     ##
     # Tries to match the request path of the current request with one of the registered providers.
-    # If a match is found the strategy is initialised with that provider to handle the request.
+    # If a match is found the strategy is initialized with that provider to handle the request.
     def match_provider!
       return false unless providers
 
       @provider = providers.find do |p|
-        (current_path =~ /#{path_for_provider(p.to_hash[:name])}/) == 0
+        current_path.match?(/#{path_for_provider(p.to_hash[:name])}(\/|\s*$)/)
       end
 
       if @provider
         options.merge! provider.to_hash
+        @request_path = nil
+        @callback_path = nil
       end
 
       @provider
@@ -92,8 +100,8 @@ module OmniAuth
   end
 
   module FlexibleStrategyClass
-    def new(app, *args, &block)
-      super(app, *args, &block).tap do |strategy|
+    def new(app, *, **, &)
+      super.tap do |strategy|
         strategy.extend FlexibleStrategy
       end
     end

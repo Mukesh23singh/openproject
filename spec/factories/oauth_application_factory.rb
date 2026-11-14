@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 FactoryBot.define do
-  factory :oauth_application, class: '::Doorkeeper::Application' do
-    name { 'My API application' }
+  factory :oauth_application, class: "::Doorkeeper::Application" do
+    name { "My API application" }
     confidential { true }
     owner factory: :admin
-    owner_type { 'User' }
-    uid { '12345' }
-    redirect_uri { 'urn:ietf:wg:oauth:2.0:oob' }
-    scopes { 'api_v3' }
+    owner_type { "User" }
+    sequence(:uid) { |n| "2345678901-#{n}" }
+    redirect_uri { "urn:ietf:wg:oauth:2.0:oob" }
+    scopes { "api_v3" }
   end
 end

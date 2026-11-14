@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,178 +22,210 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Projects::ProjectPayloadRepresenter, 'parsing' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Projects::ProjectPayloadRepresenter, "parsing" do
+  include API::V3::Utilities::PathHelper
 
   let(:object) do
-    OpenStruct.new available_custom_fields: []
+    API::ParserStruct.new available_custom_fields: []
   end
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:user) { build_stubbed(:user) }
   let(:representer) do
     described_class.create(object, current_user: user)
   end
 
-  describe 'properties' do
-    context 'status' do
+  describe "properties" do
+    context "for status" do
       let(:hash) do
         {
-          'statusExplanation' => { 'raw' => 'status code explanation' },
-          '_links' => {
-            'status' => {
-              'href' => api_v3_paths.project_status('on_track')
+          "statusExplanation" => { "raw" => "status code explanation" },
+          "_links" => {
+            "status" => {
+              "href" => api_v3_paths.project_status("on_track")
             }
           }
         }
       end
 
-      it 'updates code' do
+      it "updates code" do
         project = representer.from_hash(hash)
-        expect(project.status[:code])
-          .to eql('on_track')
+        expect(project.status_code)
+          .to eql("on_track")
 
-        expect(project.status[:explanation])
-          .to eql('status code explanation')
+        expect(project.status_explanation)
+          .to eql("status code explanation")
       end
 
-      context 'with code not provided' do
+      context "with code not provided" do
         let(:hash) do
           {
-            'statusExplanation' => { 'raw' => 'status code explanation' }
+            "statusExplanation" => { "raw" => "status code explanation" }
           }
         end
 
-        it 'does not set code' do
+        it "does not set code" do
           project = representer.from_hash(hash)
-          expect(project.status[:code])
+          expect(project.status_code)
             .to be_nil
         end
 
-        it 'updates explanation' do
+        it "updates explanation" do
           project = representer.from_hash(hash)
-          expect(project.status[:explanation])
-            .to eql('status code explanation')
+          expect(project.status_explanation)
+            .to eql("status code explanation")
         end
       end
 
-      context 'with explanation not provided' do
+      context "with explanation not provided" do
         let(:hash) do
           {
-            '_links' => {
-              'status' => {
-                'href' => api_v3_paths.project_status('off_track')
+            "_links" => {
+              "status" => {
+                "href" => api_v3_paths.project_status("off_track")
               }
             }
           }
         end
 
-        it 'does set code' do
+        it "does set code" do
           project = representer.from_hash(hash)
-          expect(project.status[:code])
-            .to eql 'off_track'
+          expect(project.status_code)
+            .to eql "off_track"
         end
 
-        it 'does not set explanation' do
+        it "does not set explanation" do
           project = representer.from_hash(hash)
-          expect(project.status[:explanation])
+          expect(project.status_explanation)
             .to be_nil
         end
       end
 
-      context 'with null for a status' do
+      context "with null for a status" do
         let(:hash) do
           {
-            '_links' => {
-              'status' => {
-                'href' => nil
+            "_links" => {
+              "status" => {
+                "href" => nil
               }
             }
           }
         end
 
-        it 'does set status to nil' do
-          project = representer.from_hash(hash).to_h
+        it "does set status to nil" do
+          project = representer.from_hash(hash)
 
           expect(project)
-            .to have_key(:status)
+            .to have_key(:status_code)
+          expect(project)
+            .not_to have_key(:status_explanation)
 
-          status = project[:status]
-          expect(status.to_h)
-            .to have_key(:code)
-
-          expect(status.to_h)
-            .not_to have_key(:explanation)
-
-          expect(status[:code])
-            .to eq nil
+          expect(project.status_code)
+            .to be_nil
         end
       end
     end
   end
 
-  describe '_links' do
-    context 'with a parent link' do
-      context 'with the href being an url' do
+  describe "_links" do
+    context "with a parent link" do
+      context "with the href being a project url" do
         let(:hash) do
           {
-            '_links' => {
-              'parent' => {
-                'href' => api_v3_paths.project(5)
+            "_links" => {
+              "parent" => {
+                "href" => api_v3_paths.project(5)
               }
             }
           }
         end
 
-        it 'sets the parent_id to the value' do
-          project = representer.from_hash(hash).to_h
+        it "sets the parent_id to the value" do
+          project = representer.from_hash(hash)
 
           expect(project[:parent_id])
-            .to eq "5"
+            .to eq 5
         end
       end
 
-      context 'with the href being nil' do
+      context "with the href being a program url" do
         let(:hash) do
           {
-            '_links' => {
-              'parent' => {
-                'href' => nil
+            "_links" => {
+              "parent" => {
+                "href" => api_v3_paths.program(5)
               }
             }
           }
         end
 
-        it 'sets the parent_id to nil' do
-          project = representer.from_hash(hash).to_h
+        it "sets the parent_id to the value" do
+          project = representer.from_hash(hash)
+
+          expect(project[:parent_id])
+            .to eq 5
+        end
+      end
+
+      context "with the href being a portfolio url" do
+        let(:hash) do
+          {
+            "_links" => {
+              "parent" => {
+                "href" => api_v3_paths.portfolio(5)
+              }
+            }
+          }
+        end
+
+        it "sets the parent_id to the value" do
+          project = representer.from_hash(hash)
+
+          expect(project[:parent_id])
+            .to eq 5
+        end
+      end
+
+      context "with the href being nil" do
+        let(:hash) do
+          {
+            "_links" => {
+              "parent" => {
+                "href" => nil
+              }
+            }
+          }
+        end
+
+        it "sets the parent_id to nil" do
+          project = representer.from_hash(hash)
 
           expect(project)
             .to have_key(:parent_id)
 
           expect(project[:parent_id])
-            .to eq nil
+            .to be_nil
         end
       end
 
-      context 'with the href being the hidden uri' do
+      context "with the href being the hidden uri" do
         let(:hash) do
           {
-            '_links' => {
-              'parent' => {
-                'href' => API::V3::URN_UNDISCLOSED
+            "_links" => {
+              "parent" => {
+                "href" => API::V3::URN_UNDISCLOSED
               }
             }
           }
         end
 
-        it 'omits the parent information' do
-          project = representer.from_hash(hash).to_h
+        it "omits the parent information" do
+          project = representer.from_hash(hash)
 
           expect(project)
             .not_to have_key(:parent_id)

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,31 +22,30 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples_for 'wiki page contract' do
-  let(:current_user) do
-    FactoryBot.build_stubbed(:user) do |user|
-      allow(user)
-        .to receive(:allowed_to?) do |permission, permission_project|
-        permissions.include?(permission) && page_wiki.project == permission_project
-      end
+RSpec.shared_examples_for "wiki page contract" do
+  let(:current_user) { build_stubbed(:user) }
+
+  before do
+    mock_permissions_for(current_user) do |mock|
+      mock.allow_in_project *permissions, project: page_wiki.project if page_wiki
     end
   end
-  let(:page_wiki) { FactoryBot.build_stubbed(:wiki) }
+
+  let(:page_wiki) { build_stubbed(:wiki) }
   let(:page_author) { current_user }
-  let(:page_title) { 'Wiki title' }
-  let(:page_slug) { 'wiki slug' }
+  let(:page_title) { "Wiki title" }
+  let(:page_slug) { "wiki slug" }
   let(:page_protected) { false }
   let(:page_parent) { nil }
-  let(:page_text) { 'Wiki text' }
-  let(:permissions) { %i[view_wiki edit_wiki_pages] }
+  let(:page_text) { "Wiki text" }
+  let(:permissions) { %i[view_wiki_pages edit_wiki_pages] }
 
   def expect_valid(valid, symbols = {})
     expect(contract.validate).to eq(valid)
@@ -54,62 +55,54 @@ shared_examples_for 'wiki page contract' do
     end
   end
 
-  describe 'validation' do
-    shared_examples 'is valid' do
-      it 'is valid' do
+  describe "validation" do
+    shared_examples "is valid" do
+      it "is valid" do
         expect_valid(true)
       end
     end
 
-    it_behaves_like 'is valid'
+    it_behaves_like "is valid"
 
-    context 'if the title is nil' do
+    context "if the title is nil" do
       let(:page_title) { nil }
 
-      it 'is invalid' do
+      it "is invalid" do
         expect_valid(false, title: :blank)
       end
     end
 
-    context 'if the slug is nil' do
+    context "if the slug is nil" do
       let(:page_slug) { nil }
 
-      it_behaves_like 'is valid'
+      it_behaves_like "is valid"
     end
 
-    context 'if the wiki is nil' do
+    context "if the wiki is nil" do
       let(:page_wiki) { nil }
 
-      it 'is invalid' do
+      it "is invalid" do
         expect_valid(false, wiki: :blank)
       end
     end
 
-    context 'if the content is nil' do
-      it 'is invalid' do
-        page.content = nil
+    context "if the parent is in the same wiki" do
+      let(:page_parent) { build_stubbed(:wiki_page, wiki: page_wiki) }
 
-        expect_valid(false, content: :blank)
-      end
+      it_behaves_like "is valid"
     end
 
-    context 'if the parent is in the same wiki' do
-      let(:page_parent) { FactoryBot.build_stubbed(:wiki_page, wiki: page_wiki) }
+    context "if the parent is in a different wiki" do
+      let(:page_parent) { build_stubbed(:wiki_page) }
 
-      it_behaves_like 'is valid'
-    end
-
-    context 'if the parent is in a different wiki' do
-      let(:page_parent) { FactoryBot.build_stubbed(:wiki_page) }
-
-      it 'is invalid' do
+      it "is invalid" do
         expect_valid(false, parent_title: :not_same_project)
       end
     end
 
-    context 'if the parent is a child of the page (circular dependency)' do
-      it 'is invalid' do
-        page.parent = FactoryBot.build_stubbed(:wiki_page, wiki: page_wiki).tap do |parent|
+    context "if the parent is a child of the page (circular dependency)" do
+      it "is invalid" do
+        page.parent = build_stubbed(:wiki_page, wiki: page_wiki).tap do |parent|
           # Using stubbing here to avoid infinite loops
           allow(parent)
             .to receive(:ancestors)
@@ -120,41 +113,41 @@ shared_examples_for 'wiki page contract' do
       end
     end
 
-    context 'if the parent the page itself (circular dependency' do
-      it 'is invalid' do
+    context "if the parent the page itself (circular dependency" do
+      it "is invalid" do
         page.parent = page
 
         expect_valid(false, parent_title: :circular_dependency)
       end
     end
 
-    context 'if the author is nil' do
+    context "if the author is nil" do
       let(:page_author) { nil }
 
-      it 'is invalid' do
+      it "is invalid" do
         expect_valid(false, author: %i[blank not_current_user])
       end
     end
 
-    context 'if the user lacks permission' do
-      let(:permissions) { %i[view_wiki] }
+    context "if the user lacks permission" do
+      let(:permissions) { %i[view_wiki_pages] }
 
-      it 'is invalid' do
+      it "is invalid" do
         expect_valid(false, base: :error_unauthorized)
       end
     end
 
-    context 'if the page is protected and the user has permission to protect pages' do
-      let(:permissions) { %i[view_wiki edit_wiki_pages protect_wiki_pages] }
+    context "if the page is protected and the user has permission to manage the wiki" do
+      let(:permissions) { %i[view_wiki_pages edit_wiki_pages manage_wiki] }
       let(:page_protected) { true }
 
-      it_behaves_like 'is valid'
+      it_behaves_like "is valid"
     end
 
-    context 'if the page is protected and the user lacks permission to protect pages' do
+    context "if the page is protected and the user lacks permission to protect pages" do
       let(:page_protected) { true }
 
-      it 'is invalid' do
+      it "is invalid" do
         expect_valid(false, protected: :error_unauthorized)
       end
     end

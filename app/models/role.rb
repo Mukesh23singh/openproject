@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,35 +22,60 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Role < ApplicationRecord
-  extend Pagination::Model
+  include Lists::MoveAfterAnchor
+
+  SORTABLE_LIST_TYPE = "role"
 
   # Built-in roles
   NON_BUILTIN = 0
   BUILTIN_NON_MEMBER = 1
   BUILTIN_ANONYMOUS  = 2
+  BUILTIN_WORK_PACKAGE_VIEWER = 3
+  BUILTIN_WORK_PACKAGE_COMMENTER = 4
+  BUILTIN_WORK_PACKAGE_EDITOR = 5
+  BUILTIN_PROJECT_QUERY_VIEW = 6
+  BUILTIN_PROJECT_QUERY_EDIT = 7
+  BUILTIN_STANDARD_GLOBAL = 8
+
+  HIDDEN_ROLE_TYPES = [
+    "WorkPackageRole",
+    "ProjectQueryRole"
+  ].freeze
 
   scope :builtin, ->(*args) {
-    compare = 'not' if args.first == true
+    compare = "not" if args.first == true
     where("#{compare} builtin = #{NON_BUILTIN}")
   }
 
-  before_destroy :check_deletable
-  has_many :workflows, dependent: :delete_all do
+  # Work Package Roles are intentionally visually hidden from users temporarily
+  scope :visible, -> { where.not(type: HIDDEN_ROLE_TYPES) }
+  scope :ordered_by_builtin_and_position, -> { order(Arel.sql("builtin, position")) }
+
+  before_destroy(prepend: true) do
+    unless deletable?
+      errors.add(:base, "can't be destroyed")
+      raise ActiveRecord::RecordNotDestroyed
+    end
+  end
+
+  has_many :workflow_status_transitions,
+           class_name: "Workflows::StatusTransition",
+           inverse_of: :role,
+           dependent: :delete_all do
     def copy_from_role(source_role)
-      Workflow.copy(nil, source_role, nil, proxy_association.owner)
+      Workflows::StatusTransition.copy(nil, source_role, nil, proxy_association.owner)
     end
   end
 
   has_many :member_roles, dependent: :destroy
   has_many :members, through: :member_roles
-  has_many :role_permissions
+  has_many :role_permissions, dependent: :destroy
 
   default_scope -> {
     includes(:role_permissions)
@@ -60,23 +85,38 @@ class Role < ApplicationRecord
 
   validates :name,
             presence: true,
-            length: { maximum: 30 },
-            uniqueness: { case_sensitive: true }
+            length: { maximum: 256 },
+            uniqueness: { case_sensitive: false }
+
+  # Turn this class into an abstract one by validating the STI column.
+  validates :type,
+            inclusion: { in: ->(*) { Role.subclasses.map(&:to_s) } }
 
   def self.givable
-    where(builtin: NON_BUILTIN)
-      .where(type: 'Role')
-      .order(Arel.sql('position'))
+    where
+      .not(
+        builtin: [
+          Role::BUILTIN_NON_MEMBER,
+          Role::BUILTIN_ANONYMOUS,
+          Role::BUILTIN_WORK_PACKAGE_VIEWER,
+          Role::BUILTIN_WORK_PACKAGE_COMMENTER,
+          Role::BUILTIN_WORK_PACKAGE_EDITOR,
+          Role::BUILTIN_PROJECT_QUERY_VIEW,
+          Role::BUILTIN_PROJECT_QUERY_EDIT,
+          Role::BUILTIN_STANDARD_GLOBAL
+        ]
+      )
+      .order(Arel.sql("position"))
   end
 
   def permissions
     # prefer map over pluck as we will probably always load
     # the permissions anyway
-    role_permissions.map(&:permission).map(&:to_sym)
+    role_permissions.map { |perm| perm.permission.to_sym }
   end
 
   def permissions=(perms)
-    not_included_yet = (perms.map(&:to_sym) - permissions).reject(&:blank?)
+    not_included_yet = (perms.map(&:to_sym) - permissions).compact_blank
     included_until_now = permissions - perms.map(&:to_sym)
 
     remove_permission!(*included_until_now)
@@ -118,6 +158,10 @@ class Role < ApplicationRecord
     builtin != NON_BUILTIN
   end
 
+  def visible?
+    HIDDEN_ROLE_TYPES.exclude?(type)
+  end
+
   # Return true if the role is a project member role
   def member?
     !builtin?
@@ -131,34 +175,8 @@ class Role < ApplicationRecord
     if action.is_a? Hash
       allowed_actions.include? "#{action[:controller]}/#{action[:action]}"
     else
-      allowed_permissions.include? action
+      permissions.include? action
     end
-  end
-
-  # Return the builtin 'non member' role.  If the role doesn't exist,
-  # it will be created on the fly.
-  def self.non_member
-    non_member_role = where(builtin: BUILTIN_NON_MEMBER).first
-    if non_member_role.nil?
-      non_member_role = create(name: 'Non member', position: 0) do |role|
-        role.builtin = BUILTIN_NON_MEMBER
-      end
-      raise 'Unable to create the non-member role.' if non_member_role.new_record?
-    end
-    non_member_role
-  end
-
-  # Return the builtin 'anonymous' role.  If the role doesn't exist,
-  # it will be created on the fly.
-  def self.anonymous
-    anonymous_role = where(builtin: BUILTIN_ANONYMOUS).first
-    if anonymous_role.nil?
-      anonymous_role = create(name: 'Anonymous', position: 0) do |role|
-        role.builtin = BUILTIN_ANONYMOUS
-      end
-      raise 'Unable to create the anonymous role.' if anonymous_role.new_record?
-    end
-    anonymous_role
   end
 
   def self.by_permission(permission)
@@ -167,39 +185,23 @@ class Role < ApplicationRecord
     end
   end
 
-  def self.paginated_search(search, options = {})
-    paginate_scope! givable.like(search), options
-  end
-
-  def self.in_new_project
-    givable
-      .except(:order)
-      .order(Arel.sql("COALESCE(#{Setting.new_project_user_role_id.to_i} = id, false) DESC, position"))
-      .first
+  def deletable?
+    !builtin?
   end
 
   private
 
-  def allowed_permissions
-    @allowed_permissions ||= permissions + OpenProject::AccessControl.public_permissions.map(&:name)
-  end
-
   def allowed_actions
-    @actions_allowed ||= allowed_permissions.map do |permission|
+    @allowed_actions ||= permissions.flat_map do |permission|
       OpenProject::AccessControl.allowed_actions(permission)
-    end.flatten
-  end
-
-  def check_deletable
-    raise "Can't delete role" if members.any?
-    raise "Can't delete builtin role" if builtin?
+    end
   end
 
   def add_permission(permission)
     if persisted?
-      role_permissions.create(permission: permission)
+      role_permissions.create(permission:)
     else
-      role_permissions.build(permission: permission)
+      role_permissions.build(permission:)
     end
   end
 end

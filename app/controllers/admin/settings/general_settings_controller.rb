@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,8 +31,21 @@ module Admin::Settings
   class GeneralSettingsController < ::Admin::SettingsController
     menu_item :settings_general
 
-    def default_breadcrumb
-      t(:label_general)
+    def settings_params
+      super.tap do |settings|
+        settings["allowed_link_protocols"] = Setting::AllowedLinkProtocols.parse(settings["allowed_link_protocols"])
+      end
+    end
+
+    def extra_permitted_filters
+      # attachment_whitelist is normally permitted as an array parameter.
+      # Explicitly permit it as a string here.
+      [:allowed_link_protocols]
+    end
+
+    def show
+      super
+      @guessed_host = request.host_with_port.dup
     end
   end
 end

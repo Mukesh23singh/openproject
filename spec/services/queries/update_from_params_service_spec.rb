@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,100 +22,99 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe UpdateQueryFromParamsService,
-         type: :model do
-  let(:user) { FactoryBot.build_stubbed(:user) }
-  let(:query) { FactoryBot.build_stubbed(:query) }
+RSpec.describe UpdateQueryFromParamsService,
+               type: :model do
+  let(:user) { build_stubbed(:user) }
+  let(:query) { build_stubbed(:query) }
 
   let(:instance) { described_class.new(query, user) }
 
   let(:params) { {} }
 
-  describe '#call' do
+  describe "#call" do
     subject { instance.call(params) }
 
-    context 'group_by' do
-      context 'for an existing value' do
-        let(:params) { { group_by: 'status' } }
+    context "group_by" do
+      context "for an existing value" do
+        let(:params) { { group_by: "status" } }
 
-        it 'sets the value' do
+        it "sets the value" do
           subject
 
-          expect(query.group_by).to eql('status')
+          expect(query.group_by).to eql("status")
         end
 
-        context 'when hierarchy was set previously' do
-          it 'disables the mode when not given' do
+        context "when hierarchy was set previously" do
+          it "disables the mode when not given" do
             subject
 
-            expect(query.group_by).to eql('status')
-            expect(query.show_hierarchies).to eql(false)
+            expect(query.group_by).to eql("status")
+            expect(query.show_hierarchies).to be(false)
             expect(subject).to be_success
           end
         end
       end
 
-      context 'when passed along with hierarchy mode' do
-        let(:params) { { group_by: 'status', show_hierarchies: true } }
+      context "when passed along with hierarchy mode" do
+        let(:params) { { group_by: "status", show_hierarchies: true } }
 
-        it 'sets both values' do
+        it "sets both values" do
           subject
 
-          expect(query.group_by).to eql('status')
-          expect(query.show_hierarchies).to eql(true)
+          expect(query.group_by).to eql("status")
+          expect(query.show_hierarchies).to be(true)
           expect(subject).not_to be_success
         end
       end
     end
 
-    context 'filters' do
+    context "filters" do
       let(:params) do
-        { filters: [{ field: 'status_id', operator: '=', values: ['1', '2'] }] }
+        { filters: [{ field: "status_id", operator: "=", values: ["1", "2"] }] }
       end
 
-      context 'for a valid filter' do
-        it 'sets the filter' do
+      context "for a valid filter" do
+        it "sets the filter" do
           subject
 
           expect(query.filters.length)
-            .to eql(1)
+            .to be(1)
           expect(query.filters[0].name)
-            .to eql(:status_id)
+            .to be(:status_id)
           expect(query.filters[0].operator)
-            .to eql('=')
+            .to eql("=")
           expect(query.filters[0].values)
-            .to eql(['1', '2'])
+            .to eql(["1", "2"])
         end
       end
     end
 
-    context 'sort_by' do
+    context "sort_by" do
       let(:params) do
-        { sort_by: [['status_id', 'desc']] }
+        { sort_by: [["status_id", "desc"]] }
       end
 
-      it 'sets the order' do
+      it "sets the order" do
         subject
 
         expect(query.sort_criteria)
-          .to eql([['status_id', 'desc']])
+          .to eql([["status_id", "desc"]])
       end
     end
 
-    context 'columns' do
+    context "columns" do
       let(:params) do
-        { columns: ['assigned_to', 'author', 'category', 'subject'] }
+        { columns: ["assigned_to", "author", "category", "subject"] }
       end
 
-      it 'sets the columns' do
+      it "sets the columns" do
         subject
 
         expect(query.column_names)

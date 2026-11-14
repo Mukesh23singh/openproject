@@ -1,0 +1,19 @@
+# /api/v3/days/week
+---
+get:
+  summary: Lists week days
+  operationId: list_week_days
+  tags:
+    - Work Schedule
+  description: |-
+    Lists week days with work schedule information.
+  responses:
+    '200':
+      description: |-
+        OK
+      content:
+        application/hal+json:
+          schema:
+            $ref: '../components/schemas/week_day_collection_model.yml'
+    '400':
+      $ref: "../components/responses/invalid_request_body.yml"

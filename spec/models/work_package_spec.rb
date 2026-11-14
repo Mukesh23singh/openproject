@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,70 +22,103 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackage, type: :model do
-  let(:stub_work_package) { FactoryBot.build_stubbed(:work_package) }
-  let(:stub_version) { FactoryBot.build_stubbed(:version) }
-  let(:stub_project) { FactoryBot.build_stubbed(:project) }
-  let(:user) { FactoryBot.create(:user) }
+RSpec.describe WorkPackage do
+  shared_let(:type) { create(:type_task) }
+  shared_let(:project) { create(:project, types: [type]) }
+  shared_let(:project_archived) { create(:project, :archived) }
+  shared_let(:status) { create(:status) }
+  shared_let(:priority) { create(:priority) }
+  shared_let(:user1) { create(:user) }
 
-  let(:type) { FactoryBot.create(:type_standard) }
-  let(:project) { FactoryBot.create(:project, types: [type]) }
-  let(:status) { FactoryBot.create(:status) }
-  let(:priority) { FactoryBot.create(:priority) }
+  before_all do
+    set_factory_default(:user, user1)
+    set_factory_default(:project, project)
+    set_factory_default(:project_with_types, project)
+  end
+
+  let(:stub_work_package) { build_stubbed(:work_package) }
+  let(:stub_version) { build_stubbed(:version) }
+  let(:user) { user1 }
+
   let(:work_package) do
-    WorkPackage.new.tap do |w|
+    described_class.new.tap do |w|
       w.attributes = { project_id: project.id,
                        type_id: type.id,
                        author_id: user.id,
                        status_id: status.id,
-                       priority: priority,
-                       subject: 'test_create',
-                       description: 'WorkPackage#create',
-                       estimated_hours: '1:30' }
+                       priority:,
+                       subject: "test_create",
+                       description: "WorkPackage#create",
+                       estimated_hours: "1h30" }
     end
   end
 
-  describe '.new' do
-    context 'type' do
-      let(:type2) { FactoryBot.create(:type) }
-      let(:project) { FactoryBot.create(:project, types: [type, type2]) }
+  describe "associations" do
+    subject { work_package }
+
+    it { is_expected.to belong_to(:project) }
+    it { is_expected.to belong_to(:type) }
+    it { is_expected.to belong_to(:status) }
+    it { is_expected.to belong_to(:author) }
+    it { is_expected.to belong_to(:assigned_to).class_name("Principal").optional }
+    it { is_expected.to belong_to(:responsible).class_name("Principal").optional }
+    it { is_expected.to belong_to(:project_phase_definition).class_name("Project::PhaseDefinition").optional }
+    it { is_expected.to belong_to(:priority).class_name("IssuePriority") }
+    it { is_expected.to belong_to(:category).optional }
+    it { is_expected.to have_many(:time_entries).dependent(:delete_all) }
+    it { is_expected.to have_many(:file_links).dependent(:delete_all).class_name("Storages::FileLink") }
+    it { is_expected.to have_many(:storages).through(:project) }
+    it { is_expected.to have_and_belong_to_many(:changesets) }
+    it { is_expected.to have_and_belong_to_many(:github_pull_requests) }
+    it { is_expected.to have_many(:members).dependent(:destroy) }
+    it { is_expected.to have_many(:member_principals).through(:members).class_name("Principal").source(:principal) }
+    it { is_expected.to have_many(:meeting_agenda_items) }
+    it { is_expected.to have_many(:meetings).through(:meeting_agenda_items).source(:meeting) }
+    it { is_expected.to have_many(:work_package_versions).dependent(:delete_all) }
+    it { is_expected.to have_many(:versions).through(:work_package_versions).source(:version) }
+    it { is_expected.to have_many(:target_versions).through(:work_package_versions).source(:version) }
+    it { is_expected.to have_many(:observed_in_versions).through(:work_package_versions).source(:version) }
+  end
+
+  describe ".new" do
+    describe "type" do
+      let(:type2) { create(:type) }
 
       before do
-        project # loads types as well
+        project.project_types.create!(type: type2)
       end
 
-      context 'no project chosen' do
-        it 'has no type set if no project was chosen' do
-          expect(WorkPackage.new.type)
+      context "when no project chosen" do
+        it "has no type set if no project was chosen" do
+          expect(described_class.new.type)
             .to be_nil
         end
       end
 
-      context 'project chosen' do
-        it 'has the provided type if one is provided' do
-          expect(WorkPackage.new(project: project, type: type2).type)
+      context "when project chosen" do
+        it "has the provided type if one is provided" do
+          expect(described_class.new(project:, type: type2).type)
             .to eql type2
         end
       end
     end
   end
 
-  describe 'create' do
-    describe '#save' do
+  describe "create" do
+    describe "#save" do
       subject { work_package.save }
 
       it { is_expected.to be_truthy }
     end
 
-    describe '#estimated_hours' do
+    describe "#estimated_hours" do
       before do
         work_package.save!
         work_package.reload
@@ -94,25 +129,25 @@ describe WorkPackage, type: :model do
       it { is_expected.to eq(1.5) }
     end
 
-    describe 'minimal' do
+    describe "minimal" do
       let(:work_package_minimal) do
-        WorkPackage.new.tap do |w|
+        described_class.new.tap do |w|
           w.attributes = { project_id: project.id,
                            type_id: type.id,
                            author_id: user.id,
                            status_id: status.id,
-                           priority: priority,
-                           subject: 'test_create' }
+                           priority:,
+                           subject: "test_create" }
         end
       end
 
-      context 'save' do
+      describe "save" do
         subject { work_package_minimal.save }
 
         it { is_expected.to be_truthy }
       end
 
-      context 'description' do
+      describe "description" do
         before do
           work_package_minimal.save!
           work_package_minimal.reload
@@ -124,13 +159,13 @@ describe WorkPackage, type: :model do
       end
     end
 
-    describe '#assigned_to' do
-      context 'group_assignment' do
-        let(:group) { FactoryBot.create(:group) }
+    describe "#assigned_to" do
+      describe "group_assignment" do
+        let(:group) { create(:group) }
 
         subject do
-          FactoryBot.create(:work_package,
-                            assigned_to: group).assigned_to
+          create(:work_package,
+                 assigned_to: group).assigned_to
         end
 
         it { is_expected.to eq(group) }
@@ -138,12 +173,36 @@ describe WorkPackage, type: :model do
     end
   end
 
-  describe '#category' do
-    let(:user_2) { FactoryBot.create(:user, member_in_project: project) }
+  describe "#hide_attachments?" do
+    subject { work_package.hide_attachments? }
+
+    context "when project is present" do
+      context "when project#deactivate_work_package_attachments is true" do
+        before { work_package.project.deactivate_work_package_attachments = true }
+
+        it { is_expected.to be_truthy }
+      end
+
+      context "when project#deactivate_work_package_attachments is false" do
+        before { work_package.project.deactivate_work_package_attachments = false }
+
+        it { is_expected.to be_falsey }
+      end
+    end
+
+    context "when project is absent" do
+      before { work_package.project = nil }
+
+      it { is_expected.to be_falsey }
+    end
+  end
+
+  describe "#category" do
+    let(:user2) { create(:user, member_with_permissions: { project => %i[view_work_packages edit_work_packages] }) }
     let(:category) do
-      FactoryBot.create(:category,
-                        project: project,
-                        assigned_to: user_2)
+      create(:category,
+             project:,
+             assigned_to: user2)
     end
 
     before do
@@ -156,572 +215,848 @@ describe WorkPackage, type: :model do
     it { is_expected.to eq(category.assigned_to) }
   end
 
-  describe 'responsible' do
-    let(:group) { FactoryBot.create(:group) }
-    let!(:member) do
-      FactoryBot.create(:member,
-                        principal: group,
-                        project: work_package.project,
-                        roles: [FactoryBot.create(:role)])
+  describe "#type_variant" do
+    shared_let(:type) { create(:type, name: "Bug") }
+    shared_let(:variant) { create(:type_variant, type:, variant_name: "Mobile") }
+
+    it "is the variant the work package's project applies" do
+      variant_project = create(:project, types: [variant])
+      work_package = create(:work_package, project: variant_project, type:)
+
+      expect(work_package.type).to eq(type)
+      expect(work_package.type_variant).to eq(variant)
     end
 
-    shared_context 'assign group as responsible' do
-      before { work_package.responsible = group }
+    it "is the base variant when the project chose none" do
+      base_project = create(:project, types: [type])
+      work_package = create(:work_package, project: base_project, type:)
+
+      expect(work_package.type_variant).to eq(type.default_variant)
     end
 
-    subject { work_package.valid? }
+    it "follows the target project when the work package moves" do
+      base_project = create(:project, types: [type])
+      variant_project = create(:project, types: [variant])
+      work_package = create(:work_package, project: base_project, type:)
 
-    context 'with group assigned' do
-      include_context 'assign group as responsible'
+      expect(work_package.type_variant).to eq(type.default_variant)
 
-      it { is_expected.to be_truthy }
+      work_package.project = variant_project
+
+      expect(work_package.type_variant).to eq(variant)
+    end
+
+    it "is the base variant without a project, there being no project to resolve through" do
+      expect(described_class.new(type:).type_variant).to eq(type.default_variant)
+    end
+
+    it "is nil without a type" do
+      expect(described_class.new.type_variant).to be_nil
     end
   end
 
-  describe '#assignable_versions' do
-    let(:stub_version2) { FactoryBot.build_stubbed(:version) }
-    def stub_shared_versions(v = nil)
-      versions = v ? [v] : []
+  describe "responsible" do
+    let(:group) { create(:group) }
+    let!(:member) do
+      create(:member,
+             principal: group,
+             project: work_package.project,
+             roles: [create(:project_role)])
+    end
+
+    context "with group assigned" do
+      before { work_package.responsible = group }
+
+      it "is valid" do
+        expect(work_package).to be_valid
+      end
+    end
+  end
+
+  describe "#assignable_versions" do
+    let(:stub_version2) { build_stubbed(:version) }
+
+    def stub_shared_versions(version = nil)
+      versions = version ? [version] : []
 
       allow(stub_work_package.project).to receive(:assignable_versions).and_return(versions)
     end
 
-    it "should return all the project's shared versions" do
+    it "returns all the project's shared versions" do
       stub_shared_versions(stub_version)
 
       expect(stub_work_package.assignable_versions).to eq([stub_version])
     end
 
-    it 'should return the former version if the version changed' do
+    it "includes the persisted target versions even when not shared with the project" do
       stub_shared_versions
 
-      stub_work_package.version = stub_version2
-
-      allow(stub_work_package).to receive(:version_id_changed?).and_return true
-      allow(stub_work_package).to receive(:version_id_was).and_return(stub_version.id)
-      allow(Version).to receive(:find_by).with(id: stub_version.id).and_return(stub_version)
+      allow(stub_work_package).to receive(:persisted_target_versions).and_return([stub_version])
 
       expect(stub_work_package.assignable_versions).to eq([stub_version])
     end
 
-    it 'should return the current version if the version did not change' do
-      stub_shared_versions
+    it "combines the project's shared versions with the persisted target versions" do
+      stub_shared_versions(stub_version)
 
-      stub_work_package.version = stub_version
+      allow(stub_work_package).to receive(:persisted_target_versions).and_return([stub_version2])
 
-      allow(stub_work_package).to receive(:version_id_changed?).and_return false
+      expect(stub_work_package.assignable_versions).to contain_exactly(stub_version, stub_version2)
+    end
 
-      expect(stub_work_package.assignable_versions).to eq([stub_version])
+    context "with many versions" do
+      let!(:work_package) do
+        wp = create(:work_package,
+                    project:,
+                    version: version_current)
+        # remove changes to version factored into
+        # assignable_versions calculation
+        wp.reload
+        wp
+      end
+      let!(:version_current) do
+        create(:version,
+               status: "closed",
+               project:)
+      end
+      let!(:version_open) do
+        create(:version,
+               status: "open",
+               project:)
+      end
+      let!(:version_locked) do
+        create(:version,
+               status: "locked",
+               project:)
+      end
+      let!(:version_closed) do
+        create(:version,
+               status: "closed",
+               project:)
+      end
+      let!(:version_other_project) do
+        create(:version,
+               status: "open",
+               project: create(:project))
+      end
+
+      it "returns all open versions of the project" do
+        expect(work_package.assignable_versions)
+          .to contain_exactly(version_current, version_open)
+      end
+
+      it "includes every persisted target version, even closed ones not in the project's open set" do
+        work_package.target_version_ids_replacements = [version_current.id, version_closed.id]
+        work_package.save!
+        work_package.reload
+
+        expect(work_package.assignable_versions)
+          .to contain_exactly(version_current, version_closed, version_open)
+      end
     end
   end
 
-  describe '#assignable_versions' do
-    let!(:work_package) do
-      wp = FactoryBot.create(:work_package,
-                             project: project,
-                             version: version_current)
-      # remove changes to version factored into
-      # assignable_versions calculation
-      wp.reload
-      wp
+  describe "#destroy" do
+    let!(:time_entry1) do
+      create(:time_entry,
+             project:,
+             entity: work_package)
     end
-    let!(:version_current) do
-      FactoryBot.create(:version,
-                        status: 'closed',
-                        project: project)
-    end
-    let!(:version_open) do
-      FactoryBot.create(:version,
-                        status: 'open',
-                        project: project)
-    end
-    let!(:version_locked) do
-      FactoryBot.create(:version,
-                        status: 'locked',
-                        project: project)
-    end
-    let!(:version_closed) do
-      FactoryBot.create(:version,
-                        status: 'closed',
-                        project: project)
-    end
-    let!(:version_other_project) do
-      FactoryBot.create(:version,
-                        status: 'open')
-    end
-
-    it 'returns all open versions of the project' do
-      expect(work_package.assignable_versions)
-        .to match_array [version_current, version_open]
-    end
-  end
-
-  describe '#destroy' do
-    let(:time_entry_1) do
-      FactoryBot.create(:time_entry,
-                        project: project,
-                        work_package: work_package)
-    end
-    let(:time_entry_2) do
-      FactoryBot.create(:time_entry,
-                        project: project,
-                        work_package: work_package)
+    let!(:time_entry2) do
+      create(:time_entry,
+             project:,
+             entity: work_package)
     end
 
     before do
-      time_entry_1
-      time_entry_2
-
       work_package.destroy
     end
 
-    context 'work package' do
-      subject { WorkPackage.find_by(id: work_package.id) }
+    describe "work package" do
+      subject { described_class.find_by(id: work_package.id) }
 
       it { is_expected.to be_nil }
     end
 
-    context 'time entries' do
-      subject { TimeEntry.find_by(work_package_id: work_package.id) }
+    describe "time entries" do
+      subject { TimeEntry.find_by(entity: work_package) }
 
       it { is_expected.to be_nil }
     end
   end
 
-  describe '#done_ratio' do
-    let(:status_new) do
-      FactoryBot.create(:status,
-                        name: 'New',
-                        is_default: true,
-                        is_closed: false,
-                        default_done_ratio: 50)
+  it_behaves_like "creates an audit trail on destroy" do
+    subject { create(:work_package) }
+  end
+
+  describe "#done_ratio" do
+    shared_let(:status_new) do
+      create(:status,
+             name: "New",
+             is_default: true,
+             category: "to_do",
+             default_done_ratio: 50)
     end
-    let(:status_assigned) do
-      FactoryBot.create(:status,
-                        name: 'Assigned',
-                        is_default: true,
-                        is_closed: false,
-                        default_done_ratio: 0)
+    shared_let(:status_assigned) do
+      create(:status,
+             name: "Assigned",
+             is_default: true,
+             category: "to_do",
+             default_done_ratio: 0)
     end
-    let(:work_package_1) do
-      FactoryBot.create(:work_package,
-                        status: status_new)
+    shared_let(:work_package_new) do
+      create(:work_package,
+             status: status_new)
     end
-    let(:work_package_2) do
-      FactoryBot.create(:work_package,
-                        project: work_package_1.project,
-                        status: status_assigned,
-                        done_ratio: 30)
+    shared_let(:work_package_assigned) do
+      create(:work_package,
+             project: work_package_new.project,
+             status: status_assigned,
+             done_ratio: 30)
     end
 
-    before { work_package_2 }
+    it "allows empty value" do
+      work_package.done_ratio = ""
+      expect(work_package).to be_valid
+      expect(work_package.done_ratio).to be_nil
+    end
 
-    describe '#value' do
-      context 'work package field' do
-        before { allow(Setting).to receive(:work_package_done_ratio).and_return 'field' }
+    it "allows blank values" do
+      work_package.done_ratio = "  "
+      expect(work_package).to be_valid
+      expect(work_package.done_ratio).to be_nil
+    end
 
-        context 'work package 1' do
-          subject { work_package_1.done_ratio }
+    it "allows nil value" do
+      work_package.done_ratio = nil
+      expect(work_package).to be_valid
+      expect(work_package.done_ratio).to be_nil
+    end
 
-          it { is_expected.to eq(0) }
-        end
+    it "allows values between 0 and 100" do
+      work_package.done_ratio = 0
+      expect(work_package).to be_valid
+      work_package.done_ratio = 34
+      expect(work_package).to be_valid
+      work_package.done_ratio = 99
+      expect(work_package).to be_valid
 
-        context 'work package 2' do
-          subject { work_package_2.done_ratio }
+      work_package.done_ratio = "1"
+      expect(work_package).to be_valid
+      work_package.done_ratio = "100"
+      expect(work_package).to be_valid
+    end
 
-          it { is_expected.to eq(30) }
+    it "disallows values outside of the 0-100 range" do
+      work_package.done_ratio = -1
+      expect(work_package).not_to be_valid
+
+      work_package.done_ratio = "-1%"
+      expect(work_package.done_ratio).to eq(-1)
+      expect(work_package).not_to be_valid
+
+      work_package.done_ratio = 101.0
+      expect(work_package.done_ratio).to eq(101)
+      expect(work_package).not_to be_valid
+    end
+
+    it "allows floats and truncates them to integer" do
+      work_package.done_ratio = 1.7
+      expect(work_package).to be_valid
+      expect(work_package.done_ratio).to eq(1)
+
+      work_package.done_ratio = "1.7"
+      expect(work_package).to be_valid
+      expect(work_package.done_ratio).to eq(1)
+    end
+
+    it "allows percentage like '50%'" do
+      work_package.done_ratio = "50%"
+      expect(work_package).to be_valid
+      expect(work_package.done_ratio).to eq(50)
+    end
+
+    it "disallows string values, that are not valid percentage values" do
+      work_package.done_ratio = "abc"
+      expect(work_package).not_to be_valid
+    end
+
+    describe "#value" do
+      context "for work-based mode",
+              with_settings: { work_package_done_ratio: "field" } do
+        it "returns the value from work package field" do
+          expect(work_package_new.done_ratio).to be_nil
+          expect(work_package_assigned.done_ratio).to eq(30)
         end
       end
 
-      context 'work package status' do
-        before { allow(Setting).to receive(:work_package_done_ratio).and_return 'status' }
-
-        context 'work package 1' do
-          subject { work_package_1.done_ratio }
-
-          it { is_expected.to eq(50) }
-        end
-
-        context 'work package 2' do
-          subject { work_package_2.done_ratio }
-
-          it { is_expected.to eq(0) }
+      context "for status-based mode",
+              with_settings: { work_package_done_ratio: "status" } do
+        it "uses the % Complete value from the work package status" do
+          expect(work_package_new.done_ratio).to eq(status_new.default_done_ratio)
+          expect(work_package_assigned.done_ratio).to eq(status_assigned.default_done_ratio)
         end
       end
     end
 
-    describe '#update_done_ratio_from_status' do
-      context 'work package field' do
-        before do
-          allow(Setting).to receive(:work_package_done_ratio).and_return 'field'
-
-          work_package_1.update_done_ratio_from_status
-          work_package_2.update_done_ratio_from_status
-        end
-
-        it 'does not update the done ratio' do
-          expect(work_package_1.done_ratio).to eq(0)
-          expect(work_package_2.done_ratio).to eq(30)
+    describe "#update_done_ratio_from_status" do
+      context "for work-based mode",
+              with_settings: { work_package_done_ratio: "field" } do
+        it "does not update the done ratio" do
+          expect { work_package_new.update_done_ratio_from_status }
+            .not_to change { work_package_new[:done_ratio] }
+          expect { work_package_assigned.update_done_ratio_from_status }
+            .not_to change { work_package_assigned[:done_ratio] }
         end
       end
 
-      context 'work package status' do
-        before do
-          allow(Setting).to receive(:work_package_done_ratio).and_return 'status'
+      context "for status-based mode",
+              with_settings: { work_package_done_ratio: "status" } do
+        it "updates the done ratio without saving it" do
+          expect { work_package_new.update_done_ratio_from_status }
+            .to change { work_package_new[:done_ratio] }
+                  .from(nil).to(50)
+          expect { work_package_assigned.update_done_ratio_from_status }
+            .to change { work_package_assigned[:done_ratio] }
+                  .from(30).to(0)
 
-          work_package_1.update_done_ratio_from_status
-          work_package_2.update_done_ratio_from_status
-        end
-
-        it 'updates the done ratio' do
-          expect(work_package_1.done_ratio).to eq(50)
-          expect(work_package_2.done_ratio).to eq(0)
+          expect(work_package_new).to have_changes_to_save
         end
       end
     end
   end
 
-  describe '#group_by' do
-    let(:type_2) { FactoryBot.create(:type) }
-    let(:priority_2) { FactoryBot.create(:priority) }
-    let(:project) { FactoryBot.create(:project, types: [type, type_2]) }
-    let(:version_1) do
-      FactoryBot.create(:version,
-                        project: project)
-    end
-    let(:version_2) do
-      FactoryBot.create(:version,
-                        project: project)
-    end
-    let(:category_1) do
-      FactoryBot.create(:category,
-                        project: project)
-    end
-    let(:category_2) do
-      FactoryBot.create(:category,
-                        project: project)
-    end
-    let(:user_2) { FactoryBot.create(:user) }
+  describe "#group_by" do
+    shared_let(:type2) { create(:type) }
+    shared_let(:priority2) { create(:priority) }
+    shared_let(:project) { create(:project, types: [type, type2]) }
+    shared_let(:version1) { create(:version, project:) }
+    shared_let(:version2) { create(:version, project:) }
+    shared_let(:category1) { create(:category, project:) }
+    shared_let(:category2) { create(:category, project:) }
+    shared_let(:user2) { create(:user) }
 
-    let(:work_package_1) do
-      FactoryBot.create(:work_package,
-                        author: user,
-                        assigned_to: user,
-                        responsible: user,
-                        project: project,
-                        type: type,
-                        priority: priority,
-                        version: version_1,
-                        category: category_1)
+    shared_let(:work_package1) do
+      create(:work_package,
+             author: user1,
+             assigned_to: user1,
+             responsible: user1,
+             project:,
+             type:,
+             priority:,
+             version: version1,
+             category: category1)
     end
-    let(:work_package_2) do
-      FactoryBot.create(:work_package,
-                        author: user_2,
-                        assigned_to: user_2,
-                        responsible: user_2,
-                        project: project,
-                        type: type_2,
-                        priority: priority_2,
-                        version: version_2,
-                        category: category_2)
+    shared_let(:work_package2) do
+      create(:work_package,
+             author: user2,
+             assigned_to: user2,
+             responsible: user2,
+             project:,
+             type: type2,
+             priority: priority2,
+             version: version2,
+             category: category2)
     end
 
-    before do
-      version_1
-      version_2
-      project.reload
-      work_package_1
-      work_package_2
-    end
-
-    shared_examples_for 'group by' do
-      context 'size' do
+    shared_examples_for "group by" do
+      describe "size" do
         subject { groups.size }
 
         it { is_expected.to eq(2) }
       end
 
-      context 'total' do
-        subject { groups.inject(0) { |sum, group| sum + group['total'].to_i } }
+      describe "total" do
+        subject { groups.inject(0) { |sum, group| sum + group["total"].to_i } }
 
         it { is_expected.to eq(2) }
       end
     end
 
-    context 'by type' do
-      let(:groups) { WorkPackage.by_type(project) }
+    describe "by type" do
+      let(:groups) { described_class.by_type(project) }
 
-      it_behaves_like 'group by'
+      it_behaves_like "group by"
     end
 
-    context 'by version' do
-      let(:groups) { WorkPackage.by_version(project) }
+    describe "by version" do
+      let(:groups) { described_class.by_version(project) }
 
-      it_behaves_like 'group by'
-    end
+      it_behaves_like "group by"
 
-    context 'by priority' do
-      let(:groups) { WorkPackage.by_priority(project) }
+      context "with a work package assigned to multiple target versions" do
+        shared_let(:multi_version_work_package) do
+          create(:work_package, project:, type:, version: version1)
+            .tap { |wp| wp.work_package_versions.create!(version: version2, kind: "target") }
+        end
 
-      it_behaves_like 'group by'
-    end
+        def total_for(version)
+          groups.select { |row| row["version_id"].to_i == version.id }
+                .sum { |row| row["total"].to_i }
+        end
 
-    context 'by category' do
-      let(:groups) { WorkPackage.by_category(project) }
-
-      it_behaves_like 'group by'
-    end
-
-    context 'by assigned to' do
-      let(:groups) { WorkPackage.by_assigned_to(project) }
-
-      it_behaves_like 'group by'
-    end
-
-    context 'by responsible' do
-      let(:groups) { WorkPackage.by_responsible(project) }
-
-      it_behaves_like 'group by'
-    end
-
-    context 'by author' do
-      let(:groups) { WorkPackage.by_author(project) }
-
-      it_behaves_like 'group by'
-    end
-
-    context 'by project' do
-      let(:project_2) do
-        FactoryBot.create(:project,
-                          parent: project)
+        it "counts the work package under each of its target versions" do
+          # version1: work_package1 + multi_version_work_package
+          expect(total_for(version1)).to eq(2)
+          # version2: work_package2 + multi_version_work_package
+          expect(total_for(version2)).to eq(2)
+        end
       end
-      let(:work_package_3) do
-        FactoryBot.create(:work_package,
-                          project: project_2)
-      end
+    end
 
-      before { work_package_3 }
+    describe "by priority" do
+      let(:groups) { described_class.by_priority(project) }
 
-      let(:groups) { WorkPackage.by_author(project) }
+      it_behaves_like "group by"
+    end
 
-      it_behaves_like 'group by'
+    describe "by category" do
+      let(:groups) { described_class.by_category(project) }
+
+      it_behaves_like "group by"
+    end
+
+    describe "by assigned to" do
+      let(:groups) { described_class.by_assigned_to(project) }
+
+      it_behaves_like "group by"
+    end
+
+    describe "by responsible" do
+      let(:groups) { described_class.by_responsible(project) }
+
+      it_behaves_like "group by"
+    end
+
+    describe "by author" do
+      let(:groups) { described_class.by_author(project) }
+
+      it_behaves_like "group by"
+    end
+
+    describe "by project" do
+      shared_let(:project2) { create(:project, parent: project) }
+      shared_let(:work_package3) { create(:work_package, project: project2) }
+      let(:groups) { described_class.by_author(project) }
+
+      it_behaves_like "group by"
     end
   end
 
-  describe '#recently_updated' do
-    let(:work_package_1) { FactoryBot.create(:work_package) }
-    let(:work_package_2) { FactoryBot.create(:work_package) }
+  describe "#recently_updated" do
+    let!(:work_package1) { create(:work_package) }
+    let!(:work_package2) { create(:work_package) }
 
     before do
-      work_package_1
-      work_package_2
-
       without_timestamping do
-        work_package_1.updated_at = 1.minute.ago
-        work_package_1.save!
+        work_package1.update_column(:updated_at, 1.minute.ago)
       end
     end
 
-    context 'limit' do
-      subject { WorkPackage.recently_updated.limit(1).first }
+    describe "limit" do
+      subject { described_class.recently_updated.limit(1).first }
 
-      it { is_expected.to eq(work_package_2) }
+      it { is_expected.to eq(work_package2) }
     end
   end
 
-  describe '#on_active_project' do
-    let(:project_archived) do
-      FactoryBot.create(:project,
-                        active: false)
+  describe "target version scopes" do
+    shared_let(:project) { create(:project) }
+    shared_let(:version) { create(:version, project:) }
+    shared_let(:other_version) { create(:version, project:) }
+
+    # Targets `version` and, additionally, is observed in `other_version`. The
+    # observed_in row must not confuse either scope.
+    shared_let(:wp_targeting) do
+      create(:work_package, project:, version:).tap do |wp|
+        WorkPackageVersion.create!(work_package: wp, version: other_version, kind: "observed_in")
+      end
     end
-    let!(:work_package) { FactoryBot.create(:work_package) }
-    let(:work_package_in_archived_project) do
-      FactoryBot.create(:work_package,
-                        project: project_archived)
+    shared_let(:wp_without_target) { create(:work_package, project:, version: nil) }
+
+    describe ".with_target_version" do
+      it "returns only work packages targeting the given version" do
+        expect(described_class.with_target_version(version.id)).to contain_exactly(wp_targeting)
+      end
+
+      it "does not match on an observed_in version" do
+        expect(described_class.with_target_version(other_version.id)).to be_empty
+      end
     end
 
-    subject { WorkPackage.on_active_project.length }
+    describe ".without_target_version" do
+      it "returns only work packages without any target version" do
+        expect(described_class.without_target_version).to contain_exactly(wp_without_target)
+      end
 
-    context 'one work package in active projects' do
+      it "excludes a work package that targets a version but is observed in another" do
+        expect(described_class.without_target_version).not_to include(wp_targeting)
+      end
+    end
+  end
+
+  describe "#on_active_project" do
+    shared_let(:work_package) { create(:work_package, project:) }
+
+    subject { described_class.on_active_project.length }
+
+    context "with one work package in active projects" do
       it { is_expected.to eq(1) }
 
-      context 'and one work package in archived projects' do
-        before { work_package_in_archived_project }
+      context "and one work package in archived projects" do
+        shared_let(:work_package_in_archived_project) do
+          create(:work_package, project: project_archived)
+        end
 
         it { is_expected.to eq(1) }
       end
     end
   end
 
-  describe '#with_author' do
-    let(:user) { FactoryBot.create(:user) }
-    let(:project_archived) do
-      FactoryBot.create(:project,
-                        active: false)
-    end
-    let!(:work_package) { FactoryBot.create(:work_package, author: user) }
-    let(:work_package_in_archived_project) do
-      FactoryBot.create(:work_package,
-                        project: project_archived,
-                        author: user)
-    end
+  describe "#with_author" do
+    shared_let(:work_package) { create(:work_package, project:, author: user1) }
 
-    subject { WorkPackage.with_author(user).length }
+    subject { described_class.with_author(user1).length }
 
-    context 'one work package in active projects' do
+    context "with one work package in active projects" do
       it { is_expected.to eq(1) }
 
-      context 'and one work package in archived projects' do
-        before { work_package_in_archived_project }
+      context "and one work package in archived projects" do
+        shared_let(:work_package_in_archived_project) do
+          create(:work_package, project: project_archived, author: user1)
+        end
 
         it { is_expected.to eq(2) }
       end
     end
   end
 
-  describe '#add_time_entry' do
-    it 'should return a new time entry' do
-      expect(stub_work_package.add_time_entry).to be_a TimeEntry
-    end
-
-    it 'should already have the project assigned' do
-      stub_work_package.project = stub_project
-
-      expect(stub_work_package.add_time_entry.project).to eq(stub_project)
-    end
-
-    it 'should already have the work_package assigned' do
-      expect(stub_work_package.add_time_entry.work_package).to eq(stub_work_package)
-    end
-
-    it 'should return an usaved entry' do
-      expect(stub_work_package.add_time_entry).to be_new_record
-    end
-  end
-
-  describe '.allowed_target_project_on_move' do
-    let(:project) { FactoryBot.create(:project) }
-    let(:role) { FactoryBot.create(:role, permissions: [:move_work_packages]) }
+  describe ".allowed_target_project_on_move" do
+    let(:permissions) { [:move_work_packages] }
     let(:user) do
-      FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+      create(:user, member_with_permissions: { project => permissions })
     end
 
-    context 'when having the move_work_packages permission' do
-      it 'returns the project' do
-        expect(WorkPackage.allowed_target_projects_on_move(user))
-          .to match_array [project]
+    context "when having the move_work_packages permission" do
+      it "returns the project" do
+        expect(described_class.allowed_target_projects_on_move(user))
+          .to contain_exactly(project)
       end
     end
 
-    context 'when lacking the move_work_packages permission' do
-      let(:role) { FactoryBot.create(:role, permissions: []) }
+    context "when lacking the move_work_packages permission" do
+      let(:permissions) { [] }
 
-      it 'does not return the project' do
-        expect(WorkPackage.allowed_target_projects_on_move(user))
+      it "does not return the project" do
+        expect(described_class.allowed_target_projects_on_move(user))
           .to be_empty
       end
     end
   end
 
-  describe '.allowed_target_project_on_create' do
-    let(:project) { FactoryBot.create(:project) }
-    let(:role) { FactoryBot.create(:role, permissions: [:add_work_packages]) }
+  describe ".allowed_target_projects_on_copy" do
+    let(:permissions) { [:copy_work_packages] }
     let(:user) do
-      FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+      create(:user, member_with_permissions: { project => permissions })
     end
 
-    context 'when having the add_work_packages permission' do
-      it 'returns the project' do
-        expect(WorkPackage.allowed_target_projects_on_create(user))
-          .to match_array [project]
+    context "when having the copy_work_packages permission" do
+      it "returns the project" do
+        expect(described_class.allowed_target_projects_on_copy(user))
+          .to contain_exactly(project)
       end
     end
 
-    context 'when lacking the add_work_packages permission' do
-      let(:role) { FactoryBot.create(:role, permissions: []) }
+    context "when lacking the copy_work_packages permission" do
+      let(:permissions) { [:move_work_packages] }
 
-      it 'does not return the project' do
-        expect(WorkPackage.allowed_target_projects_on_create(user))
+      it "does not return the project" do
+        expect(described_class.allowed_target_projects_on_copy(user))
           .to be_empty
       end
     end
   end
 
-  describe '#duration' do
-    let(:instance) { send(subclass) }
+  describe ".allowed_target_project_on_create" do
+    let(:permissions) { [:add_work_packages] }
+    let(:user) do
+      create(:user, member_with_permissions: { project => permissions })
+    end
 
-    describe "w/ today as start date
-              w/ tomorrow as finish date" do
-      before do
-        work_package.start_date = Date.today
-        work_package.due_date = Date.today + 1.day
-      end
-
-      it 'should have a duration of two' do
-        expect(work_package.duration).to eq(2)
+    context "when having the add_work_packages permission" do
+      it "returns the project" do
+        expect(described_class.allowed_target_projects_on_create(user))
+          .to contain_exactly(project)
       end
     end
 
-    describe "w/ today as start date
-              w/ today as finish date" do
-      before do
-        work_package.start_date = Date.today
-        work_package.due_date = Date.today
-      end
+    context "when lacking the add_work_packages permission" do
+      let(:permissions) { [] }
 
-      it 'should have a duration of one' do
-        expect(work_package.duration).to eq(1)
-      end
-    end
-
-    describe "w/ today as start date
-              w/o a finish date" do
-      before do
-        work_package.start_date = Date.today
-        work_package.due_date = nil
-      end
-
-      it 'should have a duration of one' do
-        expect(work_package.duration).to eq(1)
-      end
-    end
-
-    describe "w/o a start date
-              w today as finish date" do
-      before do
-        work_package.start_date = nil
-        work_package.due_date = Date.today
-      end
-
-      it 'should have a duration of one' do
-        expect(work_package.duration).to eq(1)
+      it "does not return the project" do
+        expect(described_class.allowed_target_projects_on_create(user))
+          .to be_empty
       end
     end
   end
 
-  describe 'changed_since' do
-    let!(:work_package) do
+  describe "#duration" do
+    context "when not setting a value" do
+      it "is nil" do
+        expect(work_package).to have_attributes(duration: nil)
+      end
+    end
+
+    context "when setting the value" do
+      before do
+        work_package.duration = 5
+      end
+
+      it "is the value" do
+        expect(work_package).to have_attributes(duration: 5)
+      end
+    end
+  end
+
+  describe "#duration_in_hours" do
+    context "when not setting duration" do
+      it "is nil" do
+        expect(work_package).to have_attributes(duration_in_hours: nil)
+      end
+    end
+
+    context "when setting duration value" do
+      before do
+        work_package.duration = 5
+      end
+
+      it "is the value" do
+        expect(work_package).to have_attributes(duration_in_hours: 120)
+      end
+    end
+  end
+
+  describe "changed_since" do
+    shared_let(:work_package) do
       Timecop.travel(5.hours.ago) do
-        FactoryBot.create(:work_package)
+        create(:work_package, project:)
       end
     end
 
-    describe 'null' do
-      subject { WorkPackage.changed_since(nil) }
+    subject { described_class.changed_since(since) }
 
-      it { expect(subject).to match_array([work_package]) }
+    describe "null" do
+      let(:since) { nil }
+
+      it { expect(subject).to contain_exactly(work_package) }
     end
 
-    describe 'now' do
-      subject { WorkPackage.changed_since(DateTime.now) }
+    describe "now" do
+      let(:since) { DateTime.now }
 
       it { expect(subject).to be_empty }
     end
 
-    describe 'work package update' do
-      subject { WorkPackage.changed_since(work_package.reload.updated_at) }
+    describe "work package update" do
+      let(:since) { work_package.reload.updated_at }
 
-      it { expect(subject).to match_array([work_package]) }
+      it { expect(subject).to contain_exactly(work_package) }
+    end
+  end
+
+  describe "#ignore_non_working_days" do
+    context "for a new record" do
+      it "is false" do
+        expect(described_class.new.ignore_non_working_days)
+          .to be false
+      end
+    end
+  end
+
+  describe "#remaining_hours" do
+    it "allows empty value" do
+      work_package.remaining_hours = ""
+      expect(work_package).to be_valid
+      expect(work_package.remaining_hours).to be_nil
+    end
+
+    it "allows blank values" do
+      work_package.remaining_hours = "  "
+      expect(work_package).to be_valid
+      expect(work_package.remaining_hours).to be_nil
+    end
+
+    it "allows nil value" do
+      work_package.remaining_hours = nil
+      expect(work_package).to be_valid
+      expect(work_package.remaining_hours).to be_nil
+    end
+
+    it "allows values greater than or equal to 0" do
+      work_package.remaining_hours = "0"
+      expect(work_package).to be_valid
+
+      work_package.remaining_hours = "1"
+      expect(work_package).to be_valid
+    end
+
+    it "disallows negative values" do
+      work_package.remaining_hours = "-1"
+      expect(work_package).not_to be_valid
+
+      work_package.remaining_hours = "-1h"
+      expect(work_package.remaining_hours).to eq(-1)
+      expect(work_package).not_to be_valid
+    end
+
+    it "disallows string values, that are not numbers" do
+      work_package.remaining_hours = "abc"
+      expect(work_package).not_to be_valid
+    end
+
+    it "allows non-integers" do
+      work_package.remaining_hours = "1.3"
+      expect(work_package).to be_valid
+    end
+
+    it "allows hours like '1h06'" do
+      work_package.remaining_hours = "1h06"
+      expect(work_package).to be_valid
+      expect(work_package.remaining_hours).to eq(1.1)
+    end
+
+    it "allows hours like '1h 24m'" do
+      work_package.remaining_hours = "1h 24m"
+      expect(work_package).to be_valid
+      expect(work_package.remaining_hours).to eq(1.4)
+    end
+
+    it "allows hours like '3d 1.5h 30m'" do
+      work_package.remaining_hours = "3d 1h 30m"
+      expect(work_package).to be_valid
+      expect(work_package.remaining_hours).to eq((3 * 8) + 1.5)
+    end
+  end
+
+  describe "#project_phase" do
+    let(:project_phase) { build_stubbed(:project_phase, definition: project_phase_definition) }
+    let(:project_phase_definition) { build_stubbed(:project_phase_definition) }
+    let(:project) { build_stubbed(:project, phases: [project_phase]) }
+    let(:work_package) do
+      build_stubbed(:work_package,
+                    project:,
+                    project_phase_definition: project_phase_definition)
+    end
+
+    describe "when the project phase exists in the project" do
+      it "returns the project phase definition" do
+        expect(work_package.project_phase).to eq(project_phase)
+      end
+    end
+
+    describe "when the project phase does not exist in the project (e.g. moved into the project)" do
+      # There is now only another project phase active in the project
+      let(:project_phase) { build_stubbed(:project_phase, definition: build_stubbed(:project_phase_definition)) }
+
+      it "returns nil" do
+        expect(work_package.project_phase).to be_nil
+      end
+    end
+  end
+
+  describe "#to_fs" do
+    describe ":heading style (the default, used by #to_s)" do
+      let(:task_type) { create(:type_task) }
+
+      context "in classic mode",
+              with_settings: { work_packages_identifier: "classic" } do
+        let(:work_package) { create(:work_package, project:, type: task_type, subject: "Hello world") }
+
+        it "renders the type, the `#`-prefixed numeric id and the subject" do
+          expect(work_package.to_fs(:heading)).to eq("Task ##{work_package.id}: Hello world")
+        end
+
+        it "is the default style, and #to_s delegates to it" do
+          expect(work_package.to_fs).to eq("Task ##{work_package.id}: Hello world")
+          expect(work_package.to_s).to eq(work_package.to_fs(:heading))
+        end
+      end
+
+      context "in semantic mode",
+              with_settings: { work_packages_identifier: "semantic" } do
+        let(:project) { create(:project, identifier: "MACROPROJ", types: [task_type]) }
+        let(:work_package) { create(:work_package, project:, type: task_type, subject: "Hello world") }
+
+        it "renders the semantic identifier without a `#` prefix" do
+          wp = work_package.reload
+          expect(wp.to_fs(:heading)).to eq("Task #{wp.display_id}: Hello world")
+          expect(wp.to_fs(:heading)).not_to include("##{wp.id}")
+        end
+      end
+    end
+
+    describe ":caption style" do
+      let(:caption_type) { create(:type_task) }
+      let(:caption_work_package) do
+        create(:work_package, subject: "Hello world", project: caption_project, type: caption_type)
+      end
+
+      context "in semantic mode",
+              with_settings: { work_packages_identifier: "semantic" } do
+        let(:caption_project) { create(:project, identifier: "MYPROJ") }
+
+        before { caption_work_package }
+
+        it "renders the type, subject and the semantic id in parentheses" do
+          expect(caption_work_package.reload.to_fs(:caption)).to eq("Task: Hello world (MYPROJ-1)")
+        end
+      end
+
+      context "in classic mode",
+              with_settings: { work_packages_identifier: "classic" } do
+        let(:caption_project) { create(:project) }
+
+        it "renders the type, subject and the `#`-prefixed numeric id in parentheses" do
+          expect(caption_work_package.to_fs(:caption))
+            .to eq("Task: Hello world (##{caption_work_package.id})")
+        end
+      end
+
+    end
+
+    describe "for a project applying a named variant" do
+      let(:type) { create(:type_task) }
+      let(:variant) { create(:type_variant, type:, variant_name: "Bug") }
+      let(:variant_project) { create(:project, types: [variant]) }
+      let(:variant_work_package) { create(:work_package, project: variant_project, type:, subject: "Hello world") }
+
+      it "renders the type's name in the :heading style" do
+        expect(variant_work_package.to_fs(:heading)).to include("Task")
+        expect(variant_work_package.to_fs(:heading)).not_to include("Bug")
+      end
+
+      it "renders the type's name in the :caption style" do
+        expect(variant_work_package.to_fs(:caption)).to start_with("Task:")
+        expect(variant_work_package.to_fs(:caption)).not_to include("Bug")
+      end
+    end
+
+    describe "without a type (only possible while unpersisted)",
+             with_settings: { work_packages_identifier: "classic" } do
+      let(:untyped_work_package) { build_stubbed(:work_package, project:, type: nil, subject: "Hello world") }
+
+      it "renders the heading without a type name" do
+        expect(untyped_work_package.to_fs(:heading)).to eq(" ##{untyped_work_package.id}: Hello world")
+      end
+
+      it "renders the caption without the type prefix and its colon" do
+        expect(untyped_work_package.to_fs(:caption)).to eq("Hello world (##{untyped_work_package.id})")
+      end
+    end
+
+    it "raises ArgumentError for an unknown style" do
+      expect { work_package.to_fs(:bogus) }
+        .to raise_error(ArgumentError, /unknown format style/)
     end
   end
 end

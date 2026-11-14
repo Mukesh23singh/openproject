@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,7 +37,7 @@ class Report::SqlStatement
 
     def to_s
       "((\n#{first.gsub("\n", "\n\t")}\n) UNION (\n" \
-      "#{second.gsub("\n", "\n\t")}\n))#{" AS #{as}" if as}\n"
+        "#{second.gsub("\n", "\n\t")}\n))#{" AS #{as}" if as}\n"
     end
 
     def each_subselect
@@ -46,8 +45,8 @@ class Report::SqlStatement
       yield second
     end
 
-    def gsub(*args, &block)
-      to_s.gsub(*args, &block)
+    def gsub(...)
+      to_s.gsub(...)
     end
   end
 
@@ -61,7 +60,7 @@ class Report::SqlStatement
   # Generates new SqlStatement.
   #
   # @param [String, #to_s] table Table name (or subselect) for from part.
-  def initialize(table, desc = '')
+  def initialize(table, desc = "")
     self.desc = desc
     from table
   end
@@ -93,24 +92,24 @@ class Report::SqlStatement
   #
   # @param [#to_s] field Name of the field to aggregate on (defaults to *)
   # @param [#to_s] name Name of the result (defaults to sum)
-  def count(field = '*', name = :count)
+  def count(field = "*", name = :count)
     sum field, name, :count
   end
 
   ##
   # Generates the SQL query.
-  # Code looks ugly in exchange for pretty output (so one does unterstand those).
+  # Code looks ugly in exchange for pretty output (so one does understand those).
   #
   # @return [String] The query
   def to_s
     # FIXME I'm ugly
     @sql ||= begin
       sql = "\n-- BEGIN #{desc}\n" \
-      "-- DB: #{ActiveRecord::Base.connection.current_database}\n" \
-      "SELECT\n#{select.map { |e| "\t#{e}" }.join ",\n"}" \
-      "\nFROM\n\t#{from.gsub("\n", "\n\t")}" \
-      "\n\t#{joins.map { |e| e.gsub("\n", "\n\t") }.join "\n\t"}" \
-      "\nWHERE #{where.join ' AND '}\n"
+            "-- DB: #{ActiveRecord::Base.connection.current_database}\n" \
+            "SELECT\n#{select.map { |e| "\t#{e}" }.join ",\n"}" \
+            "\nFROM\n\t#{from.gsub("\n", "\n\t")}" \
+            "\n\t#{joins.map { |e| e.gsub("\n", "\n\t") }.join "\n\t"}" \
+            "\nWHERE #{where.join ' AND '}\n"
       sql << "GROUP BY #{group_by.join ', '}\nORDER BY #{group_by.join ', '}\n" if group_by?
       sql << "-- END #{desc}\n"
       sql # << " LIMIT 100"
@@ -143,7 +142,7 @@ class Report::SqlStatement
   #   @param [Array, Hash, String] fields Parameters passed to sanitize_sql_for_conditions.
   # @see Report::QueryUtils#sanitize_sql_for_conditions
   def where(fields = nil)
-    @where ||= ['1=1']
+    @where ||= ["1=1"]
     unless fields.nil?
       @where << sanitize_sql_for_conditions(fields)
       @sql = nil
@@ -171,7 +170,7 @@ class Report::SqlStatement
   # @see #joins
   def join(*list)
     @sql = nil
-    join_syntax = 'LEFT OUTER JOIN %1$s ON %1$s.id = %2$s_id'
+    join_syntax = "LEFT OUTER JOIN %1$s ON %1$s.id = %2$s_id"
     list.each do |e|
       case e
       when Class          then joins << (join_syntax % [table_name_for(e), e.lookup_ancestors.last.model_name.to_s.underscore])
@@ -186,7 +185,7 @@ class Report::SqlStatement
 
   def default_select(value = nil)
     @default_select = value if value
-    @default_select ||= ['*']
+    @default_select ||= ["*"]
   end
 
   ##
@@ -214,7 +213,7 @@ class Report::SqlStatement
           if f.size == 2 and f.first.respond_to? :table_name then select field_name_for(f)
           else select(*f)
           end
-        when Hash then select f.map { |k, v| "#{field_name_for v} as #{field_name_for k}" }
+        when Hash then select(f.map { |k, v| "#{field_name_for v} as #{field_name_for k}" })
         when String, Symbol then @select << field_name_for(f)
         when engine::SqlStatement then @select << f.to_s
         else raise ArgumentError, "cannot handle #{f.inspect}"
@@ -222,7 +221,7 @@ class Report::SqlStatement
       end
       # when doing a union in sql, both subselects must have the same order.
       # by sorting here we never ever have to worry about this again, sucker!
-      @select = @select.uniq.sort_by { |x| x.split(' as ').last }
+      @select = @select.uniq.sort_by { |x| x.split(" as ").last }
     end
   end
 
@@ -246,7 +245,7 @@ class Report::SqlStatement
   # Return the names which have been bound through select statements
   # @return [Array<String>] All fields for select part
   def selects
-    @select.map { |s| s.split(' as ').last }
+    @select.map { |s| s.split(" as ").last }
   end
 
   ##
@@ -296,7 +295,7 @@ class Report::SqlStatement
     "#<SqlStatement: #{to_s.inspect}>"
   end
 
-  def gsub(*args, &block)
-    to_s.gsub(*args, &block)
+  def gsub(...)
+    to_s.gsub(...)
   end
 end

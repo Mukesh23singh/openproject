@@ -1,0 +1,264 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Components::Autocompleter
+  module NgSelectAutocompleteHelpers
+    def search_autocomplete(element,
+                            query:,
+                            results_selector: "body",
+                            wait_dropdown_open: true,
+                            wait_for_fetched_options: true,
+                            wait: Capybara.default_max_wait_time)
+      enter_autocomplete_query(element, query:, results_selector:, wait_dropdown_open:, wait_for_fetched_options:, wait:)
+
+      # Wait for options to be refreshed after having entered some text.
+      expect(resolve_autocomplete(element)).to have_no_css(".ng-spinner-loader", wait:)
+
+      # probably not necessary anymore
+      sleep(0.5) unless using_cuprite?
+
+      # Find the open dropdown
+      page.document.synchronize do
+        dropdown_list = ng_find_dropdown(resolve_autocomplete(element), results_selector:)
+        scroll_to_element(dropdown_list)
+        dropdown_list
+      end
+    end
+
+    def enter_autocomplete_query(element, query:, results_selector:, wait_dropdown_open:, wait_for_fetched_options:, wait:)
+      SeleniumHubWaiter.wait unless using_cuprite?
+
+      # Wait for dropdown to open
+      dropdown_open = ng_dropdown_open?(element) if wait_dropdown_open
+      ng_click_autocompleter(element) unless dropdown_open
+      ng_find_dropdown(resolve_autocomplete(element), results_selector:) if wait_dropdown_open
+
+      # Wait for autocompleter options to be loaded (data fetching is debounced by 250ms after creation or typing)
+      wait_for_network_idle if using_cuprite? && wait_for_fetched_options
+      expect(resolve_autocomplete(element)).to have_no_css(".ng-spinner-loader", wait:)
+
+      # Insert the text to find
+      page.document.synchronize do
+        current_element = resolve_autocomplete(element)
+        within(current_element) do
+          ng_enter_query(current_element, query, wait_for_fetched_options:)
+        end
+      end
+    end
+
+    def ng_click_autocompleter(target)
+      page.document.synchronize do
+        input = ng_select_input(resolve_autocomplete(target))
+
+        scroll_to_element(input, block: :nearest)
+        input.click
+      end
+    end
+
+    def ng_find_dropdown(element, results_selector: "body", raise_on_missing: true)
+      selector = results_selector == "body" ? "body .ng-dropdown-panel" : results_selector
+      find_dropdown(element, selector:, wait: raise_on_missing ? 5 : 0)
+    rescue Capybara::ElementNotFound
+      return nil unless raise_on_missing
+
+      ng_click_autocompleter(element)
+      find_dropdown(element, selector:, wait: 10)
+    end
+
+    def find_dropdown(element, selector:, wait:)
+      if selector
+        within_window(current_window) { page.find(selector, wait:) }
+      else
+        within(element) { page.find("ng-select .ng-dropdown-panel", wait:) }
+      end
+    end
+
+    def ng_dropdown_open?(element)
+      page.document.synchronize do
+        current_element = resolve_autocomplete(element)
+        current_element["class"].to_s.split.include?("ng-select-opened") ||
+          current_element.has_css?("ng-select.ng-select-opened", wait: 0)
+      end
+    end
+
+    def expect_ng_option(element, option, grouping: nil, results_selector: "body", present: true)
+      if grouping && present
+        within(ng_find_dropdown(element, results_selector:)) do
+          # Make sure the option is displayed under correct grouping title.
+          option_group = find(".ng-optgroup", text: grouping)
+          option = find(".ng-option.ng-option-child", text: option, visible: :visible)
+
+          expected_group = begin
+            option.find(:xpath,
+                        "preceding-sibling::*[contains(@class, 'ng-optgroup')][1]",
+                        wait: false)
+          rescue Capybara::ElementNotFound
+            raise "Unable to find the '.ng-optgroup' grouping for option '#{option.text}'"
+          end
+
+          expect(option_group).to eq(expected_group), <<~MSG
+            Expected the option '#{option.text}' to be under the group '#{option_group.text}',
+            but it was under '#{expected_group.text}' instead.
+          MSG
+        end
+      else
+        dropdown_selector = results_selector == "body" ? "body .ng-dropdown-panel" : results_selector
+        expect(page.document).to have_conditional_selector(
+          present,
+          "#{dropdown_selector} .ng-option",
+          text: option,
+          wait: 20
+        )
+      end
+    end
+
+    def expect_no_ng_option(element, option, results_selector: "body")
+      within(ng_find_dropdown(element, results_selector:)) do
+        expect(page).to have_no_css(".ng-option", text: option)
+      end
+    end
+
+    def expect_ng_value_label(field_id, labels)
+      Array(labels).each do |text|
+        expect(page).to have_css("##{field_id} .ng-value-label", text:)
+      end
+    end
+
+    ##
+    # Insert the query, typing
+    def ng_enter_query(element, query, wait_for_fetched_options: true)
+      input = ng_select_input(element).native
+      if using_cuprite?
+        clear_input_field_contents(input)
+      else
+        input.clear
+      end
+
+      query = query.to_s
+
+      # Send all keys but last one, and then the last one separately to emulate normal typing
+      send_keys(input, query.to_s[0..-2], after_typing_sleep: (0.2 unless using_cuprite?))
+      send_keys(input, query.to_s[-1])
+
+      wait_for_network_idle(duration: 0.3) if using_cuprite? && wait_for_fetched_options
+    end
+
+    def send_keys(input, text, after_typing_sleep: nil)
+      return if text.blank?
+
+      if using_cuprite?
+        input.native.node.type(text)
+      else
+        input.send_keys(text)
+      end
+
+      sleep after_typing_sleep if after_typing_sleep
+    end
+
+    ##
+    # Get the ng_select input element
+    def ng_select_input(from_element = page)
+      from_element.find(".ng-input input")
+    end
+
+    ##
+    # clear the ng select field
+    def ng_select_clear(from_element, raise_on_missing: true)
+      if raise_on_missing || from_element.has_css?(".ng-clear-wrapper", visible: :all, wait: 1)
+        clear_button = from_element.find(".ng-clear-wrapper", visible: :all)
+
+        scroll_to_element(clear_button, block: :nearest)
+        clear_button.click
+      end
+    end
+
+    def select_autocomplete(element,
+                            query:,
+                            select_text: nil,
+                            results_selector: "body",
+                            wait_dropdown_open: true,
+                            wait_for_fetched_options: true,
+                            wait: Capybara.default_max_wait_time)
+      enter_autocomplete_query(element,
+                               query:,
+                               results_selector:,
+                               wait_dropdown_open:,
+                               wait_for_fetched_options:,
+                               wait:)
+
+      ##
+      # If a specific select_text is given, use that to locate the match,
+      # otherwise use the query
+      text = select_text.presence || query
+      dropdown_selector = results_selector == "body" ? "body .ng-dropdown-panel" : results_selector
+
+      page.document.synchronize(15) do
+        page.document.first("#{dropdown_selector} .ng-option", text:, minimum: 1, wait: 0).click
+      end
+    end
+
+    def resolve_autocomplete(element)
+      element.respond_to?(:call) ? element.call : element
+    end
+
+    def expect_current_autocompleter_value(element, value)
+      expect(resolve_autocomplete(element)).to have_css(".ng-value .ng-value-label", text: value, wait: 10)
+    end
+
+    # Checks for the currently visible, expanded user auto completer to contain the provided options.
+    # A user always has a name, but their email is only visible in certain circumstances, so that value
+    # might be nil.
+    #
+    # The expected options are to be provided as an Array of Hashes, like this example with two users:
+    #
+    #   [
+    #     { name: "Bob", email: nil },
+    #     { name: "Alice", email: "alice@example.com" }
+    #   ]
+    #
+    # The order the elements are provided in is also expected.
+    def expect_visible_user_auto_completer_options(expected)
+      within(".ng-dropdown-panel [role='listbox']") do
+        expected.each_with_index do |option, index|
+          expect(page)
+            .to have_css(".ng-option[role='option']:nth-child(#{index + 1}) .op-user-autocompleter--name",
+                         text: option[:name])
+          if option[:email]
+            expect(page)
+              .to have_css(".ng-option[role='option']:nth-child(#{index + 1}) .op-autocompleter__option-principal-email",
+                           text: option[:email])
+          else
+            expect(page)
+              .to have_no_css(".ng-option[role='option']:nth-child(#{index + 1}) .op-autocompleter__option-principal-email")
+          end
+        end
+      end
+    end
+  end
+end

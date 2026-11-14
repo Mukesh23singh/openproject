@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -44,11 +43,11 @@ module Projects::Storage
       storage = self.class.with_required_storage.find(id)
 
       {
-        'total' => storage.required_disk_space,
-        'modules' => {
-          'label_work_package_plural' => storage.work_package_required_space,
-          'project_module_wiki' => storage.wiki_required_space,
-          'label_repository' => storage.repositories_required_space
+        "total" => storage.required_disk_space,
+        "modules" => {
+          "label_work_package_plural" => storage.work_package_required_space,
+          "project_module_wiki" => storage.wiki_required_space,
+          "label_repository" => storage.repositories_required_space
         }.select { |_, v| v.present? && v.positive? }
       }
     end
@@ -67,12 +66,12 @@ module Projects::Storage
       Project
         .from("#{Project.table_name} projects")
         .joins("LEFT JOIN (#{wiki_storage_sql}) wiki ON projects.id = wiki.project_id")
-        .joins("LEFT JOIN (#{work_package_sql}) wp ON projects.id = wp.project_id")
+        .joins("LEFT JOIN (#{work_package_storage_sql}) wp ON projects.id = wp.project_id")
         .joins("LEFT JOIN #{Repository.table_name} repos ON repos.project_id = projects.id")
-        .select('projects.*')
-        .select('wiki.filesize AS wiki_required_space')
-        .select('wp.filesize AS work_package_required_space')
-        .select('repos.required_storage_bytes AS repositories_required_space')
+        .select("projects.*")
+        .select("wiki.filesize AS wiki_required_space")
+        .select("wp.filesize AS work_package_required_space")
+        .select("repos.required_storage_bytes AS repositories_required_space")
         .select("#{required_disk_space_sum} AS required_disk_space")
     end
 
@@ -85,30 +84,28 @@ module Projects::Storage
     end
 
     def required_disk_space_sum
-      '(COALESCE(wiki.filesize, 0) + COALESCE(wp.filesize, 0) + COALESCE(repos.required_storage_bytes, 0))'
+      "(COALESCE(wiki.filesize, 0) + COALESCE(wp.filesize, 0) + COALESCE(repos.required_storage_bytes, 0))"
     end
 
-    private
-
     def wiki_storage_sql
-      <<-SQL
-      SELECT wiki.project_id, SUM(wiki_attached.filesize) AS filesize
-      FROM #{Wiki.table_name} wiki
-      JOIN #{WikiPage.table_name} pages
-        ON pages.wiki_id = wiki.id
-      JOIN #{Attachment.table_name} wiki_attached
-        ON (wiki_attached.container_id = pages.id AND wiki_attached.container_type = 'WikiPage')
-      GROUP BY wiki.project_id
+      <<~SQL.squish
+        SELECT wiki.project_id, SUM(wiki_attached.filesize) AS filesize
+        FROM #{Wiki.table_name} wiki
+        JOIN #{WikiPage.table_name} pages
+          ON pages.wiki_id = wiki.id
+        JOIN #{Attachment.table_name} wiki_attached
+          ON (wiki_attached.container_id = pages.id AND wiki_attached.container_type = 'WikiPage')
+        GROUP BY wiki.project_id
       SQL
     end
 
-    def work_package_sql
-      <<-SQL
-      SELECT wp.project_id, SUM(wp_attached.filesize) AS filesize
-      FROM #{WorkPackage.table_name} wp
-      JOIN #{Attachment.table_name} wp_attached
-        ON (wp_attached.container_id = wp.id AND wp_attached.container_type = 'WorkPackage')
-      GROUP BY wp.project_id
+    def work_package_storage_sql
+      <<~SQL.squish
+        SELECT wp.project_id, SUM(wp_attached.filesize) AS filesize
+        FROM #{WorkPackage.table_name} wp
+        JOIN #{Attachment.table_name} wp_attached
+          ON (wp_attached.container_id = wp.id AND wp_attached.container_type = 'WorkPackage')
+        GROUP BY wp.project_id
       SQL
     end
   end

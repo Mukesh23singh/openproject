@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,15 +29,14 @@ module API
   module V3
     module Queries
       module Schemas
-        class CustomOptionFilterDependencyRepresenter <
-          FilterDependencyRepresenter
+        class CustomOptionFilterDependencyRepresenter < FilterDependencyRepresenter
           schema_with_allowed_collection :values,
                                          type: ->(*) { type },
                                          writable: true,
                                          has_default: false,
                                          required: true,
                                          values_callback: ->(*) {
-                                           represented.custom_field.custom_options
+                                           represented.visible_custom_options
                                          },
                                          value_representer: CustomOptions::CustomOptionRepresenter,
                                          link_factory: ->(value) {
@@ -53,10 +49,21 @@ module API
                                            value_required?
                                          }
 
+          def json_cache_key
+            super + [visible_options_cache_key]
+          end
+
           private
 
           def type
-            '[]CustomOption'
+            "[]CustomOption"
+          end
+
+          # The allowed values of a custom field with project-specific values differ by user.
+          def visible_options_cache_key
+            return unless filter.custom_field.project_specific_values_supported?
+
+            OpenProject::Cache::CacheKey.expand(filter.visible_custom_options.pluck(:id))
           end
         end
       end

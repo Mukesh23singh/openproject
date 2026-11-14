@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,26 +20,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/utilities/property_name_converter'
-require 'api/utilities/query_filters_name_converter_context'
+require "api/utilities/property_name_converter"
+require "api/utilities/query_filters_name_converter_context"
 
 module API
   module Utilities
-    class QueryFiltersNameConverter
-      class << self
-        def to_ar_name(attribute, refer_to_ids: false)
-          conversion_wp = ::API::Utilities::QueryFiltersNameConverterContext.new
+    module QueryFiltersNameConverter
+      module_function
 
-          ::API::Utilities::PropertyNameConverter.to_ar_name(attribute,
-                                                             context: conversion_wp,
-                                                             refer_to_ids: refer_to_ids)
-        end
+      def to_ar_name(attribute, refer_to_ids: false)
+        conversion_wp = ::API::Utilities::QueryFiltersNameConverterContext.new
+
+        ::API::Utilities::PropertyNameConverter.to_ar_name(attribute,
+                                                           context: conversion_wp,
+                                                           refer_to_ids:)
       end
     end
   end

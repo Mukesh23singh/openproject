@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +22,79 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require File.dirname(__FILE__) + '/../spec_helper'
 
-describe DocumentsMailer do
+require_relative "../spec_helper"
+
+RSpec.describe DocumentsMailer do
   let(:user) do
-    FactoryBot.create(:user, firstname: 'Test', lastname: "User", mail: 'test@test.com')
+    create(:user, firstname: "Test", lastname: "User", mail: "test@test.com")
   end
-  let(:project) { FactoryBot.create(:project, name: "TestProject") }
+  let(:project) { create(:project, name: "TestProject") }
   let(:document) do
-    FactoryBot.create(:document, project: project, description: "Test Description", title: "Test Title")
+    create(:document, project:, description: "Test Description", title: "Test Title")
   end
   let(:mail) { DocumentsMailer.document_added(user, document) }
 
-  describe "document added-mail" do
+  describe "document added-mail", with_settings: { host_name: "my.openproject.com" } do
     it "renders the subject" do
-      expect(mail.subject).to eql '[TestProject] New document: Test Title'
+      expect(mail.subject).to eql "[TestProject] New document: Test Title"
     end
 
-    it "should render the receivers mail" do
-      expect(mail.to.count).to eql 1
+    it "renders the receivers mail" do
+      expect(mail.to.count).to be 1
       expect(mail.to.first).to eql user.mail
     end
 
-    it "should render the document-info into the body" do
+    it "renders the document-info into the body" do
       expect(mail.body.encoded).to match(document.description)
       expect(mail.body.encoded).to match(document.title)
+    end
+
+    it "renders the correct link to the document in every format" do
+      contents = mail.parts.map { |p| p.body.to_s }
+
+      expect(contents).to all include("http://my.openproject.com/documents/#{document.id}")
+    end
+  end
+
+  describe "document description referencing a work package",
+           with_settings: { host_name: "my.openproject.com" } do
+    shared_let(:persisted_project) { create(:project, identifier: "docsproj") }
+    shared_let(:persisted_user) { create(:admin) }
+    shared_let(:referenced_wp) { create(:work_package, project: persisted_project) }
+    shared_let(:document) do
+      create(:document,
+             project: persisted_project,
+             title: "Doc Title",
+             description: "see ##{referenced_wp.id}")
+    end
+
+    let(:html_body) do
+      User.execute_as(persisted_user) do
+        described_class.document_added(persisted_user, document).html_part.body.to_s
+      end
+    end
+
+    context "with classic mode",
+            with_settings: { work_packages_identifier: "classic" } do
+      it "renders the numeric reference as an absolute work-package link" do
+        expect(html_body).to match(%r{href="http[^"]*/work_packages/#{referenced_wp.id}"})
+      end
+    end
+
+    context "with semantic mode",
+            with_settings: { work_packages_identifier: "semantic" } do
+      before do
+        referenced_wp.update_columns(identifier: "DOCSPROJ-1", sequence_number: 1)
+      end
+
+      it "renders the formatted_id in the html body" do
+        expect(html_body).to include("DOCSPROJ-1")
+      end
     end
   end
 end

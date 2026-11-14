@@ -8,20 +8,24 @@
   color: inherit
   line-height: 1.6em
   text-transform: none
-  font-weight: bold
+  font-weight: var(--base-text-weight-bold)
   border-bottom: 0
   margin: 0
   padding: 0
   break-before: auto
   break-after: avoid
   break-inside: avoid
+  overflow-wrap: anywhere
+  word-break: normal
+  display: flex
 
   &:hover .op-uc-link_permalink
     display: inline-flex
+    order: 2
 
 .op-uc-h1
   margin-bottom: 0.5rem
-  border-bottom: 1px solid #dadada
+  border-bottom: 1px solid var(--borderColor-default)
 
   .op-uc-container_reduced-headings
     border-bottom: none
@@ -37,12 +41,14 @@
   font-size: calc(var(--op-uc-heading-base) * var(--falloff) * var(--falloff) * var(--falloff))
 .op-uc-h5
   font-size: calc(var(--op-uc-heading-base) * var(--falloff) * var(--falloff) * var(--falloff) * var(--falloff))
-  
+
 .op-uc-p
   font: inherit
   margin: 0
   line-height: 1.6em
   color: inherit
+  overflow-wrap: anywhere
+  word-break: normal
 
 .op-uc-blockquote
   display: block
@@ -51,15 +57,14 @@
   padding: 0.8rem 1.2rem 0 1.2rem
   overflow: hidden
   color: #6f6f6f
+  overflow-wrap: anywhere
+  word-break: normal
 
   @include user-content-children
 
 .op-uc-link
-  color: var(--content-link-color)
+  color: var(--accent-color)
   font-size: 1em
-
-  &:hover
-    color: var(--content-link-hover-active-color)
 
   &_permalink
     display: none

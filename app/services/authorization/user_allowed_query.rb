@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -53,7 +52,11 @@ class Authorization::UserAllowedQuery < Authorization::AbstractUserQuery
                                   has_role.and(has_permission)
                                 end
 
-      is_admin = users_table[:admin].eq(true)
+      is_admin = if OpenProject::AccessControl.grant_to_admin?(action)
+                   users_table[:admin].eq(true)
+                 else
+                   Arel::Nodes::Equality.new(1, 0)
+                 end
 
       statement.where(has_role_and_permission.or(is_admin))
     else
@@ -105,14 +108,14 @@ class Authorization::UserAllowedQuery < Authorization::AbstractUserQuery
 
   def self.anonymous_user_condition
     users_table[:type]
-      .eq('AnonymousUser')
+      .eq("AnonymousUser")
       .and(roles_table[:builtin].eq(Role::BUILTIN_ANONYMOUS))
   end
 
   def self.member_or_public_project_condition(id_equal)
     roles_table
       .grouping(users_table[:type]
-                .eq('User')
+                .eq("User")
                 .and(id_equal.or(no_membership_and_non_member_role_condition)))
       .or(anonymous_user_condition)
   end

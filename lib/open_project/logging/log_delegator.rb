@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module OpenProject
   module Logging
     class LogDelegator
@@ -5,13 +34,13 @@ module OpenProject
         ##
         # Consume a message and let it be handled
         # by all handlers
-        def log(exception, context = {})
+        def log(exception, context = {}) # rubocop:disable Metrics/AbcSize, Metrics/PerceivedComplexity
           # in case we're getting ActionController::Parameters
-          if context.respond_to?(:to_unsafe_h)
-            context = context.to_unsafe_h
-          else
-            context = context.to_h.dup.with_indifferent_access
-          end
+          context = if context.respond_to?(:to_unsafe_h)
+                      context.to_unsafe_h
+                    else
+                      context.to_h.dup.with_indifferent_access
+                    end
 
           message =
             if exception.is_a? Exception
@@ -28,9 +57,11 @@ module OpenProject
 
           # Set current contexts
           context[:level] ||= context[:exception] ? :error : :info
-          context[:current_user] ||= User.current
+          if the_current_user = current_user
+            context[:current_user] ||= the_current_user
+          end
 
-          registered_handlers.values.each do |handler|
+          registered_handlers.each_value do |handler|
             handler.call message, context
           rescue StandardError => e
             Rails.logger.error "Failed to delegate log to #{handler.inspect}: #{e.inspect}\nMessage: #{message.inspect}"
@@ -46,7 +77,7 @@ module OpenProject
             message = args.shift
             context = args.shift || {}
 
-            log(message, context.merge(level: level))
+            log(message, context.merge(level:))
           end
         end
 
@@ -90,7 +121,7 @@ module OpenProject
           if context.key?(:exception)
             Rails.logger.debug do
               exception = context[:exception]
-              trace = context[:backtrace]&.join('; ')
+              trace = context[:backtrace]&.join("; ")
               "[#{exception.class}] #{exception.message}: #{trace}"
             end
           end
@@ -102,6 +133,14 @@ module OpenProject
           payload = context.slice(%i[current_user project reference]).compact
           extended = OpenProject::Logging.extend_payload!(payload, context)
           OpenProject::Logging.formatter.call extended
+        end
+
+        def current_user
+          User.current
+        # Probably more performant to rescue "ActiveRecord::StatementInvalid: PG::UndefinedTable"
+        # than to check for table existence with `User.connection.data_source_exists?(User.table_name)`
+        rescue StandardError
+          nil
         end
       end
     end

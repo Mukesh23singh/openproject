@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,102 +20,270 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-$datepicker--border-radius: 2px
-$datepicker--line-height:   28px
-$datepicker--hover-color:   #DDDDDD
+$datepicker--selected-border-radius: 5px
+
+@mixin disabled-day
+  background: var(--body-background)
+  color: var(--fgColor-muted)
+  pointer-events: none
+  cursor: not-allowed
+
+  &:hover
+    border-color: transparent
+
+@mixin non-working-day
+  background: var(--bgColor-disabled)
+  color: var(--fgColor-muted)
+  border-radius: 0
+  pointer-events: none
+
+@mixin non-working-day_enabled
+  background: var(--bgColor-disabled)
+  color: var(--body-font-color)
+  border-radius: 0
+  pointer-events: auto
 
 .flatpickr-current-month
   display: flex !important
 
-.numInputWrapper
-  position: fixed !important
-  left: 65% !important
+.flatpickr-prev-month, .flatpickr-next-month
+  svg:hover
+    fill: var(--control-checked-color) !important
+
+.flatpickr-prev-month, .flatpickr-next-month
+  svg
+    fill: var(--body-font-color) !important
+
+.flatpickr-day
+  &.flatpickr-disabled
+    @include disabled-day
+  &.flatpickr-non-working-day
+    @include non-working-day
+  &.flatpickr-non-working-day_enabled
+    @include non-working-day_enabled
 
 .flatpickr-calendar.inline
-  width: initial !important
-  top: 0 !important
-  margin: 0 1.5rem
-  padding-top: 10px !important
-  border-top: 1px solid $datepicker--hover-color !important
-  border-radius: 0 !important
+  // flatpickr default styles introduce a top: 2px, that causes strange scrolling behavior
+  top: unset !important
+
+.flatpickr-calendar
+  background: var(--body-background) !important
   box-shadow: none !important
+  @include spot-caption
 
   .flatpickr-months
     min-height: 45px
-    .flatpickr-prev-month,
-    .flatpickr-next-month
-      top: unset
 
-  .flatpickr-monthDropdown-months
-    display: inline-block
+    .flatpickr-current-month
+      @include spot-body-small(var(--base-text-weight-bold))
+      justify-content: center
+      align-items: center
 
+    .numInputWrapper
+      position: relative
+      left: 0
+
+    .flatpickr-monthDropdown-months
+      background-image: none !important
+
+  .flatpickr-month
+    color: var(--body-font-color) !important
   .flatpickr-weekwrapper
     display: none
 
   .flatpickr-weekday
     color: var(--body-font-color)
-    font-size: var(--body-font-size)
+
+  .flatpickr-day.prevMonthDay
+    height: 0
+    width: 0
+    visibility: hidden
+
+  .flatpickr-day.nextMonthDay
+    display: none
 
   .flatpickr-weekdaycontainer,
   .flatpickr-days .dayContainer
-    padding: 0.75rem 0.75rem 15px 0.75rem
+
+    &:first-of-type
+      padding: 0 $spot-spacing-1 0 $spot-spacing-0_5
+    &:last-of-type
+      padding: 0 $spot-spacing-0_5 0 $spot-spacing-1
+    &:only-of-type
+      padding: 0
 
   .flatpickr-days
     .dayContainer
       box-shadow: none
+      min-width: 283px
+      max-width: 283px
+      display: grid
+      grid-template-columns: repeat(7, 1fr)
+      justify-items: center
+
+      @media screen and (max-width: $breakpoint-sm)
+        min-width: 267px
+        max-width: 267px
 
       .flatpickr-day
-        height: $datepicker--line-height
-        line-height: $datepicker--line-height
-        border-radius: $datepicker--border-radius
-
-        &:nth-child(7n+7),
-        &:nth-child(7n+6)
-          background: var(--gray-light)
-          border-radius: 0
-
-        &:nth-child(7n+6)
-          box-shadow: 5px 0 0 var(--gray-light)
-
-        &.today
-          border-color: var(--light-gray) !important
-          &:hover:not(.selected)
-            color: var(--body-font-color)
-
-        &.selected
-          background: var(--primary-color)
-          border-color: var(--primary-color)
-          &.startRange
-            border-radius: 2px 0 0 2px
-          // Workaround to close the gap caused by original styles
-          &.endRange
-            border-radius: 0 2px 2px 0
-            box-shadow: none
-          &:hover
-            background: var(--primary-color-dark)
-            border-color: var(--primary-color-dark)
-
-        &.inRange
-          background: $datepicker--hover-color
-          border-color: $datepicker--hover-color
-          border-radius: 0
-          &:nth-child(7n+7)
-            box-shadow: none
-          &:hover
-            background: var(--light-gray)
-            border-color: var(--light-gray)
-
-        &.inRange:not(:nth-child(7n+7)),
-        &.selected.startRange:not(:nth-child(7n+7))
-          box-shadow: 5px 0 0 $datepicker--hover-color
+        color: var(--body-font-color)
+        background: var(--body-background)
+        width: 100%
+        max-width: unset
+        height: 30px
+        line-height: 28px
+        margin: 0
+        border-radius: 0
+        box-shadow: none !important
 
         &:hover
-          background: $datepicker--hover-color
-          border-color: $datepicker--hover-color
-          border-radius: $datepicker--border-radius
+          border-color: var(--fgColor-muted)
+          border-radius: $datepicker--selected-border-radius
+
+        &.flatpickr-non-working-day
+          @include non-working-day
+
+        &.flatpickr-non-working-day_enabled
+          @include non-working-day_enabled
+
+          &:hover
+            border-color: var(--fgColor-muted)
+            border-radius: $datepicker--selected-border-radius
+
+        &.today:not(.selected, .inRange, .startRange, .endRange)
+          background: var(--bgColor-attention-muted)
+          border: var(--border-attention-muted)
+          color: var(--fgColor-attention)
+          border-radius: $datepicker--selected-border-radius
+
+          &:hover
+            border-color: var(--border-attention-emphasis)
+
+        &.selected:not(.startRange, .endRange)
+          border-radius: $datepicker--selected-border-radius
+
+        &.selected,
+        &.startRange,
+        &.endRange
+          background: var(--control-checked-color)
+          border-color: var(--control-checked-color)
+          color: var(--fgColor-white)
+
+          &:hover
+            background: var(--control-checked-color--major2)
+            border-color: var(--control-checked-color--major2)
+
+        &.startRange
+          border-radius: $datepicker--selected-border-radius 0 0 $datepicker--selected-border-radius
+
+        &.endRange
+          border-radius: 0 $datepicker--selected-border-radius $datepicker--selected-border-radius 0
+
+        &.endRange.startRange
+          border-radius: $datepicker--selected-border-radius
+
+        &.inRange
+          background: var(--control-checked-color--minor1)
+          color: var(--control-checked-color)
+          border-color: var(--control-checked-color--minor1)
+          border-radius: 0
+
+          &:hover
+            color: var(--control-checked-color--major2)
+            border-color: var(--control-checked-color--major2)
+
+          &.flatpickr-non-working-day
+            background: var(--bgColor-disabled)
+            border-color: var(--bgColor-disabled)
+
+        &.flatpickr-disabled
+          @include disabled-day
+
+          &.flatpickr-non-working-day
+            background: var(--bgColor-disabled)
+            color: var(--fgColor-muted)
+
+          &.flatpickr-non-working-day_enabled
+            background: var(--bgColor-disabled)
+            color: var(--fgColor-muted)
+
+            &.inRange
+              color: var(--fgColor-muted)
+              background: var(--bgColor-disabled)
+              border-color: var(--bgColor-disabled)
+
+          &.selected,
+          &.startRange,
+          &.endRange
+            background: var(--bgColor-disabled)
+            border-color: var(--bgColor-disabled)
+
+          &.inRange
+            background: var(--bgColor-neutral-muted)
+            border-color: var(--bgColor-neutral-muted)
+            color: var(--fgColor-muted)
+
+          &.today
+            color: var(--fgColor-muted)
+            background: var(--label-yellow-bgColor-active)
+            border-color: var(--label-yellow-bgColor-active)
+
+  .numInputWrapper
+    .arrowUp
+      border-color: var(--borderColor-default)
+      &:after
+        // flatpickr models the arrow as a border
+        border-bottom-color: var(--body-font-color) !important
+
+    .arrowDown
+      border-color: var(--borderColor-default)
+      &:after
+        // flatpickr models the arrow as a border
+        border-top-color: var(--body-font-color) !important
+
+    &:hover
+      background: var(--bgColor-neutral-muted)
+
+.flatpickr-calendar.flatpickr-container-suppress-hover
+  .flatpickr-day
+    &.inRange,
+    &.startRange:not(.selected),
+    &.endRange:not(.selected)
+      background: transparent !important
+      border-color: transparent !important
+      color: var(--body-font-color) !important
+
+    &.flatpickr-non-working-day:not(.today,.selected)
+      background: var(--bgColor-disabled) !important
+      color: var(--fgColor-muted) !important
+
+    &.flatpickr-non-working-day_enabled:not(.today,.selected)
+      background: var(--bgColor-disabled) !important
+      color: var(--body-font-color) !important
+
+      &.today
+        color: var(--body-font-color) !important
+
+      &.inRange,
+      &.startRange:not(.selected),
+      &.endRange:not(.selected)
+        color: var(--body-font-color) !important
+        background: var(--bgColor-disabled) !important
+        border-color: var(--bgColor-disabled) !important
+
+.flatpickr-calendar:not(.inline)
+  box-shadow: var(--shadow-floating-small) !important
+  padding: $spot-spacing-0_5 !important
+  width: max-content !important
+
+  .flatpickr-months
+    display: flex
+    align-items: flex-start
+
+  .flatpickr-next-month, .flatpickr-prev-month
+    position: static !important

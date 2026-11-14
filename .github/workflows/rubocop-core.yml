@@ -1,25 +1,39 @@
-name: "Core/Backend-Linting"
+name: RuboCop
 
 on:
   pull_request:
-    branches:
-      - dev
-      - release/*
-    paths:
-      - '**.rb'
+    paths-ignore:
+      - "docs/**"
+      - "extensions/blocknote-extensions/**"
+      - "extensions/op-blocknote-hocuspocus/**"
 
 jobs:
   rubocop:
-    name: rubocop
+    name: RuboCop
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: write
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v7.0.1
         with:
-          fetch-depth: 0
-      - uses: ruby/setup-ruby@v1
-      - uses: opf/action-rubocop@v2
+          persist-credentials: false
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1.336.0
+      - name: Run RuboCop
+        uses: reviewdog/action-rubocop@v2.22.0
         with:
-          github_token: ${{ secrets.github_token }}
+          reporter: github-pr-annotations
+          fail_level: any
           rubocop_version: gemfile
-          rubocop_extensions: rubocop-rails:gemfile rubocop-rspec:gemfile
-          reporter: github-pr-check
+          rubocop_extensions: >
+            rubocop-capybara:gemfile
+            rubocop-factory_bot:gemfile
+            rubocop-openproject:gemfile
+            rubocop-performance:gemfile
+            rubocop-rails:gemfile
+            rubocop-rspec:gemfile
+            rubocop-rspec_rails:gemfile
+          only_changed: true

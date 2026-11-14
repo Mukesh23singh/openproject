@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,11 +22,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module Exports
   class Exporter
     include Redmine::I18n
@@ -53,25 +53,33 @@ module Exports
     def sane_filename(name)
       parts = name.split /(?<=.)\.(?=[^.])(?!.*\.[^.])/m
 
-      parts.map! { |s| s.gsub /[^a-z0-9\-]+/i, '_' }
+      parts.map! do |s|
+        # Preserve the file extension avoid eg. .xls => .khls for some languages
+        s.match?(/\A\.[a-zA-Z]+\z/) ? s : I18n.transliterate(s).gsub(/[^a-z0-9-]+/i, "_")
+      end
 
-      parts.join '.'
+      parts.join "."
     end
 
     # Run the export, yielding the result of the render output
     def export!
-      raise NotImplementedError
+      raise SubclassResponsibilityError
     end
 
     protected
 
-    def formatter_for(attribute)
-      ::Exports::Register.formatter_for(model, attribute)
+    def formatter_for(attribute, export_format)
+      formatter_cache[[attribute, export_format]] ||=
+        ::Exports::Register.formatter_for(model, attribute, export_format)
     end
 
-    def format_attribute(object, attribute, **options)
-      formatter = formatter_for(attribute)
-      formatter.format(object, **options)
+    def formatter_cache
+      @formatter_cache ||= {}
+    end
+
+    def format_attribute(object, attribute, export_format, **)
+      formatter = formatter_for(attribute, export_format)
+      formatter.format(object, current_user:, **)
     end
   end
 end

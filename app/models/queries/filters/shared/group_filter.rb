@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,9 +35,7 @@ module Queries::Filters::Shared::GroupFilter
 
   module InstanceMethods
     def allowed_values
-      @allowed_values ||= begin
-        ::Group.pluck(:id).map { |g| [g, g.to_s] }
-      end
+      @allowed_values ||= ::Group.pluck(:id).map { |g| [g, g.to_s] }
     end
 
     def available?
@@ -50,18 +47,18 @@ module Queries::Filters::Shared::GroupFilter
     end
 
     def human_name
-      I18n.t('query_fields.member_of_group')
+      I18n.t("query_fields.member_of_group")
     end
 
     def where
       case operator
-      when '='
+      when "="
         "users.id IN (#{group_subselect})"
-      when '!'
+      when "!"
         "users.id NOT IN (#{group_subselect})"
-      when '*'
+      when "*"
         "users.id IN (#{any_group_subselect})"
-      when '!*'
+      when "!*"
         "users.id NOT IN (#{any_group_subselect})"
       end
     end

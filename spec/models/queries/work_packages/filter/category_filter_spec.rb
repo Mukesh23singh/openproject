@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,51 +22,50 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::CategoryFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::WorkPackages::Filter::CategoryFilter do
+  it_behaves_like "basic query filter" do
     let(:type) { :list_optional }
     let(:class_key) { :category_id }
 
-    describe '#available?' do
-      context 'within a project' do
+    describe "#available?" do
+      context "within a project" do
         before do
           allow(project)
             .to receive_message_chain(:categories, :exists?)
             .and_return true
         end
 
-        it 'is true' do
+        it "is true" do
           expect(instance).to be_available
         end
 
-        it 'is false without a type' do
+        it "is false without a type" do
           allow(project)
             .to receive_message_chain(:categories, :exists?)
             .and_return false
 
-          expect(instance).to_not be_available
+          expect(instance).not_to be_available
         end
       end
 
-      context 'without a project' do
+      context "without a project" do
         let(:project) { nil }
 
-        it 'is false' do
-          expect(instance).to_not be_available
+        it "is false" do
+          expect(instance).not_to be_available
         end
       end
     end
 
-    describe '#allowed_values' do
-      let(:category) { FactoryBot.build_stubbed(:category) }
+    describe "#allowed_values" do
+      let(:category) { build_stubbed(:category) }
 
       before do
         allow(project)
@@ -72,15 +73,15 @@ describe Queries::WorkPackages::Filter::CategoryFilter, type: :model do
           .and_return [category]
       end
 
-      it 'returns an array of type options' do
+      it "returns an array of type options" do
         expect(instance.allowed_values)
-          .to match_array [[category.name, category.id.to_s]]
+          .to contain_exactly([category.name, category.id.to_s])
       end
     end
 
-    describe '#value_objects' do
-      let(:category1) { FactoryBot.build_stubbed(:category) }
-      let(:category2) { FactoryBot.build_stubbed(:category) }
+    describe "#value_objects" do
+      let(:category1) { build_stubbed(:category) }
+      let(:category2) { build_stubbed(:category) }
 
       before do
         allow(project)
@@ -90,14 +91,14 @@ describe Queries::WorkPackages::Filter::CategoryFilter, type: :model do
         instance.values = [category2.id.to_s]
       end
 
-      it 'returns an array of category' do
+      it "returns an array of category" do
         expect(instance.value_objects)
-          .to match_array [category2]
+          .to contain_exactly(category2)
       end
     end
 
-    describe '#ar_object_filter?' do
-      it 'is true' do
+    describe "#ar_object_filter?" do
+      it "is true" do
         expect(instance)
           .to be_ar_object_filter
       end

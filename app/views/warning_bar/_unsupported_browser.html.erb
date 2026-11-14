@@ -1,13 +1,15 @@
 <div id="unsupported-browser-warning" class="warning-bar--item">
-  <span title="<%= t('unsupported_browser.close_warning') %>" class="icon3 icon-warning warning-bar--disable-on-hover"></span>
+  <button type="button"
+          aria-label="<%= t("unsupported_browser.close_warning") %>"
+          class="icon3 icon-warning warning-bar--disable-on-hover button--link"></button>
   <p>
-    <strong><%= t('unsupported_browser.title') %></strong>
+    <strong><%= t("unsupported_browser.title") %></strong>
 
-    <%= t('unsupported_browser.message') %>
+    <%= t("unsupported_browser.message") %>
 
     <a href="https://www.openproject.org/open-source/download/systemrequirements/"
        target="_blank">
-      <%= t('unsupported_browser.update_message') %>
+      <%= t("unsupported_browser.update_message") %>
     </a>
   </p>
 </div>
@@ -27,8 +29,8 @@
     }
 
     // Click handler to hide
-    var span = message.querySelector('.warning-bar--disable-on-hover');
-    span.onclick = function() {
+    var closeButton = message.querySelector('.warning-bar--disable-on-hover');
+    closeButton.onclick = function() {
       message.style.display = 'none';
       try {
         window.localStorage.setItem('unsupported-browser-warning-ignore', '1');

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
+require "support/pages/page"
 
 module Pages
   module Admin
@@ -37,56 +38,48 @@ module Pages
         end
 
         def expect_listed(*placeholder_users)
-          rows = page.all 'td.name'
-          expect(rows.map(&:text)).to include(*placeholder_users.map(&:name))
-        end
-
-        def expect_ordered(*placeholder_users)
-          rows = page.all 'td.name'
-          expect(rows.map(&:text)).to eq(placeholder_users.map(&:name))
-        end
-
-        def expect_not_listed(*users)
-          rows = page.all 'td.name'
-          expect(rows.map(&:text)).to_not include(*users.map(&:name))
-        end
-
-        def expect_non_listed
-          expect(page)
-            .to have_no_selector('tr.placeholder-user')
-
-          expect(page)
-            .to have_selector('tr.generic-table--empty-row', text: 'There is currently nothing to display.')
-        end
-
-        def filter_by_name(value)
-          fill_in 'Name', with: value
-          click_button 'Apply'
-        end
-
-        def clear_filters
-          click_link 'Clear'
-        end
-
-        def order_by(key)
-          within 'thead' do
-            click_link key
+          placeholder_users.each do |user|
+            expect(page).to have_css(name_cell_selector, text: user.name, exact_text: true)
           end
         end
 
+        def expect_not_listed(*users)
+          users.each do |user|
+            expect(page).to have_no_css(name_cell_selector, text: user.name, exact_text: true)
+          end
+        end
+
+        def expect_non_listed
+          expect(page).to have_no_css(row_selector)
+          expect(page).to have_css(".blankslate")
+        end
+
+        def filter_by_name(value)
+          within("#content") do
+            click_button accessible_name: "Search"
+          end
+          fill_in "Search", with: value
+
+          wait_for_network_idle
+        end
+
+        def clear_filters
+          visit!
+        end
+
         def expect_no_delete_button_for_all_rows
-          expect(page).to have_selector('i.icon-help2')
+          expect(page).to have_css("i.icon-help2")
         end
 
         def expect_no_delete_button(placeholder_user)
           within_placeholder_user_row(placeholder_user) do
-            expect(page).to have_selector('i.icon-help2')
+            expect(page).to have_css("i.icon-help2")
           end
         end
 
         def expect_delete_button(placeholder_user)
           within_placeholder_user_row(placeholder_user) do
-            expect(page).to have_selector('i.icon-delete')
+            expect(page).to have_link(accessible_name: I18n.t("placeholder_users.delete_tooltip"))
           end
         end
 
@@ -98,11 +91,19 @@ module Pages
 
         private
 
-        def within_placeholder_user_row(placeholder_user)
-          row = find('tr.placeholder_user td.name', text: placeholder_user.name).ancestor('tr')
-          within row do
-            yield
+        def row_selector
+          "[role='row'].placeholder_user"
+        end
+
+        def name_cell_selector
+          "#{row_selector} .op-border-box-grid__row-item:first-child"
+        end
+
+        def within_placeholder_user_row(placeholder_user, &)
+          row = page.find(row_selector) do |row|
+            row.has_css?(".op-border-box-grid__row-item:first-child", text: placeholder_user.name, exact_text: true)
           end
+          within(row, &)
         end
       end
     end

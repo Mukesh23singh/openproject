@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,7 +30,7 @@
 module Bim
   module IfcModels
     class IfcViewerController < BaseController
-      helper_method :gon
+      include WorkPackages::WithSplitView
 
       before_action :find_project_by_project_id
       before_action :authorize
@@ -41,9 +40,37 @@ module Bim
 
       menu_item :ifc_models
 
-      def show; end
+      def index; end
+
+      def split_view
+        respond_to do |format|
+          format.html do
+            if turbo_frame_request?
+              render "work_packages/split_view", layout: false
+            else
+              render :index
+            end
+          end
+        end
+      end
+
+      def split_create
+        respond_to do |format|
+          format.html do
+            if turbo_frame_request?
+              render "work_packages/split_create", layout: false
+            else
+              render :index
+            end
+          end
+        end
+      end
 
       private
+
+      def split_view_base_route
+        bcf_project_frontend_path(@project, request.query_parameters)
+      end
 
       def parse_showing_models
         @shown_model_ids =
@@ -60,7 +87,7 @@ module Bim
         @ifc_models = @project
           .ifc_models
           .includes(:attachments)
-          .order('created_at ASC')
+          .order(:created_at)
       end
 
       def set_default_models

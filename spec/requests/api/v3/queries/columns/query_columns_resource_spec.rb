@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +22,27 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Query Column resource', type: :request do
+RSpec.describe "API v3 Query Column resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  describe '#get queries/columns/:id' do
+  describe "#get queries/columns/:id" do
     let(:path) { api_v3_paths.query_column(column_name) }
-    let(:column_name) { 'status' }
-    let(:project) { FactoryBot.create(:project) }
-    let(:role) { FactoryBot.create(:role, permissions: permissions) }
+    let(:column_name) { "status" }
+    let(:project) { create(:project) }
+    let(:role) { create(:project_role, permissions:) }
     let(:permissions) { [:view_work_packages] }
     let(:user) do
-      FactoryBot.create(:user,
-                        member_in_project: project,
-                        member_through_role: role)
+      create(:user,
+             member_with_roles: { project => role })
     end
 
     before do
@@ -53,29 +53,65 @@ describe 'API v3 Query Column resource', type: :request do
       get path
     end
 
-    it 'succeeds' do
-      expect(last_response.status)
-        .to eq(200)
+    it "succeeds" do
+      expect(last_response).to have_http_status(200)
     end
 
-    it 'returns the column' do
+    it "returns the column" do
       expect(last_response.body)
         .to be_json_eql(path.to_json)
-        .at_path('_links/self/href')
+        .at_path("_links/self/href")
     end
 
-    context 'user not allowed' do
+    context "given user not allowed" do
       let(:permissions) { [] }
 
-      it_behaves_like 'unauthorized access'
+      it_behaves_like "unauthorized access"
     end
 
-    context 'non existing group by' do
-      let(:path) { api_v3_paths.query_column('bogus') }
+    context "given non existing group by" do
+      let(:path) { api_v3_paths.query_column("bogus") }
 
-      it 'returns 404' do
-        expect(last_response.status)
-          .to eql(404)
+      it "returns 404" do
+        expect(last_response).to have_http_status(404)
+      end
+    end
+
+    context "with multiple versions inactive",
+            with_settings: { work_package_multiple_versions: false } do
+      context "for the version column" do
+        let(:column_name) { "version" }
+
+        it "succeeds" do
+          expect(last_response).to have_http_status(200)
+        end
+      end
+
+      context "for the targetVersions column" do
+        let(:column_name) { "targetVersions" }
+
+        it "returns 404" do
+          expect(last_response).to have_http_status(404)
+        end
+      end
+    end
+
+    context "with multiple versions active",
+            with_settings: { work_package_multiple_versions: true } do
+      context "for the targetVersions column" do
+        let(:column_name) { "targetVersions" }
+
+        it "succeeds" do
+          expect(last_response).to have_http_status(200)
+        end
+      end
+
+      context "for the version column" do
+        let(:column_name) { "version" }
+
+        it "returns 404" do
+          expect(last_response).to have_http_status(404)
+        end
       end
     end
   end

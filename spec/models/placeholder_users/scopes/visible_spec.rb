@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,46 +22,47 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe PlaceholderUsers::Scopes::Visible, type: :model do
-  describe '.visible' do
-    shared_let(:project) { FactoryBot.create :project }
-    shared_let(:other_project) { FactoryBot.create :project }
-    shared_let(:role) { FactoryBot.create :role, permissions: %i[manage_members] }
+RSpec.describe PlaceholderUsers::Scopes::Visible do
+  describe ".visible" do
+    shared_let(:project) { create(:project) }
+    shared_let(:other_project) { create(:project) }
+    shared_let(:role) { create(:project_role, permissions: %i[manage_members]) }
 
-    shared_let(:other_project_placeholder) { FactoryBot.create :placeholder_user, member_in_project: other_project, member_through_role: role }
-    shared_let(:global_placeholder) { FactoryBot.create :placeholder_user }
+    shared_let(:other_project_placeholder) do
+      create(:placeholder_user, member_with_roles: { other_project => role })
+    end
+    shared_let(:global_placeholder) { create(:placeholder_user) }
 
-    subject { ::PlaceholderUser.visible.to_a }
+    subject { PlaceholderUser.visible.to_a }
 
-    context 'when user has manage_members permission' do
-      current_user { FactoryBot.create :user, member_in_project: project, member_through_role: role }
+    context "when user has manage_members permission" do
+      current_user { create(:user, member_with_roles: { project => role }) }
 
-      it 'sees all users' do
-        expect(subject).to match_array [other_project_placeholder, global_placeholder]
+      it "sees all users" do
+        expect(subject).to contain_exactly(other_project_placeholder, global_placeholder)
       end
     end
 
-    context 'when user has no manage_members permission, but it is in other project' do
-      current_user { FactoryBot.create :user, member_in_project: other_project, member_with_permissions: %i[view_work_packages] }
+    context "when user has no manage_members permission, but it is in other project" do
+      current_user { create(:user, member_with_permissions: { other_project => %i[view_work_packages] }) }
 
-      it 'sees the other user in the same project' do
-        expect(subject).to match_array [other_project_placeholder]
+      it "sees the other user in the same project" do
+        expect(subject).to contain_exactly(other_project_placeholder)
       end
     end
 
-    context 'when user has no permission' do
-      current_user { FactoryBot.create :user }
+    context "when user has no permission" do
+      current_user { create(:user) }
 
-      it 'sees nothing' do
-        expect(subject).to match_array []
+      it "sees nothing" do
+        expect(subject).to be_empty
       end
     end
   end

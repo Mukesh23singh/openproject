@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,15 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Injectable,
-  Injector,
-} from '@angular/core';
-import {
-  HttpClient,
-  HttpErrorResponse,
-  HttpParams,
-} from '@angular/common/http';
-import {
-  catchError,
-  map,
-} from 'rxjs/operators';
-import {
-  Observable,
-  throwError,
-} from 'rxjs';
+import { Injectable, Injector, inject } from '@angular/core';
+import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
+import { catchError, map } from 'rxjs/operators';
+import { Observable, throwError } from 'rxjs';
 import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
 import { ErrorResource } from 'core-app/features/hal/resources/error-resource';
 import * as Pako from 'pako';
@@ -54,39 +40,35 @@ import {
   HTTPClientParamMap,
   HTTPSupportedMethods,
 } from 'core-app/features/hal/http/http.interfaces';
-import {
-  HalLink,
-  HalLinkInterface,
-} from 'core-app/features/hal/hal-link/hal-link';
+import { HalLink, HalLinkInterface } from 'core-app/features/hal/hal-link/hal-link';
 import { URLParamsEncoder } from 'core-app/features/hal/services/url-params-encoder';
-import {
-  HalResource,
-  HalResourceClass,
-} from 'core-app/features/hal/resources/hal-resource';
+import { HalResource, HalResourceClass } from 'core-app/features/hal/resources/hal-resource';
 import { initializeHalProperties } from '../helpers/hal-resource-builder';
 import { HalError } from 'core-app/features/hal/services/hal-error';
+import { getPaginatedCollections } from 'core-app/core/apiv3/helpers/get-paginated-results';
 
 export interface HalResourceFactoryConfigInterface {
-  cls?:any;
-  attrTypes?:{ [attrName:string]:string };
+  cls?:HalResourceClass;
+  attrTypes?:Record<string, string>;
 }
 
 interface ErrorWithType {
   _type?:string;
 }
 
+interface TypedHalSource {
+  _type:string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class HalResourceService {
+  readonly injector = inject(Injector);
+  readonly http = inject(HttpClient);
+
   /**
    * List of all known hal resources, extendable.
    */
-  private config:{ [typeName:string]:HalResourceFactoryConfigInterface } = {};
-
-  constructor(
-    readonly injector:Injector,
-    readonly http:HttpClient,
-  ) {
-  }
+  private config:Record<string, HalResourceFactoryConfigInterface> = {};
 
   /**
    * Perform a HTTP request and return a HalResource promise.
@@ -142,46 +124,23 @@ export class HalResourceService {
    * Return all potential pages to the request, when the elements returned from API is smaller
    * than the expected.
    *
-   * @param href
-   * @param expected The expected number of elements
-   * @param params
-   * @param headers
-   * @return {Promise<CollectionResource[]>}
+   * @param href The URL to request
+   * @param params Parameters to pass to each paged request
+   * @param headers Headers to pass to each paged request
+   * @return {Observable<CollectionResource[]>}
    */
-  public async getAllPaginated<T extends CollectionResource>(
+  public getAllPaginated<T extends CollectionResource>(
     href:string,
-    expected:number,
-    params:Record<string, string|number> = {},
+    params:Record<string, string|number|boolean> = {},
     headers:HTTPClientHeaders = {},
-  ):Promise<T[]> {
-    // Total number retrieved
-    let retrieved = 0;
-    // Current offset page
-    let page = 1;
-    // Accumulated results
-    const allResults:T[] = [];
-    // If possible, request all at once.
-    const requestParams = { ...params };
-    requestParams.pageSize = expected;
-
-    while (retrieved < expected) {
-      requestParams.offset = page;
-
-      const promise = this.request<T>('get', href, this.toEprops(requestParams), headers).toPromise();
-      // eslint-disable-next-line no-await-in-loop
-      const results = await promise;
-
-      if (results.count === 0) {
-        throw new Error('No more results for this query, but expected more.');
-      }
-
-      allResults.push(results);
-
-      retrieved += results.count;
-      page += 1;
-    }
-
-    return allResults;
+  ):Observable<T[]> {
+    return getPaginatedCollections(
+      (pageParams) => {
+        const requestParams = { ...params, ...pageParams };
+        return this.request<CollectionResource<T>>('get', href, this.toEprops(requestParams), headers);
+      },
+      (params.pageSize as number|undefined) || -1,
+    ) as Observable<T[]>;
   }
 
   /**
@@ -191,7 +150,7 @@ export class HalResourceService {
    * @param headers
    * @returns {Promise<HalResource>}
    */
-  public put<T extends HalResource>(href:string, data?:any, headers?:HTTPClientHeaders):Observable<T> {
+  public put<T extends HalResource>(href:string, data?:unknown, headers?:HTTPClientHeaders):Observable<T> {
     return this.request('put', href, data, headers);
   }
 
@@ -203,7 +162,7 @@ export class HalResourceService {
    * @param headers
    * @returns {Promise<HalResource>}
    */
-  public post<T extends HalResource>(href:string, data?:any, headers?:HTTPClientHeaders):Observable<T> {
+  public post<T extends HalResource>(href:string, data?:unknown, headers?:HTTPClientHeaders):Observable<T> {
     return this.request('post', href, data, headers);
   }
 
@@ -215,7 +174,7 @@ export class HalResourceService {
    * @param headers
    * @returns {Promise<HalResource>}
    */
-  public patch<T extends HalResource>(href:string, data?:any, headers?:HTTPClientHeaders):Observable<T> {
+  public patch<T extends HalResource>(href:string, data?:unknown, headers?:HTTPClientHeaders):Observable<T> {
     return this.request('patch', href, data, headers);
   }
 
@@ -227,7 +186,7 @@ export class HalResourceService {
    * @param headers
    * @returns {Promise<HalResource>}
    */
-  public delete<T extends HalResource>(href:string, data?:any, headers?:HTTPClientHeaders):Observable<T> {
+  public delete<T extends HalResource>(href:string, data?:unknown, headers?:HTTPClientHeaders):Observable<T> {
     return this.request('delete', href, data, headers);
   }
 
@@ -259,18 +218,16 @@ export class HalResourceService {
    * @param source
    * @returns {HalResource}
    */
-  public createHalResource<T extends HalResource = HalResource>(source:any, loaded = true):T {
-    if (_.isNil(source)) {
-      source = HalResource.getEmptyResource();
-    }
+  public createHalResource<T extends HalResource = HalResource>(source:unknown, loaded = true):T {
+    const halSource = (source ?? HalResource.getEmptyResource()) as TypedHalSource;
 
-    const type = source._type || 'HalResource';
-    return this.createHalResourceOfType<T>(type, source, loaded);
+    const type = halSource._type || 'HalResource';
+    return this.createHalResourceOfType<T>(type, halSource, loaded);
   }
 
-  public createHalResourceOfType<T extends HalResource = HalResource>(type:string, source:any, loaded = false) {
+  public createHalResourceOfType<T extends HalResource = HalResource>(type:string, source:unknown, loaded = false) {
     const resourceClass:HalResourceClass<T> = this.getResourceClassOfType(type);
-    const initializer = (halResource:T) => initializeHalProperties(this, halResource);
+    const initializer = (halResource:HalResource) => initializeHalProperties(this, halResource);
     const resource = new resourceClass(this.injector, source, loaded, initializer, type);
 
     return resource;
@@ -282,9 +239,9 @@ export class HalResourceService {
    * @param source
    * @param loaded
    */
-  public createHalResourceOfClass<T extends HalResource>(resourceClass:HalResourceClass<T>, source:any, loaded = false) {
-    const initializer = (halResource:T) => initializeHalProperties(this, halResource);
-    const type = source._type || 'HalResource';
+  public createHalResourceOfClass<T extends HalResource>(resourceClass:HalResourceClass<T>, source:unknown, loaded = false) {
+    const initializer = (halResource:HalResource) => initializeHalProperties(this, halResource);
+    const type = (source as TypedHalSource)._type || 'HalResource';
     const resource = new resourceClass(this.injector, source, loaded, initializer, type);
 
     return resource;
@@ -311,6 +268,7 @@ export class HalResourceService {
   }
 
   /**
+   *
    * Get a linked resource from its HalLink with the correct type.
    */
   public createLinkedResource<T extends HalResource = HalResource>(halResource:T, linkName:string, link:HalLinkInterface) {
@@ -330,8 +288,11 @@ export class HalResourceService {
    * @returns {HalResource}
    */
   protected getResourceClassOfType<T extends HalResource>(type:string):HalResourceClass<T> {
-    const config = this.config[type];
-    return (config && config.cls) ? config.cls : this.defaultClass;
+    const cls = this.config[type]?.cls;
+    if (cls) {
+      return cls as HalResourceClass<T>;
+    }
+    return this.defaultClass as HalResourceClass<T>;
   }
 
   /**
@@ -341,14 +302,15 @@ export class HalResourceService {
    * @param attribute
    * @returns {any}
    */
-  protected getResourceClassOfAttribute<T extends HalResource = HalResource>(type:string, attribute:string):string|null {
+  protected getResourceClassOfAttribute(type:string, attribute:string):string|null {
     const typeConfig = this.config[type];
-    const types = (typeConfig && typeConfig.attrTypes) || {};
+    const types = (typeConfig?.attrTypes) || {};
     return types[attribute];
   }
 
   protected toEprops(params:unknown):{ eprops:string } {
     const deflatedArray = Pako.deflate(JSON.stringify(params));
+
     const compressed = base64.bytesToBase64(deflatedArray);
 
     return { eprops: compressed };
@@ -357,8 +319,7 @@ export class HalResourceService {
   private createErrorObservable(error:HttpErrorResponse):Observable<never> {
     let resource:ErrorResource|null = null;
 
-    const body = error.error as string|ErrorWithType|unknown;
-    // eslint-disable-next-line no-underscore-dangle
+    const body:unknown = error.error;
     if (typeof body === 'object' && (body as ErrorWithType)?._type) {
       resource = this.createHalResource<ErrorResource>(error.error);
     }

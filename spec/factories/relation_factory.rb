@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,49 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 FactoryBot.define do
   factory :relation do
-    from factory: :work_package
-    to { FactoryBot.build(:work_package, project: from.project) }
-    relation_type { 'relates' } # "relates", "duplicates", "duplicated", "blocks", "blocked", "precedes", "follows"
-    delay { nil }
+    from { association :work_package }
+    to { association :work_package, project: from.project }
+    relation_type { "relates" } # "relates", "duplicates", "duplicated", "blocks", "blocked", "precedes", "follows"
+    lag { nil }
     description { nil }
-  end
 
-  factory :follows_relation, parent: :relation do
-    relation_type { 'follows' }
-    delay { 0 }
-  end
+    factory :relates_relation do
+      relation_type { "relates" }
+    end
 
-  factory :hierarchy_relation, parent: :relation do
-    relation_type { 'hierarchy' }
+    factory :follows_relation do
+      # Use these transient attributes if you always mix up `from` and `to`
+      # attributes in a follows relation
+      transient do
+        predecessor { nil }
+        successor { nil }
+      end
+
+      from { successor || super() }
+      to { predecessor || super() }
+      relation_type { "follows" }
+      lag { 0 }
+    end
+
+    factory :precedes_relation do
+      # Use these transient attributes if you always mix up `from` and `to`
+      # attributes in a precedes relation
+      transient do
+        predecessor { nil }
+        successor { nil }
+      end
+
+      from { predecessor || super() }
+      to { successor || super() }
+      relation_type { "precedes" }
+      lag { 0 }
+    end
   end
 end

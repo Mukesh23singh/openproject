@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,31 +34,29 @@
 # due to performance.
 # As we do not write to the repository, we don't need this kind
 # of isolation.
-def with_filesystem_repository(vendor, command = nil, &block)
+def with_filesystem_repository(vendor, command = nil)
   repo_dir = Dir.mktmpdir("#{vendor}_repository")
-  fixture = File.join(Rails.root, "spec/fixtures/repositories/#{vendor}_repository.tar.gz")
+  fixture = Rails.root.join("spec/fixtures/repositories/#{vendor}_repository.tar.gz")
 
-  ['tar', command].compact.each do |cmd|
-    # Avoid `which`, as it's not POSIX
-    Open3.capture2e(cmd, '--version')
-  rescue Errno::ENOENT
-    skip "#{cmd} was not found in PATH. Skipping local repository specs"
+  before do
+    skip_if_commands_unavailable("tar", command)
   end
 
   after(:all) do
     FileUtils.remove_dir repo_dir
   end
 
+  skip_if_command_unavailable("tar")
   system "tar -xzf #{fixture} -C #{repo_dir}"
-  block.call(repo_dir)
+  yield(repo_dir)
 end
 
-def with_subversion_repository(&block)
-  with_filesystem_repository('subversion', 'svn', &block)
+def with_subversion_repository(&)
+  with_filesystem_repository("subversion", "svn", &)
 end
 
-def with_git_repository(&block)
-  with_filesystem_repository('git', 'git', &block)
+def with_git_repository(&)
+  with_filesystem_repository("git", "git", &)
 end
 
 ##
@@ -68,12 +65,12 @@ end
 # no actual filesystem access occurred.
 # Instead, we wrap these repository specs in a virtual
 # subversion repository which does not exist on disk.
-def with_virtual_subversion_repository(&block)
-  let(:repository) { FactoryBot.create(:repository_subversion) }
+def with_virtual_subversion_repository
+  let(:repository) { create(:repository_subversion) }
 
   before do
-    allow(Setting).to receive(:enabled_scm).and_return(['subversion'])
+    allow(Setting).to receive(:enabled_scm).and_return(["subversion"])
   end
 
-  block.call
+  yield
 end

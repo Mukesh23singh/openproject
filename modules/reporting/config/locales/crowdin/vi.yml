@@ -1,6 +1,6 @@
 #-- copyright
 #OpenProject is an open source project management software.
-#Copyright (C) 2012-2021 the OpenProject GmbH
+#Copyright (C) the OpenProject GmbH
 #This program is free software; you can redistribute it and/or
 #modify it under the terms of the GNU General Public License version 3.
 #OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
@@ -19,69 +19,97 @@
 #Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 #See COPYRIGHT and LICENSE files for more details.
 #++
+---
 vi:
-  button_save_as: "Save report as..."
-  comments: "Nhận xét"
-  cost_reports_title: "Time and costs"
-  label_cost_report: "Cost report"
-  label_cost_report_plural: "Cost reports"
-  description_drill_down: "Show details"
-  description_filter_selection: "Selection"
-  description_multi_select: "Show multiselect"
-  description_remove_filter: "Remove filter"
-  information_restricted_depending_on_permission: "Depending on your permissions this page might contain restricted information."
-  label_click_to_edit: "Click to edit."
-  label_closed: "đã đóng"
-  label_columns: "Cột"
-  label_cost_entry_attributes: "Cost entry attributes"
-  label_days_ago: "during the last days"
-  label_entry: "Cost entry"
-  label_filter_text: "Filter text"
-  label_filter_value: "Giá trị"
-  label_filters: "Bộ lọc"
+  activerecord:
+    errors:
+      models:
+        cost_report:
+          pivot_axes_do_not_match_group_bys: The rows and columns must together cover exactly the grouping criteria of the query.
+    models:
+      cost_query:
+        other: Cost reports
+      cost_report:
+        other: Cost reports
+  button_save_report_as: Lưu báo cáo dưới dạng...
+  comments: bình luận
+  cost_reports_title: Thời gian và chi phí
+  description_drill_down: Hiển thị chi tiết
+  description_filter_selection: lựa chọn
+  description_multi_select: Hiển thị nhiều lựa chọn
+  description_remove_filter: Xóa bộ lọc
+  export:
+    cost_reports:
+      end_time: Thời gian kết thúc
+      start_time: Thời gian bắt đầu
+      title: Xuất báo cáo chi phí XLS của bạn
+    timesheet:
+      button: Xuất bảng chấm công PDF
+      overview_per_user_day: 'Tổng quan: Số giờ mỗi người dùng mỗi ngày'
+      overview_per_user_total: 'Tổng quan: Tổng số giờ trên mỗi người dùng'
+      sums_hours: Tổng
+      time: thời gian
+      timesheet: bảng chấm công
+      title: Xuất bảng chấm công PDF của bạn
+  information_restricted_depending_on_permission: Tùy thuộc vào quyền của bạn, trang này có thể chứa thông tin bị hạn chế.
+  label_click_to_edit: Bấm để chỉnh sửa.
+  label_closed: đóng cửa
+  label_columns: Cột
+  label_cost_entry_attributes: Thuộc tính mục nhập chi phí
+  label_cost_report_plural: Báo cáo chi phí
+  label_count: đếm
+  label_days_ago: trong những ngày qua
+  label_entry: Nhập chi phí
+  label_filter: bộ lọc
+  label_filter_add: Thêm bộ lọc
+  label_filter_plural: Bộ lọc
+  label_filter_text: Lọc văn bản
+  label_filter_value: giá trị
+  label_filters: bộ lọc
   label_greater: ">"
-  label_is_not_project_with_subprojects: "is not (includes subprojects)"
-  label_is_project_with_subprojects: "is (includes subprojects)"
-  label_work_package_attributes: "Work package attributes"
+  label_group_by: Nhóm theo
+  label_group_by_add: Thêm thuộc tính theo nhóm
+  label_inactive: "«không hoạt động»"
+  label_is_not_project_with_subprojects: không (bao gồm các tiểu dự án)
+  label_is_not_work_package_with_descendants: không phải (bao gồm cả con cháu)
+  label_is_project_with_subprojects: là (bao gồm các tiểu dự án)
+  label_is_work_package_with_descendants: là (bao gồm con cháu)
   label_less: "<"
-  label_money: "Cash value"
-  label_month_reporting: "Month (Spent)"
-  label_new_report: "New cost report"
-  label_open: "mở"
-  label_operator: "Operator"
-  label_private_report_plural: "Private cost reports"
-  label_progress_bar_explanation: "Generating report..."
-  label_public_report_plural: "Public cost reports"
-  label_really_delete_question: "Are you sure you want to delete this report?"
-  label_rows: "Rows"
-  label_saving: "Saving ..."
-  label_spent_on_reporting: "Date (Spent)"
-  label_sum: "Tổng"
-  label_units: "Units"
-  label_week_reporting: "Week (Spent)"
-  label_year_reporting: "Year (Spent)"
-  label_count: "Count"
-  label_filter: "Bộ lọc"
-  label_filter_add: "Add Filter"
-  label_filter_plural: "Bộ lọc"
-  label_group_by: "Nhóm theo"
-  label_group_by_add: "Add Group-by Attribute"
-  label_inactive: "«inactive»"
-  label_no: "Không"
-  label_none: "(no data)"
-  label_no_reports: "There are no cost reports yet."
-  label_report: "Báo cáo"
-  label_yes: "Có"
-  load_query_question: "Report will have %{size} table cells and may take some time to render. Do you still want to try rendering it?"
-  permission_save_cost_reports: "Save public cost reports"
-  permission_save_private_cost_reports: "Save private cost reports"
-  project_module_reporting_module: "Cost reports"
-  text_costs_are_rounded_note: "Displayed values are rounded. All calculations are based on the non-rounded values."
-  toggle_multiselect: "activate/deactivate multiselect"
-  units: "Units"
-  validation_failure_date: "is not a valid date"
-  validation_failure_integer: "is not a valid integer"
+  label_logged_by_reporting: Đăng nhập bởi
+  label_money: Giá trị tiền mặt
+  label_month_reporting: Tháng (Chi tiêu)
+  label_new_report: Báo cáo chi phí mới
+  label_no: Không
+  label_no_reports: Chưa có báo cáo chi phí.
+  label_none: "(không có dữ liệu)"
+  label_open: mở
+  label_operator: Toán tử
+  label_private_report_plural: Báo cáo chi phí riêng
+  label_progress_bar_explanation: Đang tạo báo cáo...
+  label_public_report_plural: Báo cáo chi phí công
+  label_really_delete_question: Bạn có chắc chắn muốn xóa báo cáo này?
+  label_report: Báo cáo
+  label_rows: hàng
+  label_saving: Đang lưu ...
+  label_spent_on_reporting: Ngày (Đã chi tiêu)
+  label_sum: tổng hợp
+  label_units: đơn vị
+  label_week_reporting: Tuần (Đã chi tiêu)
+  label_work_package_attributes: Thuộc tính gói công việc
+  label_year_reporting: Năm (Chi tiêu)
+  label_yes: Có
+  load_query_question: Báo cáo sẽ có %{size} ô bảng và có thể mất chút thời gian để hiển thị. Bạn vẫn muốn thử kết xuất nó chứ?
+  permission_save_cost_reports: Lưu báo cáo chi phí công
+  permission_save_private_cost_reports: Lưu báo cáo chi phí riêng
+  plugin_openproject_reporting:
+    description: Plugin này cho phép tạo báo cáo chi phí tùy chỉnh với tính năng lọc và nhóm được tạo bởi plugin Thời gian và chi phí OpenProject.
+    name: Báo cáo OpenProject
   reporting:
     group_by:
-      selected_columns: "Selected columns"
-      selected_rows: "Selected rows"
+      selected_columns: Cột đã chọn
+      selected_rows: Hàng đã chọn
+  text_costs_are_rounded_note: Các giá trị hiển thị được làm tròn. Tất cả các tính toán đều dựa trên các giá trị không làm tròn.
+  toggle_multiselect: kích hoạt/hủy kích hoạt đa lựa chọn
+  units: đơn vị
+  validation_failure_date: không phải là một ngày hợp lệ
+  validation_failure_integer: không phải là số nguyên hợp lệ

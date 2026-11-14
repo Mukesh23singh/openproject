@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,7 +31,7 @@ module OpenProject::TextFormatting::Matchers
   module LinkHandlers
     class ColonSeparator < Base
       def self.allowed_prefixes
-        %w(commit source export version project user attachment document meeting)
+        %w(commit source export version project user attachment document meeting view)
       end
 
       ##
@@ -40,7 +39,7 @@ module OpenProject::TextFormatting::Matchers
       # Condition: Separator is ':'
       # Condition: Prefix is present, checked to be one of the allowed values
       def applicable?
-        matcher.sep == ':' && valid_prefix? && oid.present?
+        matcher.sep == ":" && valid_prefix? && oid.present?
       end
 
       #   Documents:
@@ -84,23 +83,23 @@ module OpenProject::TextFormatting::Matchers
       def render_version
         if project && (version = project.versions.find_by(name: oid))
           link_to h(version.name),
-                  { only_path: context[:only_path], controller: '/versions', action: 'show', id: version },
-                  class: 'version'
+                  { only_path: context[:only_path], controller: "/versions", action: "show", id: version },
+                  class: "version"
         end
       end
 
-      def render_commit
+      def render_commit # rubocop:disable Metrics/AbcSize
         if project&.repository &&
-           (changeset = Changeset.where(['repository_id = ? AND scmid LIKE ?', project.repository.id, "#{oid}%"]).first)
+           (changeset = Changeset.where(["repository_id = ? AND scmid LIKE ?", project.repository.id, "#{oid}%"]).first)
           link_to h("#{matcher.project_prefix}#{matcher.identifier}"),
-                  { only_path: context[:only_path], controller: '/repositories', action: 'revision', project_id: project,
+                  { only_path: context[:only_path], controller: "/repositories", action: "revision", project_id: project,
                     rev: changeset.identifier },
-                  class: 'changeset',
+                  class: "changeset",
                   title: truncate_single_line(changeset.comments, length: 100)
         end
       end
 
-      def render_source
+      def render_source # rubocop:disable Metrics/AbcSize
         if project&.repository
           matcher.identifier =~ %r{\A[/\\]*(.*?)(@([0-9a-f]+))?(#(L\d+))?\z}
           path = $1
@@ -108,13 +107,13 @@ module OpenProject::TextFormatting::Matchers
           anchor = $5
           link_to h("#{matcher.project_prefix}#{matcher.prefix}:#{oid}"),
                   named_route(:entry_revision_project_repository,
-                              action: 'entry',
+                              action: "entry",
                               project_id: project.identifier,
                               repo_path: path.to_s,
-                              rev: rev,
-                              anchor: anchor,
-                              format: (matcher.prefix == 'export' ? 'raw' : nil)),
-                  class: (matcher.prefix == 'export' ? 'source download' : 'source')
+                              rev:,
+                              anchor:,
+                              format: (matcher.prefix == "export" ? "raw" : nil)),
+                  class: (matcher.prefix == "export" ? "source download" : "source")
         end
       end
       alias :render_export :render_source
@@ -123,23 +122,23 @@ module OpenProject::TextFormatting::Matchers
         attachments = context[:attachments] || context[:object].try(:attachments)
         if attachments && attachment = attachments.detect { |a| a.filename == oid }
           link_to h(attachment.filename),
-                  { only_path: context[:only_path], controller: '/attachments', action: 'download', id: attachment },
-                  class: 'attachment'
+                  { only_path: context[:only_path], controller: "/attachments", action: "download", id: attachment },
+                  class: "attachment"
         end
       end
 
       def render_project
         p = Project
-            .where(['projects.identifier = :s OR LOWER(projects.name) = :s', { s: oid.downcase }])
+            .where(["projects.identifier = :s OR LOWER(projects.name) = :s", { s: oid.downcase }])
             .first
         if p
-          link_to_project(p, { only_path: context[:only_path] }, class: 'project')
+          link_to_project(p, { only_path: context[:only_path] }, class: "project")
         end
       end
 
       def render_user
-        if (user = User.find_by(login: oid))
-          link_to_user(user, only_path: context[:only_path], class: 'user-mention')
+        if (user = User.visible.find_by(login: oid))
+          link_to_user(user, only_path: context[:only_path], class: "user-mention", title: nil)
         end
       end
 
@@ -147,29 +146,42 @@ module OpenProject::TextFormatting::Matchers
         scope = project ? project.documents : Document
         document = scope
           .visible
-          .where(['LOWER(title) = :s', { s: oid.downcase }])
+          .where(["LOWER(title) = :s", { s: oid.downcase }])
           .first
 
         if document
           link_to document.title,
                   { only_path: context[:only_path],
-                    controller: '/documents',
-                    action: 'show',
+                    controller: "/documents",
+                    action: "show",
                     id: document.id },
-                  class: 'document'
+                  class: "document"
         end
       end
 
       def render_meeting
         scope = project ? project.meetings : Meeting
         meeting = scope
-          .where(['LOWER(title) = :s', { s: oid.downcase }])
+          .where(["LOWER(title) = :s", { s: oid.downcase }])
           .first
 
-        if meeting && meeting.visible?(User.current)
-          link_to meeting.title,
-                  { only_path: context[:only_path], controller: '/meetings', action: 'show', id: meeting.id },
-                  class: 'meeting'
+        if meeting&.visible?(User.current)
+          link_to meeting.title, { only_path: context[:only_path],
+                                   controller: "/meetings",
+                                   action: "show",
+                                   project_id: meeting.project_id,
+                                   id: meeting.id },
+                  class: "meeting"
+        end
+      end
+
+      # view is the user-facing name of work package queries
+      # query is the technical/internal name of the concept
+      def render_view
+        if oid == "default"
+          link_to "Work packages",
+                  { controller: "work_packages", action: "index", project_id: project.id },
+                  class: "query"
         end
       end
     end

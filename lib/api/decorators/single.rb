@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +20,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/hypermedia'
-require 'roar/json/hal'
-
-require 'api/v3/utilities/path_helper'
+require "roar/decorator"
+require "roar/hypermedia"
+require "roar/json/hal"
 
 module API
   module Decorators
     class Single < ::Roar::Decorator
       include ::Roar::JSON::HAL
       include ::Roar::Hypermedia
+      include ::API::Decorators::SelfLink
       include ::API::V3::Utilities::PathHelper
 
       attr_reader :current_user, :embed_links
@@ -48,12 +44,14 @@ module API
 
       # Use this to create our own representers, giving them a chance to override the instantiation
       # if desired.
-      def self.create(model, current_user:, embed_links: false)
-        new(model, current_user: current_user, embed_links: embed_links)
+      # Explicitly forwards all arguments to new, to avoid having to override #create on subclasses
+      # such as collection
+      def self.create(...)
+        new(...)
       end
 
       def initialize(model, current_user:, embed_links: false)
-        raise 'no represented object passed' if model_required? && model.nil?
+        raise "no represented object passed" if model_required? && model.nil?
 
         @current_user = current_user
         @embed_links = embed_links
@@ -64,26 +62,17 @@ module API
       property :_type,
                exec_context: :decorator,
                render_nil: false,
-               writeable: false
+               writable: false
 
-      def self.self_link(path: nil, id_attribute: :id, title_getter: ->(*) { represented.name })
-        link :self do
-          self_path = self_v3_path(path, id_attribute)
-
-          link_object = { href: self_path }
-          title = instance_eval(&title_getter)
-          link_object[:title] = title if title
-
-          link_object
-        end
-      end
-
+      # List of associations that shall be eager_load'ed when rendering entities represented by this decorator.
+      # This is a hint for renderers of this representer.
       class_attribute :to_eager_load
-      class_attribute :checked_permissions
 
-      def current_user_allowed_to(permission, context: represented.respond_to?(:project) ? represented.project : nil)
-        current_user.allowed_to?(permission, context)
-      end
+      # List of associations that shall be preload'ed when rendering entities represented by this decorator.
+      # This is a hint for renderers of this representer.
+      class_attribute :to_preload
+
+      class_attribute :checked_permissions
 
       # Override in subclasses to specify the JSON indicated "_type" of this representer
       def _type; end
@@ -104,8 +93,15 @@ module API
         end
       end
 
-      def datetime_formatter
-        ::API::V3::Utilities::DateTimeFormatter
+      def embed_link?(name)
+        case embed_links
+        when true
+          true
+        when false, nil
+          false
+        else
+          embed_links.include?(name)
+        end
       end
 
       # If a subclass does not depend on a model being passed to this class, it can override
@@ -113,20 +109,6 @@ module API
       # representer is non-nil.
       def model_required?
         true
-      end
-
-      def self_v3_path(path, id_attribute)
-        path ||= _type.underscore
-
-        id = if id_attribute.respond_to?(:call)
-               instance_eval(&id_attribute)
-             else
-               represented.send(id_attribute)
-             end
-
-        id = [nil] if id.nil?
-
-        api_v3_paths.send(path, *Array(id))
       end
     end
   end

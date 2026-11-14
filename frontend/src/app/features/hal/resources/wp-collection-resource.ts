@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -30,41 +29,43 @@ import { WorkPackageResource } from 'core-app/features/hal/resources/work-packag
 import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
+import { FormResource } from 'core-app/features/hal/resources/form-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 
 export interface WorkPackageCollectionResourceEmbedded {
   elements:WorkPackageResource[];
   groups:GroupObject[];
 }
 
-export class WorkPackageCollectionResource extends CollectionResource<WorkPackageResource> {
+export class WorkPackageCollectionResource extends CollectionResource<WorkPackageResource> implements WorkPackageCollectionResourceEmbedded {
   public schemas:CollectionResource<SchemaResource>;
 
-  public createWorkPackage:any;
+  public createWorkPackage?:CallableHalLink<FormResource>;
+
+  public customFields?:HalResource;
 
   public elements:WorkPackageResource[];
 
   public groups:GroupObject[];
 
-  public totalSums?:{ [key:string]:number };
+  public totalSums?:Record<string, number>;
 
   public sumsSchema?:SchemaResource;
 
-  public representations:Array<HalResource>;
+  public representations:HalResource[];
 }
-
-export interface WorkPackageCollectionResource extends WorkPackageCollectionResourceEmbedded {}
 
 /**
  * A reference to a group object as returned from the API.
  * Augmented with state information such as collapsed state.
  */
 export interface GroupObject {
-  value:any;
+  value:string|null;
   count:number;
   collapsed?:boolean;
   index:number;
   identifier:string;
-  sums:{ [attribute:string]:number|null };
+  sums:Record<string, number|null>;
   href:{ href:string }[];
   _links:{
     valueLink:{ href:string }[];

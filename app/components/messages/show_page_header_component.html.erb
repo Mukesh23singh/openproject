@@ -1,0 +1,29 @@
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { @topic.subject }
+    header.with_description(test_selector: "topic-summary") { render(Messages::TopicSummaryComponent.new(topic: @topic)) }
+    header.with_breadcrumbs(breadcrumb_items)
+
+    watcher_action_button(header, @topic)
+
+    if @topic.destroyable_by?(User.current)
+      header.with_action_button(
+        tag: :a,
+        scheme: :danger,
+        mobile_icon: :trash,
+        mobile_label: t(:button_delete),
+        size: :medium,
+        href: project_forum_topic_path(@topic.forum.project, @topic.forum, @topic),
+        aria: { label: I18n.t(:button_delete) },
+        data: {
+          turbo_confirm: I18n.t(:text_are_you_sure),
+          turbo_method: :delete
+        },
+        title: I18n.t(:button_delete)
+      ) do |button|
+        button.with_leading_visual_icon(icon: :trash)
+        t(:button_delete)
+      end
+    end
+  end
+%>

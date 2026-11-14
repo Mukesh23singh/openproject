@@ -1,4 +1,32 @@
-import { Component, Injector } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { sortBy } from 'lodash-es';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Injector, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageViewSortByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
 import { TabComponent } from 'core-app/features/work-packages/components/wp-table/configuration-modal/tab-portal-outlet';
@@ -17,14 +45,25 @@ export class SortModalObject {
 export interface SortColumn {
   name:string;
   href:string | null;
+  displayable?:boolean;
 }
 
 export type SortingMode = 'automatic'|'manual';
 
 @Component({
   templateUrl: './sort-by-tab.component.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class WpTableConfigurationSortByTabComponent implements TabComponent {
+export class WpTableConfigurationSortByTabComponent implements TabComponent, OnInit {
+  readonly injector = inject(Injector);
+  readonly I18n = inject(I18nService);
+  readonly wpTableSortBy = inject(WorkPackageViewSortByService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   public text = {
     title: this.I18n.t('js.label_sort_by'),
     placeholder: this.I18n.t('js.placeholders.default'),
@@ -39,6 +78,8 @@ export class WpTableConfigurationSortByTabComponent implements TabComponent {
     },
   };
 
+  readonly sortCriteriaLabels = [this.text.sort_criteria_1, this.text.sort_criteria_2, this.text.sort_criteria_3];
+
   readonly availableDirections = [
     { href: QUERY_SORT_BY_ASC, name: this.I18n.t('js.label_ascending') },
     { href: QUERY_SORT_BY_DESC, name: this.I18n.t('js.label_descending') },
@@ -48,30 +89,24 @@ export class WpTableConfigurationSortByTabComponent implements TabComponent {
 
   public allColumns:SortColumn[] = [];
 
-  public sortationObjects:SortModalObject[] = [];
+  public sortObjects:SortModalObject[] = [];
 
   public emptyColumn:SortColumn = { name: this.text.placeholder, href: null };
 
   public sortingMode:SortingMode = 'automatic';
 
-  public manualSortColumn:SortColumn;
-
-  constructor(readonly injector:Injector,
-    readonly I18n:I18nService,
-    readonly wpTableSortBy:WorkPackageViewSortByService) {
-
-  }
+  public manualSortColumn?:SortColumn;
 
   public onSave() {
     let sortElements;
-    if (this.sortingMode === 'automatic') {
-      sortElements = this.sortationObjects.filter((object) => object.column !== null);
+    if (this.sortingMode === 'automatic' || !this.manualSortColumn) {
+      sortElements = this.sortObjects.filter((object) => object.column !== null);
     } else {
       sortElements = [new SortModalObject(this.manualSortColumn, QUERY_SORT_BY_ASC)];
     }
 
     sortElements = sortElements.map((object) => this.getMatchingSort(object.column.href!, object.direction));
-    this.wpTableSortBy.update(_.compact(sortElements));
+    this.wpTableSortBy.update(sortElements.filter((x):x is NonNullable<typeof x> => Boolean(x)));
   }
 
   ngOnInit() {
@@ -81,43 +116,53 @@ export class WpTableConfigurationSortByTabComponent implements TabComponent {
         const allColumns:SortColumn[] = this.wpTableSortBy.available.filter(
           (sort:QuerySortByResource) => !sort.column.href!.endsWith('/parent'),
         ).map(
-          (sort:QuerySortByResource) => ({ name: sort.column.name, href: sort.column.href }),
+          (sort:QuerySortByResource) => ({ name: sort.column.name, href: sort.column.href, displayable: sort.displayable }),
         );
 
-        // For whatever reason, even though the UI doesnt implement it,
+        // For whatever reason, even though the UI doesn't implement it,
         // QuerySortByResources are doubled for each column (one for asc/desc direction)
-        this.allColumns = _.uniqBy(allColumns, 'href');
+        this.allColumns = allColumns.filter((col, index, self) => index === self.findIndex((other) => other.href === col.href));
 
         this.getManualSortingOption();
 
-        _.each(this.wpTableSortBy.current, (sort) => {
-          if (!sort.column.href!.endsWith('/parent')) {
-            this.sortationObjects.push(
-              new SortModalObject({ name: sort.column.name, href: sort.column.href },
-                sort.direction.href!),
-            );
-            if (sort.column.href === this.manualSortColumn.href) {
-              this.updateSortingMode('manual');
-            }
+        this.wpTableSortBy.current.forEach((sort) => {
+          if (sort.column.href!.endsWith('/parent')) return;
+
+          if (sort.column.href === this.manualSortColumn?.href) {
+            this.updateSortingMode('manual');
+            return;
           }
+
+          this.sortObjects.push(
+            new SortModalObject({ name: sort.column.name, href: sort.column.href },
+              sort.direction.href!),
+          );
         });
+
+        if (this.sortingMode === 'manual' && this.sortObjects.length === 0) {
+          this.seedDefaultSorting();
+        }
 
         this.updateUsedColumns();
         this.fillUpSortElements();
+        this.cdRef.markForCheck();
       });
   }
 
   public updateSelection(sort:SortModalObject, selected:string | null) {
-    sort.column = _.find(this.allColumns, (column) => column.href === selected) || this.emptyColumn;
+    sort.column = this.allColumns.find((column) => column.href === selected) ?? this.emptyColumn;
     this.updateUsedColumns();
   }
 
   public updateUsedColumns() {
-    const usedColumns = this.sortationObjects
+    const usedColumns = this.sortObjects
       .filter((o) => o.column !== null)
       .map((object:SortModalObject) => object.column);
 
-    this.availableColumns = _.sortBy(_.differenceBy(this.allColumns, usedColumns, 'href'), 'name');
+    this.availableColumns = sortBy(
+      this.allColumns.filter((col) => (col.displayable ?? true) && !usedColumns.some((used) => used.href === col.href)),
+      'name',
+    );
   }
 
   public updateSortingMode(mode:SortingMode) {
@@ -125,17 +170,24 @@ export class WpTableConfigurationSortByTabComponent implements TabComponent {
   }
 
   private getMatchingSort(column:string, direction:string) {
-    return _.find(this.wpTableSortBy.available, (sort) => sort.column.href === column && sort.direction.href === direction);
+    return this.wpTableSortBy.available.find((sort) => sort.column.href === column && sort.direction.href === direction);
+  }
+
+  private seedDefaultSorting() {
+    const idColumn = this.allColumns.find((column) => column.href?.endsWith('/id'));
+    if (idColumn) {
+      this.sortObjects.push(new SortModalObject(idColumn, QUERY_SORT_BY_ASC));
+    }
   }
 
   private fillUpSortElements() {
-    while (this.sortationObjects.length < 3) {
-      this.sortationObjects.push(new SortModalObject(this.emptyColumn, QUERY_SORT_BY_ASC));
+    while (this.sortObjects.length < 3) {
+      this.sortObjects.push(new SortModalObject(this.emptyColumn, QUERY_SORT_BY_ASC));
     }
   }
 
   private getManualSortingOption() {
-    this.manualSortColumn = this.allColumns.find((e) => e.href!.endsWith('/manualSorting'))!;
-    this.allColumns.splice(this.allColumns.indexOf(this.manualSortColumn), 1);
+    this.manualSortColumn = this.allColumns.find((e) => e.href?.endsWith('/manualSorting'));
+    this.allColumns = this.allColumns.filter((column) => column !== this.manualSortColumn);
   }
 }

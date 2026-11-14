@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-FactoryBot.define do
-  factory :workflow do
-    old_status factory: :status
-    new_status factory: :status
-    role
+module WorkflowFactoryDeprecation
+  class << self
+    def warn_once
+      return if @warned
 
-    factory :workflow_with_default_status do
-      old_status factory: :default_status
+      @warned = true
+      OpenProject::Deprecation.warn(
+        "Factory :workflow builds a Workflows::StatusTransition and creates a named " \
+        "Workflow as a side-effect. Use :status_transition, or :named_workflow for the container."
+      )
     end
+  end
+end
+
+FactoryBot.define do
+  factory :named_workflow, class: "Workflow" do
+    sequence(:name) { |n| "Workflow No. #{n}" }
+  end
+
+  factory :workflow, parent: :status_transition, class: "Workflows::StatusTransition" do
+    after(:build) { WorkflowFactoryDeprecation.warn_once }
   end
 end

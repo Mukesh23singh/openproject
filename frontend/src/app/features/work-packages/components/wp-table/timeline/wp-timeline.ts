@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,17 +20,16 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-import * as moment from 'moment';
-import { InputState, MultiInputState } from 'reactivestates';
+
+import moment, { Moment } from 'moment';
+import { InputState, MultiInputState } from '@openproject/reactivestates';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { TimelineZoomLevel } from 'core-app/features/hal/resources/query-resource';
-import Moment = moment.Moment;
 
 export const timelineElementCssClass = 'timeline-element';
 export const timelineBackgroundElementClass = 'timeline-element--bg';
@@ -44,9 +43,10 @@ export const timelineHeaderSelector = 'wp-timeline-header';
  */
 export class TimelineViewParametersSettings {
   zoomLevel:TimelineZoomLevel = 'days';
+  visibleBeforeTodayInZoomLevel = 2;
 }
 
-// Can't properly map the enum to a string aray
+// Can't properly map the enum to a string array
 export const zoomLevelOrder:TimelineZoomLevel[] = [
   'days', 'weeks', 'months', 'quarters', 'years',
 ];
@@ -84,7 +84,7 @@ export class TimelineViewParameters {
 
   settings:TimelineViewParametersSettings = new TimelineViewParametersSettings();
 
-  activeSelectionMode:null | ((wp:WorkPackageResource) => any) = null;
+  activeSelectionMode:null | ((wp:WorkPackageResource) => void) = null;
 
   selectionModeStart:null | string = null;
 
@@ -163,11 +163,8 @@ export function getTimeSlicesForHeader(vp:TimelineViewParameters,
 
   const firstRest:[Moment, Moment] = rest.splice(0, 1)[0];
   const lastRest:[Moment, Moment] = rest.pop()!;
-  const inViewportAndBoundaries = _.concat(
-    [firstRest].filter((e) => !_.isNil(e)),
-    inViewport,
-    [lastRest].filter((e) => !_.isNil(e)),
-  );
+  const inViewportAndBoundaries = [firstRest].filter((e) => e != null)
+    .concat(inViewport, [lastRest].filter((e) => e != null));
 
   return {
     inViewportAndBoundaries,
@@ -177,7 +174,7 @@ export function getTimeSlicesForHeader(vp:TimelineViewParameters,
 
 export function calculateDaySpan(visibleWorkPackages:RenderedWorkPackage[],
   loadedWorkPackages:MultiInputState<WorkPackageResource>,
-  viewParameters:TimelineViewParameters):number {
+  _viewParameters:TimelineViewParameters):number {
   let earliest:Moment = moment();
   let latest:Moment = moment();
 

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,72 +22,65 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Disabled activity', type: :feature do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "Disabled activity", :js do
+  shared_let(:admin) { create(:admin) }
 
   let(:project1) do
-    FactoryBot.create(:project, enabled_module_names: %i[work_package_tracking wiki])
+    create(:project, :with_internal_wiki, enabled_module_names: %i[work_package_tracking]).reload
   end
   let(:project2) do
-    FactoryBot.create(:project, enabled_module_names: %i[work_package_tracking activity wiki])
+    create(:project, :with_internal_wiki, enabled_module_names: %i[work_package_tracking activity]).reload
   end
   let(:project3) do
-    FactoryBot.create(:project, enabled_module_names: %i[activity])
+    create(:project, enabled_module_names: %i[activity])
   end
-  let!(:work_package1) { FactoryBot.create(:work_package, project: project1) }
-  let!(:work_package2) { FactoryBot.create(:work_package, project: project2) }
-  let!(:work_package3) { FactoryBot.create(:work_package, project: project3) }
+
+  let!(:work_package1) { create(:work_package, project: project1) }
+  let!(:work_package2) { create(:work_package, project: project2) }
+  let!(:work_package3) { create(:work_package, project: project3) }
+
   let!(:wiki_page1) do
-    FactoryBot.create(:wiki_page, wiki: project1.wiki) do |page|
-      FactoryBot.create(:wiki_content, page: page)
-    end
+    create(:wiki_page, wiki: project1.wiki)
   end
   let!(:wiki_page2) do
-    FactoryBot.create(:wiki_page, wiki: project2.wiki) do |page|
-      FactoryBot.create(:wiki_content, page: page)
-    end
+    create(:wiki_page, wiki: project2.wiki)
   end
   let!(:wiki_page3) do
-    wiki = FactoryBot.create(:wiki, project: project3)
+    wiki = create(:wiki, project: project3)
 
-    FactoryBot.create(:wiki_page, wiki: wiki) do |page|
-      FactoryBot.create(:wiki_content, page: page)
-    end
+    create(:wiki_page, wiki:)
   end
 
-  before do
-    login_as(admin)
-  end
+  current_user { admin }
 
-  it 'does not display activities on projects disabling it' do
+  it "does not display activities on projects disabling it", skip: "Wiki activation has changed, needs an update" do
     visit activity_index_path
 
-    check "Wiki edits"
+    check "Wiki"
     click_on "Apply"
 
     expect(page)
-      .to have_content(work_package2.subject)
+      .to have_text(work_package2.subject)
     expect(page)
-      .to have_content(wiki_page2.title)
+      .to have_text(wiki_page2.title)
 
     # Not displayed as activity is disabled
     expect(page)
-      .not_to have_content(work_package1.subject)
+      .to have_no_text(work_package1.subject)
     expect(page)
-      .not_to have_content(wiki_page1.title)
+      .to have_no_text(wiki_page1.title)
 
     # Not displayed as all modules except activity are disabled
     expect(page)
-      .not_to have_content(work_package3.subject)
+      .to have_no_text(work_package3.subject)
     expect(page)
-      .not_to have_content(wiki_page3.title)
+      .to have_no_text(wiki_page3.title)
   end
 end

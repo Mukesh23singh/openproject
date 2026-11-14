@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative '../principals/shared_memberships_examples'
+require "spec_helper"
+require_relative "../principals/shared_memberships_examples"
 
-feature 'placeholder user memberships through placeholder user page', type: :feature, js: true do
-  shared_let(:principal) { FactoryBot.create :placeholder_user, name: 'UX Designer' }
+RSpec.describe "placeholder user memberships through placeholder user page", :js do
+  shared_let(:principal) { create(:placeholder_user, name: "UX Designer") }
   shared_let(:principal_page) { Pages::Admin::IndividualPrincipals::Edit.new(principal) }
 
-  include_context 'principal membership management context'
+  include_context "principal membership management context"
 
-  context 'as admin' do
-    current_user { FactoryBot.create :admin }
+  context "as admin" do
+    current_user { create(:admin) }
 
-    it_behaves_like 'principal membership management flows'
+    it_behaves_like "principal membership management flows"
   end
 
-  it_behaves_like 'global user principal membership management flows', :manage_placeholder_user
+  it_behaves_like "global user principal membership management flows", %i[manage_placeholder_user view_all_principals]
 end

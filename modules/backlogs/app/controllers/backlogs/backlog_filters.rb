@@ -1,0 +1,85 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Backlogs
+  BacklogFilters = Data.define(:bucket_ids, :sprint_ids, :show_all, :filters_string) do
+    def self.from_params(params)
+      new(
+        bucket_ids: parse_ids(params[:bucket_ids], allow_inbox: true).presence,
+        sprint_ids: parse_ids(params[:sprint_ids]).presence,
+        show_all: ActiveRecord::Type::Boolean.new.cast(params[:all]) || false,
+        filters_string: params[:filters].presence
+      )
+    end
+
+    def self.parse_ids(ids, allow_inbox: false)
+      return [] if ids.blank?
+
+      Array(JSON.parse(ids))
+        .filter_map { |id| allow_inbox && id == "inbox" ? id : id.to_s.to_i.nonzero? }
+        .uniq
+    rescue JSON::ParserError
+      []
+    end
+    private_class_method :parse_ids
+
+    def show_inbox?
+      bucket_ids.nil? || bucket_ids.include?("inbox")
+    end
+
+    def filtered?
+      filters_string.present?
+    end
+
+    def bucket_ids_without_inbox
+      bucket_ids&.excluding("inbox")
+    end
+
+    def to_h
+      result = show_all? ? { all: true } : {}
+
+      result[:bucket_ids] = ids_string(bucket_ids) if bucket_ids
+      result[:sprint_ids] = ids_string(sprint_ids) if sprint_ids
+      result[:filters] = filters_string if filters_string
+      result
+    end
+
+    alias to_hash to_h
+    alias show_all? show_all
+
+    private
+
+    def ids_string(ids)
+      return unless ids
+
+      string_ids = ids.map(&:to_s)
+      (string_ids.one? ? string_ids.first : string_ids).to_json
+    end
+  end
+end

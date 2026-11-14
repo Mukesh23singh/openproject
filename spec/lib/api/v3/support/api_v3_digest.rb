@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-shared_examples_for 'API V3 digest' do
-  it 'defines an algorithm' do
-    is_expected.to be_json_eql(algorithm.to_json).at_path("#{path}/algorithm")
+RSpec.shared_examples_for "API V3 digest" do
+  it "defines an algorithm" do
+    expect(subject).to be_json_eql(algorithm.to_json).at_path("#{path}/algorithm")
   end
 
-  it 'has a hash' do
-    is_expected.to be_json_eql(hash.to_json).at_path("#{path}/hash")
+  it "has a hash" do
+    expect(subject).to be_json_eql(hash.to_json).at_path("#{path}/hash")
   end
 end

@@ -1,235 +1,239 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-require 'features/work_packages/shared_contexts'
-require 'features/work_packages/details/inplace_editor/shared_examples'
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-describe 'activity comments', js: true, with_mail: false do
-  let(:project) { FactoryBot.create :project, public: true }
+require "spec_helper"
+
+require "features/work_packages/shared_contexts"
+require "features/work_packages/details/inplace_editor/shared_examples"
+
+RSpec.describe "activity comments", :js do
+  let(:project) { create(:project, public: true) }
   let!(:work_package) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      journal_notes: initial_comment)
+    create(:work_package,
+           project:,
+           journal_notes: initial_comment)
   end
-  let(:wp_page) { Pages::SplitWorkPackage.new(work_package, project) }
-  let(:selector) { '.work-packages--activity--add-comment' }
-  let(:comment_field) do
-    TextEditorField.new wp_page,
-                        'comment',
-                        selector: selector
+  let(:wp_page) { Pages::PrimerizedSplitWorkPackage.new(work_package, project) }
+  let(:activity_tab) { Components::WorkPackages::Activities.new(work_package) }
+  let(:initial_comment) { "the first comment in this WP" }
+
+  RSpec.shared_examples "a field which supports principal autocomplete" do
+    let(:role) { create(:project_role, permissions: %i[view_work_packages edit_work_packages]) }
+    let!(:user) do
+      create(:user,
+             member_with_roles: { project => role },
+             firstname: "John")
+    end
+    let!(:mentioned_user) do
+      create(:user,
+             member_with_roles: { project => role },
+             firstname: "Laura",
+             lastname: "Foobar")
+    end
+    let!(:mentioned_group) do
+      create(:group, lastname: "Laudators", member_with_roles: { project => role })
+    end
+    let(:activity_tab) { Components::WorkPackages::Activities.new(work_package) }
+
+    shared_examples "principal autocomplete on field" do
+      before do
+        wp_page.visit!
+        wp_page.ensure_page_loaded
+        wp_page.switch_to_tab tab: :activity
+        wp_page.wait_for_activity_tab
+      end
+
+      it "autocompletes links to user profiles" do
+        activity_tab.open_new_comment_editor
+        activity_tab.get_editor_form_field_element.input_element.send_keys(" @lau")
+        expect(page).to have_css(".mention-list-item", text: mentioned_user.name)
+        expect(page).to have_css(".mention-list-item", text: mentioned_group.name)
+        expect(page).to have_no_css(".mention-list-item", text: user.name)
+
+        # Close the autocompleter
+        activity_tab.get_editor_form_field_element.input_element.send_keys :escape
+        activity_tab.ckeditor.clear
+
+        sleep 1
+
+        activity_tab.ckeditor.type_slowly "@Laura"
+        expect(page).to have_css(".mention-list-item", text: mentioned_user.name)
+        expect(page).to have_no_css(".mention-list-item", text: mentioned_group.name)
+        expect(page).to have_no_css(".mention-list-item", text: user.name)
+      end
+    end
+
+    context "with the project page" do
+      let(:wp_page) { Pages::PrimerizedSplitWorkPackage.new(work_package, project) }
+
+      it_behaves_like "principal autocomplete on field"
+    end
+
+    context "without the project page" do
+      let(:wp_page) { Pages::PrimerizedSplitWorkPackage.new(work_package) }
+
+      it_behaves_like "principal autocomplete on field"
+    end
   end
-  let(:initial_comment) { 'the first comment in this WP' }
 
   before do
     login_as(current_user)
     allow(current_user.pref).to receive(:warn_on_leaving_unsaved?).and_return(false)
   end
 
-  context 'with permission' do
-    let(:current_user) { FactoryBot.create :admin }
+  context "with permission" do
+    let(:current_user) { create(:admin) }
 
     before do
       wp_page.visit!
       wp_page.ensure_page_loaded
+      wp_page.switch_to_tab tab: :activity
+      wp_page.wait_for_activity_tab
     end
 
-    context 'in edit state' do
-      before do
-        comment_field.activate!
-      end
-
-      describe 'submitting comment' do
-        it 'does not submit with enter' do
-          comment_field.click_and_type_slowly 'this is a comment'
-          comment_field.submit_by_enter
-
-          expect(page).to have_no_selector('.user-comment .message', text: 'this is a comment')
+    context "in edit state" do
+      describe "submitting comment" do
+        it "does not submit with enter" do
+          activity_tab.type_comment("this is a comment")
+          activity_tab.get_editor_form_field_element.input_element.send_keys :enter
+          # Enter key is ignored, so comment should not be submitted
+          activity_tab.expect_no_journal_notes(text: "this is a comment")
         end
 
-        it 'submits with click' do
-          comment_field.click_and_type_slowly 'this is a comment!1'
-          comment_field.submit_by_click
-
-          wp_page.expect_comment text: 'this is a comment!1'
+        it "submits with click" do
+          activity_tab.type_comment("this is a comment!1")
+          page.find_test_selector("op-submit-work-package-journal-form").click
+          activity_tab.expect_journal_notes(text: "this is a comment!1")
         end
 
-        it 'submits comments repeatedly' do
-          comment_field.click_and_type_slowly 'this is my first comment!1'
-          comment_field.submit_by_click
-
-          expect(page).to have_selector('.user-comment > .message', count: 2)
-          wp_page.expect_comment text: 'this is my first comment!1'
-
-          expect(comment_field.editing?).to be false
-          comment_field.activate!
-          expect(comment_field.editing?).to be true
-
-          comment_field.click_and_type_slowly 'this is my second comment!1'
-          comment_field.submit_by_click
-
-          expect(page).to have_selector('.user-comment > .message', count: 3)
-          wp_page.expect_comment text: 'this is my second comment!1'
-
-          expect(comment_field.editing?).to be false
-          comment_field.activate!
-          expect(comment_field.editing?).to be true
-
-          comment_field.click_and_type_slowly 'this is my third comment!1'
-          comment_field.submit_by_click
-
-          # Only shows three most recent
-          expect(page).to have_selector('.user-comment > .message', count: 3)
-          wp_page.expect_comment text: 'this is my third comment!1'
-
-          wp_page.switch_to_tab tab: 'Activity'
-          # Now showing all comments
-          expect(page).to have_selector('.user-comment > .message', count: 4, wait: 10)
-
-          expect(comment_field.editing?).to be false
-          comment_field.activate!
-          expect(comment_field.editing?).to be true
-
-          comment_field.click_and_type_slowly 'this is my fifth comment!1'
-          comment_field.submit_by_click
-
-          expect(page).to have_selector('.user-comment > .message', count: 4)
-          wp_page.expect_comment text: 'this is my fifth comment!1'
-
-          # Expect no activity details
-          expect(page).to have_no_selector('.work-package-details-activities-messages li')
+        it "submits with ctrl/cmd+enter" do
+          activity_tab.type_comment("this is a comment!2")
+          activity_tab.get_editor_form_field_element.input_element.send_keys :control, :enter
+          activity_tab.expect_journal_notes(text: "this is a comment!2")
         end
       end
 
-      describe 'cancel comment' do
-        it do
-          expect(comment_field.editing?).to be true
-          comment_field.input_element.set 'this is a comment'
+      describe "autocomplete" do
+        describe "work packages" do
+          let!(:wp2) { create(:work_package, project:, subject: "AutoFoo") }
 
-          # Escape should NOT cancel the editing
-          comment_field.cancel_by_escape
-          expect(comment_field.editing?).to be true
+          it "can move to the work package by click (Regression #30928)" do
+            activity_tab.type_comment("foo ##{wp2.id}")
+            expect(page).to have_css(".mention-list-item", text: wp2.to_s.strip)
 
-          expect(page).to have_no_selector('.user-comment .message', text: 'this is a comment')
+            activity_tab.submit_comment
+            activity_tab.expect_journal_notes(text: "foo") # check if the comment is saved
 
-          # Click should cancel the editing
-          comment_field.cancel_by_click
-          expect(comment_field.editing?).to be false
+            page.find("a.issue", text: wp2.id).click
 
-          expect(page).to have_no_selector('.user-comment .message', text: 'this is a comment')
-        end
-      end
-
-      describe 'autocomplete' do
-        describe 'work packages' do
-          let!(:wp2) { FactoryBot.create(:work_package, project: project, subject: 'AutoFoo') }
-
-          it 'can move to the work package by click (Regression #30928)' do
-            comment_field.input_element.send_keys("##{wp2.id}")
-            expect(page).to have_selector('.mention-list-item', text: wp2.to_s.strip)
-
-            comment_field.submit_by_click
-            page.find('#activity-2 a.issue', text: wp2.id).click
-
-            other_wp_page = ::Pages::FullWorkPackage.new wp2
+            other_wp_page = Pages::FullWorkPackage.new wp2
             other_wp_page.ensure_page_loaded
-            other_wp_page.edit_field(:subject).expect_text 'AutoFoo'
+            other_wp_page.edit_field(:subject).expect_text "AutoFoo"
           end
         end
 
-        describe 'users' do
-          it_behaves_like 'a principal autocomplete field' do
-            let(:field) { comment_field }
-          end
+        describe "users" do
+          it_behaves_like "a field which supports principal autocomplete"
         end
       end
 
-      describe 'with an existing comment' do
-        it 'allows to edit an existing comment' do
+      describe "with markdown" do
+        it "allows to add e.g. bold text" do
+          activity_tab.open_new_comment_editor
           # Insert new text, need to do this separately.''
-          ['Comment with', ' ', '*', '*', 'bold text', '*', '*', ' ', 'in it'].each do |key|
-            comment_field.input_element.send_keys key
+          ["Comment with", " ", "*", "*", "bold text", "*", "*", " ", "in it"].each do |key|
+            activity_tab.get_editor_form_field_element.input_element.send_keys key
           end
-          comment_field.submit_by_click
+          activity_tab.submit_comment
 
-          wp_page.expect_comment text: 'Comment with bold text in it'
-          wp_page.expect_comment text: 'bold text', subselector: 'strong'
-
-          # Hover the new activity
-          activity = page.find('#activity-2')
-          page.driver.browser.action.move_to(activity.native).perform
-
-          # Check the edit textarea
-          edit_button = activity.find('.icon-edit')
-          scroll_to_element(edit_button)
-          edit_button.click
-          edit = TextEditorField.new wp_page,
-                                     'comment',
-                                     selector: '.user-comment--form'
-
-          # Insert new text, need to do this separately.
-          edit.input_element.click
-
-          [:enter, 'Comment with', ' ',  '_', 'italic text', '_', ' ', 'in it'].each do |key|
-            edit.input_element.send_keys key
-          end
-
-          edit.submit_by_click
-          wp_page.expect_comment text: 'Comment with italic text in it'
-          wp_page.expect_comment text: 'italic text', subselector: 'em'
+          activity_tab.expect_journal_notes(text: "Comment with bold text in it")
+          activity_tab.expect_journal_notes(text: "bold text", subselector: "strong")
         end
       end
     end
 
-    describe 'quoting' do
-      it 'can quote a previous comment' do
-        expect(page).to have_selector('.user-comment .message',
-                                      text: initial_comment)
+    describe "referencing another work package" do
+      let!(:work_package2) { create(:work_package, project:, type: create(:type)) }
 
-        # Hover comment
-        quoted = page.find('.user-comment > .message')
-        scroll_to_element(quoted)
-        quoted.hover
+      it "can reference another work package with all methods" do
+        activity_tab.open_new_comment_editor
 
-        # Quote this comment
-        page.find('.comments-icons .icon-quote').click
-        expect(comment_field.editing?).to be true
+        # Insert a new reference using the autocompleter
+        activity_tab.get_editor_form_field_element.input_element.send_keys "Single ##{work_package2.id}"
+        expect(page)
+          .to have_css(".mention-list-item", text: "#{work_package2.type.name} ##{work_package2.id}:")
 
-        # Add our comment
-        expect(comment_field.input_element).to have_selector('blockquote')
-        quote = comment_field.input_element[:innerHTML]
-        expect(quote).to eq '<p class="op-uc-p">Anonymous wrote:</p><blockquote class="op-uc-blockquote"><p class="op-uc-p">the first comment in this WP</p></blockquote>'
-
-        # Extend the comment
-        comment_field.input_element.click
-
-        comment_field.ckeditor.click_and_type_slowly :enter
+        find(".mention-list-item", text: "#{work_package2.type.name} ##{work_package2.id}:").click
 
         # Insert new text, need to do this separately.
-        comment_field.ckeditor.click_and_type_slowly :return, 'this is ', '*', '*', 'a bold', '*', '*', ' remark'
+        # No autocompleter used this time.
+        [
+          :return,
+          "Double ###{work_package2.id}",
+          :return,
+          "Triple ####{work_package2.id}",
+          :return
+        ].each do |key|
+          activity_tab.get_editor_form_field_element.input_element.send_keys key
+        end
 
-        comment_field.submit_by_click
+        activity_tab.submit_comment
 
-        # Scroll to the activity
-        scroll_to_element(page.find('#activity-2'))
-
-        wp_page.expect_comment text: 'this is a bold remark'
-        wp_page.expect_comment count: 2
-        wp_page.expect_comment subselector: 'blockquote'
-        wp_page.expect_comment subselector: 'strong', text: 'a bold'
+        activity_tab.expect_journal_notes(text: "Single ##{work_package2.id}")
+        expect(page).to have_css(".work-packages-activities-tab-journals-item-component opce-macro-wp-quickinfo", count: 2)
+        expect(page).to have_css(
+          ".work-packages-activities-tab-journals-item-component opce-macro-wp-quickinfo",
+          count: 2
+        )
       end
     end
-  end
 
-  context 'with no permission' do
-    let(:current_user) { FactoryBot.create(:user, member_in_project: project, member_through_role: role) }
-    let(:role) { FactoryBot.create :role, permissions: %i(view_work_packages) }
+    it "can move away to another tab, keeping the draft comment" do
+      activity_tab.open_new_comment_editor
+      activity_tab.get_editor_form_field_element.input_element.send_keys "I'm typing an important message here ..."
 
-    before do
-      wp_page.visit!
-      wp_page.ensure_page_loaded
-    end
+      wp_page.switch_to_tab tab: :files
+      expect(page).to have_test_selector("op-tab-content--tab-section")
 
-    it 'does not show the field' do
-      expect(page).to have_no_selector(selector, visible: true)
+      wp_page.switch_to_tab tab: :activity
+
+      activity_tab.expect_input_field
+      activity_tab.ckeditor.expect_value "I'm typing an important message here ..."
+
+      activity_tab.clear_comment
+      # Has removed the draft now
+
+      wp_page.switch_to_tab tab: :files
+      expect(page).to have_test_selector("op-tab-content--tab-section")
+
+      wp_page.switch_to_tab tab: :activity
+      activity_tab.expect_no_input_field
     end
   end
 end

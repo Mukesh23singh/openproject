@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +20,13 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { APIv3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { ApiV3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { States } from 'core-app/core/states/states.service';
 import { HasId, StateCacheService } from 'core-app/core/apiv3/cache/state-cache.service';
 import { concat, Observable, of } from 'rxjs';
@@ -36,12 +35,13 @@ import {
 } from 'rxjs/operators';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
 
-export abstract class CachableAPIV3Resource<T extends HasId = HalResource>
-  extends APIv3GettableResource<T> {
-  @InjectField() states:States;
+export abstract class ApiV3Resource<T extends HasId = HalResource>
+  extends ApiV3GettableResource<T> {
+  @LazyInject() states:States;
 
-  @InjectField() schemaCache:SchemaCacheService;
+  @LazyInject() schemaCache:SchemaCacheService;
 
   readonly cache = this.createCache();
 
@@ -73,7 +73,7 @@ export abstract class CachableAPIV3Resource<T extends HasId = HalResource>
       // Return concat of the loading observable
       // for error handling and the like,
       // but then continue with the streamed cache
-      return concat<T>(
+      return concat(
         observable,
         this.cache.state(id).values$(),
       );
@@ -123,7 +123,7 @@ export abstract class CachableAPIV3Resource<T extends HasId = HalResource>
       )
       // Use a promise to ensure this fires
       // even if caller isn't subscribing.
-      .toPromise();
+      .toPromise() as Promise<T>;
   }
 
   /**
@@ -137,7 +137,7 @@ export abstract class CachableAPIV3Resource<T extends HasId = HalResource>
         switchMap((resource) => {
           if (resource.$links.schema) {
             return this.schemaCache
-              .requireAndStream(resource.$links.schema.href)
+              .requireAndStream((resource.$links.schema as CallableHalLink).href!)
               .pipe(
                 take(1),
                 mapTo(resource),
@@ -145,7 +145,7 @@ export abstract class CachableAPIV3Resource<T extends HasId = HalResource>
           }
           return of(resource);
         }),
-      ) as any; // T does not extend HalResource for virtual endpoints such as board, thus we need to cast here
+      ) as unknown as Observable<T>; // T does not extend HalResource for virtual endpoints such as board, thus we need to cast here
   }
 
   /**

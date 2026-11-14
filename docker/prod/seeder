@@ -1,13 +1,17 @@
 #!/bin/bash -e
 
-OUTPUT=$(echo "\dt" | psql `echo $DATABASE_URL | cut -d? -f1` 2>&1)
-
-if [[ "$OUTPUT" = "No relations found." ]]; then
-	echo "Initialising database and running seed..."
-	DISABLE_DATABASE_ENVIRONMENT_CHECK=1 bundle exec rake db:structure:load db:seed
+if [ "$1" = "--skip-migrate" ]; then
+	shift
 else
-	echo "Executing database migration and database seed..."
-	bundle exec rake db:migrate db:seed
+	$APP_PATH/docker/prod/migrate
+fi
+
+echo "Executing database seed..."
+bundle exec rake db:seed
+SEED_STATUS=$?
+if [ $SEED_STATUS -ne 0 ]; then
+	echo "Database seed failed with status $SEED_STATUS"
+	exit $SEED_STATUS
 fi
 
 if [ "$1" = "--set" ]; then

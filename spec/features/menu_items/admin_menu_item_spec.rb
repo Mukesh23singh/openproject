@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,47 +22,56 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'Admin menu items' do
-  let(:user) { FactoryBot.create :admin }
+RSpec.describe "Admin menu items",
+               :js do
+  shared_let(:user) { create(:admin) }
 
   before do
-    allow(User).to receive(:current).and_return user
+    login_as user
+    visit admin_index_path
   end
 
   after do
-    OpenProject::Configuration['hidden_menu_items'] = []
+    OpenProject::Configuration["hidden_menu_items"] = []
   end
 
-  describe 'displaying all the menu items' do
-    it 'hides the specified admin menu items' do
-      visit admin_index_path
-
-      expect(page).to have_selector('a', text: I18n.t('label_user_plural'))
-      expect(page).to have_selector('a', text: I18n.t('label_role_plural'))
-      expect(page).to have_selector('a', text: I18n.t('label_type_plural'))
+  context "without having any menu items hidden in configuration" do
+    it "must display all menu items" do
+      expect(page).to have_test_selector("menu-blocks--container")
+      expect(page).to have_test_selector("menu-block", count: 25)
+      expect(page).to have_test_selector("op-menu--item-action", count: 26) # All plus 'overview'
     end
   end
 
-  describe 'hiding menu items' do
-    before do
-      OpenProject::Configuration['hidden_menu_items'] = { 'admin_menu' => ['roles', 'types'] }
+  context "having custom hidden menu items",
+          with_config: {
+            "hidden_menu_items" => { "admin_menu" => ["colors"] }
+          } do
+    it "must not display the hidden menu items and blocks" do
+      expect(page).to have_test_selector("menu-blocks--container")
+      expect(page).to have_test_selector("menu-block", count: 25)
+      expect(page).not_to have_test_selector("menu-block", text: I18n.t(:label_color_plural))
+
+      expect(page).to have_test_selector("op-menu--item-action", count: 26) # All plus 'overview'
+      expect(page).not_to have_test_selector("op-menu--item-action", text: I18n.t(:label_color_plural))
     end
+  end
 
-    it 'hides the specified admin menu items' do
-      visit admin_index_path
+  context "when logged in with a non-admin user with specific admin permissions" do
+    shared_let(:user) { create(:user, global_permissions: %i[manage_user create_backup]) }
 
-      expect(page).to have_selector('a', text: I18n.t('label_user_plural'))
-
-      expect(page).not_to have_selector('a', text: I18n.t('label_role_plural'))
-      expect(page).not_to have_selector('a', text: I18n.t('label_type_plural'))
+    it "must display only the actions allowed by global permissions" do
+      expect(page).to have_test_selector("menu-block", text: I18n.t("label_user_plural"))
+      expect(page).to have_test_selector("menu-block", text: I18n.t("label_backup"))
+      expect(page).to have_test_selector("op-menu--item-action", text: I18n.t("label_user_plural"))
+      expect(page).to have_test_selector("op-menu--item-action", text: I18n.t("label_backup"))
     end
   end
 end

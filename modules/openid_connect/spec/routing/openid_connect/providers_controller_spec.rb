@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,38 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'OpenIDConnect Providers', type: :routing do
-  it 'routes to index' do
-    expect(get('/admin/openid_connect/providers')).to route_to('openid_connect/providers#index')
+RSpec.describe "OpenIDConnect Providers" do
+  it "routes to index" do
+    expect(get("/admin/openid_connect/providers")).to route_to("openid_connect/providers#index")
   end
 
-  it 'routes to new' do
-    expect(get('/admin/openid_connect/providers/new')).to route_to('openid_connect/providers#new')
+  it "routes to new" do
+    expect(get("/admin/openid_connect/providers/new")).to route_to("openid_connect/providers#new")
   end
 
-  it 'routes to edit' do
-    expect(get('/admin/openid_connect/providers/azure/edit')).to(
+  it "routes to edit" do
+    expect(get("/admin/openid_connect/providers/azure/edit")).to(
       route_to(
-        controller: 'openid_connect/providers',
-        action: 'edit',
-        id: 'azure'
+        controller: "openid_connect/providers",
+        action: "edit",
+        id: "azure"
       )
     )
   end
 
-  it 'routes to destroy' do
-    expect(delete('/admin/openid_connect/providers/azure')).to(
+  it "routes to destroy" do
+    expect(delete("/admin/openid_connect/providers/azure")).to(
       route_to(
-        controller: 'openid_connect/providers',
-        action: 'destroy',
-        id: 'azure'
+        controller: "openid_connect/providers",
+        action: "destroy",
+        id: "azure"
       )
     )
   end

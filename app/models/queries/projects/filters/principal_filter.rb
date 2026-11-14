@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,28 +22,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Queries::Projects::Filters::PrincipalFilter < Queries::Projects::Filters::ProjectFilter
+class Queries::Projects::Filters::PrincipalFilter < Queries::Projects::Filters::Base
   def type
     :list_optional
   end
 
   def allowed_values
-    @allowed_values ||= begin
-      ::Principal.pluck(:id).map { |id| [id, id.to_s] }
+    @allowed_values ||= ::Principal.pluck(:id).map { |id| [id, id.to_s] }
+  end
+
+  def apply_to(_query_scope)
+    if operator_strategy == Queries::Operators::NotEquals
+      super
+        .where.not(id: member_statement(Queries::Operators::Equals))
+    elsif operator_strategy == Queries::Operators::None
+      super
+        .where.not(id: member_statement(Queries::Operators::All))
+    else
+      super
+        .where(id: member_statement(operator_strategy))
     end
   end
 
-  def scope
-    super.includes(:memberships).references(:members)
+  def where
+    # handled by scope
+    nil
   end
 
-  def where
-    operator_strategy.sql_for_field(values, 'members', 'user_id')
+  private
+
+  def member_statement(used_operator_strategy)
+    Member
+      .of_any_project
+      .where(used_operator_strategy.sql_for_field(values, "members", "user_id"))
+      .select(:project_id)
   end
 end

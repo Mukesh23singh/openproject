@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,66 +22,147 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'icalendar'
-require 'icalendar/tzinfo'
-
 class MeetingMailer < UserMailer
-  def content_for_review(content, content_type, user)
-    @author = User.current
-    @meeting = content.meeting
-    @content_type = content_type
+  include CalendarAttachment
 
-    open_project_headers 'Project' => @meeting.project.identifier,
-                         'Meeting-Id' => @meeting.id
+  def invited(meeting, user, actor, standalone_occurrence: false)
+    @actor = actor
+    @meeting = meeting
+    @user = user
 
-    User.execute_as(user) do
-      subject = "[#{@meeting.project.name}] #{I18n.t(:"label_#{content_type}")}: #{@meeting.title}"
-      mail to: user.mail, subject: subject
+    open_project_headers "Project" => @meeting.project.identifier,
+                         "Meeting-Id" => @meeting.id
+
+    with_attached_ics(meeting, user, standalone_occurrence:) do
+      subject = "[#{@meeting.project.name}] #{@meeting.title}"
+      mail(to: user, subject:)
     end
   end
 
-  def icalendar_notification(content, content_type, user)
-    @meeting = content.meeting
-    @content_type = content_type
+  def updated(meeting, user, actor, changes:, added_participants: [], removed_participants: [])
+    @actor = actor
+    @user = user
+    @meeting = meeting
+    @changes = changes
+    @added_participants = Array(added_participants)
+    @removed_participants = Array(removed_participants)
 
-    open_project_headers 'Project' => @meeting.project.identifier,
-                         'Meeting-Id' => @meeting.id
-    headers['Content-Type'] = 'text/calendar; charset=utf-8; method="PUBLISH"; name="meeting.ics"'
-    headers['Content-Transfer-Encoding'] = '8bit'
+    open_project_headers "Project" => @meeting.project.identifier,
+                         "Meeting-Id" => @meeting.id
 
-    author = Icalendar::Values::CalAddress.new("mailto:#{@meeting.author.mail}",
-                                               cn: @meeting.author.name)
+    with_attached_ics(meeting, user) do
+      subject = "[#{@meeting.project.name}] "
+      subject << I18n.t("meeting.email.updated.header", title: @meeting.title)
+      mail(to: user, subject:)
+    end
+  end
 
-    # Create a calendar with an event (standard method)
-    entry = ::Icalendar::Calendar.new
+  def cancelled(meeting, user, actor, reason: nil)
+    @actor = actor
+    @user = user
+    @meeting = meeting
+    @cancellation_reason = reason
 
+    open_project_headers "Project" => @meeting.project.identifier,
+                         "Meeting-Id" => @meeting.id
+
+    with_attached_ics(meeting, user, cancelled: true) do
+      subject = I18n.t("meeting.email.cancelled.header", title: @meeting.title)
+
+      mail(to: user, subject: "[#{@meeting.project.name}] #{subject}")
+    end
+  end
+
+  def cancelled_series(series, user, actor, reason: nil)
+    @actor = actor
+    @user = user
+    @series = series
+    @cancellation_reason = reason
+
+    open_project_headers "Project" => @series.project.identifier,
+                         "Meeting-Id" => @series.id
+
+    with_attached_ics(@series, user, cancelled: true) do
+      subject = I18n.t("meeting.email.cancelled.header", title: @series.title)
+
+      mail(to: user, subject: "[#{@series.project.name}] #{subject}")
+    end
+  end
+
+  def ended_series(series, user, actor)
+    @actor = actor
+    @user = user
+    @series = series
+
+    open_project_headers "Project" => @series.project.identifier,
+                         "Meeting-Id" => @series.id
+
+    with_attached_ics(@series, user) do
+      subject = I18n.t("meeting.email.ended.header_series", title: @series.title)
+
+      mail(to: user, subject: "[#{@series.project.name}] #{subject}")
+    end
+  end
+
+  def icalendar_notification(meeting, user, _actor, **)
+    @meeting = meeting
+
+    set_headers @meeting
+
+    with_attached_ics(meeting, user) do
+      subject = "[#{@meeting.project.name}] #{@meeting.title}"
+      mail(to: user, subject:)
+    end
+  end
+
+  private
+
+  def with_attached_ics(meeting, user, **args)
     User.execute_as(user) do
-      subject = "[#{@meeting.project.name}] #{I18n.t(:"label_#{@content_type}")}: #{@meeting.title}"
-      timezone = Time.zone || Time.zone_default
-      # Get the tzinfo object from the rails timezone
-      tzinfo = timezone.tzinfo
-      # Get the global identifier like Europe/Berlin
-      tzid = tzinfo.canonical_identifier
-      entry.add_timezone tzinfo.ical_timezone(@meeting.start_time)
+      call = ics_service_call(meeting, user, **args)
 
-      entry.event do |e|
-        e.dtstart     = Icalendar::Values::DateTime.new @meeting.start_time, 'tzid' => tzid
-        e.dtend       = Icalendar::Values::DateTime.new @meeting.end_time, 'tzid' => tzid
-        e.url         = meeting_url(@meeting)
-        e.summary     = "[#{@meeting.project.name}] #{@meeting.title}"
-        e.description = subject
-        e.uid         = "#{@meeting.id}@#{@meeting.project.identifier}"
-        e.organizer   = author
+      call.on_success do
+        ics_content = call.result
+        cancelled = args[:cancelled] || false
+
+        # The attachment has to be added before the mail is created
+        add_calendar_attachment(ics_content, cancelled:)
+
+        message = yield
+
+        add_calendar_part(message, ics_content, cancelled:)
+
+        message
       end
 
-      attachments['meeting.ics'] = entry.to_ical
-      mail(to: user.mail, subject: subject)
+      call.on_failure do
+        Rails.logger.error { "Failed to create ICS attachment for meeting #{meeting.id}: #{call.message}" }
+      end
     end
+  end
+
+  def ics_service_call(meeting, user, standalone_occurrence: false, **args)
+    if meeting.is_a?(RecurringMeeting)
+      ::RecurringMeetings::ICalService
+        .new(user:, series: meeting)
+        .generate_series(**args)
+    elsif meeting.recurring? && !standalone_occurrence
+      ::RecurringMeetings::ICalService
+        .new(user:, series: meeting.recurring_meeting)
+        .generate_single_occurrence(meeting: meeting, **args)
+    else
+      ::Meetings::ICalService
+        .new(user:, meeting:)
+        .call(**args)
+    end
+  end
+
+  def set_headers(meeting)
+    open_project_headers "Project" => meeting.project.identifier, "Meeting-Id" => meeting.id
   end
 end

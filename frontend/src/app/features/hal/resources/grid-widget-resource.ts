@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -29,11 +28,11 @@
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { GridResource } from 'core-app/features/hal/resources/grid-resource';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
 
 export class GridWidgetResource extends HalResource {
-  @InjectField() protected halResource:HalResourceService;
+  @LazyInject() protected halResource:HalResourceService;
 
   public identifier:string;
 
@@ -45,7 +44,7 @@ export class GridWidgetResource extends HalResource {
 
   public endColumn:number;
 
-  public options:{ [key:string]:unknown };
+  public options:Record<string, unknown>;
 
   public get height() {
     return this.endRow - this.startRow;
@@ -56,6 +55,8 @@ export class GridWidgetResource extends HalResource {
   }
 
   public grid:GridResource;
+
+  public isNewWidget:boolean;
 
   public get schema():SchemaResource {
     return this.halResource.createHalResource({ _type: 'Schema' }, true);

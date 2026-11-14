@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +20,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Bim::Bcf::Viewpoints::CreateService, type: :model do
-  let(:user) { FactoryBot.build_stubbed(:user) }
+RSpec.describe Bim::Bcf::Viewpoints::CreateService, type: :model do
+  let(:user) { build_stubbed(:user) }
   let(:contract_class) do
-    double('contract_class', '<=': true)
+    double("contract_class", "<=": true)
   end
   let(:viewpoint_valid) { true }
   let(:instance) do
-    described_class.new(user: user,
-                        contract_class: contract_class)
+    described_class.new(user:,
+                        contract_class:)
   end
   let(:call_attributes) do
     {
@@ -53,7 +50,7 @@ describe Bim::Bcf::Viewpoints::CreateService, type: :model do
     true
   end
   let(:set_attributes_errors) do
-    double('set_attributes_errors')
+    double("set_attributes_errors")
   end
   let(:set_attributes_result) do
     ServiceResult.new result: created_viewpoint,
@@ -61,7 +58,7 @@ describe Bim::Bcf::Viewpoints::CreateService, type: :model do
                       errors: set_attributes_errors
   end
   let!(:created_viewpoint) do
-    viewpoint = FactoryBot.build_stubbed(:bcf_viewpoint)
+    viewpoint = build_stubbed(:bcf_viewpoint)
 
     allow(Bim::Bcf::Viewpoint)
       .to receive(:new)
@@ -74,13 +71,13 @@ describe Bim::Bcf::Viewpoints::CreateService, type: :model do
     viewpoint
   end
   let!(:set_attributes_service) do
-    service = double('set_attributes_service_instance')
+    service = double("set_attributes_service_instance")
 
     allow(Bim::Bcf::Viewpoints::SetAttributesService)
       .to receive(:new)
-      .with(user: user,
+      .with(user:,
             model: created_viewpoint,
-            contract_class: contract_class,
+            contract_class:,
             contract_options: {})
       .and_return(service)
 
@@ -89,19 +86,19 @@ describe Bim::Bcf::Viewpoints::CreateService, type: :model do
       .and_return(set_attributes_result)
   end
 
-  describe '#call' do
+  describe "#call" do
     subject { instance.call(call_attributes) }
 
-    it 'is successful' do
+    it "is successful" do
       expect(subject.success?).to be_truthy
     end
 
-    it 'returns the result of the SetAttributesService' do
+    it "returns the result of the SetAttributesService" do
       expect(subject)
         .to eql set_attributes_result
     end
 
-    it 'persists the viewpoint' do
+    it "persists the viewpoint" do
       expect(created_viewpoint)
         .to receive(:save)
         .and_return(viewpoint_valid)
@@ -109,26 +106,26 @@ describe Bim::Bcf::Viewpoints::CreateService, type: :model do
       subject
     end
 
-    it 'returns a viewpoint' do
+    it "returns a viewpoint" do
       expect(subject.result)
         .to eql created_viewpoint
     end
 
-    context 'if the SetAttributeService is unsuccessful' do
+    context "if the SetAttributeService is unsuccessful" do
       let(:set_attributes_success) { false }
 
-      it 'is unsuccessful' do
+      it "is unsuccessful" do
         expect(subject.success?).to be_falsey
       end
 
-      it 'returns the result of the SetAttributesService' do
+      it "returns the result of the SetAttributesService" do
         expect(subject)
           .to eql set_attributes_result
       end
 
-      it 'does not persist the changes' do
+      it "does not persist the changes" do
         expect(created_viewpoint)
-          .to_not receive(:save)
+          .not_to receive(:save)
 
         subject
       end
@@ -140,10 +137,10 @@ describe Bim::Bcf::Viewpoints::CreateService, type: :model do
       end
     end
 
-    context 'when the viewpoint is invalid' do
+    context "when the viewpoint is invalid" do
       let(:viewpoint_valid) { false }
 
-      it 'is unsuccessful' do
+      it "is unsuccessful" do
         expect(subject.success?).to be_falsey
       end
 

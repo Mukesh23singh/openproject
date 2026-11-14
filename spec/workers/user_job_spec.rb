@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe UserJob do
+RSpec.describe UserJob do
   let(:test_job) do
-    Class.new(::UserJob) do
+    Class.new(UserJob) do
       def execute(foo:)
         [user.id, User.current.id, user.admin]
       end
@@ -40,28 +39,28 @@ describe UserJob do
   end
 
   subject do
-    test_job.new(user: user, foo: 'foo').perform_now
+    test_job.new(user:, foo: "foo").perform_now
   end
 
-  describe 'with system user' do
+  describe "with system user" do
     let(:user) { User.system }
 
-    it 'uses that user' do
+    it "uses that user" do
       given_user, current_user, admin = subject
       expect(given_user).to eq current_user
       expect(given_user).to eq user.id
-      expect(admin).to eq true
+      expect(admin).to be true
     end
   end
 
-  describe 'with a regular user' do
-    let(:user) { FactoryBot.build_stubbed :user }
+  describe "with a regular user" do
+    let(:user) { build_stubbed(:user) }
 
-    it 'uses that user' do
+    it "uses that user" do
       given_user, current_user, admin = subject
       expect(given_user).to eq current_user
       expect(given_user).to eq user.id
-      expect(admin).to eq false
+      expect(admin).to be false
     end
   end
 end

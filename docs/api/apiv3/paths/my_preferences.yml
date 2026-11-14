@@ -19,13 +19,16 @@ get:
                     method: "patch"
                 _type: "UserPreferences"
                 commentSortDescending: true
-                hideMail: false
+                disableKeyboardShortcuts: false
                 timeZone: "Europe/Berlin"
+                dateFormat: "%Y-%m-%d"
+                timeFormat: "%H:%M"
                 warnOnLeavingUnsaved: true
                 notifications:
                   watched: false
                   involved: true
                   mentioned: false
+                  shared: true
                   newsAdded: false,
                   newsCommented: false
                   documentAdded: false
@@ -42,12 +45,14 @@ get:
                     project:
                       href: null
           schema:
-            "$ref": "../components/schemas/user_preferences_model.yml"
+            $ref: "../components/schemas/user_preferences_model.yml"
       description: OK
       headers: {}
     '401':
       content:
         application/hal+json:
+          schema:
+            $ref: "../components/schemas/error_response.yml"
           examples:
             response:
               value:
@@ -57,9 +62,9 @@ get:
       description: Returned if no user is currently authenticated
       headers: {}
   tags:
-  - UserPreferences
+    - UserPreferences
   description: ''
-  operationId: Show_my_preferences
+  operationId: get_my_preferences
   summary: Show my preferences
 patch:
   responses:
@@ -80,13 +85,16 @@ patch:
                     method: "patch"
                 _type: UserPreferences
                 commentSortDescending: true
-                hideMail: false
+                disableKeyboardShortcuts: false
                 timeZone: Europe/Berlin
+                dateFormat: "%Y-%m-%d"
+                timeFormat: "%H:%M"
                 warnOnLeavingUnsaved: true
                 notifications:
                   watched: false
                   involved: true
                   mentioned: false
+                  shared: true
                   newsAdded: false,
                   newsCommented: false
                   documentAdded: false
@@ -103,24 +111,16 @@ patch:
                     project:
                       href: null
           schema:
-            "$ref": "../components/schemas/user_preferences_model.yml"
+            $ref: "../components/schemas/user_preferences_model.yml"
       description: OK
       headers: {}
     '400':
-      content:
-        application/hal+json:
-          examples:
-            response:
-              value:
-                _type: Error
-                errorIdentifier: urn:openproject-org:api:v3:errors:InvalidRequestBody
-                message: The request body was not a single JSON object.
-      description: Occurs when the client did not send a valid JSON object in the
-        request body.
-      headers: {}
+      $ref: "../components/responses/invalid_request_body.yml"
     '401':
       content:
         application/hal+json:
+          schema:
+            $ref: "../components/schemas/error_response.yml"
           examples:
             response:
               value:
@@ -129,9 +129,15 @@ patch:
                 message: You need to be authenticated to access this resource.
       description: Returned if no user is currently authenticated
       headers: {}
+    '406':
+      $ref: "../components/responses/missing_content_type.yml"
+    '415':
+      $ref: "../components/responses/unsupported_media_type.yml"
     '422':
       content:
         application/hal+json:
+          schema:
+            $ref: "../components/schemas/error_response.yml"
           examples:
             response:
               value:
@@ -147,10 +153,10 @@ patch:
         * Using an unknown time zone
       headers: {}
   tags:
-  - UserPreferences
+    - UserPreferences
   description: When calling this endpoint the client provides a single object, containing
     the properties that it wants to change, in the body.
-  operationId: Update_UserPreferences
+  operationId: update_my_preferences
   requestBody:
     content:
       application/json:
@@ -158,10 +164,16 @@ patch:
           example:
             autoHidePopups: true
             timeZone: Europe/Paris
+            dateFormat: "%d.%m.%Y"
+            timeFormat: "%I:%M %p"
           properties:
             autoHidePopups:
               type: boolean
             timeZone:
+              type: string
+            dateFormat:
+              type: string
+            timeFormat:
               type: string
           type: object
   summary: Update my preferences

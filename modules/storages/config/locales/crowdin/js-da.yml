@@ -1,0 +1,107 @@
+---
+da:
+  js:
+    storages:
+      authentication_error: Godkendelsen hos %{storageType} mislykkedes
+      choose_location: Vælg placering
+      drop_files: Slip filer her for at overføre dem til %{name}.
+      drop_or_click_files: Slip filer her, eller klik for at overføre dem til %{name}.
+      file_links:
+        already_linked_directory: Mappen er allerede linket til arbejdspakken.
+        already_linked_file: Filen er allerede linket til arbejdspakken.
+        download: Hent %{fileName}
+        empty: 'Der er i øjeblikket ingen filer linket til arbejdspakken. Begynd at linke filer med handlingen nedenfor eller fra %{storageType}.
+
+          '
+        link_uploaded_file_error: 'Der opstod en fejl, da den netop overførte fil ''%{fileName}'' skulle linkes til arbejdspakken %{workPackageId}.
+
+          '
+        open: Åbn filen i lageret
+        open_location: Åbn filens placering
+        remove: Fjern fil-link
+        remove_confirmation: 'Er du sikker på, at du vil fjerne linket mellem filen og arbejdspakken? Det påvirker ikke den oprindelige fil, men fjerner kun forbindelsen til arbejdspakken.
+
+          '
+        remove_short: Fjern link
+        select: Vælg filer
+        select_all: Vælg alle
+        selection:
+          none: Vælg filer, der skal linkes
+          one: Link %{count} fil
+          other: Link %{count} filer
+        success_create:
+          one: "%{count} fil-link er oprettet."
+          other: "%{count} fil-links er oprettet."
+        tooltip:
+          not_found: Filen blev ikke fundet.
+          not_logged_in: Log ind på lageret for at få adgang til filen.
+          view_not_allowed: Du har ikke tilladelse til at se filen.
+        upload_error:
+          403: 'Din fil (%{fileName}) kunne ikke overføres på grund af begrænsninger i systemet. Kontakt din administrator for at få flere oplysninger.
+
+            '
+          413: 'Din fil (%{fileName}) er større, end OpenProject kan overføre til %{storageType}. Du kan overføre den direkte til %{storageType} først og derefter linke filen.
+
+            '
+          507: 'Din fil (%{fileName}) er større, end lagerets kvote tillader. Kontakt din administrator for at få kvoten ændret.
+
+            '
+          default: 'Din fil (%{fileName}) kunne ikke overføres.
+
+            '
+          detail:
+            nextcloud: 'Tjek, at den nyeste version af Nextcloud-appen "OpenProject Integration" er installeret, og kontakt din administrator for at få flere oplysninger.
+
+              '
+      files:
+        already_existing_body: 'Der findes allerede en fil med navnet "%{fileName}" på den placering, hvor du forsøger at overføre filen. Hvad vil du gøre?
+
+          '
+        already_existing_header: Filen findes allerede
+        cannot_create_folder: Mappen kunne ikke oprettes. Undgå specialtegn og symboler, og sørg for, at mappen ikke allerede findes.
+        directory_not_writeable: Du har ikke tilladelse til at tilføje filer til mappen.
+        dragging_folder: Overførsel til %{storageType} understøtter ikke mapper.
+        dragging_many_files: Overførsel til %{storageType} understøtter kun én fil ad gangen.
+        empty_folder: Mappen er tom.
+        empty_folder_location_hint: Klik på knappen nedenfor for at overføre filen til denne placering.
+        file_not_selectable_location: Du kan ikke vælge en fil, mens du vælger en placering.
+        managed_project_folder_no_access: 'Du har endnu ikke adgang til den administrerede projektmappe. Vent lidt, og prøv igen.
+
+          '
+        managed_project_folder_not_available: 'Den automatisk administrerede projektmappe blev endnu ikke fundet. Vent lidt, genindlæs siden for at hente de nyeste data, og prøv igen.
+
+          '
+        project_folder_no_access: 'Du har ikke adgang til projektmappen. Kontakt din administrator for at få adgang, eller overfør filen til en anden placering.
+
+          '
+        upload_keep_both: Behold begge
+        upload_replace: Erstat
+      information:
+        authentication_error: 'Der opstod en fejl: Forespørgslen til %{storageType} kunne ikke godkendes.'
+        connection_error: 'Nogle indstillinger i %{storageType} virker ikke. Kontakt din administrator for %{storageType}.
+
+          '
+        live_data_error: Fejl ved hentning af filoplysninger
+        live_data_error_description: 'Nogle data fra %{storageType} kunne ikke hentes. Prøv at genindlæse siden, eller kontakt din administrator for %{storageType}.
+
+          '
+        no_file_links: Link filer til arbejdspakken via %{storageType}.
+        not_logged_in: 'Log ind på %{storageType} for at tilføje et link til eller se og overføre filer, der hører til arbejdspakken.
+
+          '
+        suggest_logout: Du kan prøve, om det løser problemet at logge ud og ind igen.
+        suggest_relink: Du kan prøve, om det løser problemet at forbinde din konto igen med login-knappen nedenfor.
+      link_existing_files: Link eksisterende filer
+      link_files_in_storage: Link filer i %{storageType}
+      login: Login til %{storageType}
+      login_to: Log ind på %{storageType}
+      new_folder: Ny mappe
+      no_connection: Ingen forbindelse til %{storageType}
+      open_storage: Åbn %{storageType}
+      select_location: Vælg placering
+      types:
+        default: Lager
+        nextcloud: Nextcloud
+        one_drive: OneDrive
+        sharepoint: SharePoint
+      upload_files: Overfør filer

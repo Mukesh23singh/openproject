@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,54 +22,59 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Subproject creation', type: :feature, js: true do
-  let(:name_field) { ::FormFields::InputFormField.new :name }
-  let(:parent_field) { ::FormFields::SelectFormField.new :parent }
-  let(:add_subproject_role) { FactoryBot.create(:role, permissions: %i[edit_project add_subprojects]) }
-  let(:view_project_role) { FactoryBot.create(:role, permissions: %i[edit_project]) }
+RSpec.describe "Subproject creation", :js do
+  let(:parent_field) { FormFields::SelectFormField.new :parent }
+  let(:add_subproject_role) { create(:project_role, permissions: %i[edit_project add_subprojects]) }
+  let(:view_project_role) { create(:project_role, permissions: %i[edit_project]) }
+  let!(:default_project_role) { create(:project_creator_role) }
   let!(:parent_project) do
-    FactoryBot.create(:project,
-                      name: 'Foo project',
-                      members: { current_user => add_subproject_role })
+    create(:project,
+           name: "Foo project",
+           members: { current_user => add_subproject_role })
   end
   let!(:other_project) do
-    FactoryBot.create(:project,
-                      name: 'Other project',
-                      members: { current_user => view_project_role })
+    create(:project,
+           name: "Other project",
+           members: { current_user => view_project_role })
   end
 
   current_user do
-    FactoryBot.create(:user)
+    create(:user)
   end
 
   before do
+    allow(Setting).to receive(:new_project_user_role_id).and_return(default_project_role.id.to_s)
     visit project_settings_general_path(parent_project)
   end
 
-  it 'can create a subproject' do
-    click_link 'Subproject'
+  it "can create a subproject" do
+    page.find_test_selector("project-settings-more-menu").click
+    wait_for_turbo { click_on "Add subproject" }
+    expect(page).to have_heading "New project"
 
-    name_field.set_value 'Foo child'
-    parent_field.expect_required
-    # The other project is not a valid parent since the user is lacking
-    # the add_subproject permission therein.
-    parent_field.expect_no_option(other_project.name)
-    parent_field.expect_selected parent_project.name
+    # Step 1: Select workspace type (blank project)
+    click_on "Continue"
 
-    click_button 'Save'
+    # Step 2: Fill in project details
+    fill_in "Name", with: "Foo child"
+
+    expect(page).to have_no_field "Subproject of"
+
+    click_on "Complete"
+
+    expect_and_dismiss_flash type: :success, message: "Successful creation."
 
     expect(page).to have_current_path /\/projects\/foo-child\/?/
 
     child = Project.last
-    expect(child.identifier).to eq 'foo-child'
+    expect(child.identifier).to eq "foo-child"
     expect(child.parent).to eq parent_project
   end
 end

@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module Accounts::AuthenticationStages
   def successful_authentication(user, reset_stages: true, just_registered: false)
     stages = authentication_stages after_activation: just_registered, reset: reset_stages
@@ -30,14 +59,14 @@ module Accounts::AuthenticationStages
 
         successful_authentication User.find(session[:authenticated_user_id]), reset_stages: false
       else
-        flash[:error] = I18n.t :notice_auth_stage_verification_error, stage: stage
+        flash[:error] = I18n.t(:notice_auth_stage_verification_error, stage:)
 
         redirect_to signin_path
       end
     else
       flash[:error] = I18n.t(
         :notice_auth_stage_wrong_stage,
-        expected: stage || '(none)',
+        expected: stage || "(none)",
         actual: params[:stage]
       )
 
@@ -64,12 +93,12 @@ module Accounts::AuthenticationStages
 
   def authentication_stages(after_activation: false, reset: true)
     if OpenProject::Authentication::Stage.stages.select(&:active?).any?
-      session.delete %i[authentication_stages stage_secrets back_url] if reset
+      %i[authentication_stages stage_secrets].each { |key| session.delete(key) } if reset
 
       if session.include?(:authentication_stages)
         lookup_authentication_stages
       else
-        init_authentication_stages after_activation: after_activation
+        init_authentication_stages after_activation:
       end
     else
       []
@@ -88,10 +117,10 @@ module Accounts::AuthenticationStages
 
     # Remember back_url from params since we're redirecting
     # but don't use the referer
-    session[:back_url] = params[:back_url]
+    session[:back_url] ||= params[:back_url]
 
     # Remember the autologin cookie decision
-    session[:autologin_requested] = params[:autologin]
+    session[:autologin_requested] = params[:autologin] == "1"
 
     stages
   end
@@ -109,8 +138,7 @@ module Accounts::AuthenticationStages
 
   def new_stage_secrets
     session[:authentication_stages]
-      .map { |ident| [ident, stage_secret(ident)] }
-      .to_h
+      .index_with { |ident| stage_secret(ident) }
   end
 
   def stage_secret(_ident)

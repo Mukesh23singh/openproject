@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +20,48 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-import {
-  Component,
-  ElementRef,
-  OnInit,
-} from '@angular/core';
+
+import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, OnInit, inject } from '@angular/core';
 import { States } from 'core-app/core/states/states.service';
 import { WorkPackageTimelineTableController } from '../container/wp-timeline-container.directive';
-import { TimelineViewParameters } from '../wp-timeline';
+import { calculatePositionValueForDayCountingPx, TimelineViewParameters } from '../wp-timeline';
 import {
   TimelineStaticElement,
   timelineStaticElementCssClassname,
 } from './timeline-static-element';
+import { onDestroySafely } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
 import { TodayLineElement } from './wp-timeline.today-line';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-timeline-static-elements',
-  template: '<div class="wp-table-timeline--static-elements"></div>'
+  template: '<div class="wp-table-timeline--static-elements"></div>',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
+// eslint-disable-next-line @angular-eslint/component-class-suffix
 export class WorkPackageTableTimelineStaticElements implements OnInit {
-  public $element:HTMLElement;
+  readonly destroyRef = inject(DestroyRef);
+  states = inject(States);
+  workPackageTimelineTableController = inject(WorkPackageTimelineTableController);
+
+  public element:HTMLElement;
 
   private container:HTMLElement;
 
   private elements:TimelineStaticElement[];
 
-  constructor(elementRef:ElementRef,
-    public states:States,
-    public workPackageTimelineTableController:WorkPackageTimelineTableController) {
-    this.$element = elementRef.nativeElement;
+  constructor() {
+    const elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+
+    this.element = elementRef.nativeElement;
 
     this.elements = [
       new TodayLineElement(),
@@ -61,12 +69,16 @@ export class WorkPackageTableTimelineStaticElements implements OnInit {
   }
 
   ngOnInit() {
-    this.container = this.$element.querySelector('.wp-table-timeline--static-elements') as HTMLElement;
-    this.workPackageTimelineTableController
+    this.container = this.element.querySelector('.wp-table-timeline--static-elements')!;
+    if (this.destroyRef.destroyed) return;
+    const release = this.workPackageTimelineTableController
       .onRefreshRequested('static elements', (vp:TimelineViewParameters) => this.update(vp));
+    onDestroySafely(this.destroyRef, release);
   }
 
   private update(vp:TimelineViewParameters) {
+    const controller = this.workPackageTimelineTableController;
+    if (this.destroyRef.destroyed || controller.destroyed || !controller.workPackageTable) return;
     this.removeAllVisibleElements();
     this.renderElements(vp);
   }
@@ -81,6 +93,13 @@ export class WorkPackageTableTimelineStaticElements implements OnInit {
   private renderElements(vp:TimelineViewParameters) {
     for (const e of this.elements) {
       this.container.appendChild(e.render(vp));
+    }
+    const timelineSide = this.workPackageTimelineTableController.getParentScrollContainer();
+    if (timelineSide !== null && vp.settings.zoomLevel !== 'auto') {
+      const visibleMomentBeforeToday = vp.now.clone().subtract(vp.settings.visibleBeforeTodayInZoomLevel, vp.settings.zoomLevel);
+      const visibleDaysBeforeToday = visibleMomentBeforeToday.diff(vp.dateDisplayStart, 'days');
+      const visibleDaysBeforeTodayPositionPixels = calculatePositionValueForDayCountingPx(vp, visibleDaysBeforeToday);
+      timelineSide.scrollLeft = visibleDaysBeforeTodayPositionPixels;
     }
   }
 }

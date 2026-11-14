@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 # = OpenProject configuration file
 #
-# Each environment has it's own configuration options.  If you are only
+# Each environment has its own configuration options.  If you are only
 # running in production, only the production block needs to be configured.
 # Environment specific configuration options override the default ones.
 #
@@ -139,7 +138,6 @@
 #       - settings
 #       - ldap_authentication
 #       - colors
-#       - export_card_configurations
 #       - plugins
 #       - info
 #
@@ -153,7 +151,6 @@
 #   blacklisted_routes:
 #     - 'admin/info'
 #     - 'admin/plugins'
-#     - 'export_card_configurations'
 #     - 'colors'
 #     - 'settings'
 #     - 'admin/enumerations'
@@ -161,7 +158,15 @@
 #     - 'statuses'
 #     - 'types'
 #     - 'admin/roles'
-
+#
+# Beta features
+#
+# Some features are hidden behind a feature flag during development.
+# To activate one or more features set the corresponding flag inside the section.
+#
+# Example:
+# production:
+#   feature_your_module_active: true
 
 # default configuration options for all environments
 default:
@@ -200,9 +205,6 @@ default:
   #
   # rails_relative_url_root: ""
 
-  # whether to force ssl in production
-  rails_force_ssl: false
-
   # Absolute path to the directory where attachments are stored.
   # The default is the 'files' directory in your OpenProject instance.
   # Your OpenProject instance needs to have write permission on this
@@ -213,15 +215,13 @@ default:
 
   # Grace period until uploaded but unassigned (i.e. to a container like work packages,
   # wiki pages) attachments are deleted (in minutes)
-  # attachment_grace_period: 180
+  # attachments_grace_period: 180
 
   # Configuration of the autologin cookie.
   # autologin_cookie_name: the name of the cookie (default: autologin)
   # autologin_cookie_path: the cookie path (default: /)
-  # autologin_cookie_secure: true sets the cookie secure flag (default: false)
   # autologin_cookie_name:
   # autologin_cookie_path:
-  # autologin_cookie_secure:
 
   # Configuration of the session cookie
   # session_cookie_name: the name of the OpenProject cookie (default: _open_project_session)
@@ -233,16 +233,9 @@ default:
   # use memcache for performance, memcached must be installed
   # rails_cache_store: :memcache
 
-  # defines where session data is stored
-  # possible values are :cookie_store, :cache_store, :active_record_store
-  session_store: :cache_store
-
   # Default comment sorting for new users
   # Note, does not change saved preferences of existing users
   # default_comment_sort_order: 'asc'
-
-  # If the session store is :active_record_store, the following configuration settings
-  # are available
 
   # Delete old sessions for the same user when logging in
   # Disabled by default to allow multiple concurrent sessions.
@@ -322,11 +315,11 @@ default:
   #
   #   Available types for git:
   #     - :local (Local repositories, registered using a local path)
-  #     - :managed (Managed repositores, available IF :manages path is set below)
+  #     - :managed (Managed repositories, available IF :manages path is set below)
   #   Available types for subversion:
   #     - :existing (Existing subversion repositories by URL - local using file:/// or remote
   #                 using one of the supported URL schemes (e.g., https://, svn+ssh:// )
-  #     - :managed (Managed repositores, available IF :manages path is set below)
+  #     - :managed (Managed repositories, available IF :manages path is set below)
   #
   # Exemplary configuration
   #
@@ -373,7 +366,7 @@ default:
   # omniauth provider if additional ones are configured.
   # omniauth_direct_login_provider: developer
   #
-  # disable_password_login: true
+  # password_login: none
 
   # If enabled a user's password cannot be set to an arbitrary value.
   # The respective form elements will be removed from the user edit view.
@@ -389,18 +382,8 @@ default:
   #     user: admin
   #     password: admin
 
-  # Overriding LDAP TLS configuration
-  # You can set other TLS options for the LDAP auth source connection
-  # They are passed as the `tls_options` to the Net::LDAP gem
-  # see the following resources for more information
-  # https://github.com/ruby-ldap/ruby-net-ldap/blob/master/lib/net/ldap.rb
-  # https://ruby.github.io/openssl/OpenSSL/SSL/SSLContext.html
-  # For example, to specify a CA file
-  # ldap_tls_options:
-  #   ca_file: "/path/to/the/root-ca.crt"
-
   # By default, the APIv3 allows authentication through basic auth.
-  # Uncomment the following line to restrict APIv3 access to session.
+  # Uncomment the following line to prevent APIv3 access using Basic auth.
   # apiv3_enable_basic_auth: false
 
   # You can configure where users should be sent after the login
@@ -408,7 +391,7 @@ default:
   # after_first_login_redirect_url: '/projects/demo'
 
   # For filtering work packages based on their attachments (name, content) it's worth to specify the main language that
-  # is used in those documents. This improves the full text search features of PostgreSQL. Currently PostgreSQL shipps
+  # is used in those documents. This improves the full text search features of PostgreSQL. Currently PostgreSQL ships
   # with the following languages pre-installed:
   #
   # danish

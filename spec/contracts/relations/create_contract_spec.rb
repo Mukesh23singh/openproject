@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,58 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
+require_relative "shared_contract_examples"
 
-describe Relations::CreateContract do
-  let(:from) { FactoryBot.build_stubbed :work_package }
-  let(:to) { FactoryBot.build_stubbed :work_package }
-  let(:user) { FactoryBot.build_stubbed :admin }
-
-  let(:relation) do
-    Relation.new from: from, to: to, relation_type: "follows", delay: 42
-  end
-
-  subject(:contract) { described_class.new relation, user }
-
-  before do
-    allow(WorkPackage)
-      .to receive_message_chain(:visible, :exists?)
-      .and_return(true)
-  end
-
-  describe 'to' do
-    context 'not visible' do
-      before do
-        allow(WorkPackage)
-          .to receive_message_chain(:visible, :exists?)
-          .with(to.id)
-          .and_return(false)
-      end
-
-      it 'is invalid' do
-        is_expected.not_to be_valid
-      end
-    end
-  end
-
-  describe 'from' do
-    context 'not visible' do
-      before do
-        allow(WorkPackage)
-          .to receive_message_chain(:visible, :exists?)
-          .with(from.id)
-          .and_return(false)
-      end
-
-      it 'is invalid' do
-        is_expected.not_to be_valid
-      end
+RSpec.describe Relations::CreateContract do
+  it_behaves_like "relation contract" do
+    let(:relation) do
+      Relation.new from: relation_from,
+                   to: relation_to,
+                   relation_type:,
+                   lag: relation_lag
     end
   end
 end

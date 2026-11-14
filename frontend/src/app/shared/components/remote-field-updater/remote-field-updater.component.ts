@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,67 +20,91 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, ElementRef, OnInit } from '@angular/core';
-import { KeyCodes } from 'core-app/shared/helpers/keyCodes.enum';
+import { debounce } from 'lodash-es';
+import { ChangeDetectionStrategy, Component, ElementRef, OnDestroy, OnInit, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 
 export const remoteFieldUpdaterSelector = 'remote-field-updater';
 
 @Component({
   selector: remoteFieldUpdaterSelector,
+  changeDetection: ChangeDetectionStrategy.OnPush,
   template: '',
+  standalone: false,
 })
-export class RemoteFieldUpdaterComponent implements OnInit {
-  constructor(private elementRef:ElementRef,
-    private http:HttpClient) {
-  }
+export class RemoteFieldUpdaterComponent implements OnInit, OnDestroy {
+  private elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  private http = inject(HttpClient);
+
 
   private url:string;
 
-  private htmlMode:boolean;
+  private form:HTMLFormElement;
 
-  private inputs:JQuery;
+  private debouncedUpdaterBound:EventListener;
 
-  private target:JQuery;
+  private spentOnTextField:HTMLInputElement | null = null;
+  private costTypeSelect:HTMLInputElement | null = null;
+  private unitsTextField:HTMLInputElement | null = null;
 
   ngOnInit():void {
-    const $element = jQuery(this.elementRef.nativeElement);
-    const $form = $element.parent();
-    this.inputs = $form.find('.remote-field--input');
-    this.target = $form.find('.remote-field--target');
+    const element = this.elementRef.nativeElement;
+    this.form = element.closest('form')!;
+    this.costTypeSelect = this.form.querySelector('#cost_entry_cost_type_id');
+    this.unitsTextField = this.form.querySelector('#cost_entry_units');
 
-    this.url = $element.data('url');
-    this.htmlMode = $element.data('mode') === 'html';
+    this.url = element.dataset.url!;
 
-    this.inputs.on('keyup change', _.debounce((event:JQuery.TriggeredEvent) => {
-      // This prevents an update of the result list when
-      // tabbing to the result list (9),
-      // pressing enter (13)
-      // tabbing back with shift (16) and
-      // special cases where the tab code is not correctly recognized (undefined).
-      // Thus the focus is kept on the first element of the result list.
-      const keyCodes = [KeyCodes.TAB, KeyCodes.ENTER, KeyCodes.SHIFT];
-      if (event.type === 'change' || (event.which && keyCodes.indexOf(event.which) === -1)) {
-        this.updater();
-      }
-    }, 500));
+    this.debouncedUpdaterBound = debounce(this.updater.bind(this), 500);
+
+    this.addListeners();
   }
 
-  private request(params:any) {
-    const headers:any = {};
+  ngOnDestroy():void {
+    this.removeListeners();
+  }
 
-    // In HTML mode, expect html response
-    if (this.htmlMode) {
-      headers.Accept = 'text/html';
-    } else {
-      headers.Accept = 'application/json';
+  private addListeners() {
+    this.addEventListenerWhenSpentOnFieldIsAdded('input', this.debouncedUpdaterBound);
+    this.costTypeSelect?.addEventListener('change', this.debouncedUpdaterBound);
+    this.unitsTextField?.addEventListener('input', this.debouncedUpdaterBound);
+  }
+
+  private removeListeners() {
+    if (this.debouncedUpdaterBound && 'cancel' in this.debouncedUpdaterBound) {
+      (this.debouncedUpdaterBound as { cancel:() => void }).cancel();
     }
+    this.spentOnTextField?.removeEventListener('input', this.debouncedUpdaterBound);
+    this.costTypeSelect?.removeEventListener('change', this.debouncedUpdaterBound);
+    this.unitsTextField?.removeEventListener('input', this.debouncedUpdaterBound);
+  }
+
+  private addEventListenerWhenSpentOnFieldIsAdded(type:string, eventListener:EventListener) {
+    // Use MutationObserver to watch for the addition of the spent_on input
+    // field. This input field is a date picker.
+    const observer = new MutationObserver((mutations) => {
+      mutations
+        .filter((mutation) => mutation.type === 'childList')
+        .forEach(() => {
+          if (this.spentOnTextField === null && this.form.querySelector('#cost_entry_spent_on')) {
+            this.spentOnTextField = this.form.querySelector('#cost_entry_spent_on')!;
+            this.spentOnTextField.addEventListener(type, eventListener);
+            observer.disconnect(); // Stop observing once the element is found and listener is added
+          }
+        });
+    });
+    observer.observe(this.form, { childList: true, subtree: true });
+  }
+
+  private request(params:Record<string, string>) {
+    const headers:Record<string, string> = {};
+
+    headers.Accept = 'application/json';
 
     return this.http
       .get(
@@ -88,37 +112,35 @@ export class RemoteFieldUpdaterComponent implements OnInit {
         {
           params,
           headers,
-          responseType: (this.htmlMode ? 'text' : 'json') as any,
+          responseType: 'json',
           withCredentials: true,
         },
       );
   }
 
   private updater() {
-    const params:any = {};
+    const params:Record<string, string> = {};
 
     // Gather request keys
-    this.inputs.each((i, el:HTMLInputElement) => {
-      params[el.dataset.remoteFieldKey!] = el.value;
-    });
+    this
+      .form
+      .querySelectorAll('.remote-field--input')
+      .forEach((el:HTMLInputElement) => {
+        params[el.dataset.remoteFieldKey!] = el.value;
+      });
 
     this
       .request(params)
-      .subscribe((response:any) => {
-        if (this.htmlMode) {
-        // Replace the given target
-          this.target.html(response);
-        } else {
-          _.each(response, (val:string, selector:string) => {
-            const element = document.getElementById(selector) as HTMLElement|HTMLInputElement;
+      .subscribe((response:object) => {
+        Object.entries(response as Record<string, string>).forEach(([selector, val]) => {
+          const element = document.getElementById(selector) as HTMLElement|HTMLInputElement;
 
-            if (element instanceof HTMLInputElement) {
-              element.value = val;
-            } else if (element) {
-              element.textContent = val;
-            }
-          });
-        }
+          if (element instanceof HTMLInputElement) {
+            element.value = val;
+          } else if (element) {
+            element.textContent = val;
+          }
+        });
       });
   }
 }

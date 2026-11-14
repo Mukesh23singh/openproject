@@ -2,51 +2,61 @@
 sidebar_navigation:
   title: Work packages views
   priority: 999
-description: What are the different work packages views?
-robots: index, follow
-keywords: work packages views
+description: Different ways of organizing and viewing work packages, including table, split screen, board and Gantt.
+keywords: work packages views, work package, work package table, split screen, board, gantt
 ---
 
 # Work packages views
 
-Work packages can be displayed in different views. They include the same work package(s) but just have a different form to display the work packages.
+In OpenProject, a _view_ is a list of work packages. Each view is based on a set of filter criteria and displays all work packages that meet those criteria. Every project in OpenProject automatically has these default views in the work packages module:
 
-* List view
-* Split screen view
-* Details view
-* Gantt view
-* Board view
+![A list of the default work package views](openproject-user-guide-work-package-views.png)
 
-## Work package list view
+- **All open**: All open work packages (that is, with statuses that are not defined as _closed_), sorted in ascending order of ID (lowest on top)
+- **Latest activity**: All work packages, open and closed, in descending order of last updated date (latest on top)
+- **Recently created**: All open work packages in descending order of creation date (latest on top)
+- **Overdue**: All open work packages with finish dates that are in the past in descending order of how long each is overdue (closest to current date on top)
+- **Summary**: Table overview of the number of work packages grouped by type, status, priority, assignee, accountable, author, version, category and subproject
+- **Created by me**: All work packages created by you (the current user) in descending order of last updated date (latest on top)
+- **Assigned to me**: All work packages that are assigned to you in descending order of last updated date (latest on top)
+- **Shared with users**: All work packages that have been [shared with users or groups](../share-work-packages/) (including the current user and/or external users or groups)
 
-The list view shows all work packages in a list with selected attributes in the columns.
+You can also create, save and modify your own work package views, which will be displayed under **Private** views. If you mark the visibility settings to **Public** or **Favorite**, they will be displayed under the respective views sections.  Read about [work package table configuration](../work-package-table-configuration/#save-work-package-views) to learn how.
 
-![1566306576394](1566306576394.png)
+## View modes
 
-Find out how to make changes to the work package list view, e.g. change the titles in the header, filter, group or add dependencies.
+The work packages in any view can be displayed a number of different ways. Each of these view modes displays the same set of work packages but display them differently:
 
-## Work package split screen view
+- [Table view](#table-view)
+- [Split screen view](#split-screen-view)
+- [Details view](#full-screen-view)
+- [Gantt view](../../gantt-chart)
+- [Board view](../../../getting-started/boards-introduction/)
 
-If you are in the work package list, click on the blue info icon at the right end of a work package row to open the split screen view.
+### Table view
 
-Also, the split screen view can be activated or de-activated with the **info button** at the top right of the work packages list, next to the Filter.
+The table view shows all work packages in a table with selected attributes in the columns.
 
-![split-screen-icon](split-screen-icon.png)
+![Work packages table view in OpenProject](openproject-user-guide-work-package-table-view.png)
 
-Once the split screen is open, you can easily navigate through the work package list by clicking in a row of a work package and display the details in the split screen on the right.
+Find out how to make changes to the work package table view, e.g. change the titles in the header, filter, group or add dependencies in the [work package table configuration guide](../work-package-table-configuration/).
 
-![split-screen-view](1566307254418.png)
+### Split screen view
 
-## Work package full screen view
+In the work package table, click the **info icon** at the right end of a work package row to open the split screen view. You can also activate or deactivate the split screen view using the **info button** in the top right corner of the table, next to the Filter button.
 
-To display  a work package with all its details in full screen mode, double click on a row within the work package list.
+![Open a work package split screen view in OpenProject](openproject-user-guide-work-packages-split-screen-icon.png)
+
+Once the split screen is open, you can easily navigate through the work package table by clicking in a row of a work package and display the details in the split screen on the right.
+
+![split-screen-view](openproject-user-guide-work-packages-split-screen-view.png)
+
+### Full screen view
+
+To display a work package with all its details in full screen mode, double click on a row within the work package table.
 
 Also, you can use the full screen icon in the work package split screen view in the header at the right (next to Watcher).
 
-![full-screen-icon](full-screen-icon-1566373903021.png)
+![full-screen-icon](openproject-user-guide-work-packages-full-screen-icon.png)
 
-Then, the work package with all its details will be displayed. 
-
-The arrow next to the subject will bring you back to the list view. 
-
-![back-to-list-view](image-20201217125332403.png)
+Then, the work package with all its details will be displayed. To return to the table view use the return arrow of your browser. 

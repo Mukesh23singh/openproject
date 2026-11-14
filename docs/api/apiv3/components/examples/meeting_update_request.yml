@@ -1,0 +1,8 @@
+# Example: Meeting update request
+---
+description: Example request body to update the title and location of a meeting.
+value:
+  title: "Updated Standup"
+  location: "Room B"
+  agendaSortingMode: "vote_based"
+  lockVersion: 13

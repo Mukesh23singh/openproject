@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,26 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe UserPreference do
+RSpec.describe UserPreference do
   subject(:preference) do
-    FactoryBot.build(:user_preference,
-                     user: user,
-                     settings: settings)
+    build(:user_preference,
+          user:,
+          settings: preferences)
   end
 
-  let(:settings) { {} }
+  let(:preferences) { {} }
 
-  let(:user) { FactoryBot.build_stubbed(:user) }
+  let(:user) { build_stubbed(:user) }
 
-  shared_examples 'accepts real and false booleans' do |setter, getter|
-    it 'accepts true boolean' do
+  shared_examples "accepts real and false booleans" do |setter, getter|
+    it "accepts true boolean" do
       subject.send(setter, true)
       expect(subject.send(getter)).to be true
 
@@ -48,7 +49,7 @@ describe UserPreference do
       expect(subject.send(getter)).to be false
     end
 
-    it 'accepts false booleans' do
+    it "accepts false booleans" do
       %w(true 1).each do |str|
         subject.send(setter, str)
         expect(subject.send(getter)).to be true
@@ -61,95 +62,87 @@ describe UserPreference do
     end
   end
 
-  describe '#respond_to?' do
-    context 'for created_at (key not in the schema)' do
-      it 'is does not respond' do
-        expect(preference)
-          .not_to respond_to(:created_at)
-      end
-    end
-  end
-
-  describe 'an unsupported method' do
-    context 'for created_at (key not in the schema)' do
-      it 'raises an error' do
-        expect { preference.created_at }
-          .to raise_error NoMethodError
-      end
-    end
-  end
-
-  describe 'sort order' do
-    it_behaves_like 'accepts real and false booleans',
+  describe "sort order" do
+    it_behaves_like "accepts real and false booleans",
                     :comments_in_reverse_order=,
                     :comments_in_reverse_order?
 
-    it 'can be changed by string' do
-      subject.comments_sorting = 'desc'
+    it "can be changed by string" do
+      subject.comments_sorting = "desc"
       expect(subject.comments_in_reverse_order?).to be true
 
-      subject.comments_sorting = 'asc'
+      subject.comments_sorting = "asc"
       expect(subject.comments_in_reverse_order?).to be false
     end
   end
 
-  describe 'warn on unsaved changes' do
-    it_behaves_like 'accepts real and false booleans',
+  describe "warn on unsaved changes" do
+    it_behaves_like "accepts real and false booleans",
                     :warn_on_leaving_unsaved=,
                     :warn_on_leaving_unsaved?
   end
 
-  describe 'auto hide popups' do
-    it_behaves_like 'accepts real and false booleans',
+  describe "require double click for inline edit" do
+    it_behaves_like "accepts real and false booleans",
+                    :require_double_click_for_inline_edit=,
+                    :require_double_click_for_inline_edit?
+
+    it "is disabled without a value being stored" do
+      expect(subject.require_double_click_for_inline_edit).to be false
+    end
+  end
+
+  describe "auto hide popups" do
+    it_behaves_like "accepts real and false booleans",
                     :auto_hide_popups=,
                     :auto_hide_popups?
 
-    describe 'without a value being stored and with default setting auto_hide_popups to false',
+    describe "without a value being stored and with default setting auto_hide_popups to false",
              with_settings: { default_auto_hide_popups: false } do
-      it 'disables auto hide popups' do
+      it "disables auto hide popups" do
         expect(subject.auto_hide_popups).to be_falsey
       end
     end
 
-    context 'without a value being stored and with default setting auto_hide_popups to true',
+    context "without a value being stored and with default setting auto_hide_popups to true",
             with_settings: { default_auto_hide_popups: true } do
-      it 'disables auto hide popups' do
+      it "disables auto hide popups" do
         expect(subject.auto_hide_popups).to be_truthy
       end
     end
   end
 
-  describe 'hide_mail' do
-    it_behaves_like 'accepts real and false booleans',
-                    :hide_mail=,
-                    :hide_mail?
+  describe "#diff_type" do
+    it "can be set and written" do
+      expect(subject.diff_type)
+        .to eql "inline"
 
-    context 'when a new pref instance' do
+      subject.diff_type = "sbs"
+
+      expect(subject.diff_type)
+        .to eql "sbs"
+    end
+
+    context "with a new pref instance" do
       subject { described_class.new }
 
-      it 'defaults to true' do
-        expect(subject.settings[:hide_mail]).to be_nil
-        expect(subject.hide_mail).to eq true
-        expect(subject.hide_mail?).to eq true
-
-        subject.hide_mail = false
-        expect(subject.settings[:hide_mail]).to eq false
-        expect(subject.hide_mail).to eq false
-        expect(subject.hide_mail?).to eq false
+      it "defaults to `inline`" do
+        expect(subject.diff_type)
+          .to eql "inline"
       end
     end
   end
 
-  describe '#daily_reminders' do
-    context 'without reminders being stored' do
-      it 'uses the defaults' do
+  describe "#daily_reminders" do
+    context "without reminders being stored" do
+      it "uses the defaults" do
         expect(subject.daily_reminders)
           .to eql("enabled" => true, "times" => ["08:00:00+00:00"])
       end
     end
 
-    context 'with reminders being stored' do
-      let(:settings) do
+    context "with reminders being stored" do
+      let(:preferences) do
         {
           "daily_reminders" => {
             "enabled" => false,
@@ -158,17 +151,102 @@ describe UserPreference do
         }
       end
 
-      it 'uses the defaults' do
+      it "returns the stored value" do
         expect(subject.daily_reminders)
-          .to eql(settings["daily_reminders"])
+          .to eql(preferences["daily_reminders"])
       end
     end
   end
 
-  describe '[]=' do
-    let(:user) { FactoryBot.create(:user) }
+  describe "#reminders_paused_on?" do
+    let(:date) { Date.new(2026, 10, 15) }
 
-    it 'will save the values on sending "save"' do
+    it "is false when pausing is disabled" do
+      preference.pause_reminders = { enabled: false, first_day: "2026-10-10", last_day: "2026-10-20" }
+
+      expect(preference.reminders_paused_on?(date)).to be false
+    end
+
+    it "is true when pausing is enabled without dates" do
+      preference.pause_reminders = { enabled: true }
+
+      expect(preference.reminders_paused_on?(date)).to be true
+    end
+
+    context "with pausing enabled for a date range" do
+      before { preference.pause_reminders = { enabled: true, first_day: "2026-10-10", last_day: "2026-10-20" } }
+
+      it "is true for a date inside the range" do
+        expect(preference.reminders_paused_on?(date)).to be true
+      end
+
+      it "is false for a date before the range" do
+        expect(preference.reminders_paused_on?(Date.new(2026, 10, 9))).to be false
+      end
+
+      it "is false for a date after the range" do
+        expect(preference.reminders_paused_on?(Date.new(2026, 10, 21))).to be false
+      end
+
+      it "is true on the first and last day" do
+        expect(preference.reminders_paused_on?(Date.new(2026, 10, 10))).to be true
+        expect(preference.reminders_paused_on?(Date.new(2026, 10, 20))).to be true
+      end
+
+      it "accepts a Time" do
+        expect(preference.reminders_paused_on?(Time.zone.local(2026, 10, 20, 23, 59))).to be true
+        expect(preference.reminders_paused_on?(Time.zone.local(2026, 10, 21, 0, 1))).to be false
+      end
+    end
+
+    context "with a malformed date" do
+      before { preference.pause_reminders = { enabled: true, first_day: "garbage", last_day: "2026-10-20" } }
+
+      it "is not paused" do
+        expect(preference.reminders_paused_on?(date)).to be false
+      end
+    end
+  end
+
+  describe "#workdays" do
+    context "without work days being stored" do
+      it "uses the defaults" do
+        expect(subject.workdays)
+          .to eq([1, 2, 3, 4, 5])
+      end
+    end
+
+    context "with work days being stored" do
+      let(:preferences) do
+        {
+          "workdays" => [1, 2, 4, 5]
+        }
+      end
+
+      it "returns the stored value" do
+        expect(subject.workdays)
+          .to eql([1, 2, 4, 5])
+      end
+    end
+
+    context "with work days being stored and empty" do
+      let(:preferences) do
+        {
+          "workdays" => []
+        }
+      end
+
+      it "return empty array" do
+        expect(subject.workdays)
+          .to eql([])
+      end
+    end
+  end
+
+  describe "[]=" do
+    let(:user) { create(:user) }
+
+    it 'saves the values on sending "save"' do
       subject.save
 
       value_warn_on_leaving_unsaved = !subject[:warn_on_leaving_unsaved]
@@ -183,5 +261,238 @@ describe UserPreference do
       expect(subject[:warn_on_leaving_unsaved]).to eql(value_warn_on_leaving_unsaved)
       expect(subject[:auto_hide_popups]).to eql(value_auto_hide_popups)
     end
+  end
+
+  describe "#time_zone" do
+    context "with a time zone set and a default configured", with_settings: { user_default_timezone: "America/Los_Angeles" } do
+      let(:preferences) { { "time_zone" => "Africa/Algiers" } }
+
+      it "returns the time zone set" do
+        expect(preference.time_zone).to eql "Africa/Algiers"
+      end
+    end
+
+    context "with no time zone configured but a default", with_settings: { user_default_timezone: "America/Los_Angeles" } do
+      it "returns the default time zone" do
+        expect(preference.time_zone).to eql "America/Los_Angeles"
+      end
+    end
+
+    context "with neither a time zone configured nor a default one", with_settings: { user_default_timezone: "" } do
+      it "returns UTC" do
+        expect(preference.time_zone).to eql "Etc/UTC"
+      end
+    end
+  end
+
+  describe "#time_zone?" do
+    context "with a time zone set and a default configured", with_settings: { user_default_timezone: "America/Los_Angeles" } do
+      let(:preferences) { { "time_zone" => "Africa/Algiers" } }
+
+      it "is true" do
+        expect(preference).to be_time_zone
+      end
+    end
+
+    context "with no time zone configured but a default", with_settings: { user_default_timezone: "America/Los_Angeles" } do
+      it "is false" do
+        expect(preference).not_to be_time_zone
+      end
+    end
+
+    context "with neither a time zone configured nor a default one", with_settings: { user_default_timezone: "" } do
+      it "is false" do
+        expect(preference).not_to be_time_zone
+      end
+    end
+  end
+
+  describe "#date_format" do
+    context "with setting set", with_settings: { date_format: "%Y-%m-%d" } do
+      context "with preference set" do
+        let(:preferences) { { "date_format" => "%Y.%m.%d" } }
+
+        it "returns the preference value" do
+          expect(preference.date_format).to eql "%Y.%m.%d"
+        end
+      end
+
+      context "without preference set" do
+        it "returns nil, ignoring the setting" do
+          expect(preference.date_format).to be_nil
+        end
+      end
+    end
+
+    context "without default configured" do
+      context "with preference set" do
+        let(:preferences) { { "date_format" => "%Y.%m.%d" } }
+
+        it "returns the preference value" do
+          expect(preference.date_format).to eql "%Y.%m.%d"
+        end
+      end
+
+      context "without preference set" do
+        it "returns empty value" do
+          expect(preference.date_format).to be_nil
+        end
+      end
+    end
+  end
+
+  describe "#time_format" do
+    context "with setting", with_settings: { time_format: "%Hh%M" } do
+      context "with preference set" do
+        let(:preferences) { { "time_format" => "%H:%M" } }
+
+        it "returns the preference value" do
+          expect(preference.time_format).to eql "%H:%M"
+        end
+      end
+
+      context "without preference set" do
+        it "returns nil, ignoring the setting" do
+          expect(preference.time_format).to be_nil
+        end
+      end
+    end
+
+    context "without setting" do
+      context "with preference set" do
+        let(:preferences) { { "time_format" => "%H:%M" } }
+
+        it "returns the preference value" do
+          expect(preference.time_format).to eql "%H:%M"
+        end
+      end
+
+      context "without preference set" do
+        it "returns empty value" do
+          expect(preference.time_format).to be_nil
+        end
+      end
+    end
+  end
+
+  describe "#theme" do
+    context "when none is specified" do
+      it "defaults to light" do
+        expect(subject.theme).to eq("light")
+        expect(subject).to be_a_light_theme
+        expect(subject).to be_a_light_color_mode
+      end
+    end
+
+    context "with a dark theme specified" do
+      let(:preferences) { { "theme" => "dark" } }
+
+      it "returns the dark theme" do
+        expect(subject.theme).to eq("dark")
+        expect(subject).to be_a_dark_theme
+        expect(subject).to be_a_dark_color_mode
+      end
+    end
+
+    context "with a light theme and contrast enabled" do
+      let(:preferences) { { "theme" => "light", "increase_theme_contrast" => true } }
+
+      it "returns light theme with high contrast detection" do
+        expect(subject.theme).to eq("light")
+        expect(subject).to be_a_light_theme
+        expect(subject).to be_a_light_high_contrast_theme
+        expect(subject).to be_a_light_color_mode
+        expect(subject.increase_theme_contrast?).to be true
+      end
+    end
+
+    context "with a dark theme and contrast enabled" do
+      let(:preferences) { { "theme" => "dark", "increase_theme_contrast" => true } }
+
+      it "returns dark theme with high contrast detection" do
+        expect(subject.theme).to eq("dark")
+        expect(subject).to be_a_dark_theme
+        expect(subject).to be_a_dark_high_contrast_theme
+        expect(subject).to be_a_dark_color_mode
+        expect(subject.increase_theme_contrast?).to be true
+      end
+    end
+
+    context "with light theme and contrast disabled" do
+      let(:preferences) { { "theme" => "light", "increase_theme_contrast" => false } }
+
+      it "returns light theme without high contrast" do
+        expect(subject.theme).to eq("light")
+        expect(subject).to be_a_light_theme
+        expect(subject).not_to be_a_light_high_contrast_theme
+        expect(subject).to be_a_light_color_mode
+        expect(subject.increase_theme_contrast?).to be false
+      end
+    end
+
+    context "with dark theme and contrast disabled" do
+      let(:preferences) { { "theme" => "dark", "increase_theme_contrast" => false } }
+
+      it "returns dark theme without high contrast" do
+        expect(subject.theme).to eq("dark")
+        expect(subject).to be_a_dark_theme
+        expect(subject).not_to be_a_dark_high_contrast_theme
+        expect(subject).to be_a_dark_color_mode
+        expect(subject.increase_theme_contrast?).to be false
+      end
+    end
+
+    context "with system theme specified" do
+      let(:preferences) { { "theme" => "sync_with_os" } }
+
+      it "returns the system theme" do
+        expect(subject.theme).to eq("sync_with_os")
+        expect(subject).to be_a_sync_with_os_theme
+      end
+    end
+
+    context "with unset contrast settings" do
+      let(:preferences) { { "theme" => "light" } }
+
+      it "defaults contrast settings to false" do
+        expect(subject).not_to be_increase_theme_contrast
+        expect(subject).not_to be_force_light_theme_contrast
+        expect(subject).not_to be_force_dark_theme_contrast
+        expect(subject).not_to be_a_light_high_contrast_theme
+        expect(subject).not_to be_a_dark_high_contrast_theme
+      end
+    end
+  end
+
+  describe "#avatar_color=" do
+    it "normalizes a long hex form to uppercase" do
+      subject.avatar_color = "#aabbcc"
+      expect(subject.avatar_color).to eql "#AABBCC"
+    end
+
+    it "normalizes a short hex form to its long uppercase form" do
+      subject.avatar_color = "#abc"
+      expect(subject.avatar_color).to eql "#AABBCC"
+    end
+
+    it "clears the value when set to blank" do
+      subject.avatar_color = "#aabbcc"
+      subject.avatar_color = ""
+      expect(subject.avatar_color).to be_nil
+    end
+  end
+
+  describe "contrast settings" do
+    it_behaves_like "accepts real and false booleans",
+                    :increase_theme_contrast=,
+                    :increase_theme_contrast?
+
+    it_behaves_like "accepts real and false booleans",
+                    :force_light_theme_contrast=,
+                    :force_light_theme_contrast?
+
+    it_behaves_like "accepts real and false booleans",
+                    :force_dark_theme_contrast=,
+                    :force_dark_theme_contrast?
   end
 end

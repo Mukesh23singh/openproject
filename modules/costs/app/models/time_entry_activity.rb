@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,8 +28,8 @@
 class TimeEntryActivity < Enumeration
   include ::Scopes::Scoped
 
-  has_many :time_entries, foreign_key: 'activity_id'
-  has_many :time_entry_activities_projects, foreign_key: 'activity_id', dependent: :delete_all
+  has_many :time_entries, foreign_key: "activity_id"
+  has_many :time_entry_activities_projects, foreign_key: "activity_id", dependent: :delete_all
 
   validates :parent, absence: true
 
@@ -59,11 +56,15 @@ class TimeEntryActivity < Enumeration
              pluck_project_time_entry_activity_active_state(project)
            end
 
-    !teap.nil? && teap || teap.nil? && active?
+    (!teap.nil? && teap) || (teap.nil? && active?)
   end
 
   def activated_projects
     Project.activated_time_activity(self)
+  end
+
+  def self.can_have_default_value?
+    false
   end
 
   private

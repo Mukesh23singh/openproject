@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_dependency 'open_project/ui/extensible_tabs'
-require_dependency 'config/constants/api_patch_registry'
-require_dependency 'config/constants/open_project/activity'
+require "open_project/ui/extensible_tabs"
+require_relative "../../../config/constants/api_patch_registry"
+require_relative "../../../config/constants/open_project/activity"
+require_relative "../../../config/constants/views"
+require_relative "../../../config/constants/settings/definition"
 
 module OpenProject::Plugins
   module ActsAsOpEngine
-    def self.included(base)
+    def self.included(base) # rubocop:disable Metrics/AbcSize
       base.send :include, InstanceMethods
 
       base.class_eval do
@@ -41,10 +44,10 @@ module OpenProject::Plugins
         config.before_configuration do |app|
           # This is required for the routes to be loaded first
           # as the routes should be prepended so they take precedence over the core.
-          app.config.paths['config/routes.rb'].unshift File.join(config.root, 'config', 'routes.rb')
+          app.config.paths["config/routes.rb"].unshift File.join(config.root, "config", "routes.rb")
         end
 
-        initializer "#{engine_name}.remove_duplicate_routes", after: 'add_routing_paths' do |app|
+        initializer "#{engine_name}.remove_duplicate_routes", after: "add_routing_paths" do |app|
           # removes duplicate entry from app.routes_reloader
           # As we prepend the plugin's routes to the load_path up front and rails
           # adds all engines' config/routes.rb later, we have double loaded the routes
@@ -57,24 +60,18 @@ module OpenProject::Plugins
         end
 
         initializer "#{engine_name}.i18n_load_paths" do |app|
-          app.config.i18n.load_path += Dir[config.root.join('config', 'locales', 'crowdin', '*.{rb,yml}').to_s]
-        end
-
-        initializer "#{engine_name}.register_cell_view_paths" do |_app|
-          pathname = config.root.join("app/cells/views")
-
-          ::RailsCell.view_paths << pathname.to_path if pathname.exist?
+          app.config.i18n.load_path += Dir[config.root.join("config", "locales", "crowdin", "*.{rb,yml}").to_s]
         end
 
         # adds our factories to factory girl's load path
-        initializer "#{engine_name}.register_factories", after: 'factory_bot.set_factory_paths' do |_app|
-          FactoryBot.definition_file_paths << File.expand_path(root.to_s + '/spec/factories') if defined?(FactoryBot)
+        initializer "#{engine_name}.register_factories", after: "factory_bot.set_factory_paths" do |_app|
+          FactoryBot.definition_file_paths << File.expand_path("#{root}/spec/factories") if defined?(FactoryBot)
         end
 
         initializer "#{engine_name}.append_migrations" do |app|
           unless app.root.to_s.match root.to_s
-            config.paths['db/migrate'].expanded.each do |expanded_path|
-              app.config.paths['db/migrate'] << expanded_path
+            config.paths["db/migrate"].expanded.each do |expanded_path|
+              app.config.paths["db/migrate"] << expanded_path
             end
 
             ##
@@ -82,7 +79,7 @@ module OpenProject::Plugins
             # in order to re-enable chained rake tasks
             # finding all migrations.
             # http://blog.pivotal.io/pivotal-labs/labs/leave-your-migrations-in-your-rails-engines
-            paths = app.config.paths['db/migrate'].to_a
+            paths = app.config.paths["db/migrate"].to_a
             ActiveRecord::Tasks::DatabaseTasks.migrations_paths = paths
             ActiveRecord::Migrator.migrations_paths = paths
           end
@@ -116,19 +113,31 @@ module OpenProject::Plugins
         end
       end
 
-      def patch_with_namespace(*args)
+      def patch_with_namespace(*namespace, class_name)
         plugin_module = self.class.to_s.deconstantize
         self.class.config.to_prepare do
-          klass_name = args.last
+          qualified_class_name = (namespace + [class_name]).join("::")
           patch = begin
-            "#{plugin_module}::Patches::#{args[0..-2].join('::')}::#{klass_name}Patch".constantize
+            "#{plugin_module}::Patches::#{qualified_class_name}Patch".constantize
           rescue NameError
-            "#{plugin_module}::Patches::#{klass_name}Patch".constantize
+            "#{plugin_module}::Patches::#{class_name}Patch".constantize
           end
-          qualified_class_name = args.map(&:to_s).join('::')
+
           klass = qualified_class_name.to_s.constantize
           klass.send(:include, patch) unless klass.included_modules.include?(patch)
         end
+      end
+
+      def include_module(module_name, into:)
+        add_module_to_classes(:include, module_name, into)
+      end
+
+      def prepend_module(module_name, into:)
+        add_module_to_classes(:prepend, module_name, into)
+      end
+
+      def prepend_class_methods(module_name, into:)
+        add_module_to_classes(:prepend, module_name, into, singleton: true)
       end
 
       # Define assets provided by the plugin
@@ -143,7 +152,7 @@ module OpenProject::Plugins
       def override_core_views!
         config.after_initialize do
           paths = ActionController::Base.view_paths.map(&:to_s)
-          my_view_path = config.root.to_s + '/app/views'
+          my_view_path = "#{config.root}/app/views"
 
           # Move item to the front
           paths.delete(my_view_path)
@@ -178,14 +187,13 @@ module OpenProject::Plugins
       #                define the minimal version of OpenProject the plugin is compatible with
       #                Another common option is :author_url.
       # block:         Pass a block to the plugin (for defining permissions, menu items and the like)
-      def register(gem_name, options, &block)
+      def register(gem_name, options, &block) # rubocop:disable Metrics/AbcSize
         self.class.initializer "#{engine_name}.register_plugin" do
-          spec = Bundler.load.specs[gem_name][0]
+          spec = Gem.loaded_specs[gem_name]
 
           p = Redmine::Plugin.register engine_name.to_sym do
-            name spec.summary
+            gem_name spec.name
             author spec.authors.is_a?(Array) ? spec.authors[0] : spec.authors
-            description spec.description
             version spec.version
             url spec.homepage
 
@@ -195,56 +203,62 @@ module OpenProject::Plugins
           end
           p.instance_eval(&block) if p && block
         end
-
-        # Workaround to ensure settings are available after unloading in development mode
-        plugin_name = engine_name
-        if options.include? :settings
-          self.class.class_eval do
-            config.to_prepare do
-              Setting.create_setting("plugin_#{plugin_name}",
-                                     'default' => options[:settings][:default], 'serialized' => true)
-              Setting.create_setting_accessors("plugin_#{plugin_name}")
-            end
-          end
-        end
       end
 
       ##
       # Add a tab entry to an extensible tab
       def add_tab_entry(key, name:, partial:, path:, label:, only_if: nil)
-        ::OpenProject::Ui::ExtensibleTabs.add(key, name: name, partial: partial, path: path, label: label, only_if: only_if)
+        ::OpenProject::Ui::ExtensibleTabs.add(key, name:, partial:, path:, label:, only_if:)
       end
 
-      def add_api_path(path_name, &block)
+      def add_view(type, contract_strategy: nil)
+        Constants::Views.add(type, contract_strategy:)
+      end
+
+      def add_api_path(path_name, &)
         config.to_prepare do
           ::API::V3::Utilities::PathHelper::ApiV3Path.class_eval do
             singleton_class.instance_eval do
-              define_method path_name, &block
+              define_method(path_name, &)
             end
           end
         end
       end
 
-      def add_api_endpoint(base_endpoint, path = nil, &block)
+      def add_api_resource_paths(name, **)
+        config.to_prepare do
+          ::API::V3::Utilities::PathHelper::ApiV3Path.class_eval do
+            resources(name, **)
+          end
+        end
+      end
+
+      def add_api_endpoint(base_endpoint, path = nil, &)
         # we are expecting the base_endpoint as string for two reasons:
         # 1. it does not seem possible to pass it as constant (auto loader not ready yet)
         # 2. we can't constantize it here, because that would evaluate
         #    the API before it can be patched
-        ::Constants::APIPatchRegistry.add_patch base_endpoint, path, &block
+        ::Constants::APIPatchRegistry.add_patch(base_endpoint, path, &)
       end
 
-      def extend_api_response(*args, &block)
+      def extend_api_response(*args, &)
         config.to_prepare do
-          representer_namespace = args.map { |arg| arg.to_s.camelize }.join('::')
+          representer_namespace = args.map { |arg| arg.to_s.camelize }.join("::")
           representer_class     = "::API::#{representer_namespace}Representer".constantize
-          representer_class.instance_eval(&block)
+
+          # Representable copies definitions into a subclass only when the subclass is created,
+          # so subclasses that are already loaded need the extension applied explicitly.
+          [representer_class, *representer_class.descendants].each do |klass|
+            klass.instance_eval(&)
+          end
         end
       end
 
       def add_api_attribute(on:,
-                            ar_name:, writable_for: %i[create update],
-                            writeable: true,
-                            &block)
+                            ar_name:,
+                            writable_for: %i[create update],
+                            writable: true,
+                            &)
         config.to_prepare do
           model_name = on.to_s.camelize
           namespace = model_name.pluralize
@@ -252,7 +266,7 @@ module OpenProject::Plugins
             # attribute is generally writable
             # overrides might be defined in the more specific contract implementations
             contract_class = "::#{namespace}::#{action.to_s.camelize}Contract".constantize
-            contract_class.attribute ar_name, { writeable: writeable }, &block
+            contract_class.attribute(ar_name, { writable: }, &)
           end
         end
       end
@@ -269,20 +283,20 @@ module OpenProject::Plugins
       #                defined. If no cache key was defined before, the block's result makes up
       #                the whole cache key.
       def add_api_representer_cache_key(*path,
-                                        &keys)
+                                        &)
         mod = Module.new
         mod.send :define_method, :json_cache_key do
           if defined?(super)
             existing = super()
 
-            existing + instance_eval(&keys)
+            existing + instance_eval(&)
           else
-            instance_eval(&keys)
+            instance_eval(&)
           end
         end
 
         config.to_prepare do
-          representer_namespace = path.map { |arg| arg.to_s.camelize }.join('::')
+          representer_namespace = path.map { |arg| arg.to_s.camelize }.join("::")
           representer_class     = "::API::#{representer_namespace}Representer".constantize
           representer_class.prepend mod
         end
@@ -293,7 +307,8 @@ module OpenProject::Plugins
       # @param event_type [Symbol]
       #
       # Options:
-      # * <tt>:class_name</tt> - one or more model(s) that provide these events, those need to inherit from Activities::BaseActivityProvider
+      # * <tt>:class_name</tt> - one or more model(s) that provide these events, those need to inherit
+      #                          from Activities::BaseActivityProvider
       # * <tt>:default</tt> - setting this option to false will make the events not displayed by default
       #
       # Example
@@ -303,13 +318,9 @@ module OpenProject::Plugins
         OpenProject::Activity.register(event_type, options)
       end
 
-      ##
-      # Register a "cron"-like background job
-      def add_cron_jobs(&block)
+      def add_cron_jobs
         config.to_prepare do
-          Array(block.call).each do |clz|
-            ::Cron::CronJob.register!(clz.is_a?(Class) ? clz : clz.to_s.constantize)
-          end
+          Rails.application.config.good_job.cron.merge!(yield)
         end
       end
 
@@ -325,6 +336,37 @@ module OpenProject::Plugins
       def class_inflection_override(overrides)
         self.class.initializer "#{engine_name}.class_inflection_override" do
           OpenProject::Inflector.inflection(overrides)
+        end
+      end
+
+      # Adds a replacement rule for a principal reference. When the module allows adding a
+      # principal (e.g. a user) reference to a model, a replacement rule should be added so
+      # that the user can be deleted, by making sure references to that user are replaced
+      # on that model as well.
+      def replace_principal_reference(class_name, attribute)
+        config.to_prepare do
+          Principals::ReplaceReferencesService.add_replacement(class_name, attribute)
+        end
+      end
+
+      # Like #replace_principal_reference, but allows to add multiple classes and attributes at once.
+      def replace_principal_references(attributes_by_class_name)
+        config.to_prepare do
+          Principals::ReplaceReferencesService.add_replacements(attributes_by_class_name)
+        end
+      end
+
+      private
+
+      def add_module_to_classes(strategy, module_name, class_names, singleton: false)
+        self.class.config.to_prepare do
+          mod = module_name.constantize
+
+          Array(class_names).each do |class_name|
+            target = class_name.constantize
+            target = target.singleton_class if singleton
+            target.public_send(strategy, mod) unless target.include?(mod)
+          end
         end
       end
     end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'queries/operators'
+require "queries/operators"
 
 class Queries::Filters::Base
   include ActiveModel::Validations
@@ -51,7 +50,7 @@ class Queries::Filters::Base
     self.context = options[:context]
 
     self.class.filter_params.each do |param_field|
-      send("#{param_field}=", options[param_field])
+      send(:"#{param_field}=", options[param_field])
     end
   end
 
@@ -59,7 +58,7 @@ class Queries::Filters::Base
   # Treat the constructor as private, as the filter MAY need to check
   # the options before accepting them as a filter.
   #
-  # Use +#create+ instead.
+  # Use +#create!+ instead.
   private_class_method :new
 
   ##
@@ -69,33 +68,40 @@ class Queries::Filters::Base
     new(name, options)
   end
 
+  ##
+  # Key under which saved queries persist this filter when it stands in for
+  # another filter; +nil+ means the filter is stored under its own key.
+  def self.stored_key = nil
+
   def [](name)
     send(name)
   end
 
   def filter_instance_options
     values = filter_params.map { |key| [key, send(key)] }
-    initial_options.merge(Hash[values])
+    initial_options.merge(values.to_h)
   end
 
   def human_name
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   def type
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   def allowed_values
     nil
   end
 
-  def valid_values!
-    type_strategy.valid_values!
-  end
+  delegate :valid_values!, to: :type_strategy
 
   def available?
     true
+  end
+
+  def required?
+    false
   end
 
   def available_operators
@@ -106,15 +112,16 @@ class Queries::Filters::Base
     type_strategy.default_operator_class
   end
 
-  def scope
-    scope = model.where(where)
-    scope = scope.joins(joins) if joins
-    scope = scope.left_outer_joins(left_outer_joins) if left_outer_joins
-    scope
+  def apply_to(query_scope)
+    query_scope = query_scope.where(where)
+    query_scope = query_scope.from(from) if from
+    query_scope = query_scope.joins(joins) if joins
+    query_scope = query_scope.left_outer_joins(left_outer_joins) if left_outer_joins
+    query_scope
   end
 
   def self.key
-    to_s.demodulize.underscore.gsub(/_filter$/, '').to_sym
+    to_s.demodulize.underscore.gsub(/_filter$/, "").to_sym
   end
 
   def self.connection
@@ -122,11 +129,17 @@ class Queries::Filters::Base
   end
 
   def self.all_for(context = nil)
-    create!(name: key, context: context)
+    create!(name: key, context:)
   end
 
+  delegate :key, to: :class
+
   def where
-    operator_strategy.sql_for_field(values, self.class.model.table_name, self.class.key)
+    operator_strategy.sql_for_field(values, self.class.model.table_name, key)
+  end
+
+  def from
+    nil
   end
 
   def joins
@@ -179,6 +192,10 @@ class Queries::Filters::Base
     errors.full_message(human_name, messages)
   end
 
+  def autocomplete_options
+    {}
+  end
+
   protected
 
   def type_strategy
@@ -196,8 +213,8 @@ class Queries::Filters::Base
   end
 
   def validate_presence_of_values
-    if operator_strategy&.requires_value? && (values.nil? || values.reject(&:blank?).empty?)
-      errors.add(:values, I18n.t('activerecord.errors.messages.blank'))
+    if operator_strategy&.requires_value? && (values.nil? || values.compact_blank.empty?)
+      errors.add(:values, I18n.t("activerecord.errors.messages.blank"))
     end
   end
 

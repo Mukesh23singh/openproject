@@ -1,9 +1,38 @@
-require 'bigdecimal'
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "bigdecimal"
 
 module OpenProject::Bim
   module BcfJson
     class ViewpointReader
-      ROOT_NODE ||= 'VisualizationInfo'.freeze
+      ROOT_NODE ||= "VisualizationInfo"
 
       attr_reader :uuid, :xml
 
@@ -26,8 +55,7 @@ module OpenProject::Bim
       # Retrieve the viewpoint hash without root node, if any.
       def viewpoint_hash
         @viewpoint_hash ||= begin
-          # Load from XML using activesupport
-          hash = Hash.from_xml(xml)
+          hash = FasterConverter.xml_to_hash(xml)
           hash = hash[ROOT_NODE] if hash[ROOT_NODE]
 
           # Perform destructive transformations
@@ -56,13 +84,13 @@ module OpenProject::Bim
       end
 
       def remove_keys(hash)
-        hash.delete 'xmlns:xsi'
-        hash.delete 'xmlns:xsd'
-        hash.delete 'VisualizationInfo' unless hash['VisualizationInfo']
+        hash.delete "xmlns:xsi"
+        hash.delete "xmlns:xsd"
+        hash.delete "VisualizationInfo" unless hash["VisualizationInfo"]
       end
 
       def set_uuid(hash)
-        hash['guid'] = uuid
+        hash["guid"] = uuid
       end
 
       def transform_keys(hash)
@@ -73,13 +101,13 @@ module OpenProject::Bim
       ##
       # Transform perspective_camera into json float values
       def transform_orthogonal_camera(hash)
-        transform_camera hash, 'orthogonal_camera'
+        transform_camera hash, "orthogonal_camera"
       end
 
       ##
       # Transform orthogonal_camera into json float values
       def transform_perspective_camera(hash)
-        transform_camera hash, 'perspective_camera'
+        transform_camera hash, "perspective_camera"
       end
 
       def transform_camera(hash, key)
@@ -95,33 +123,33 @@ module OpenProject::Bim
       end
 
       def transform_lines(hash)
-        return unless hash['lines']
+        return unless hash["lines"]
 
-        hash['lines'] = [hash['lines']['line']].flatten(1).map! do |line|
+        hash["lines"] = [hash["lines"]["line"]].flatten(1).map! do |line|
           line.deep_transform_values! { |val| to_numeric(val) }
         end
       end
 
       def transform_clipping_planes(hash)
-        return unless hash['clipping_planes']
+        return unless hash["clipping_planes"]
 
-        hash['clipping_planes'] = [hash['clipping_planes']['clipping_plane']].flatten(1).map! do |plane|
+        hash["clipping_planes"] = [hash["clipping_planes"]["clipping_plane"]].flatten(1).map! do |plane|
           plane.deep_transform_values! { |val| to_numeric(val) }
         end
       end
 
       def transform_bitmaps(hash)
-        return unless hash['bitmaps']
+        return unless hash["bitmaps"]
 
         # Bitmaps can be multiple items within the root bitmaps node
         # this is different from the other entries
         # https://github.com/buildingSMART/BCF-XML/pull/44/files
-        bitmaps = Array.wrap(hash['bitmaps'])
+        bitmaps = Array.wrap(hash["bitmaps"])
 
-        hash['bitmaps'] = bitmaps.map! do |bitmap|
-          bitmap['bitmap_type'] = bitmap.delete('bitmap').downcase
-          bitmap['bitmap_data'] = bitmap.delete('reference')
-          bitmap['height'] = to_numeric(bitmap['height'])
+        hash["bitmaps"] = bitmaps.map! do |bitmap|
+          bitmap["bitmap_type"] = bitmap.delete("bitmap").downcase
+          bitmap["bitmap_data"] = bitmap.delete("reference")
+          bitmap["height"] = to_numeric(bitmap["height"])
 
           %w[location normal up].each do |key|
             next unless bitmap.key?(key)
@@ -137,50 +165,50 @@ module OpenProject::Bim
       ##
       # Move selections up the tree from the nested XML node
       def transform_selections(hash)
-        return unless (selections = hash.dig('components', 'selection', 'component'))
+        return unless (selections = hash.dig("components", "selection", "component"))
 
         # Ensure selections are an array
         selections = Array.wrap(selections)
 
         # Skip any components that have no guid
-        selections.select! { |item| item['ifc_guid'] }
+        selections.select! { |item| item["ifc_guid"] }
 
-        hash['components']['selection'] = selections
+        hash["components"]["selection"] = selections
       end
 
       ##
       # Move coloring up the tree from the nested XML node
       def transform_coloring(hash)
-        return unless (colors = hash.dig('components', 'coloring', 'color'))
+        return unless (colors = hash.dig("components", "coloring", "color"))
 
         # avoid Array(colors) since that deconstructs the array
         colors = Array.wrap(colors)
 
-        hash['components']['coloring'] = colors.map do |entry|
+        hash["components"]["coloring"] = colors.map do |entry|
           # Prepend hash for hex color
-          entry['color'] = "##{entry['color']}"
+          entry["color"] = "##{entry['color']}"
 
           # Fix items name
-          entry['components'] = Array.wrap(entry.delete('component'))
+          entry["components"] = Array.wrap(entry.delete("component"))
           entry
         end
       end
 
       def transform_visibility(hash)
-        return unless (visibility = hash.dig('components', 'visibility'))
+        return unless (visibility = hash.dig("components", "visibility"))
 
-        visibility['default_visibility'] = visibility['default_visibility'] == 'true'
+        visibility["default_visibility"] = visibility["default_visibility"] == "true"
 
         # Hoist exceptions components up from the nested XML node
-        exceptions = visibility.dig('exceptions', 'component')
-        visibility['exceptions'] = Array.wrap(exceptions) if exceptions
+        exceptions = visibility.dig("exceptions", "component")
+        visibility["exceptions"] = Array.wrap(exceptions) if exceptions
 
         # Move view_setup_hints
-        view_setup_hints = hash.dig('components', 'view_setup_hints')
-        visibility['view_setup_hints'] = view_setup_hints.transform_values { |val| val == 'true' } if view_setup_hints
+        view_setup_hints = hash.dig("components", "view_setup_hints")
+        visibility["view_setup_hints"] = view_setup_hints.transform_values { |val| val == "true" } if view_setup_hints
 
         # Remove the old node
-        hash['components'].delete('view_setup_hints')
+        hash["components"].delete("view_setup_hints")
       end
 
       def to_numeric(anything)

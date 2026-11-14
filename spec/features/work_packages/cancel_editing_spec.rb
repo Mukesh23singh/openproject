@@ -1,6 +1,8 @@
-# -- copyright
+# frozen_string_literal: true
+
+#-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
-# ++
+#++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Cancel editing work package', js: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:project) { FactoryBot.create(:project) }
-  let(:work_package) { FactoryBot.create(:work_package, project: project) }
-  let(:work_package2) { FactoryBot.create(:work_package, project: project) }
-  let(:wp_page) { ::Pages::AbstractWorkPackage.new(work_package) }
-  let(:wp_table) { ::Pages::WorkPackagesTable.new }
+RSpec.describe "Cancel editing work package", :js, :selenium do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project) }
+  let(:work_package) { create(:work_package, project:) }
+  let(:work_package2) { create(:work_package, project:) }
+  let(:wp_page) { Pages::AbstractWorkPackage.new(work_package) }
+  let(:wp_table) { Pages::WorkPackagesTable.new }
   let(:paths) do
     [
-      new_work_packages_path,
+      new_work_package_path,
       new_split_work_packages_path,
       new_project_work_packages_path(project),
       new_split_project_work_packages_path(project)
@@ -53,22 +54,29 @@ describe 'Cancel editing work package', js: true do
   def expect_active_edit(path)
     visit path
     expect_angular_frontend_initialized
-    expect(page).to have_selector('#wp-new-inline-edit--field-subject', wait: 10)
+    expect(page).to have_css("#wp-new-inline-edit--field-subject", wait: 10)
   end
 
   def expect_subject(val)
-    subject = page.find('#wp-new-inline-edit--field-subject')
+    subject = page.find_by_id("wp-new-inline-edit--field-subject")
     expect(subject.value).to eq(val)
   end
 
   def move_to_home_page(alert: true)
-    find('.op-logo--link').click
+    if alert
+      accept_alert do
+        find(".op-logo--link").click
+      end
+    else
+      find(".op-logo--link").click
+    end
 
-    page.driver.browser.switch_to.alert.accept if alert
-    expect(page).to have_selector('#projects-menu', text: 'Select a project')
+    expect(page).to have_current_path("/", ignore_query: true)
+    expect(page).to have_no_css("#wp-new-inline-edit--field-subject")
+    expect(page).to have_css("#projects-menu", text: "All projects")
   end
 
-  it 'does not show an alert when moving to other pages' do
+  it "does not show an alert when moving to other pages" do
     # This used to show an alert until browsers dropped support
     # for `onbeforeunload`.
     #
@@ -80,11 +88,11 @@ describe 'Cancel editing work package', js: true do
     #  move_to_home_page(alert: false)
     paths.each do |path|
       expect_active_edit(path)
-      move_to_home_page(alert: false)
+      move_to_home_page(alert: true)
     end
   end
 
-  it 'shows an alert when moving to other states' do
+  it "shows an alert when moving to other states" do
     expect_active_edit(new_split_work_packages_path)
     loading_indicator_saveguard
     wp_table.expect_work_package_listed(work_package2)
@@ -92,17 +100,17 @@ describe 'Cancel editing work package', js: true do
     wp_table.open_split_view(work_package2)
     page.driver.browser.switch_to.alert.dismiss
 
-    expect(page).to have_selector('#wp-new-inline-edit--field-subject')
+    expect(page).to have_css("#wp-new-inline-edit--field-subject")
     expect(wp_page).not_to have_alert_dialog
   end
 
-  it 'shows an alert when moving to other states while editing a single attribute (Regression #25135)' do
+  it "shows an alert when moving to other states while editing a single attribute (Regression #25135)" do
     wp_table.visit!
     wp_table.expect_work_package_listed(work_package, work_package2)
 
     # Edit subject in split page
     split_page = wp_table.open_split_view(work_package)
-    version = split_page.edit_field :version
+    version = split_page.edit_field :targetVersions
     version.activate!
 
     # Decline move, expect field still active
@@ -115,77 +123,56 @@ describe 'Cancel editing work package', js: true do
     # Now accept to move to the second page
     split_page = wp_table.open_split_view(work_package2)
     page.driver.browser.switch_to.alert.accept
-    version = split_page.edit_field :version
+    version = split_page.edit_field :targetVersions
     version.expect_inactive!
   end
 
-  it 'cancels the editing when clicking the button' do
+  it "cancels the editing when clicking the button" do
     paths.each do |path|
       expect_active_edit(path)
-      find('#work-packages--edit-actions-cancel').click
+      find_by_id("work-packages--edit-actions-cancel").click
 
       expect(wp_page).not_to have_alert_dialog
     end
   end
 
-  it 'allows to move from split to full screen in edit mode' do
-    # Start creating on split view
-    expect_active_edit(new_split_work_packages_path)
+  it "correctly cancels setting the back route (Regression #30714)" do
+    wp_table.visit!
+    wp_table.expect_work_package_listed(work_package, work_package2)
 
-    find('#wp-new-inline-edit--field-subject').set 'foobar'
-
-    # Expect editing works when moving to full screen
-    find('.work-packages-show-view-button').click
-
-    expect(wp_page).not_to have_alert_dialog
-    expect(page).to have_selector('#wp-new-inline-edit--field-subject')
-    expect_subject('foobar')
-
-    # Moving back also works
-    page.execute_script('window.history.back()')
-
-    expect(wp_page).not_to have_alert_dialog
-    expect(page).to have_selector('#wp-new-inline-edit--field-subject')
-    expect_subject('foobar')
-
-    # Cancel edition
-    find('#work-packages--edit-actions-cancel').click
-    expect(wp_page).not_to have_alert_dialog
-
-    # Visiting another page does not create alert
-    find('.op-logo--link').click
-    expect(wp_page).not_to have_alert_dialog
-  end
-
-  it 'correctly cancels setting the back route (Regression #30714)' do
-    wp_page = ::Pages::FullWorkPackage.new work_package
-    wp_page.visit!
+    # Edit subject in split page
+    wp_page = wp_table.open_split_view(work_package)
     wp_page.ensure_page_loaded
 
     # Edit description in full view
     description = wp_page.edit_field :description
     description.activate!
-    description.click_and_type_slowly 'foobar'
+    wait_for_network_idle
+
+    description.click_and_type_slowly "foobar"
 
     # Try to move back to list, expect warning
-    wp_page.go_back
-    wp_page.dismiss_alert_dialog!
+    dismiss_confirm(I18n.t("js.work_packages.confirm_edit_cancel")) do
+      page.execute_script("window.history.back()")
+    end
+    description.expect_active!
 
     # Now cancel the field
     description.cancel_by_click
+    description.expect_inactive!
 
     # Now we should be able to get back to list
-    wp_page.go_back
+    page.execute_script("window.history.back()")
 
-    wp_table.expect_work_package_listed(work_package, work_package2)
+    wait_for { wp_page.has_alert_dialog? }.to be false
   end
 
-  context 'when user does not want to be warned' do
+  context "when user does not want to be warned" do
     before do
-      FactoryBot.create(:user_preference, user: user, others: { warn_on_leaving_unsaved: false })
+      create(:user_preference, user:, others: { warn_on_leaving_unsaved: false })
     end
 
-    it 'does not alert when moving anywhere' do
+    it "does alert when moving to a new page" do
       # Moving to angular states
       expect_active_edit(new_split_work_packages_path)
       wp_table.expect_work_package_listed(work_package2)
@@ -193,12 +180,12 @@ describe 'Cancel editing work package', js: true do
       wp_table.open_split_view(work_package2)
       expect(wp_page).not_to have_alert_dialog
 
-      expect(page).to have_no_selector('#wp-new-inline-edit--field-subject')
-      expect(page).to have_selector('.work-packages--details--subject', text: work_package2.subject)
+      expect(page).to have_no_css("#wp-new-inline-edit--field-subject")
+      expect(page).to have_heading(work_package2.subject, level: 2, exact: true)
 
       # Moving somewhere else
       expect_active_edit(new_split_work_packages_path)
-      move_to_home_page(alert: false)
+      move_to_home_page(alert: true)
     end
   end
 end

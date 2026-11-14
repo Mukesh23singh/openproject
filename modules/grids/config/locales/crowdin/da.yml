@@ -1,16 +1,51 @@
+---
 da:
-  grids:
-    label_widget_in_grid: "Widget contained in Grid %{grid_name}"
   activerecord:
     attributes:
       grids/grid:
-        page: "Page"
-        row_count: "Number of rows"
-        column_count: "Number of columns"
-        widgets: "Widgets"
+        column_count: Antal kolonner
+        page: Side
+        row_count: Antal rækker
+        scope: Omfang
+        widgets: Widgets
     errors:
       models:
         grids/grid:
-          overlaps: 'overlap.'
-          outside: 'is outside of the grid.'
-          end_before_start: 'end value needs to be larger than the start value.'
+          end_before_start: Slutværdien skal være større end startværdien.
+          outside: er uden for gitteret.
+          overlaps: overlapper.
+    models:
+      grids/grid:
+        one: Gitter
+        other: Gitre
+      grids/widget:
+        one: Widget
+        other: Widgets
+  grids:
+    label_widget_in_grid: Widget indeholdt i gitter %{grid_name}
+    widgets:
+      empty: Denne widget er i øjeblikket tom.
+      members:
+        no_results: Ingen synlige medlemmer.
+        show_members_count: Vis alle %{count} medlemmer
+        title: Medlemmer
+        view_all_members: Vis alle medlemmer
+        x_more:
+          one: og %{count} medlem mere.
+          other: og %{count} medlemmer mere.
+      news:
+        no_results: Intet nyt at rapportere.
+      not_available: Denne widget er ikke tilgængelig.
+      project_timeline:
+        footer_actions_label: Se flere detaljer
+        gantt_link: Gantt-diagram over milepæle
+        no_results_title: Der er ikke konfigureret noget indhold til projektets tidslinje
+        sprints_link: Oversigt over sprints
+        title: Projektets tidslinje
+        title_portfolio: Porteføljens tidslinje
+        title_program: Programmets tidslinje
+      subitems:
+        button_text: Underelement
+        no_results: Der er ingen synlige underordnede.
+        title: Underelementer
+        view_all_subitems: Vis alle underelementer

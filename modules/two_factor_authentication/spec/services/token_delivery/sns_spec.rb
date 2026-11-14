@@ -1,62 +1,109 @@
-require File.expand_path(File.dirname(__FILE__) + '/../../spec_helper')
+# frozen_string_literal: true
 
-describe ::OpenProject::TwoFactorAuthentication::TokenStrategy::Sns, with_2fa_ee: true do
-  describe 'sending messages' do
-    let(:phone) { '+49 123456789' }
-    let!(:user) { FactoryBot.create :user }
-    let!(:device) { FactoryBot.create :two_factor_authentication_device_sms, user: user, channel: channel }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../../spec_helper"
+
+RSpec.describe OpenProject::TwoFactorAuthentication::TokenStrategy::Sns do
+  describe "sending messages" do
+    let(:phone) { "+49 123456789" }
+    let!(:user) { create(:user) }
+    let!(:device) { create(:two_factor_authentication_device_sms, user:, channel:) }
     let(:channel) { :sms }
 
-    let(:params) do
+    let(:sns_params) do
       {
-        region: 'eu-west-1',
-        access_key_id: 'foobar',
-        secret_access_key: 'foobar key'
+        region: "eu-west-1",
+        access_key_id: "foobar",
+        secret_access_key: "foobar key"
       }
     end
 
-    before do
-      allow(OpenProject::Configuration)
-        .to receive(:[]).with('2fa')
-        .and_return(active_strategies: [:sns], sns: params)
-
-      allow_any_instance_of(::OpenProject::TwoFactorAuthentication::TokenStrategy::Sns)
-        .to receive(:create_mobile_otp)
-        .and_return('1234')
-    end
-
-    describe '#setup' do
-      let(:params) { { region: nil } }
-
-      it 'raises an exception for incomplete params' do
-        expect { described_class.validate! }
-          .to raise_exception(ArgumentError)
+    include_context "with settings" do
+      let(:settings) do
+        {
+          plugin_openproject_two_factor_authentication: {
+            "active_strategies" => [:sns],
+            "sns" => sns_params
+          }
+        }
       end
     end
 
-    describe 'calling a mocked AWS API' do
-      subject { ::TwoFactorAuthentication::TokenService.new user: user }
+    before do
+      allow_any_instance_of(OpenProject::TwoFactorAuthentication::TokenStrategy::Sns)
+        .to receive(:create_mobile_otp)
+        .and_return("1234")
+    end
+
+    describe "#setup" do
+      context "for valid params" do
+        it "validates without errors" do
+          expect { described_class.validate! }
+            .not_to raise_exception
+        end
+      end
+
+      context "for incomplete params" do
+        let(:sns_params) { { region: nil } }
+
+        it "raises an exception" do
+          expect { described_class.validate! }
+            .to raise_exception(ArgumentError)
+        end
+      end
+    end
+
+    describe "calling a mocked AWS API" do
+      subject { TwoFactorAuthentication::TokenService.new user: }
+
       let(:result) { subject.request }
-      let(:api) { instance_double('::Aws::SNS::Client') }
+      let(:api) { instance_double(Aws::SNS::Client) }
 
       before do
-        expect(::Aws::SNS::Client).to receive(:new).and_return api
+        expect(Aws::SNS::Client).to receive(:new).and_return api
       end
 
-      context 'assuming invalid credentials' do
+      context "assuming invalid credentials" do
         before do
           expect(api)
             .to receive(:set_sms_attributes)
             .with(any_args)
-            .and_raise('The security token included in the request is invalid.')
+            .and_raise("The security token included in the request is invalid.")
         end
 
-        it 'does not raise an exception out of delivery' do
+        it "does not raise an exception out of delivery" do
           expect(result).not_to be_success
-          expect(result.errors.full_messages).to eq([I18n.t('two_factor_authentication.sns.delivery_failed')])
+          expect(result.errors.full_messages).to eq([I18n.t("two_factor_authentication.sns.delivery_failed")])
         end
       end
-      context 'assuming valid credential' do
+
+      context "assuming valid credential" do
         let(:api_result) { double }
 
         before do
@@ -65,13 +112,13 @@ describe ::OpenProject::TwoFactorAuthentication::TokenStrategy::Sns, with_2fa_ee
           expect(api).to receive(:set_sms_attributes).and_return(nil)
           expect(api)
             .to receive(:publish)
-            .with(phone_number: phone.gsub(' ', ''),
-                  message: I18n.t('two_factor_authentication.text_otp_delivery_message_sms', app_title: Setting.app_title,
-                                                                                             token: 1234))
+            .with({ phone_number: phone.delete(" "),
+                    message: I18n.t("two_factor_authentication.text_otp_delivery_message_sms",
+                                    app_title: Setting.app_title, token: 1234) })
             .and_return(api_result)
         end
 
-        it 'returns a successful delivery' do
+        it "returns a successful delivery" do
           expect(result).to be_success
         end
       end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'api/v3/types/type_collection_representer'
-require 'api/v3/types/type_representer'
+require "api/v3/types/type_collection_representer"
+require "api/v3/types/type_representer"
 
 module API
   module V3
@@ -37,21 +34,21 @@ module API
       class TypesAPI < ::API::OpenProjectAPI
         resources :types do
           after_validation do
-            authorize_any(%i[view_work_packages manage_types], global: true)
+            authorize_in_any_project(%i[view_work_packages manage_types])
           end
 
           get do
-            types = Type.includes(:color).all
+            types = Type.includes(:color, :variants).visible
             TypeCollectionRepresenter
               .new(types,
                    self_link: api_v3_paths.types,
-                   current_user: current_user)
+                   current_user:)
           end
 
-          route_param :id, type: Integer, desc: 'Type ID' do
+          route_param :id, type: Integer, desc: "Type ID" do
             after_validation do
-              type = Type.find(params[:id])
-              @representer = TypeRepresenter.new(type, current_user: current_user)
+              type = Type.visible.find(params[:id])
+              @representer = TypeRepresenter.new(type, current_user:)
             end
 
             get do

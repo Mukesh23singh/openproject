@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,38 +20,44 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
 import { BcfPathHelperService } from 'core-app/features/bim/bcf/helper/bcf-path-helper.service';
 
 @Component({
   template: `
-    <a [title]="text.import_hover"
+    <button type="button"
+      opTooltip
+      [description]="text.import_hover"
       (click)="handleClick()"
       class="button import-bcf-button">
-      <op-icon icon-classes="button--icon icon-import"></op-icon>
+      <op-icon icon-classes="button--icon icon-import" />
       <span class="button--text"> {{text.import}} </span>
-    </a>
+    </button>
   `,
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'bcf-import-button',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class BcfImportButtonComponent {
+  readonly I18n = inject(I18nService);
+  readonly currentProject = inject(CurrentProjectService);
+  readonly bcfPathHelper = inject(BcfPathHelperService);
+
   public text = {
     import: this.I18n.t('js.bcf.import'),
     import_hover: this.I18n.t('js.bcf.import_bcf_xml_file'),
   };
-
-  constructor(readonly I18n:I18nService,
-    readonly currentProject:CurrentProjectService,
-    readonly bcfPathHelper:BcfPathHelperService) {
-  }
 
   public handleClick() {
     const projectIdentifier = this.currentProject.identifier;

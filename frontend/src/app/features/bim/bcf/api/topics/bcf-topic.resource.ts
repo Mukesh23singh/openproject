@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +20,13 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { jsonArrayMember, jsonMember, jsonObject } from 'typedjson';
-import * as moment from 'moment';
-import { Moment } from 'moment';
+import moment, { Moment } from 'moment';
 
 @jsonObject
 export class BcfTopicAuthorizationMap {
@@ -41,57 +39,57 @@ export class BcfTopicAuthorizationMap {
 
 @jsonObject
 export class BcfTopicResource {
-  @jsonMember
+  @jsonMember(String)
   guid:string;
 
-  @jsonMember
+  @jsonMember(String)
   topic_type:string;
 
-  @jsonMember
+  @jsonMember(String)
   topic_status:string;
 
-  @jsonMember
+  @jsonMember(String)
   priority:string;
 
   @jsonArrayMember(String)
   reference_links:string[];
 
-  @jsonMember
+  @jsonMember(String)
   title:string;
 
-  @jsonMember({ preserveNull: true })
+  @jsonMember(Number, { preserveNull: true })
   index:number|null;
 
   @jsonArrayMember(String)
   labels:string[];
 
-  @jsonMember({ deserializer: (value) => moment(value), serializer: (timestamp:Moment) => timestamp.toISOString() })
+  @jsonMember({ deserializer: (value:string) => moment(value), serializer: (timestamp:Moment) => timestamp.toISOString() })
   creation_date:Moment;
 
-  @jsonMember
+  @jsonMember(String)
   creation_author:string;
 
-  @jsonMember({ deserializer: (value) => moment(value), serializer: (timestamp:Moment) => timestamp.toISOString() })
+  @jsonMember({ deserializer: (value:string) => moment(value), serializer: (timestamp:Moment) => timestamp.toISOString() })
   modified_date:Moment;
 
-  @jsonMember({ preserveNull: true })
+  @jsonMember(String, { preserveNull: true })
   modified_author:string|null;
 
-  @jsonMember
+  @jsonMember(String)
   assigned_to:string;
 
-  @jsonMember({ preserveNull: true })
+  @jsonMember(String, { preserveNull: true })
   stage:string|null;
 
-  @jsonMember
+  @jsonMember(String)
   description:string;
 
   @jsonMember({
-    deserializer: (value) => moment(value),
+    deserializer: (value:string) => moment(value),
     serializer: (timestamp:Moment) => timestamp.format('YYYY-MM-DD'),
   })
   due_date:Moment;
 
-  @jsonMember
+  @jsonMember(BcfTopicAuthorizationMap)
   authorization:BcfTopicAuthorizationMap;
 }

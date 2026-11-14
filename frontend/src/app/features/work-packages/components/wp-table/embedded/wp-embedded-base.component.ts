@@ -1,23 +1,50 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import {
-  AfterViewInit, ChangeDetectorRef, Directive, Input, SimpleChanges,
+  AfterViewInit,
+  Directive,
+  Input,
+  SimpleChanges, OnInit, OnChanges, inject,
 } from '@angular/core';
 import {
   WorkPackageTableConfiguration,
   WorkPackageTableConfigurationObject,
 } from 'core-app/features/work-packages/components/wp-table/wp-table-configuration';
-import { LoadingIndicatorService } from 'core-app/core/loading-indicator/loading-indicator.service';
 import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { WorkPackagesViewBase } from 'core-app/features/work-packages/routing/wp-view-base/work-packages-view.base';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
-import { WorkPackageStatesInitializationService } from '../../wp-list/wp-states-initialization.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { firstValueFrom } from 'rxjs';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 
 @Directive()
-export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewBase implements AfterViewInit {
+export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewBase implements AfterViewInit, OnInit, OnChanges {
+  // eslint-disable-next-line @angular-eslint/no-input-rename
   @Input('configuration') protected providedConfiguration:WorkPackageTableConfigurationObject;
 
   @Input() public uniqueEmbeddedTableName = `embedded-table-${Date.now()}`;
@@ -34,21 +61,11 @@ export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewB
 
   protected initialized = false;
 
-  @InjectField() apiV3Service:APIV3Service;
+  readonly apiV3Service = inject(ApiV3Service);
 
-  @InjectField() querySpace:IsolatedQuerySpace;
+  readonly urlParamsHelper = inject(UrlParamsHelperService);
 
-  @InjectField() I18n!:I18nService;
-
-  @InjectField() urlParamsHelper:UrlParamsHelperService;
-
-  @InjectField() loadingIndicatorService:LoadingIndicatorService;
-
-  @InjectField() wpStatesInitialization:WorkPackageStatesInitializationService;
-
-  @InjectField() currentProject:CurrentProjectService;
-
-  @InjectField() cdRef:ChangeDetectorRef;
+  readonly pathHelper = inject(PathHelperService);
 
   ngOnInit() {
     this.configuration = new WorkPackageTableConfiguration(this.providedConfiguration);
@@ -61,12 +78,12 @@ export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewB
 
   ngAfterViewInit():void {
     // Load initially
-    this.loadQuery(true, false);
+    void this.loadQuery(true, false);
   }
 
   ngOnChanges(changes:SimpleChanges) {
     if (this.initialized && (changes.queryId || changes.queryProps)) {
-      this.loadQuery(this.initialLoadingIndicator, false);
+      void this.loadQuery(this.initialLoadingIndicator, false);
     }
   }
 
@@ -77,7 +94,7 @@ export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewB
     return this.configuration.projectIdentifier || undefined;
   }
 
-  public buildQueryProps() {
+  public buildQueryProps():object {
     const query = this.querySpace.query.value!;
     this.wpStatesInitialization.applyToQuery(query);
 
@@ -96,7 +113,7 @@ export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewB
     this.cdRef.detectChanges();
   }
 
-  public refresh(visible = true, firstPage = false):Promise<any> {
+  public refresh(visible = true, firstPage = false):void {
     const query = this.querySpace.query.value!;
     const pagination = this.wpTablePagination.paginationObject;
 
@@ -104,24 +121,24 @@ export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewB
       pagination.offset = 1;
     }
 
-    const params = this.urlParamsHelper.buildV3GetQueryFromQueryResource(query, pagination);
-    const promise = this
-      .wpListService
-      .loadQueryFromExisting(query, params, this.queryProjectScope)
-      .toPromise()
-      .then((query) => this.wpStatesInitialization.updateQuerySpace(query, query.results));
+    const params = this.urlParamsHelper.buildV3GetQueryFromQueryResource(query, pagination) as object;
+    const promise = firstValueFrom(
+      this
+        .wpListService
+        .loadQueryFromExisting(query, params, this.queryProjectScope),
+    )
+      .then((updated) => this.wpStatesInitialization.updateQuerySpace(updated, updated.results));
 
     if (visible) {
       this.loadingIndicator = promise;
     }
-    return promise;
   }
 
   public get isInitialized() {
     return !!this.configuration;
   }
 
-  public set loadingIndicator(promise:Promise<any>) {
+  public set loadingIndicator(promise:Promise<unknown>) {
     if (this.configuration.tableVisible) {
       this.loadingIndicatorService
         .indicator(this.uniqueEmbeddedTableName)
@@ -129,7 +146,7 @@ export abstract class WorkPackageEmbeddedBaseComponent extends WorkPackagesViewB
     }
   }
 
-  public abstract loadQuery(visible:boolean, firstPage:boolean):Promise<any>;
+  public abstract loadQuery(visible:boolean, firstPage:boolean):Promise<QueryResource|undefined>;
 
   protected get queryProjectScope() {
     if (!this.configuration.projectContext) {

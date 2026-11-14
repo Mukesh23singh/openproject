@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Wiki page navigation spec', type: :feature, js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "Wiki page navigation spec", :js do
+  shared_let(:admin) { create(:admin) }
   current_user { admin }
 
-  let(:project) { FactoryBot.create :project, enabled_module_names: %w[wiki] }
-  let!(:wiki_page_55) do
-    FactoryBot.create :wiki_page_with_content,
-                      wiki: project.wiki,
-                      title: 'Wiki Page No. 55'
-  end
+  let(:project) { create(:project, :with_internal_wiki).reload }
+  let!(:wiki_page_55) { create(:wiki_page, wiki: project.wiki, title: "Wiki Page No. 55") } # rubocop:disable Naming/VariableNumber
   let!(:wiki_pages) do
-    FactoryBot.create_list(:wiki_page_with_content, 30, wiki: project.wiki)
+    create_list(:wiki_page, 30, wiki: project.wiki)
   end
 
   # Always use the same user for the wiki pages
@@ -48,14 +45,18 @@ describe 'Wiki page navigation spec', type: :feature, js: true do
     FactoryBot.set_factory_default(:author, admin)
   end
 
-  it 'scrolls to the selected page on load (Regression #36937)' do
+  it "scrolls to the selected page on load (Regression #36937)" do
     visit project_wiki_path(project, wiki_page_55)
 
-    expect(page).to have_selector('div.wiki-content')
+    expect(page).to have_css("div.wiki-content")
 
-    expect(page).to have_selector('.title-container h2', text: 'Wiki Page No. 55')
+    expect(page).to have_test_selector("wiki-page-header-title", text: "Wiki Page No. 55")
 
     # Expect scrolled to menu node
-    expect_element_in_view page.find('.tree-menu--item.-selected', text: 'Wiki Page No. 55')
+    expect_element_in_view page.find(".TreeViewItemContent", text: "Wiki Page No. 55", aria: { current: true })
+
+    # Expect permalink being correct (Regression #46351)
+    permalink = page.first(".op-uc-link_permalink", visible: :all)
+    expect(permalink["href"]).to include "/projects/#{project.identifier}/wiki/wiki-page-no-55#op-frag-wiki-page-no-55"
   end
 end

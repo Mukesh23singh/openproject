@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,6 +32,7 @@ module Queries::Filters
     list: Queries::Filters::Strategies::List,
     list_all: Queries::Filters::Strategies::ListAll,
     list_optional: Queries::Filters::Strategies::ListOptional,
+    shared_with_user_list_optional: Queries::Filters::Strategies::WorkPackages::SharedWithUser::ListOptional,
     integer: Queries::Filters::Strategies::Integer,
     date: Queries::Filters::Strategies::Date,
     datetime_past: Queries::Filters::Strategies::DateTimePast,
@@ -41,7 +41,8 @@ module Queries::Filters
     search: Queries::Filters::Strategies::Search,
     float: Queries::Filters::Strategies::Float,
     inexistent: Queries::Filters::Strategies::Inexistent,
-    empty_value: Queries::Filters::Strategies::EmptyValue
+    empty_value: Queries::Filters::Strategies::EmptyValue,
+    hierarchy: Queries::Filters::Strategies::Hierarchy
   }.freeze
 
   ##
@@ -49,4 +50,13 @@ module Queries::Filters
   class InvalidError < StandardError; end
 
   class MissingError < StandardError; end
+
+  ##
+  # Raised by filters that have too many candidates to enumerate. Those advertise their
+  # candidates through an autocompleter.
+  class TooManyCandidatesError < StandardError
+    def initialize(message = "There would be too many candidates")
+      super
+    end
+  end
 end

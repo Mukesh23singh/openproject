@@ -1,0 +1,388 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Import
+  module JiraWikiMarkup
+    class Renderer
+      include ActionView::Helpers::TagHelper
+
+      N = Nodes
+
+      JIRA_THUMBNAIL_STYLE = "width:200px"
+
+      LONE_HTML_IMAGE = /\A[ \t]*<img [^>]*>[ \t]*$/
+
+      EMOTICON_MAP = {
+        ":)" => "\u{1F642}",
+        ":(" => "\u{2639}\u{FE0F}",
+        ":P" => "\u{1F61B}",
+        ":D" => "\u{1F603}",
+        ";)" => "\u{1F609}",
+        "(y)" => "\u{1F44D}",
+        "(n)" => "\u{1F44E}",
+        "(i)" => "\u{2139}\u{FE0F}",
+        "(/)" => "\u{2705}",
+        "(x)" => "\u{274C}",
+        "(!)" => "\u{26A0}\u{FE0F}",
+        "(+)" => "\u{2795}",
+        "(-)" => "\u{2796}",
+        "(?)" => "\u{2753}",
+        "(on)" => "\u{1F4A1}",
+        "(off)" => "\u{1F4A1}",
+        "(*)" => "\u{2B50}",
+        "(*r)" => "\u{2B50}",
+        "(*g)" => "\u{2B50}",
+        "(*b)" => "\u{2B50}",
+        "(*y)" => "\u{2B50}",
+        "(flag)" => "\u{1F6A9}",
+        "(flagoff)" => "\u{1F3F3}\u{FE0F}"
+      }.freeze
+
+      def initialize(document, attachment_paths_by_name:)
+        @document = document
+        @attachment_paths_by_name = attachment_paths_by_name
+      end
+
+      def render
+        blocks = @document.children
+        parts = []
+        blocks.each_with_index do |block, i|
+          rendered = render_block(block)
+          parts[-1] = "#{parts[-1]}\n" if i > 0 && blank_line_between?(blocks[i - 1], parts[-1], block)
+          parts << rendered
+        end
+        parts.join("\n")
+      end
+
+      private
+
+      # CommonMark requires a blank line between an HTML block and Markdown.
+      def blank_line_between?(previous_block, previous_markdown, next_block)
+        (previous_block.is_a?(N::Paragraph) && next_block.is_a?(N::Paragraph)) ||
+          previous_markdown.match?(LONE_HTML_IMAGE)
+      end
+
+      def render_block(node)
+        case node
+        when N::Heading
+          render_heading(node)
+        when N::Paragraph
+          render_inline(node.children)
+        when N::CodeBlock
+          render_code_block(node)
+        when N::NoformatBlock
+          render_noformat_block(node)
+        when N::HorizontalRule
+          render_horizontal_rule
+        when N::List
+          render_list(node, 0)
+        when N::BlockQuote
+          render_block_quote(node)
+        when N::MultiLineBlockQuote
+          render_multi_line_block_quote(node)
+        when N::Table
+          render_table(node)
+        when N::Panel
+          render_panel(node)
+        when N::BlankLine
+          "\n"
+        else
+          ""
+        end
+      end
+
+      def render_horizontal_rule
+        "<hr>\n"
+      end
+
+      def render_heading(node)
+        content = render_inline(node.children)
+        content.empty? ? "" : "#{'#' * node.level} #{content}"
+      end
+
+      def render_code_block(node)
+        lang = node.language
+        "```#{lang}\n#{node.content}\n```"
+      end
+
+      def render_noformat_block(node)
+        "```\n#{node.content}\n```"
+      end
+
+      def render_block_quote(node)
+        content = render_inline(node.children)
+        content.empty? ? "" : "> #{content}\n"
+      end
+
+      def render_multi_line_block_quote(node)
+        rendered = node.lines.map { |line_nodes| render_inline(line_nodes) }
+        return "" if rendered.all?(&:empty?)
+
+        "#{rendered.map { |line| "> #{line}" }.join("\n")}\n"
+      end
+
+      # Emitted as HTML rather than a Markdown table: Markdown has no headerless
+      # table, and BemCssFilter decorates plain table markup on render. Kept on a
+      # single line, since a blank line would end the CommonMark HTML block.
+      def render_table(node)
+        head = node.header ? "<thead>#{render_table_row(node.header)}</thead>" : ""
+        body = node.rows.any? ? "<tbody>#{node.rows.map { |row| render_table_row(row) }.join}</tbody>" : ""
+
+        # Trailing newline closes the CommonMark HTML block, so Markdown on the
+        # following line is still formatted rather than swallowed as raw HTML.
+        "<table>#{head}#{body}</table>\n"
+      end
+
+      def render_table_row(cells)
+        "<tr>#{cells.map { |cell| render_table_cell(cell) }.join}</tr>"
+      end
+
+      def render_table_cell(cell)
+        tag = cell.header ? "th" : "td"
+        "<#{tag}>#{cell_renderer.render_cell(cell.children)}</#{tag}>"
+      end
+
+      def cell_renderer
+        @cell_renderer ||= HtmlCellRenderer.new(@document, attachment_paths_by_name: @attachment_paths_by_name)
+      end
+
+      # Markdown has no panel, so it becomes its title above its content. Jira does
+      # not parse the title as wiki markup, so it is emphasized as a plain label.
+      def render_panel(node)
+        content = render_inline(node.children)
+        title = node.params["title"]
+        return content if title.blank?
+
+        "**#{title}**\n#{content}"
+      end
+
+      def render_list(list, depth)
+        marker = list.list_type == :ordered ? "1. " : "- "
+        indent = "   " * depth
+
+        list.items.map do |item|
+          line = "#{indent}#{marker}#{render_inline(item.children)}"
+          if item.sublist
+            "#{line}\n#{render_list(item.sublist, depth + 1)}"
+          else
+            line
+          end
+        end.join("\n")
+      end
+
+      def render_inline(nodes)
+        nodes.map { |node| render_inline_node(node) }.join
+      end
+
+      def render_inline_node(node)
+        renderer = inline_node_renderer(node)
+        renderer ? send(renderer, node) : ""
+      end
+
+      def inline_node_renderer(node)
+        {
+          N::Text => :render_text,
+          N::BlockQuote => :render_inline_block_quote,
+          N::CodeBlock => :render_code_block,
+          N::NoformatBlock => :render_noformat_block,
+          N::Panel => :render_panel,
+          N::Bold => :render_bold,
+          N::Italic => :render_italic,
+          N::Strikethrough => :render_strikethrough,
+          N::Underline => :render_underline,
+          N::Citation => :render_citation,
+          N::InlineCode => :render_inline_code,
+          N::Superscript => :render_superscript,
+          N::Subscript => :render_subscript,
+          N::Link => :render_link,
+          N::Image => :render_image,
+          N::ColorMacro => :render_color_macro,
+          N::Mention => :render_mention,
+          N::Emoticon => :render_emoticon,
+          N::LineBreak => :render_line_break,
+          N::EmDash => :render_em_dash,
+          N::EnDash => :render_en_dash
+        }[node.class]
+      end
+
+      def render_text(node)
+        node.content
+      end
+
+      # Reached where a quote cannot become its own block (headings, list items,
+      # table cells); markdown has no inline quote, so keep the text unadorned.
+      def render_inline_block_quote(node)
+        render_inline(node.children)
+      end
+
+      def render_bold(node)
+        "**#{render_inline(node.children)}**"
+      end
+
+      def render_italic(node)
+        "*#{render_inline(node.children)}*"
+      end
+
+      def render_strikethrough(node)
+        "~~#{render_inline(node.children)}~~"
+      end
+
+      def render_underline(node)
+        "<u>#{render_inline(node.children)}</u>"
+      end
+
+      def render_citation(node)
+        "<cite>#{render_inline(node.children)}</cite>"
+      end
+
+      def render_inline_code(node)
+        "`#{node.content}`"
+      end
+
+      def render_superscript(node)
+        "<sup>#{render_inline(node.children)}</sup>"
+      end
+
+      def render_subscript(node)
+        "<sub>#{render_inline(node.children)}</sub>"
+      end
+
+      def render_link(node)
+        if node.text
+          "[#{node.text}](#{node.url})"
+        else
+          "<#{node.url}>"
+        end
+      end
+
+      def render_image(node)
+        size_style = image_size_style(node.params)
+
+        if size_style
+          html_image(node, size_style)
+        else
+          markdown_image(node)
+        end
+      end
+
+      def markdown_image(node)
+        alt = node.params["alt"] || ""
+        "![#{alt}](#{markdown_destination(image_source(node.url))})"
+      end
+
+      def html_image(node, size_style)
+        tag.img(src: image_source(node.url), alt: node.params["alt"] || "", style: size_style)
+      end
+
+      def image_size_style(params)
+        if params["thumbnail"]
+          JIRA_THUMBNAIL_STYLE
+        else
+          width_or_height_style(params)
+        end
+      end
+
+      # Keep only one dimension because OpenProject's editor resizes an image by its width alone.
+      def width_or_height_style(params)
+        width = css_pixels(params["width"])
+        height = css_pixels(params["height"])
+
+        if width
+          "width:#{width}"
+        elsif height
+          "height:#{height}"
+        end
+      end
+
+      def css_pixels(value)
+        case value
+        when /\A\d+\z/ then "#{value}px"
+        when /\A\d+px\z/ then value
+        end
+      end
+
+      def image_source(url)
+        @attachment_paths_by_name[url] || attachment_reference(url)
+      end
+
+      # A name matching none of the issue's attachments is written the way an
+      # attachment of that name would be stored: CarrierWave sanitizes the name, and
+      # AttachmentFilter resolves an image by matching src against it, so a reference
+      # to "My Shot.png" has to become "My_Shot.png". Reusing the uploader's own
+      # expression keeps the two from drifting apart.
+      def attachment_reference(url)
+        return url if url.match?(%r{\A(\w+://|//|/|www\.)}i)
+
+        url.gsub(CarrierWave::SanitizedFile.sanitize_regexp, "_")
+      end
+
+      # A remote URL may still carry spaces, which CommonMark only accepts in a
+      # destination wrapped in angle brackets.
+      def markdown_destination(url)
+        url.match?(/\s/) ? "<#{url}>" : url
+      end
+
+      def render_mention(node)
+        user = User.find_by(login: node.username)
+        if user
+          escaped_name = ERB::Util.html_escape(user.name)
+          %(<mention class="mention" data-id="#{
+            user.id
+          }" data-type="user" data-text="@#{
+            escaped_name
+          }">@#{
+            escaped_name
+          }</mention>)
+        else
+          "@#{ERB::Util.html_escape(node.username)}"
+        end
+      end
+
+      def render_color_macro(node)
+        render_inline(node.children)
+      end
+
+      def render_emoticon(node)
+        EMOTICON_MAP[node.key] || node.key
+      end
+
+      def render_line_break(_node)
+        "  \n"
+      end
+
+      def render_em_dash(_node)
+        "\u2014"
+      end
+
+      def render_en_dash(_node)
+        "\u2013"
+      end
+    end
+  end
+end

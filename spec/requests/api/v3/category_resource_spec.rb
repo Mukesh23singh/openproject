@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,102 +22,109 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Category resource' do
+RSpec.describe "API v3 Category resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  let(:role) { FactoryBot.create(:role, permissions: []) }
-  let(:private_project) { FactoryBot.create(:project, public: false) }
-  let(:public_project) { FactoryBot.create(:project, public: true) }
-  let(:anonymous_user) { FactoryBot.create(:user) }
-  let(:privileged_user) do
-    FactoryBot.create(:user,
-                      member_in_project: private_project,
-                      member_through_role: role)
+  shared_let(:non_member_user) { create(:user) }
+  shared_let(:role) { create(:project_role, permissions: []) }
+  shared_let(:private_project) { create(:project, public: false) }
+  shared_let(:public_project) { create(:project, public: true) }
+  shared_let(:privileged_user) do
+    create(:user,
+           member_with_roles: { private_project => role })
   end
 
-  let!(:categories) { FactoryBot.create_list(:category, 3, project: private_project) }
-  let!(:other_categories) { FactoryBot.create_list(:category, 2, project: public_project) }
-  let!(:user_categories) do
-    FactoryBot.create_list(:category,
-                           2,
-                           project: private_project,
-                           assigned_to: privileged_user)
+  shared_let(:categories) { create_list(:category, 3, project: private_project) }
+  shared_let(:other_categories) { create_list(:category, 2, project: public_project) }
+  shared_let(:user_categories) do
+    create_list(:category,
+                2,
+                project: private_project,
+                assigned_to: privileged_user)
   end
 
-  describe 'categories by project' do
+  shared_context "with categories by" do
     subject(:response) { last_response }
 
-    context 'logged in user' do
-      let(:get_path) { api_v3_paths.categories_by_project private_project.id }
-      before do
-        allow(User).to receive(:current).and_return privileged_user
+    context "for a logged in user" do
+      current_user { privileged_user }
 
+      before do
         get get_path
       end
 
-      it_behaves_like 'API V3 collection response', 5, 5, 'Category'
+      it_behaves_like "API V3 collection response", 5, 5, "Category"
     end
 
-    context 'not logged in user' do
-      let(:get_path) { api_v3_paths.categories_by_project private_project.id }
-      before do
-        allow(User).to receive(:current).and_return anonymous_user
+    context "for a user without permissions" do
+      current_user { non_member_user }
 
+      before do
         get get_path
       end
 
-      it_behaves_like 'not found'
+      it_behaves_like "not found"
     end
   end
 
-  describe 'categories/:id' do
+  describe "GET projects/:id/categories" do
+    include_context "with categories by" do
+      let(:get_path) { api_v3_paths.categories_by_project private_project.id }
+    end
+  end
+
+  describe "GET workspace/:id/categories" do
+    include_context "with categories by" do
+      let(:get_path) { api_v3_paths.categories_by_workspace private_project.id }
+    end
+  end
+
+  describe "GET categories/:id" do
     subject(:response) { last_response }
 
-    context 'logged in user' do
+    context "for a logged in user" do
       let(:get_path) { api_v3_paths.category categories.first.id }
-      before do
-        allow(User).to receive(:current).and_return privileged_user
 
+      current_user { privileged_user }
+
+      before do
         get get_path
       end
 
-      context 'valid priority id' do
-        it 'should return HTTP 200' do
-          expect(response.status).to eql(200)
+      context "for a valid priority id" do
+        it "returns HTTP 200" do
+          expect(response).to have_http_status(200)
         end
       end
 
-      context 'invalid priority id' do
-        let(:get_path) { api_v3_paths.category 'bogus' }
-        it_behaves_like 'param validation error' do
-          let(:id) { 'bogus' }
-          let(:type) { 'Category' }
-        end
+      context "with an invalid priority id" do
+        let(:get_path) { api_v3_paths.category "bogus" }
+
+        it_behaves_like "not found"
       end
     end
 
-    context 'not logged in user' do
-      let(:get_path) { api_v3_paths.category 'bogus' }
+    context "for a user without permissions" do
+      let(:get_path) { api_v3_paths.category "bogus" }
+
+      current_user { non_member_user }
+
       before do
-        allow(User).to receive(:current).and_return anonymous_user
+        allow(User).to receive(:current).and_return non_member_user
 
         get get_path
       end
 
-      it_behaves_like 'param validation error' do
-        let(:id) { 'bogus' }
-        let(:type) { 'Category' }
-      end
+      it_behaves_like "not found"
     end
   end
 end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,26 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'contracts/shared/model_contract_shared_context'
+require "spec_helper"
+require "contracts/shared/model_contract_shared_context"
 
-describe Attachments::CreateContract do
-  include_context 'ModelContract shared context'
+RSpec.describe Attachments::CreateContract do
+  include_context "ModelContract shared context"
 
-  let(:current_user) { FactoryBot.build_stubbed :user }
+  let(:current_user) { build_stubbed(:user) }
   let(:model) do
-    FactoryBot.build :attachment,
-                     container: container,
-                     content_type: content_type,
-                     file: file,
-                     filename: filename,
-                     author: current_user
+    build(:attachment,
+          container:,
+          content_type:,
+          file:,
+          filename:,
+          author: current_user)
   end
   let(:contract) { described_class.new model, user, options: contract_options }
   let(:contract_options) { {} }
@@ -51,12 +50,12 @@ describe Attachments::CreateContract do
   let(:file) do
     Rack::Test::UploadedFile.new(
       Rails.root.join("spec/fixtures/files/image.png"),
-      'image/png',
+      "image/png",
       true
     )
   end
-  let(:content_type) { 'image/png' }
-  let(:filename) { 'image.png' }
+  let(:content_type) { "image/png" }
+  let(:filename) { "image.png" }
 
   let(:can_attach_global) { true }
 
@@ -65,24 +64,24 @@ describe Attachments::CreateContract do
       .to receive(:none?).and_return(!can_attach_global)
   end
 
-  context 'with user who has no permissions' do
+  context "with user who has no permissions" do
     let(:can_attach_global) { false }
 
-    it_behaves_like 'contract is invalid', base: :error_unauthorized
+    it_behaves_like "contract is invalid", base: :error_unauthorized
   end
 
-  context 'with a user that is not the author' do
-    let(:user) { FactoryBot.build_stubbed :user }
+  context "with a user that is not the author" do
+    let(:user) { build_stubbed(:user) }
 
-    it_behaves_like 'contract is invalid', author: :invalid
+    it_behaves_like "contract is invalid", author: :invalid
   end
 
-  context 'with user who has permissions to add' do
-    it_behaves_like 'contract is valid'
+  context "with user who has permissions to add" do
+    it_behaves_like "contract is valid"
   end
 
-  context 'with a container' do
-    let(:container) { FactoryBot.build_stubbed :work_package }
+  context "with a container" do
+    let(:container) { build_stubbed(:work_package) }
 
     before do
       allow(container)
@@ -91,53 +90,64 @@ describe Attachments::CreateContract do
               .and_return(can_attach)
     end
 
-    context 'with user who has no permissions' do
+    context "with user who has no permissions" do
       let(:can_attach) { false }
 
-      it_behaves_like 'contract is invalid', base: :error_unauthorized
+      it_behaves_like "contract is invalid", base: :error_unauthorized
     end
 
-    context 'with user who has permissions to add' do
+    context "with user who has permissions to add" do
       let(:can_attach) { true }
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
-
   end
 
-  context 'with an empty whitelist',
+  context "with an empty allowlist",
           with_settings: { attachment_whitelist: %w[] } do
-    it_behaves_like 'contract is valid'
+    it_behaves_like "contract is valid"
   end
 
-  context 'with a matching mime whitelist',
+  context "with a matching mime allowlist",
           with_settings: { attachment_whitelist: %w[image/png] } do
-    it_behaves_like 'contract is valid'
+    it_behaves_like "contract is valid"
   end
 
-  context 'with a matching extension whitelist',
+  context "with a matching extension allowlist",
           with_settings: { attachment_whitelist: %w[*.png] } do
-    it_behaves_like 'contract is valid'
+    it_behaves_like "contract is valid"
   end
 
-  context 'with a non-matching whitelist',
+  context "with a non-matching allowlist",
           with_settings: { attachment_whitelist: %w[*.jpg image/jpeg] } do
-    it_behaves_like 'contract is invalid', content_type: :not_whitelisted
+    it_behaves_like "contract is invalid", content_type: :not_allowlisted
 
-    context 'when disabling the whitelist check' do
+    context "when disabling the whitelist check" do
       let(:contract_options) do
-        { whitelist: [] }
+        { allowlist: [] }
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'when overriding the whitelist' do
+    context "when overriding the whitelist" do
       let(:contract_options) do
-        { whitelist: %w[*.png] }
+        { allowlist: %w[*.png] }
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
   end
+
+  context "with filesize exceeding maximum",
+          with_settings: { attachment_max_size: 0 } do
+    it_behaves_like "contract is invalid", file: :file_too_large
+  end
+
+  context "with filesize within maximum",
+          with_settings: { attachment_max_size: 1024 } do
+    it_behaves_like "contract is valid"
+  end
+
+  include_examples "contract reuses the model errors"
 end

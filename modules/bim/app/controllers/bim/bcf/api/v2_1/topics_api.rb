@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,10 +35,10 @@ module Bim::Bcf::API::V2_1
           ::Bim::Bcf::Issue.of_project(@project)
         end
 
-        def transform_attributes(attributes)
+        def transform_attributes(attributes, fill_defaults: false)
           wp_attributes = ::Bim::Bcf::Issues::TransformAttributesService
                             .new(@project)
-                            .call(attributes)
+                            .call(attributes, fill_defaults:)
                             .result
 
           attributes
@@ -45,55 +46,77 @@ module Bim::Bcf::API::V2_1
             .merge(wp_attributes)
         end
 
+        # Only for a topic that creates its own work package. A topic naming an existing one
+        # adopts it, and its type, status and priority are already that work package's own.
+        def create_params_with_defaults(attributes)
+          return attributes if ::Bim::Bcf::Issues::CreateService.adopts_work_package?(attributes[:reference_links])
+
+          attributes.reverse_merge(default_create_params)
+        end
+
+        # Compacted: reverse_merge fills absent keys, so a default that resolves to nothing
+        # would otherwise be planted as an explicit nil and clear the attribute.
+        def default_create_params
+          default_type = ::Bim::Bcf::Issues::DefaultWorkPackageAttributes.default_create_type(@project)
+
+          {
+            type: default_type,
+            status: ::Bim::Bcf::Issues::DefaultWorkPackageAttributes.default_status(@project, type: default_type),
+            priority: ::Bim::Bcf::Issues::DefaultWorkPackageAttributes.default_priority
+          }.compact
+        end
+
         # In a put request, every non required and non provided
         # parameter needs to be nilled. As we cannot nil type, status and priority
         # as they are required for a work package we use the default values.
         def default_put_params
+          default_type = ::Bim::Bcf::Issues::DefaultWorkPackageAttributes.default_put_type(@project)
+
           {
             index: nil,
             assigned_to: nil,
             description: nil,
             due_date: nil,
             subject: nil,
-            type: @project.types.default.first,
-            status: Status.default,
-            priority: IssuePriority.default
+            type: default_type,
+            status: ::Bim::Bcf::Issues::DefaultWorkPackageAttributes.default_status(@project, type: default_type),
+            priority: ::Bim::Bcf::Issues::DefaultWorkPackageAttributes.default_priority
           }
         end
       end
 
       after_validation do
-        authorize :view_linked_issues, context: @project
+        authorize_in_project(:view_linked_issues, project: @project)
       end
 
       get &::Bim::Bcf::API::V2_1::Endpoints::Index
              .new(model: Bim::Bcf::Issue,
-                  api_name: 'Topics',
+                  api_name: "Topics",
                   scope: -> { topics })
              .mount
 
       post &::Bim::Bcf::API::V2_1::Endpoints::Create
              .new(model: Bim::Bcf::Issue,
-                  api_name: 'Topics',
+                  api_name: "Topics",
                   params_modifier: ->(attributes) {
-                    transform_attributes(attributes)
+                    create_params_with_defaults(transform_attributes(attributes))
                       .merge(project: @project)
                   })
              .mount
 
-      route_param :topic_uuid, regexp: /\A[a-f0-9\-]+\z/ do
+      route_param :topic_uuid, regexp: /\A[a-f0-9-]+\z/ do
         after_validation do
           @issue = topics.find_by!(uuid: params[:topic_uuid])
         end
 
         get &::Bim::Bcf::API::V2_1::Endpoints::Show
               .new(model: Bim::Bcf::Issue,
-                   api_name: 'Topics')
+                   api_name: "Topics")
               .mount
 
         put &::Bim::Bcf::API::V2_1::Endpoints::Update
                .new(model: Bim::Bcf::Issue,
-                    api_name: 'Topics',
+                    api_name: "Topics",
                     params_modifier: ->(attributes) {
                       transform_attributes(attributes)
                         .reverse_merge(default_put_params)
@@ -102,7 +125,7 @@ module Bim::Bcf::API::V2_1
 
         delete &::Bim::Bcf::API::V2_1::Endpoints::Delete
                   .new(model: Bim::Bcf::Issue,
-                       api_name: 'Topics')
+                       api_name: "Topics")
                   .mount
 
         mount ::Bim::Bcf::API::V2_1::Viewpoints::API

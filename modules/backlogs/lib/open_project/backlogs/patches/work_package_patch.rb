@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +22,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-
-require_dependency 'work_package'
 
 module OpenProject::Backlogs::Patches::WorkPackagePatch
   extend ActiveSupport::Concern
@@ -35,127 +34,38 @@ module OpenProject::Backlogs::Patches::WorkPackagePatch
     prepend InstanceMethods
     extend ClassMethods
 
-    before_validation :backlogs_before_validation, if: lambda { backlogs_enabled? }
+    register_journal_formatted_fields "story_points", "position", formatter_key: :decimal
+    register_journal_formatted_fields :sprint_id, :backlog_bucket_id,
+                                      formatter_key: :named_association,
+                                      view_permission: :view_sprints
 
-    register_on_journal_formatter(:fraction, 'remaining_hours')
-    register_on_journal_formatter(:decimal, 'story_points')
-    register_on_journal_formatter(:decimal, 'position')
 
     validates_numericality_of :story_points, only_integer: true,
                                              allow_nil: true,
                                              greater_than_or_equal_to: 0,
                                              less_than: 10_000,
-                                             if: lambda { backlogs_enabled? }
+                                             if: -> { backlogs_enabled? }
 
-    validates_numericality_of :remaining_hours, only_integer: false,
-                                                allow_nil: true,
-                                                greater_than_or_equal_to: 0,
-                                                if: lambda { backlogs_enabled? }
+    belongs_to :sprint, optional: true
+    belongs_to :backlog_bucket, optional: true
 
     include OpenProject::Backlogs::List
+
+    scopes :backlog_eligible
+    scopes :in_backlog_for
+    scopes :without_status_considered_closed
+    scopes :without_excluded_type
   end
 
   module ClassMethods
-    def backlogs_types
-      # Unfortunately, this is not cachable so the following line would be wrong
-      # @backlogs_types ||= Story.types << Task.type
-      # Caching like in the line above would prevent the types selected
-      # for backlogs to be changed without restarting all app server.
-      (Story.types << Task.type).compact
-    end
-
-    def children_of(ids)
-      includes(:parent_relation)
-        .where(relations: { from_id: ids })
-    end
-
-    # Prevent problems with subclasses of WorkPackage
-    # not having a TypedDag configuration
-    def _dag_options
-      TypedDag::Configuration[WorkPackage]
+    def order_by_position
+      order(arel_table[:position].asc.nulls_last)
     end
   end
 
   module InstanceMethods
-    def done?
-      project.done_statuses.to_a.include?(status)
-    end
-
-    def to_story
-      Story.find(id) if is_story?
-    end
-
-    def is_story?
-      backlogs_enabled? && Story.types.include?(type_id)
-    end
-
-    def to_task
-      Task.find(id) if is_task?
-    end
-
-    def is_task?
-      backlogs_enabled? && (parent_id && type_id == Task.type && Task.type.present?)
-    end
-
-    def is_impediment?
-      backlogs_enabled? && (parent_id.nil? && type_id == Task.type && Task.type.present?)
-    end
-
-    def types
-      if is_story?
-        Story.types
-      elsif is_task?
-        Task.types
-      else
-        []
-      end
-    end
-
-    def story
-      if is_story?
-        Story.find(id)
-      elsif is_task?
-        # Make sure to get the closest ancestor that is a Story
-        ancestors_relations
-          .includes(:from)
-          .where(from: { type_id: Story.types })
-          .order(hierarchy: :asc)
-          .first
-          .from
-      end
-    end
-
-    def blocks
-      # return work_packages that I block that aren't closed
-      return [] if closed?
-
-      blocks_relations.includes(:to).merge(WorkPackage.with_status_open).map(&:to)
-    end
-
-    def blockers
-      # return work_packages that block me
-      return [] if closed?
-
-      blocked_by_relations.includes(:from).merge(WorkPackage.with_status_open).map(&:from)
-    end
-
     def backlogs_enabled?
-      !!project.try(:module_enabled?, 'backlogs')
-    end
-
-    def in_backlogs_type?
-      backlogs_enabled? && WorkPackage.backlogs_types.include?(type.try(:id))
-    end
-
-    private
-
-    def backlogs_before_validation
-      if type_id == Task.type
-        self.estimated_hours = remaining_hours if estimated_hours.blank? && !remaining_hours.blank?
-        self.remaining_hours = estimated_hours if remaining_hours.blank? && !estimated_hours.blank?
-      end
+      project&.backlogs_enabled?
     end
   end
 end
-
-WorkPackage.include OpenProject::Backlogs::Patches::WorkPackagePatch

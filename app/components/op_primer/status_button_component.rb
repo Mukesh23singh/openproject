@@ -1,0 +1,110 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module OpPrimer
+  class StatusButtonComponent < ApplicationComponent
+    include OpPrimer::ComponentHelpers
+    include Primer::ClassNameHelper
+
+    def initialize(current_status:, items:, readonly: false, disabled: false, button_arguments: {}, menu_arguments: {})
+      super
+
+      menu_arguments[:classes] = class_names(
+        menu_arguments[:classes],
+        "op-status-button"
+      )
+
+      @current_status = current_status
+      @items = items
+      @readonly = readonly
+      @disabled = disabled
+      @menu_arguments = menu_arguments
+      @button_arguments = button_arguments
+    end
+
+    def default_button_description
+      raise SubclassResponsibilityError
+    end
+
+    def default_button_style
+      :background_muted
+    end
+
+    def disabled?
+      @disabled
+    end
+
+    def readonly?
+      @readonly
+    end
+
+    def interactive?
+      !readonly? && !disabled? && @items.any?
+    end
+
+    def button_content(button)
+      if !@button_arguments[:icon_only]
+        button.with_tooltip(text: button_description) if interactive?
+        button.with_leading_visual_icon(icon: @current_status.icon) if @current_status.icon
+        button.with_trailing_action_icon(icon: "triangle-down") if !readonly? && @items.any?
+
+        @current_status.name
+      end
+    end
+
+    def button_description
+      @button_arguments.fetch(:description) { default_button_description }
+    end
+
+    def button_arguments
+      style = @button_arguments.fetch(:style) { default_button_style }
+
+      {
+        classes: class_names(@button_arguments[:classes], highlight_class_name(@current_status, style)),
+        disabled: disabled?,
+        aria: {
+          disabled: readonly?
+        }
+      }.compact.deep_merge(@button_arguments.except(:classes, :description, :icon_only, :style))
+    end
+
+    def highlight_class_name(status, style)
+      case style
+      when :dot
+        helpers.hl_dot_class(status.color_namespace, status.color_ref)
+      when :foreground
+        helpers.hl_foreground_class(status.color_namespace, status.color_ref)
+      when :background
+        helpers.hl_background_class(status.color_namespace, status.color_ref)
+      when :background_muted
+        helpers.hl_background_muted_class(status.color_namespace, status.color_ref)
+      end
+    end
+  end
+end

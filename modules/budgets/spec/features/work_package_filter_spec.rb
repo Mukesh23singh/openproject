@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,44 +20,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Filter by budget', js: true do
-  let(:user) { FactoryBot.create :admin }
-  let(:project) { FactoryBot.create :project }
+RSpec.describe "Filter by budget", :js do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project) }
 
-  let(:wp_table) { ::Pages::WorkPackagesTable.new(project) }
-  let(:filters) { ::Components::WorkPackages::Filters.new }
+  let(:wp_table) { Pages::WorkPackagesTable.new(project) }
+  let(:filters) { Components::WorkPackages::Filters.new }
 
   let(:member) do
-    FactoryBot.create(:member,
-                      user: user,
-                      project: project,
-                      roles: [FactoryBot.create(:role)])
+    create(:member,
+           user:,
+           project:,
+           roles: [create(:project_role)])
   end
   let(:status) do
-    FactoryBot.create(:status)
+    create(:status)
   end
 
   let(:budget) do
-    FactoryBot.create(:budget, project: project)
+    create(:budget, project:)
   end
 
   let(:work_package_with_budget) do
-    FactoryBot.create(:work_package,
-                      project: project,
-                      budget: budget)
+    create(:work_package,
+           project:,
+           budget:)
   end
 
   let(:work_package_without_budget) do
-    FactoryBot.create(:work_package,
-                      project: project)
+    create(:work_package,
+           project:)
   end
 
   before do
@@ -70,21 +69,21 @@ describe 'Filter by budget', js: true do
     wp_table.visit!
   end
 
-  it 'allows filtering for budgets' do
+  it "allows filtering for budgets" do
     wp_table.expect_work_package_listed work_package_with_budget, work_package_without_budget
 
     filters.expect_filter_count 1
     filters.open
-    filters.add_filter_by('Budget', 'is', budget.name)
+    filters.add_filter_by("Budget", "is (OR)", budget.name)
 
     wp_table.expect_work_package_listed work_package_with_budget
     wp_table.ensure_work_package_not_listed! work_package_without_budget
 
-    wp_table.save_as('Some query name')
+    wp_table.save_as("Some query name")
 
-    wp_table.expect_and_dismiss_toaster message: 'Successful creation.'
+    wp_table.expect_and_dismiss_toaster message: "Successful creation."
 
-    filters.remove_filter 'budget'
+    filters.remove_filter "budget"
 
     wp_table.expect_work_package_listed work_package_with_budget, work_package_without_budget
 
@@ -97,6 +96,6 @@ describe 'Filter by budget', js: true do
 
     filters.open
 
-    filters.expect_filter_by('Budget', 'is', budget.name)
+    filters.expect_filter_by("Budget", "is (OR)", budget.name)
   end
 end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,35 +22,48 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Notifications::CreateFromModelService::WorkPackageStrategy
   def self.reasons
-    %i(mentioned assigned responsible watched commented created processed prioritized scheduled)
+    %i(mentioned assigned responsible watched commented created processed prioritized scheduled shared)
   end
 
-  def self.permission
-    :view_work_packages
+  def self.permission(journal, _reason)
+    if journal&.internal?
+      # we assume that if a journal is internal it is a comment and respects the
+      # view internal comments permissions
+      :view_internal_comments
+    else
+      :view_work_packages
+    end
   end
 
-  def self.supports_ian?
+  def self.mentionable_users(users, _journal)
+    users
+  end
+
+  def self.supports_ian?(_reason)
     true
   end
 
-  def self.supports_mail_digest?
+  def self.supports_mail_digest?(_reason)
     true
   end
 
-  def self.supports_mail?
-    true
+  def self.supports_mail?(reason)
+    reason == :mentioned
   end
 
   def self.watcher_users(journal)
     User.watcher_recipients(journal.journable)
+  end
+
+  def self.shared_users(journal)
+    journal.journable.member_principals
   end
 
   def self.project(journal)

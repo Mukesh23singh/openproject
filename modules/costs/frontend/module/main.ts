@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2020 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -15,16 +15,17 @@
 // of the License, or (at your option) any later version.
 //
 // This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
+//++
 
-import { Injector, NgModule } from '@angular/core';
+import { Injector, NgModule, inject } from '@angular/core';
 import { OpenProjectPluginContext } from 'core-app/features/plugins/plugin-context';
 import { CostsByTypeDisplayField } from './wp-display/costs-by-type-display-field.module';
 import { CurrencyDisplayField } from './wp-display/currency-display-field.module';
@@ -37,9 +38,9 @@ export function initializeCostsPlugin(injector:Injector) {
 
     pluginContext.hooks.workPackageSingleContextMenu((params:any) => ({
       key: 'log_costs',
-      icon: 'icon-projects',
+      icon: 'icon-budget',
       indexBy(actions:any) {
-        const index = _.findIndex(actions, { key: 'log_time' });
+        const index = actions.findIndex((action:any) => action.key === 'log_time');
         return index !== -1 ? index + 1 : actions.length;
       },
       resource: 'workPackage',
@@ -48,10 +49,10 @@ export function initializeCostsPlugin(injector:Injector) {
 
     pluginContext.hooks.workPackageTableContextMenu((params:any) => ({
       key: 'log_costs',
-      icon: 'icon-projects',
+      icon: 'icon-budget',
       link: 'logCosts',
       indexBy(actions:any) {
-        const index = _.findIndex(actions, { link: 'logTime' });
+        const index = actions.findIndex((action:any) => action.link === 'logTime');
         return index !== -1 ? index + 1 : actions.length;
       },
       text: I18n.t('js.button_log_costs'),
@@ -64,7 +65,9 @@ export function initializeCostsPlugin(injector:Injector) {
   ],
 })
 export class PluginModule {
-  constructor(injector:Injector) {
+  constructor() {
+    const injector = inject(Injector);
+
     initializeCostsPlugin(injector);
   }
 }

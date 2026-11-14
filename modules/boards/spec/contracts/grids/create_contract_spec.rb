@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,33 +20,32 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Grids::CreateContract, 'for Boards::Grid' do
-  let(:project) { FactoryBot.build_stubbed(:project) }
-  let(:user) { FactoryBot.build_stubbed(:user) }
-  let(:grid) do
-    FactoryBot.create(:board_grid, project: project)
-  end
-  include_context 'model contract'
-
+RSpec.describe Grids::CreateContract, "for Boards::Grid" do
+  let(:project) { build_stubbed(:project) }
   let(:instance) { described_class.new(grid, user) }
+  let(:user) { build_stubbed(:user) }
+  let(:grid) do
+    create(:board_grid, project:)
+  end
 
-  describe 'user_id' do
-    it_behaves_like 'is not writable' do
+  include_context "model contract"
+
+  describe "user_id" do
+    it_behaves_like "is not writable" do
       let(:attribute) { :user_id }
       let(:value) { 5 }
     end
   end
 
-  describe 'project_id' do
-    it_behaves_like 'is writable' do
+  describe "project_id" do
+    it_behaves_like "is writable" do
       let(:attribute) { :project_id }
       let(:value) { 5 }
     end

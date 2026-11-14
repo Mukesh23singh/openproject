@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,23 +20,28 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
-import { APIv3FormResource } from 'core-app/core/apiv3/forms/apiv3-form-resource';
+import { ApiV3FormResource } from 'core-app/core/apiv3/forms/apiv3-form-resource';
 import { QueryFormResource } from 'core-app/features/hal/resources/query-form-resource';
 import { Observable } from 'rxjs';
-import * as URI from 'urijs';
+import URI from 'urijs';
 import { map, tap } from 'rxjs/operators';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { QueryFiltersService } from 'core-app/features/work-packages/components/wp-query/query-filters.service';
 
-export class Apiv3QueryForm extends APIv3FormResource<QueryFormResource> {
-  @InjectField() private queryFilters:QueryFiltersService;
+export interface QueryFormPayload {
+  [key:string]:unknown;
+  name?:string;
+  _links?:Record<string, unknown>;
+}
+
+export class ApiV3QueryForm extends ApiV3FormResource<QueryFormResource> {
+  @LazyInject() private queryFilters:QueryFiltersService;
 
   /**
    * Load the query form for the given existing (or new) query resource
@@ -46,7 +51,7 @@ export class Apiv3QueryForm extends APIv3FormResource<QueryFormResource> {
     // We need a valid payload so that we
     // can check whether form saving is possible.
     // The query needs a name to be valid.
-    const payload:any = {
+    const payload:QueryFormPayload = {
       name: query.name || '!!!__O__o__O__!!!',
     };
 
@@ -75,7 +80,7 @@ export class Apiv3QueryForm extends APIv3FormResource<QueryFormResource> {
    * @param projectIdentifier
    * @param payload
    */
-  public loadWithParams(params:{ [key:string]:unknown }, queryId:string|undefined, projectIdentifier:string|undefined|null, payload:any = {}):Observable<[QueryFormResource, QueryResource]> {
+  public loadWithParams(params:Record<string, unknown>, queryId:string|null|undefined, projectIdentifier:string|undefined|null, payload:QueryFormPayload = {}):Observable<[QueryFormResource, QueryResource]> {
     // We need a valid payload so that we
     // can check whether form saving is possible.
     // The query needs a name to be valid.
@@ -84,7 +89,7 @@ export class Apiv3QueryForm extends APIv3FormResource<QueryFormResource> {
     }
 
     if (projectIdentifier) {
-      payload._links = payload._links || {};
+      payload._links ??= {};
       payload._links.project = {
         href: this.apiRoot.projects.id(projectIdentifier).toString(),
       };

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,30 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Notifications::NotificationsAPI,
-         'bulk unset read status',
-         type: :request,
-         content_type: :json do
+RSpec.describe API::V3::Notifications::NotificationsAPI,
+               "bulk unset read status",
+               content_type: :json do
   include API::V3::Utilities::PathHelper
 
-  shared_let(:recipient) { FactoryBot.create :user }
-  shared_let(:other_recipient) { FactoryBot.create :user }
-  shared_let(:notification1) { FactoryBot.create :notification, recipient: recipient, read_ian: true }
-  shared_let(:notification2) { FactoryBot.create :notification, recipient: recipient, read_ian: true }
-  shared_let(:notification3) { FactoryBot.create :notification, recipient: recipient, read_ian: true }
-  shared_let(:other_user_notification) { FactoryBot.create :notification, recipient: other_recipient, read_ian: true }
+  shared_let(:project) { create(:project) }
+  shared_let(:work_package) { create(:work_package, project:) }
+
+  shared_let(:recipient) { create(:user, member_with_permissions: { project => %i[view_work_packages] }) }
+  shared_let(:other_recipient) { create(:user) }
+  shared_let(:notification1) do
+    create(:notification, recipient:, resource: work_package, read_ian: true)
+  end
+  shared_let(:notification2) do
+    create(:notification, recipient:, resource: work_package, read_ian: true)
+  end
+  shared_let(:notification3) do
+    create(:notification, recipient:, resource: work_package, read_ian: true)
+  end
+  shared_let(:other_user_notification) do
+    create(:notification,
+           recipient: other_recipient,
+           read_ian: true,
+           resource: work_package)
+  end
 
   let(:filters) { nil }
 
   let(:read_path) do
-    api_v3_paths.path_for :notification_bulk_unread_ian, filters: filters
+    api_v3_paths.path_for :notification_bulk_unread_ian, filters:
   end
 
   let(:parsed_response) { JSON.parse(last_response.body) }
@@ -56,60 +69,60 @@ describe ::API::V3::Notifications::NotificationsAPI,
     post read_path
   end
 
-  describe 'POST /api/v3/notifications/unread_ian' do
+  describe "POST /api/v3/notifications/unread_ian" do
     let(:current_user) { recipient }
 
-    it 'returns 204' do
+    it "returns 204" do
       expect(last_response.status)
-        .to eql(204)
+        .to be(204)
     end
 
-    it 'sets all the current users`s notifications to read' do
-      expect(::Notification.where(id: [notification1.id, notification2.id, notification3.id]).pluck(:read_ian))
+    it "sets all the current users`s notifications to read" do
+      expect(Notification.where(id: [notification1.id, notification2.id, notification3.id]).pluck(:read_ian))
         .to all(be_falsey)
 
-      expect(::Notification.where(id: [other_user_notification]).pluck(:read_ian))
+      expect(Notification.where(id: [other_user_notification]).pluck(:read_ian))
         .to all(be_truthy)
     end
 
-    context 'with a filter for id' do
+    context "with a filter for id" do
       let(:filters) do
         [
           {
-            'id' => {
-              'operator' => '=',
-              'values' => [notification1.id.to_s, notification2.id.to_s]
+            "id" => {
+              "operator" => "=",
+              "values" => [notification1.id.to_s, notification2.id.to_s]
 
             }
           }
         ]
       end
 
-      it 'sets the current users`s notifications matching the filter to read' do
-        expect(::Notification.where(id: [notification1.id, notification2.id]).pluck(:read_ian))
+      it "sets the current users`s notifications matching the filter to read" do
+        expect(Notification.where(id: [notification1.id, notification2.id]).order(id: :asc).pluck(:read_ian))
           .to all(be_falsey)
 
-        expect(::Notification.where(id: [other_user_notification, notification3.id]).pluck(:read_ian))
+        expect(Notification.where(id: [other_user_notification.id, notification3.id]).order(id: :asc).pluck(:read_ian))
           .to all(be_truthy)
       end
     end
 
-    context 'with an invalid filter' do
+    context "with an invalid filter" do
       let(:filters) do
         [
           {
-            'bogus' => {
-              'operator' => '=',
-              'values' => []
+            "bogus" => {
+              "operator" => "=",
+              "values" => []
 
             }
           }
         ]
       end
 
-      it 'returns 400' do
+      it "returns 400" do
         expect(last_response.status)
-          .to eql(400)
+          .to be(400)
       end
     end
   end

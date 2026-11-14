@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,33 +20,37 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable, Injector, OnDestroy } from '@angular/core';
+import { Injectable, Injector, OnDestroy, inject } from '@angular/core';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
-import { Subject } from 'rxjs';
+import {
+  Observable,
+  of,
+  Subject,
+} from 'rxjs';
 import { ComponentType } from '@angular/cdk/portal';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { CurrentUserService } from 'core-app/core/current-user/current-user.service';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
 
 @Injectable()
 export class WorkPackageInlineCreateService implements OnDestroy {
-  @InjectField() I18n!:I18nService;
+  readonly injector = inject(Injector);
 
-  @InjectField() protected readonly authorisationService:AuthorisationService;
+  readonly I18n = inject(I18nService);
 
-  constructor(readonly injector:Injector) {
-  }
+  protected readonly currentUser = inject(CurrentUserService);
+
+  protected readonly currentProject = inject(CurrentProjectService);
 
   /**
    * A separate reference pane for the inline create component
    */
-  public readonly referenceComponentClass:ComponentType<any>|null = null;
+  public readonly referenceComponentClass:ComponentType<unknown>|null = null;
 
   /**
    * A related work package for the inline create context
@@ -61,17 +65,28 @@ export class WorkPackageInlineCreateService implements OnDestroy {
     create: this.I18n.t('js.label_create_work_package'),
   };
 
-  public get canAdd() {
-    return this.canCreateWorkPackages || this.authorisationService.can('work_package', 'addChild');
+  public get canAdd():Observable<boolean> {
+    return this.canCreateWorkPackages();
   }
 
-  public get canReference() {
-    return false;
+  public get canReference():Observable<boolean> {
+    return of(false);
   }
 
-  public get canCreateWorkPackages() {
-    return this.authorisationService.can('work_packages', 'createWorkPackage')
-      && this.authorisationService.can('work_packages', 'editWorkPackage');
+  /**
+   * Observable capability check for work_packages/create and /edit.
+   * Edit is included as inline create saves quickly, preventing further edits for users
+   * that don't also have edit permission.
+   *
+   * @protected
+   */
+  protected canCreateWorkPackages(projectId:string|null = this.currentProject.id):Observable<boolean> {
+    return this
+      .currentUser
+      .hasCapabilities$(
+        ['work_packages/create', 'work_packages/update'],
+        projectId || null,
+      );
   }
 
   /** Allow callbacks to happen on newly created inline work packages */
@@ -83,7 +98,7 @@ export class WorkPackageInlineCreateService implements OnDestroy {
   /**
    * Ensure hierarchical injected versions of this service correctly unregister
    */
-  ngOnDestroy() {
+  ngOnDestroy():void {
     this.newInlineWorkPackageCreated.complete();
     this.newInlineWorkPackageReferenced.complete();
   }

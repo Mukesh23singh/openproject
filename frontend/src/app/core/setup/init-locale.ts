@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,25 +20,42 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import * as moment from 'moment';
+import moment from 'moment';
+import { I18n } from 'i18n-js';
+import { getMetaElement } from './globals/global-helpers';
 
-export function initializeLocale() {
-  const meta = document.querySelector('meta[name=openproject_initializer]') as HTMLMetaElement;
-  const locale = meta.dataset.locale || 'en';
-  const firstDayOfWeek = parseInt(meta.dataset.firstDayOfWeek || '', 10);
-  const firstWeekOfYear = parseInt(meta.dataset.firstWeekOfYear || '', 10);
+export function initializeLocale(
+  loadLocale = (locale:string) => import(`../../../locales/${locale}.json`),
+) {
+  const meta = getMetaElement('openproject_initializer');
+  const getInitializerValue = (key:string, defaultValue = '') => meta?.dataset[key] ?? defaultValue;
+  const userLocale = getInitializerValue('locale', 'en');
+  const defaultLocale = getInitializerValue('defaultlocale', 'en');
+  const instanceLocale = getInitializerValue('instancelocale', 'en');
+  const firstDayOfWeek = parseInt(getInitializerValue('firstdayofweek'), 10); // properties of meta.dataset are exposed in lowercase
+  const firstWeekOfYear = parseInt(getInitializerValue('firstweekofyear'), 10); // properties of meta.dataset are exposed in lowercase
 
-  I18n.locale = locale;
+  const i18n = new I18n();
+  i18n.locale = userLocale;
+  i18n.defaultLocale = defaultLocale;
+
+  window.I18n = i18n;
+
+  moment.locale(userLocale);
+
+  // Remove Postformatting numbers in dates, this will ensure we are always using
+  // Arabic numbers in dates and durations, regardless of the chosen locale.
+  // Using moment.locale() ensures locale like "zh-CN" falls back to "zh-cn"
+  moment.updateLocale(moment.locale(), { postformat: (string:string) => string });
 
   if (!Number.isNaN(firstDayOfWeek) && !Number.isNaN(firstWeekOfYear)) {
-    I18n.firstDayOfWeek = firstDayOfWeek;
-    moment.updateLocale(locale, {
+    // ensure locale like "zh-CN" falls back to "zh-cn"
+    moment.updateLocale(moment.locale(), {
       week: {
         dow: firstDayOfWeek,
         doy: 7 + firstDayOfWeek - firstWeekOfYear,
@@ -49,16 +66,26 @@ export function initializeLocale() {
   // Override the default pluralization function to allow
   // "other" to be used as a fallback for "one" in languages where one is not set
   // (japanese, for example)
-  I18n.pluralization.default = function (count:number) {
-    switch (count) {
-      case 0:
-        return ['zero', 'other'];
-      case 1:
-        return ['one', 'other'];
-      default:
-        return ['other'];
-    }
-  };
+  i18n.pluralization.register(
+    'default',
+    (_i18n:I18n, count:number) => {
+      switch (count) {
+        case 0:
+          return ['zero', 'other'];
+        case 1:
+          return ['one', 'other'];
+        default:
+          return ['other'];
+      }
+    },
+  );
 
-  return import(/* webpackChunkName: "locale" */ `../../../locales/${I18n.locale}.js`);
+  const localeImports = [...new Set([userLocale, instanceLocale])]
+    .map(
+      (locale) => loadLocale(locale)
+        .then((imported:{ default:object }) => {
+          i18n.store(imported.default);
+        }),
+    );
+  return Promise.all(localeImports);
 }

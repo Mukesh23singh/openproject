@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,41 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class ::Type < ApplicationRecord
-  extend Pagination::Model
-
-  # Work Package attributes for this type
-  # and constraints to specific attributes (by plugins).
-  include ::Type::Attributes
-  include ::Type::AttributeGroups
+class Type < ApplicationRecord
+  DESCRIPTION_MAX_LENGTH = 1000
 
   include ::Scopes::Scoped
 
+  before_validation :ensure_base_variant, on: :create
   before_destroy :check_integrity
 
-  has_many :work_packages
-  has_many :workflows, dependent: :delete_all do
-    def copy_from_type(source_type)
-      Workflow.copy(source_type, nil, proxy_association.owner, nil)
-    end
-  end
+  belongs_to :color, optional: true, class_name: "Color"
 
-  has_and_belongs_to_many :projects
+  has_many :work_packages, dependent: nil
 
-  has_and_belongs_to_many :custom_fields,
-                          class_name: 'WorkPackageCustomField',
-                          join_table: "#{table_name_prefix}custom_fields_types#{table_name_suffix}",
-                          association_foreign_key: 'custom_field_id'
+  # Every type has a base variant plus any number of named ones.
+  has_many :variants, class_name: "TypeVariant", dependent: :destroy, autosave: true, inverse_of: :type
 
-  belongs_to :color,
-             class_name: 'Color',
-             foreign_key: 'color_id'
+  # Projects using this type. Which variant each of them applies is on the join row.
+  has_many :project_types, dependent: :delete_all
+  has_many :projects, through: :project_types
+
+  include Lists::MoveAfterAnchor
 
   acts_as_list
 
@@ -64,63 +54,68 @@ class ::Type < ApplicationRecord
             presence: true,
             uniqueness: { case_sensitive: false },
             length: { maximum: 255 }
-
-  validates_inclusion_of :is_default, :is_milestone, in: [true, false]
+  validates :description, length: { maximum: DESCRIPTION_MAX_LENGTH }
 
   scopes :milestone
 
-  default_scope { order('position ASC') }
+  default_scope { order(:position) }
 
-  scope :without_standard, -> {
-    where(is_standard: false)
-      .order(:position)
+  scope :visible, ->(user = User.current) {
+    if user.allowed_in_any_project?(:view_work_packages) || user.allowed_in_any_project?(:manage_types)
+      all
+    else
+      none
+    end
   }
 
-  def to_s; name end
+  scope :with_name_like, ->(query) {
+    where("types.name ILIKE :query", query: "%#{sanitize_sql_like(query.to_s.strip)}%")
+  }
+
+  scope :with_own_or_variant_name_like, ->(query) {
+    with_name_like(query).or(where(id: TypeVariant.with_name_like(query).select(:type_id)))
+  }
+
+  scope :with_migrated_variants, -> {
+    where(id: TypeVariant.created_by_migration.select(:type_id))
+  }
+
+  delegate :to_s, to: :name
+
+  # Read from the collection rather than through an association of its own, so a base variant
+  # that #ensure_base_variant has only built is visible before it is saved. Preload `:variants`
+  # to ask this of many types at once.
+  def default_variant
+    variants.detect(&:is_default_variant?)
+  end
 
   def <=>(other)
     name <=> other.name
   end
 
-  def self.statuses(types)
-    workflow_table, status_table = [Workflow, Status].map(&:arel_table)
-    old_id_subselect, new_id_subselect = %i[old_status_id new_status_id].map do |foreign_key|
-      workflow_table.project(workflow_table[foreign_key]).where(workflow_table[:type_id].in(types))
-    end
-    Status.where(status_table[:id].in(old_id_subselect).or(status_table[:id].in(new_id_subselect)))
-  end
-
-  def self.standard_type
-    ::Type.where(is_standard: true).first
-  end
-
-  def self.default
-    ::Type.where(is_default: true)
-  end
-
+  # The types the given project(s) use.
+  #
+  # Resolved as a subquery rather than a join so a type used by several projects yields one
+  # row: a join would duplicate it, which the eager load only hid from callers reading records
+  # and not from those plucking ids.
   def self.enabled_in(project)
-    ::Type.includes(:projects).where(projects: { id: project })
-  end
-
-  def statuses(include_default: false)
-    if new_record?
-      Status.none
-    elsif include_default
-      ::Type
-        .statuses([id])
-        .or(Status.where_default)
-    else
-      ::Type.statuses([id])
-    end
-  end
-
-  def enabled_in?(object)
-    object.types.include?(self)
+    where(id: ProjectType.where(project_id: project).select(:type_id))
   end
 
   private
 
+  def ensure_base_variant
+    return if variants.any?(&:is_default_variant?)
+
+    variants.build(is_default_variant: true,
+                   variant_name: nil,
+                   workflow: Workflow.new(name: Workflow.implicit_name(name)),
+                   form_configuration: FormConfiguration.new(name: FormConfiguration.implicit_name(name)))
+  end
+
   def check_integrity
-    raise "Can't delete type" if WorkPackage.where(type_id: id).any?
+    throw :abort if WorkPackage.exists?(type_id: id)
+
+    true
   end
 end

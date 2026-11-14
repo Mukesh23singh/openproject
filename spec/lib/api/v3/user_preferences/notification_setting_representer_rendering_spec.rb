@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,68 +22,123 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::UserPreferences::NotificationSettingRepresenter, 'rendering' do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::UserPreferences::NotificationSettingRepresenter, "rendering" do
+  include API::V3::Utilities::PathHelper
 
   subject(:generated) { representer.to_json }
 
-  let(:project) { FactoryBot.build_stubbed :project }
-  let(:notification_setting) { FactoryBot.build_stubbed(:notification_setting, project: project) }
+  let(:workspace) { build_stubbed(:project) }
+  let(:notification_setting) { build_stubbed(:notification_setting, overdue: 3, project: workspace) }
 
   let(:representer) do
     described_class.create notification_setting,
-                           current_user: current_user,
-                           embed_links: embed_links
+                           current_user:,
+                           embed_links:
   end
 
   let(:embed_links) { true }
 
-  current_user { FactoryBot.build_stubbed(:user) }
+  current_user { build_stubbed(:user) }
 
-  describe '_links' do
-    describe 'self' do
+  before do
+    allow(workspace)
+      .to receive(:visible?)
+            .and_return(true)
+  end
+
+  describe "_links" do
+    describe "self" do
       # No self link as the representer is rendered as part of the user preferences.
-      it_behaves_like 'has no link' do
-        let(:link) { 'self' }
+      it_behaves_like "has no link" do
+        let(:link) { "self" }
       end
     end
 
-    describe 'project' do
-      it_behaves_like 'has a titled link' do
-        let(:link) { 'project' }
-        let(:href) { api_v3_paths.project(project.id) }
-        let(:title) { project.name }
+    describe "project" do
+      context "for a project" do
+        it_behaves_like "has a titled link" do
+          let(:link) { "project" }
+          let(:href) { api_v3_paths.project(workspace.id) }
+          let(:title) { workspace.name }
+        end
+      end
+
+      context "for a program" do
+        let(:workspace) { build_stubbed(:program) }
+
+        it_behaves_like "has a titled link" do
+          let(:link) { "project" }
+          let(:href) { api_v3_paths.program(workspace.id) }
+          let(:title) { workspace.name }
+        end
+      end
+
+      context "for a portfolio" do
+        let(:workspace) { build_stubbed(:portfolio) }
+
+        it_behaves_like "has a titled link" do
+          let(:link) { "project" }
+          let(:href) { api_v3_paths.portfolio(workspace.id) }
+          let(:title) { workspace.name }
+        end
       end
     end
   end
 
-  describe 'properties' do
-    it 'has no _type' do
+  describe "properties" do
+    it "has no _type" do
       expect(generated)
-        .not_to have_json_path('_type')
+        .not_to have_json_path("_type")
     end
 
-    NotificationSetting.all_settings.each do |property|
-      it_behaves_like 'property', property.to_s.camelize(:lower) do
-        let(:value) { notification_setting.send property }
+    (NotificationSetting.all_settings - NotificationSetting.date_alert_settings).each do |property|
+      it_behaves_like "property", property.to_s.camelize(:lower) do
+        let(:value) do
+          notification_setting.send property
+        end
+      end
+    end
+
+    it_behaves_like "property", :startDate do
+      let(:value) { "P1D" }
+    end
+    it_behaves_like "property", :dueDate do
+      let(:value) { "P1D" }
+    end
+    it_behaves_like "property", :overdue do
+      let(:value) { "P3D" }
+    end
+  end
+
+  describe "_embedded" do
+    describe "project" do
+      it "skips embedding the project" do
+        expect(generated)
+          .not_to have_json_path("_embedded/project")
       end
     end
   end
 
-  describe '_embedded' do
-    describe 'project' do
-      it 'skips embedding the project' do
-        expect(generated)
-          .not_to have_json_path('_embedded/project')
-      end
+  context "when duration settings are all nil" do
+    let(:notification_setting) do
+      build_stubbed(:notification_setting, project: workspace, start_date: nil, due_date: nil, overdue: nil)
+    end
+
+    it_behaves_like "property", :startDate do
+      let(:value) { nil }
+    end
+    it_behaves_like "property", :dueDate do
+      let(:value) { nil }
+    end
+    it_behaves_like "property", :overdue do
+      let(:value) { nil }
     end
   end
 end

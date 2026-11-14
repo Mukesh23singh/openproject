@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,77 +22,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'projects/settings/general/show', type: :view do
-  let(:project) { FactoryBot.build_stubbed(:project) }
+RSpec.describe "projects/settings/general/show" do
+  include TestSelectorFinders
 
-  describe 'project copy permission' do
-    before do
-      assign(:project, project)
-      allow(view).to receive(:labelled_tabular_form_for).and_return('')
+  let(:project) { build_stubbed(:project, public:) }
+  let(:user) { build_stubbed(:admin) }
+
+  before do
+    assign(:project, project)
+
+    without_partial_double_verification do
+      allow(view)
+        .to receive(:current_user)
+        .and_return(user)
     end
 
-    context 'when project copy is allowed' do
-      before do
-        allow(project).to receive(:copy_allowed?).and_return(true)
-        render
-      end
+    render
+  end
 
-      it 'the copy link should be visible' do
-        expect(rendered).to have_selector 'a.copy'
-      end
-    end
+  context "when project is not public" do
+    let(:public) { false }
 
-    context 'when project copy is not allowed' do
-      before do
-        allow(project).to receive(:copy_allowed?).and_return(false)
-        render
-      end
-
-      it 'the copy link should not be visible' do
-        expect(rendered).not_to have_selector 'a.copy'
-      end
+    it "does not show warning banner" do
+      expect(rendered).not_to have_test_selector "op-projects-public-warning"
     end
   end
 
-  context 'User.current is admin' do
-    let(:admin) { FactoryBot.build_stubbed :admin }
+  context "when project is public" do
+    let(:public) { true }
 
-    before do
-      assign(:project, project)
-      allow(project).to receive(:copy_allowed?).and_return(true)
-      allow(User).to receive(:current).and_return(admin)
-      allow(view).to receive(:labelled_tabular_form_for).and_return('')
-      render
-    end
-
-    it 'show delete and archive buttons' do
-      expect(rendered).to have_selector('li.toolbar-item span.button--text', text: 'Archive')
-      expect(rendered).to have_selector('li.toolbar-item span.button--text', text: 'Delete')
-    end
-  end
-
-  context 'User.current is non-admin' do
-    let(:non_admin) { FactoryBot.build_stubbed :user }
-
-    before do
-      assign(:project, project)
-      allow(project).to receive(:copy_allowed?).and_return(true)
-      allow(User).to receive(:current).and_return(non_admin)
-      allow(view).to receive(:labelled_tabular_form_for).and_return('')
-      render
-    end
-
-    it 'hide delete and archive buttons' do
-      expect(rendered).not_to have_selector('li.toolbar-item span.button--text', text: 'Archive project')
-      expect(rendered).not_to have_selector('li.toolbar-item span.button--text', text: 'Delete project')
+    it "shows warning banner" do
+      expect(rendered).to have_test_selector "op-projects-public-warning"
     end
   end
 end

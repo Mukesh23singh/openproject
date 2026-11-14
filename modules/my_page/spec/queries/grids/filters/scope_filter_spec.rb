@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,40 +20,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Grids::Filters::ScopeFilter, type: :model do
-  include_context 'filter tests'
-  let(:values) { ['/my/page'] }
-  let(:user) { FactoryBot.build_stubbed(:user) }
+RSpec.describe Grids::Filters::ScopeFilter, type: :model do
+  include_context "filter tests"
+  let(:values) { ["/my/page"] }
+  let(:user) { build_stubbed(:user) }
   let(:model) { Grids::Grid }
 
   before do
     login_as(user)
   end
 
-  it_behaves_like 'basic query filter' do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :scope }
     let(:type) { :list }
     let(:model) { Grids::Grid.where(user_id: user.id) }
-    let(:values) { ['/my/page'] }
+    let(:values) { ["/my/page"] }
   end
 
-  describe '#scope' do
+  describe "#apply_to" do
     context 'for "="' do
-      let(:operator) { '=' }
+      let(:operator) { "=" }
 
-      context 'for /my/page do' do
-        it 'is the same as handwriting the query' do
+      context "for /my/page do" do
+        it "is the same as handwriting the query" do
           expected = model.where("(grids.type IN ('Grids::MyPage'))")
 
-          expect(instance.scope.to_sql).to eql expected.to_sql
+          expect(instance.apply_to(model).to_sql).to eql expected.to_sql
         end
       end
     end

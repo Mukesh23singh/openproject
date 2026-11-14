@@ -1,4 +1,11 @@
+---
 tr:
+  activerecord:
+    models:
+      grids/overview:
+        one: Genel Bakış
+        other: Genel Bakış
   overviews:
-    label: 'Genel Bakış'
-  permission_manage_overview: 'Genel bakış sayfasını yönet'
+    label_dashboard: Gösterge paneli
+    label_home: "%{workspace_type} ev"
+    label_overview: Genel Bakış

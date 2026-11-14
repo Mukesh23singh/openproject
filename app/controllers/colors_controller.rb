@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,34 +22,32 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class ColorsController < ApplicationController
   before_action :require_admin_unless_readonly_api_request
+  authorization_checked! :show, :new, :edit, :create, :update, :destroy
 
-  layout 'admin'
+  layout "admin"
 
-  menu_item :colors
+  menu_item :custom_style
 
-  def index
-    @colors = Color.all.sort_by(&:name)
+  def show
+    @color = Color.find(params.expect(:id))
+  end
+
+  def new
+    @color = Color.new
     respond_to do |format|
       format.html
     end
   end
 
-  def show
-    @color = Color.find(params[:id])
-    respond_to do |_format|
-    end
-  end
-
-  def new
-    @color = Color.new
+  def edit
+    @color = Color.find(params.expect(:id))
     respond_to do |format|
       format.html
     end
@@ -60,63 +58,39 @@ class ColorsController < ApplicationController
 
     if @color.save
       flash[:notice] = I18n.t(:notice_successful_create)
-      redirect_to colors_path
+      redirect_to colors_settings_path
     else
-      flash.now[:error] = I18n.t('timelines.color_could_not_be_saved')
-      render action: 'new'
-    end
-  end
-
-  def edit
-    @color = Color.find(params[:id])
-    respond_to do |format|
-      format.html
+      render action: :new, status: :unprocessable_entity
     end
   end
 
   def update
-    @color = Color.find(params[:id])
+    @color = Color.find(params.expect(:id))
 
     if @color.update(permitted_params.color)
       flash[:notice] = I18n.t(:notice_successful_update)
-      redirect_to colors_path
+      redirect_to colors_settings_path
     else
-      flash.now[:error] = I18n.t('timelines.color_could_not_be_saved')
-      render action: 'edit'
-    end
-  end
-
-  def confirm_destroy
-    @color = Color.find(params[:id])
-    respond_to do |format|
-      format.html
+      render action: :edit, status: :unprocessable_entity
     end
   end
 
   def destroy
-    @color = Color.find(params[:id])
-    @color.destroy
+    @color = Color.find(params.expect(:id))
+    @color.destroy!
 
     flash[:notice] = I18n.t(:notice_successful_delete)
-    redirect_to colors_path
+    redirect_to colors_settings_path, status: :see_other
   end
 
   protected
 
-  def default_breadcrumb
-    if action_name == 'index'
-      t('timelines.admin_menu.colors')
-    else
-      ActionController::Base.helpers.link_to(t('timelines.admin_menu.colors'), colors_path)
-    end
-  end
-
-  def show_local_breadcrumb
-    true
+  def colors_settings_path
+    custom_style_path(tab: :default_colors)
   end
 
   def require_admin_unless_readonly_api_request
-    require_admin unless %w[index show].include? params[:action] and
+    require_admin unless action_name == "show" and
                          api_request?
   end
 end

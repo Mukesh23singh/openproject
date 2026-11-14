@@ -1,21 +1,49 @@
-import { Injectable } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, inject } from '@angular/core';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { WorkPackageViewHierarchiesService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-hierarchy.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { WorkPackageRelationsHierarchyService } from 'core-app/features/work-packages/components/wp-relations/wp-relations-hierarchy/wp-relations-hierarchy.service';
 import { States } from 'core-app/core/states/states.service';
 import { WorkPackageViewDisplayRepresentationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-display-representation.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class WorkPackageViewHierarchyIdentationService {
-  constructor(private wpViewHierarchies:WorkPackageViewHierarchiesService,
-    private wpDisplayRepresentation:WorkPackageViewDisplayRepresentationService,
-    private states:States,
-    private wpRelationHierarchy:WorkPackageRelationsHierarchyService,
-    private apiV3Service:APIV3Service,
-    private querySpace:IsolatedQuerySpace) {
-  }
+  private wpViewHierarchies = inject(WorkPackageViewHierarchiesService);
+  private wpDisplayRepresentation = inject(WorkPackageViewDisplayRepresentationService);
+  private states = inject(States);
+  private wpRelationHierarchy = inject(WorkPackageRelationsHierarchyService);
+  private apiV3Service = inject(ApiV3Service);
+  private querySpace = inject(IsolatedQuerySpace);
+
 
   /**
    * Return whether the current hierarchy mode is active
@@ -88,9 +116,9 @@ export class WorkPackageViewHierarchyIdentationService {
 
     // If the predecessor is in an ancestor chain.
     // get the first element of the ancestor chain that workPackage is not in
-    const predecessor = await this.apiV3Service.work_packages.id(predecessorId).get().toPromise();
+    const predecessor = await firstValueFrom(this.apiV3Service.work_packages.id(predecessorId).get());
 
-    const difference = _.difference(predecessor.ancestorIds, workPackage.ancestorIds);
+    const difference = predecessor.ancestorIds.filter((id) => !workPackage.ancestorIds.includes(id));
     if (difference && difference.length > 0) {
       newParentId = difference[0];
     }

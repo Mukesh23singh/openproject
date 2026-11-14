@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,22 +30,40 @@
 module Documents
   class BaseContract < ::ModelContract
     include Attachments::ValidateReplacements
+    include UnchangedProject
 
     def self.model
       Document
     end
 
     attribute :project
-    attribute :category
+    attribute :type
+    attribute :kind
     attribute :title
     attribute :description
+    attribute :content_binary
 
-    validate :validate_manage_allowed
+    validate :validate_manage_allowed_in_source_project
+    validate :validate_manage_allowed_in_destination_project
 
     private
 
-    def validate_manage_allowed
-      unless user.allowed_to?(:manage_documents, model.project)
+    def validate_manage_allowed_in_source_project
+      if model.new_record?
+        errors.add :base, :error_unauthorized unless user.allowed_in_project?(:manage_documents, model.project)
+        return
+      end
+
+      with_unchanged_project_id do
+        errors.add :base, :error_unauthorized unless user.allowed_in_project?(:manage_documents, model.project)
+      end
+    end
+
+    def validate_manage_allowed_in_destination_project
+      return if model.new_record?
+      return unless model.project_id_changed?
+
+      unless user.allowed_in_project?(:manage_documents, model.project)
         errors.add :base, :error_unauthorized
       end
     end

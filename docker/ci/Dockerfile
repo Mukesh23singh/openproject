@@ -1,54 +1,52 @@
-FROM ruby:2.7.5-buster
-MAINTAINER operations@openproject.com
+# syntax=docker/dockerfile:1.4
+ARG RUBY_VERSION
+FROM ruby:${RUBY_VERSION}-trixie
 
-ENV NODE_VERSION="14.17.0"
-ENV CHROME_SOURCE_URL="https://dl.google.com/dl/linux/direct/google-chrome-stable_current_amd64.deb https://openproject-public.s3.eu-central-1.amazonaws.com/binaries/google-chrome-stable_current_amd64.deb"
-ENV USER=dev
+ENV NODE_VERSION="24.22.1"
+ENV DEBIAN_FRONTEND=noninteractive
+ENV BUNDLE_WITHOUT="development:production:docker"
 
-RUN useradd -d /home/$USER -m $USER -s /bin/bash
-WORKDIR /home/$USER
-
-RUN curl -s https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.gz | tar xzf - -C /usr/local --strip-components=1
-
-RUN wget --quiet -O- https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
-RUN echo "deb http://apt.postgresql.org/pub/repos/apt buster-pgdg main" > /etc/apt/sources.list.d/pgdg.list
-
+ENV PGVERSION=17
 RUN apt-get update -qq && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    postgresql-9.6 postgresql-client-9.6 postgresql-13 postgresql-client-13 time pandoc imagemagick libpq-dev default-jre-headless firefox-esr
+  apt-get install -y wget gnupg lsb-release curl && \
+  wget --quiet -O- https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgrsql.gpg - && \
+  echo "deb [signed-by=/usr/share/keyrings/postgrsql.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg  main" > /etc/apt/sources.list.d/pgdg.list
+ENV CHROME_SOURCE_URL="https://dl.google.com/dl/linux/direct/google-chrome-stable_current_amd64.deb"
+RUN --mount=type=cache,target=/var/cache/apt export f="/tmp/chrome.deb" && \
+  wget --no-verbose -O $f $CHROME_SOURCE_URL && \
+  apt-get update -qq && \
+  apt-get install -y "$f" postgresql-$PGVERSION postgresql-$PGVERSION-pgvector postgresql-client-$PGVERSION time imagemagick default-jre-headless firefox-esr && \
+  rm -f "$f" && \
+  apt-get clean && \
+  rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* /var/lib/postgresql && \
+  find /usr/share/locale/* -maxdepth 0 -type d ! -name 'en' -exec rm -rf {} \;
 
-# Try Downloading binary from fallback source if first one fails
-RUN for url in $CHROME_SOURCE_URL; do \
-      file_name="/tmp/`basename $url`"; \
-      wget --no-verbose -O $file_name $url && \
-        apt install -y $file_name && rm -f $file_name && \
-        break; \
-    done
+RUN curl -L https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz -o - | tar xJf - -C /usr/local --strip=1 && node --version
+
+RUN rm -rf /usr/local/bundle && gem install bundler --no-document
+
+ENV APP_USER=dev
+ENV APP_PATH=/app
+ARG APP_USER_UID
+ARG APP_USER_GID
+
+RUN groupadd --force --gid $APP_USER_GID $APP_USER && \
+  useradd -d $APP_PATH -m $APP_USER -s /bin/bash --uid $APP_USER_UID --gid $APP_USER_GID && \
+  chown -R $APP_USER:$APP_USER /usr/local/bundle
 
 ENV CI=true
 ENV RAILS_ENV=test
-ENV BUNDLER_VERSION="2.1.4"
-ENV BUNDLE_WITHOUT="development:production:docker"
 ENV OPENPROJECT_DISABLE_DEV_ASSET_PROXY=1
-ENV CAPYBARA_DYNAMIC_BIND_IP=1
+ENV CAPYBARA_BIND_ADDRESS=0.0.0.0
 ENV CAPYBARA_DOWNLOADED_FILE_DIR=/tmp
 # disable deprecations and other warnings in output
 ENV RUBYOPT="-W0"
-ENV DATABASE_URL=postgres://app:p4ssw0rd@127.0.0.1/app
-ENV PGVERSION=9.6
 
-RUN gem install bundler --version "$BUNDLER_VERSION" --no-document
+WORKDIR $APP_PATH
+USER $APP_USER
 
-COPY ./entrypoint.sh /usr/sbin/entrypoint.sh
+RUN mkdir -p ./docker/ci
+COPY ./docker/ci/entrypoint.sh ./docker/ci/entrypoint.sh
 
-VOLUME [ "/usr/local/bundle", "/home/$USER/openproject", "/home/$USER/openproject/tmp" ]
-
-WORKDIR /home/$USER/openproject
-
-ENTRYPOINT [ "/usr/sbin/entrypoint.sh" ]
+ENTRYPOINT [ "/app/docker/ci/entrypoint.sh" ]
 CMD ["setup-tests", "bash"]
-
-# ruby servers
-EXPOSE 3000-3016
-# billy proxy servers
-EXPOSE 4000-4016

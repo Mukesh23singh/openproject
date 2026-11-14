@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,21 +20,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Cron::ClearOldPullRequestsJob, type: :job do
+RSpec.describe Cron::ClearOldPullRequestsJob, type: :job do
   let(:pull_request_without_work_package) do
-    FactoryBot.create(:github_pull_request, work_packages: [])
+    create(:github_pull_request, work_packages: [])
   end
-  let(:pull_request_with_work_package) { FactoryBot.create(:github_pull_request, work_packages: [work_package]) }
-  let(:work_package) { FactoryBot.create(:work_package) }
-  let(:check_run) { FactoryBot.create(:github_check_run, github_pull_request: pull_request_without_work_package) }
+  let(:pull_request_with_work_package) { create(:github_pull_request, work_packages: [work_package]) }
+  let(:work_package) { create(:work_package) }
+  let(:check_run) { create(:github_check_run, github_pull_request: pull_request_without_work_package) }
 
   let(:job) { described_class.new }
 
@@ -46,10 +43,10 @@ describe Cron::ClearOldPullRequestsJob, type: :job do
     pull_request_with_work_package
   end
 
-  it 'removes pull request without work packages attached' do
+  it "removes pull request without work packages attached" do
     expect { job.perform }.to change(GithubPullRequest, :count).by(-1).and(change(GithubCheckRun, :count).by(-1))
 
     expect(GithubPullRequest.all)
-      .to match_array([pull_request_with_work_package])
+      .to contain_exactly(pull_request_with_work_package)
   end
 end

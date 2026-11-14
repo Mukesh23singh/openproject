@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +22,38 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Work package resource',
-         type: :request,
-         content_type: :json do
+RSpec.describe "API v3 Work package resource",
+               content_type: :json do
   include API::V3::Utilities::PathHelper
 
   let(:work_package) do
-    FactoryBot.create(:work_package,
-                      project_id: project.id,
-                      description: 'lorem ipsum')
+    create(:work_package,
+           project_id: project.id,
+           description: "lorem ipsum")
   end
   let(:project) do
-    FactoryBot.create(:project, identifier: 'test_project', public: false)
+    create(:project, identifier: "test_project", public: false)
   end
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:role) { create(:project_role, permissions:) }
   let(:permissions) { %i[view_work_packages edit_work_packages assign_versions] }
 
   current_user do
-    user = FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    user = create(:user, member_with_roles: { project => role })
 
-    FactoryBot.create(:user_preference, user: user)
+    create(:user_preference, user:)
 
     user
   end
 
-  describe 'DELETE /api/v3/work_packages/:id' do
+  describe "DELETE /api/v3/work_packages/:id" do
     subject { last_response }
 
     let(:path) { api_v3_paths.work_package work_package.id }
@@ -62,38 +62,38 @@ describe 'API v3 Work package resource',
       delete path
     end
 
-    context 'with required permissions' do
+    context "with required permissions" do
       let(:permissions) { %i[view_work_packages delete_work_packages] }
 
-      it 'responds with HTTP No Content' do
+      it "responds with HTTP No Content" do
         expect(subject.status).to eq 204
       end
 
-      it 'deletes the work package' do
+      it "deletes the work package" do
         expect(WorkPackage.exists?(work_package.id)).to be_falsey
       end
 
-      context 'for a non-existent work package' do
-        let(:path) { api_v3_paths.work_package 1337 }
+      context "for a non-existent work package" do
+        let(:path) { api_v3_paths.work_package(not_existing_id(WorkPackage)) }
 
-        it_behaves_like 'not found',
-                        I18n.t('api_v3.errors.not_found.work_package')
+        it_behaves_like "not found",
+                        I18n.t("api_v3.errors.not_found.work_package")
       end
     end
 
-    context 'without permission to see work packages' do
+    context "without permission to see work packages" do
       let(:permissions) { [] }
 
-      it_behaves_like 'not found',
-                      I18n.t('api_v3.errors.not_found.work_package')
+      it_behaves_like "not found",
+                      I18n.t("api_v3.errors.not_found.work_package")
     end
 
-    context 'without permission to delete work packages' do
-      let(:permissions) { [:view_work_packages] }
+    context "without permission to delete work packages" do
+      let(:permissions) { %i[view_work_packages add_work_package_attachments] }
 
-      it_behaves_like 'unauthorized access'
+      it_behaves_like "unauthorized access"
 
-      it 'does not delete the work package' do
+      it "does not delete the work package" do
         expect(WorkPackage.exists?(work_package.id)).to be_truthy
       end
     end

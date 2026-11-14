@@ -1,4 +1,33 @@
-require_relative './edit_field'
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "edit_field"
 
 class TextEditorField < EditField
   def ckeditor
@@ -6,14 +35,14 @@ class TextEditorField < EditField
   end
 
   def input_selector
-    '.ck-content'
+    ".ck-content"
   end
 
   def expect_save_button(enabled: true)
     if enabled
-      expect(field_container).to have_no_selector("#{control_link}[disabled]")
+      expect(field_container).to have_no_css("#{control_link}[disabled]")
     else
-      expect(field_container).to have_selector("#{control_link}[disabled]")
+      expect(field_container).to have_css("#{control_link}[disabled]")
     end
   end
 
@@ -33,28 +62,30 @@ class TextEditorField < EditField
     ckeditor.clear
   end
 
-  def click_and_type_slowly(text)
-    ckeditor.click_and_type_slowly text
-  end
+  delegate :click_and_type_slowly, to: :ckeditor
 
   def type(text)
     click_and_type_slowly text
   end
 
   def submit_by_click
-    target = field_container.find(control_link, wait: 10)
-    scroll_to_element(target)
-    target.click
+    selector = "#{@selector} #{control_link}"
+    expect(context).to have_css(selector, wait: 20)
+    scroll_to_and_click { context.find(selector, wait: 0) }
   end
 
   def submit_by_keyboard
     input_element.native.send_keys :tab
   end
 
+  def submit_by_enter
+    input_element.native.send_keys %i[control enter]
+  end
+
   def cancel_by_click
-    target = field_container.find(control_link(:cancel), wait: 10)
-    scroll_to_element(target)
-    target.click
+    selector = "#{@selector} #{control_link(:cancel)}"
+    expect(context).to have_css(selector, wait: 20)
+    scroll_to_and_click { context.find(selector, wait: 0) }
   end
 
   def field_type
@@ -62,7 +93,7 @@ class TextEditorField < EditField
   end
 
   def control_link(action = :save)
-    raise 'Invalid link' unless %i[save cancel].include?(action)
+    raise "Invalid link" unless %i[save cancel].include?(action)
 
     ".inplace-edit--control--#{action}:not([disabled])"
   end

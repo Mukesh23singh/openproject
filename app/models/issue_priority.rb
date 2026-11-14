@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class IssuePriority < Enumeration
-  has_many :work_packages, foreign_key: 'priority_id'
+  has_many :work_packages, foreign_key: "priority_id"
   belongs_to :color
 
   OptionName = :enumeration_work_package_priorities
@@ -39,7 +38,7 @@ class IssuePriority < Enumeration
   end
 
   def color_label
-    I18n.t('prioritiies.edit.priority_color_text')
+    I18n.t("priorities.edit.priority_color_text")
   end
 
   def option_name

@@ -1,13 +1,42 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Work Package table hierarchy parent below', js: true do
-  let(:user) { FactoryBot.create :admin }
-  let(:type_bug) { FactoryBot.create(:type_bug) }
-  let(:type_task) { FactoryBot.create(:type_task) }
-  let(:project) { FactoryBot.create(:project, types: [type_task, type_bug]) }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Work Package table hierarchy parent below", :js do
+  let(:user) { create(:admin) }
+  let(:type_bug) { create(:type_bug) }
+  let(:type_task) { create(:type_task) }
+  let(:project) { create(:project, types: [type_task, type_bug]) }
 
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
-  let(:hierarchy) { ::Components::WorkPackages::Hierarchies.new }
+  let(:hierarchy) { Components::WorkPackages::Hierarchies.new }
 
   before do
     login_as(user)
@@ -33,17 +62,17 @@ describe 'Work Package table hierarchy parent below', js: true do
   # .. V Parent
   # .... Child
   # V Grandparent
-  describe 'grand-parent sorted below child, parent invisible' do
-    let(:child) { FactoryBot.create(:work_package, project: project, type: type_task) }
-    let(:parent) { FactoryBot.create(:work_package, project: project, type: type_bug) }
-    let(:grandparent) { FactoryBot.create(:work_package, project: project, type: type_task) }
+  describe "grand-parent sorted below child, parent invisible" do
+    let(:child) { create(:work_package, project:, type: type_task) }
+    let(:parent) { create(:work_package, project:, type: type_bug) }
+    let(:grandparent) { create(:work_package, project:, type: type_task) }
 
     let(:query) do
-      query              = FactoryBot.build(:query, user: user, project: project)
-      query.column_names = ['id', 'subject', 'type']
+      query              = build(:query, user:, project:)
+      query.column_names = ["id", "subject", "type"]
       query.sort_criteria = [%w(id asc)]
       query.filters.clear
-      query.add_filter('type_id', '=', [type_task.id])
+      query.add_filter("type_id", "=", [type_task.id])
       query.show_hierarchies = true
 
       query.save!
@@ -61,7 +90,7 @@ describe 'Work Package table hierarchy parent below', js: true do
       query
     end
 
-    it 'shows hierarchy correctly' do
+    it "shows hierarchy correctly" do
       wp_table.visit_query query
       wp_table.expect_work_package_listed(child, parent, grandparent)
 
@@ -93,14 +122,14 @@ describe 'Work Package table hierarchy parent below', js: true do
     end
   end
 
-  describe 'grand-parent of 2+ children visible anywhere on the page, but parent is not (Regression #29652)' do
-    let(:child) { FactoryBot.create(:work_package, subject: 'AA Child WP', project: project, type: type_task) }
-    let(:child2) { FactoryBot.create(:work_package, subject: 'BB Child WP', project: project, type: type_task) }
-    let(:parent) { FactoryBot.create(:work_package, subject: 'ZZ Parent WP', project: project, type: type_task) }
-    let(:grandparent) { FactoryBot.create(:work_package, subject: 'Grandparent', project: project, type: type_task) }
+  describe "grand-parent of 2+ children visible anywhere on the page, but parent is not (Regression #29652)" do
+    let(:child) { create(:work_package, subject: "AA Child WP", project:, type: type_task) }
+    let(:child2) { create(:work_package, subject: "BB Child WP", project:, type: type_task) }
+    let(:parent) { create(:work_package, subject: "ZZ Parent WP", project:, type: type_task) }
+    let(:grandparent) { create(:work_package, subject: "Grandparent", project:, type: type_task) }
 
     let(:query) do
-      query              = FactoryBot.build(:query, user: user, project: project)
+      query              = build(:query, user:, project:)
       query.column_names = %w(id subject)
       query.sort_criteria = [%w(subject asc), %w(id asc)]
       query.show_hierarchies = true
@@ -118,20 +147,20 @@ describe 'Work Package table hierarchy parent below', js: true do
       child2.update(parent_id: parent.id)
       parent.update(parent_id: grandparent.id)
 
-      allow(Setting).to receive(:per_page_options).and_return '3'
+      allow(Setting).to receive(:per_page_options).and_return "3"
       query
     end
 
-    it 'shows hierarchy correctly' do
+    it "shows hierarchy correctly" do
       wp_table.visit_query query
 
       wp_table.expect_work_package_listed(child, child2, parent, grandparent)
 
       # Expect pagination to be correct
-      expect(page).to have_selector('.op-pagination--item_current', text: '3')
+      expect(page).to have_css(".op-pagination--item_current", text: "3")
 
       # Expect count to be correct (one additional parent shown)
-      expect(page).to have_selector('.wp--row', count: 4)
+      expect(page).to have_css(".wp--row", count: 4)
 
       # Double order result from regression
       wp_table.expect_work_package_order(grandparent.id, parent.id, child.id, child2.id)
@@ -142,10 +171,10 @@ describe 'Work Package table hierarchy parent below', js: true do
     end
   end
 
-  describe 'An arrow is beside parent name' do
-    let(:child) { FactoryBot.create(:work_package, subject: 'AA Child WP', project: project, parent: parent) }
-    let(:parent) { FactoryBot.create(:work_package, subject: 'ZZ Parent WP', project: project) }
-    let(:relations) { ::Components::WorkPackages::Relations.new(parent) }
+  describe "An arrow is beside parent name" do
+    let(:child) { create(:work_package, subject: "AA Child WP", project:, parent:) }
+    let(:parent) { create(:work_package, subject: "ZZ Parent WP", project:) }
+    let(:relations) { Components::WorkPackages::Relations.new(parent) }
 
     before do
       child
@@ -155,14 +184,14 @@ describe 'Work Package table hierarchy parent below', js: true do
       wp_table.visit!
       wp_table.expect_work_package_listed(child, parent)
 
-      expect(page).to have_selector('.wp-table--hierarchy-indicator-icon')
+      expect(page).to have_css(".wp-table--hierarchy-indicator-icon")
 
       split_page = wp_table.open_split_view(parent)
       split_page.visit_tab!("relations")
       relations.remove_child(child)
       loading_indicator_saveguard
 
-      expect(page).to have_no_selector('.wp-table--hierarchy-indicator-icon')
+      expect(page).to have_no_css(".wp-table--hierarchy-indicator-icon")
     end
   end
 end

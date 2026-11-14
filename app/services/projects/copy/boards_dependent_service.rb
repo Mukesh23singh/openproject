@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,7 +30,7 @@
 module Projects::Copy
   class BoardsDependentService < Dependency
     def self.human_name
-      I18n.t(:'boards.label_boards')
+      I18n.t(:"boards.label_boards")
     end
 
     def source_count
@@ -50,7 +49,7 @@ module Projects::Copy
 
     def duplicate_board(board, params)
       ::Boards::CopyService
-        .new(source: board, user: user)
+        .new(source: board, user:)
         .with_state(state)
         .call(params.merge)
         .tap { |call| result.merge!(call, without_success: true) }

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class UserCustomField < CustomField
+  include CustomField::Sectionable
+
+  belongs_to :user_custom_field_section, class_name: "UserCustomFieldSection", foreign_key: :custom_field_section_id,
+                                         inverse_of: :custom_fields
+
+  enum :semantic_key, { job_title: "job_title" }, prefix: true
+
+  store_attribute :settings, :user_self_editable, :boolean, default: true
+
+  validates :semantic_key, uniqueness: { scope: :type }, allow_nil: true
+
+  scopes :visible
+
+  scope :with_semantic_key, ->(semantic_key) { where(semantic_key:) }
+
+  def self.for_semantic_key(semantic_key)
+    with_semantic_key(semantic_key).first
+  end
+
   def type_name
     :label_user_plural
   end

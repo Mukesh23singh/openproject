@@ -1,38 +1,49 @@
-#English strings go here
+---
 ar:
-  label_avatar: "الصورة الرمزية"
-  label_avatar_plural: "الصور الرمزية"
-  label_current_avatar: "الصورة الرمزية الحالية"
-  label_choose_avatar: "قم باختيار صورة رمزية من الملف"
-  message_avatar_uploaded: "لقد تم تحميل الصورة الرمزية بنجاح ."
-  error_image_upload: "خطأ في حفظ الصورة."
-  error_image_size: "الملف كبير جداً"
-  button_change_avatar: "تغيير صورة الحساب"
-  are_you_sure_delete_avatar: "هل أنت متأكد من أنك تريد حذف صورتك الرمزية؟"
-  avatar_deleted: "الصورة الرمزية حذفت بنجاح."
-  unable_to_delete_avatar: "لايمكن حذف الصورة الرمزية"
-  wrong_file_format: "التنسيقات المتاحة للصور هي jpg و png و gif."
-  empty_file_error: "يرجى تحميل الصورة الصحيحة ووفقًا للتنسيقات (jpg, png, gif)"
+  are_you_sure_delete_avatar: هل أنت متأكد من أنك تريد حذف صورتك الرمزية؟
+  avatar_deleted: الصورة الرمزية حذفت بنجاح.
   avatars:
-    label_avatar: "الصورة الرمزية"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'الصورة الرمزية الحالية'
-    label_local_avatar: 'الصورة الرمزية المخصصة'
-    text_current_avatar: |
-      تُظهر الصورة التالية الصورة الرمزية الحالية.
-    text_upload_instructions: |
-      قم بتحميل الصورة الرمزية المخصصة بدقة 128×128 بكسل. يمكن تغيير حجم الملفات الكبيرة وقصها لتتطابق. عند تحديد الصورة، تظهر معاينة للصورة الرمزية قبل التحميل. 
-    text_change_gravatar_html: 'انتقل إلى %{gravatar_url} لتغيير Gravatar في عنوان بريدك الإلكتروني.'
-    text_your_local_avatar: |
-      تتيح لك OpenProject بتحميل صورتك الرمزية المخصصة.
-    text_local_avatar_over_gravatar: |
-      إذا عينت واحدة، فإن هذه الصورة المخصصة مستخدمة مسبقًا على gravatar أعلاه.
-    text_your_current_gravatar: |
-      يستخدم OpenProject الـ gravatar الخاص بك إذا قمت بتسجيل واحدة أو بتسجيل صورة افتراضية أو أيقونة إذا كانت موجودة. إن الـ gravatar الحالي هو كما يلي:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: الصورة الرمزية المخصصة
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
     settings:
       enable_gravatars: 'تفعيل مستخدم gravatars '
-      gravatar_default: "الصورة الافتراضية Gravatar"
-      enable_local_avatars: 'تفعيل مستخدم الصورة الرمزية المخصصة'
-
-
-
+      enable_local_avatars: تفعيل مستخدم الصورة الرمزية المخصصة
+      gravatar_default: الصورة الافتراضية Gravatar
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: يرجى تحميل الصورة الصحيحة ووفقًا للتنسيقات (jpg, png, gif)
+  error_image_size: الملف كبير جداً
+  error_image_upload: خطأ في حفظ الصورة.
+  label_avatar: الصورة الرمزية
+  label_avatar_plural: الصور الرمزية
+  label_choose_avatar: قم باختيار صورة رمزية من الملف
+  label_current_avatar: الصورة الرمزية الحالية
+  message_avatar_uploaded: لقد تم تحميل الصورة الرمزية بنجاح .
+  plugin_openproject_avatars:
+    description: This plugin allows OpenProject users to upload a picture to be used as an avatar or use registered images from Gravatar.
+    name: الصور الرمزية
+  unable_to_delete_avatar: لايمكن حذف الصورة الرمزية
+  wrong_file_format: التنسيقات المتاحة للصور هي jpg و png و gif.

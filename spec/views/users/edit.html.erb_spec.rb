@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,179 +22,150 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'users/edit', type: :view do
-  let(:admin) { FactoryBot.build :admin }
+RSpec.describe "users/edit" do
+  let(:admin) { build(:admin) }
+  let(:current_user) { admin }
 
   before do
     # The url_for is missing the users id that is usually taken
     # from request parameters
     controller.request.path_parameters[:id] = user.id
-    view.extend(Gon::ControllerHelpers)
-  end
 
-  context 'authentication provider' do
-    let(:user) do
-      FactoryBot.build :user, id: 1, # id is required to create route to edit
-                              identity_url: 'test_provider:veryuniqueid'
-    end
+    assign(:user, user)
+    assign(:auth_sources, [])
+    assign(:contract, Users::UpdateContract.new(user, current_user))
 
-    before do
-      assign(:user, user)
-      assign(:auth_sources, [])
-
-      allow(view).to receive(:current_user).and_return(admin)
-    end
-
-    it 'shows the authentication provider' do
-      render
-
-      expect(rendered).to include('Test Provider')
-    end
-
-    it 'does not show a no-login warning when password login is disabled' do
-      allow(OpenProject::Configuration).to receive(:disable_password_login).and_return(true)
-      render
-
-      expect(rendered).not_to include I18n.t('user.no_login')
+    User.current = current_user
+    without_partial_double_verification do
+      allow(view).to receive(:current_user).and_return(current_user)
     end
   end
 
-  context 'with an invited user' do
-    let(:user) { FactoryBot.build_stubbed :invited_user }
+  context "authentication provider" do
+    let(:user) { create(:user, identity_url: "#{provider.slug}:veryuniqueid") }
+    let(:provider) { create(:oidc_provider, slug: "test_provider", display_name: "The Test Provider") }
 
-    before do
-      assign(:user, user)
-      assign(:auth_sources, [])
+    it "shows the authentication provider" do
+      render
+
+      expect(rendered).to include("The Test Provider")
     end
 
-    context 'for an admin' do
+    it "does not show a no-login warning when password login is disabled" do
+      allow(Users::PasswordLogin).to receive(:none?).and_return(true)
+      render
+
+      expect(rendered).not_to include I18n.t("user.no_login")
+    end
+  end
+
+  context "with an invited user" do
+    let(:user) { build_stubbed(:invited_user) }
+
+    context "for an admin" do
       before do
-        allow(view).to receive(:current_user).and_return(admin)
         render
       end
 
-      it 'renders the resend invitation button' do
+      it "renders the resend invitation button" do
         expect(rendered).to include I18n.t(:label_send_invitation)
       end
     end
 
-    context 'for a non-admin' do
-      let(:non_admin) { FactoryBot.create :user }
+    context "for a non-admin with manage_user global permission" do
+      let(:current_user) { create(:user, global_permissions: [:manage_user]) }
 
       before do
-        allow(view).to receive(:current_user).and_return(non_admin)
         render
       end
 
-      it 'does not render the resend invitation button' do
+      it "does not render the resend invitation button" do
         expect(rendered).not_to include I18n.t(:label_send_invitation)
       end
     end
   end
 
-  context 'with a normal (not invited) user' do
-    let(:user) { FactoryBot.create :user }
+  context "with a normal (not invited) user" do
+    let(:user) { create(:user) }
 
     before do
-      assign(:user, user)
-      assign(:auth_sources, [])
-
-      allow(view).to receive(:current_user).and_return(admin)
       render
     end
 
-    it 'also renders the resend invitation button' do
+    it "also renders the resend invitation button" do
       expect(rendered).to include I18n.t(:label_send_invitation)
     end
   end
 
-  context 'with password-based login' do
-    let(:user) { FactoryBot.build :user, id: 42 }
+  context "with password-based login" do
+    let(:user) { build_stubbed(:user) }
 
-    before do
-      assign :user, user
-      assign :auth_sources, []
-
-      allow(view).to receive(:current_user).and_return(admin)
-    end
-
-    context 'with password login disabled' do
-      before do
-        allow(OpenProject::Configuration).to receive(:disable_password_login?).and_return(true)
-      end
-
-      it 'warns that the user cannot login' do
+    context "with password login disabled", with_settings: { password_login: "none" } do
+      it "warns that the user cannot login" do
         render
 
-        expect(rendered).to include I18n.t('user.no_login')
+        expect(rendered).to include I18n.t("user.no_login")
       end
 
-      context 'with auth sources' do
-        let(:auth_sources) { [FactoryBot.create(:auth_source)] }
+      context "with auth sources" do
+        let(:auth_sources) { create_list(:ldap_auth_source, 1) }
 
         before do
           assign :auth_sources, auth_sources
         end
 
-        it 'does not show the auth source selection' do
+        it "does not show the auth source selection" do
           render
 
-          expect(rendered).not_to have_selector('#user_auth_source_id')
+          expect(rendered).to have_no_css("#user_auth_source_id")
         end
       end
     end
 
-    context 'with password login enabled' do
-      before do
-        allow(OpenProject::Configuration).to receive(:disable_password_login?).and_return(false)
-      end
-
-      it 'shows password options' do
+    context "with password login enabled" do
+      it "shows password options" do
         render
 
-        expect(rendered).to have_text I18n.t('user.assign_random_password')
+        expect(rendered).to have_text I18n.t("user.assign_random_password")
       end
 
-      context 'with auth sources' do
-        let(:auth_sources) { [FactoryBot.create(:auth_source)] }
+      context "with auth sources" do
+        let(:auth_sources) { create_list(:ldap_auth_source, 1) }
 
         before do
           assign :auth_sources, auth_sources
         end
 
-        it 'shows the auth source selection' do
+        it "shows the auth source selection" do
           render
 
-          expect(rendered).to have_selector('#user_auth_source_id')
+          expect(rendered).to have_css("#user_ldap_auth_source_id")
         end
       end
 
-      context 'with password choice enabled' do
+      context "with password choice enabled" do
         before do
           expect(OpenProject::Configuration)
             .to receive(:disable_password_choice?)
             .and_return(false)
         end
 
-        it 'shows the password and password confirmation fields' do
+        it "shows the password and password confirmation fields" do
           render
 
-          within '#password_fields' do
-            expect(rendered).to have_text('Password')
-            expect(rendered).to have_text('Confirmation')
-          end
+          expect(rendered).to have_css("label", text: "Password")
+          expect(rendered).to have_css("label", text: "Password confirmation")
         end
       end
 
-      context 'with password choice disabled' do
+      context "with password choice disabled" do
         before do
           expect(OpenProject::Configuration).to receive(:disable_password_choice?).and_return(true)
         end
@@ -200,10 +173,8 @@ describe 'users/edit', type: :view do
         it "doesn't show the password and password confirmation fields" do
           render
 
-          within '#password_fields' do
-            expect(rendered).not_to have_text('Password')
-            expect(rendered).not_to have_text('Password confirmation')
-          end
+          expect(rendered).to have_no_css("label", text: "Password")
+          expect(rendered).to have_no_css("label", text: "Password confirmation")
         end
       end
     end

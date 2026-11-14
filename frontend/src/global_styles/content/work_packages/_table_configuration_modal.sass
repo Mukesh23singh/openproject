@@ -5,10 +5,10 @@
   label.option-label
     float: left
     margin-right: 20px
-
-    &.-multi-line
-      margin-bottom: 0
-      line-height: 40px
+    font-weight: normal
+    display: flex
+    align-items: center
+    gap: 5px
 
     input
       margin-top: 0px
@@ -17,5 +17,9 @@
   .advanced-filters--add-filter
     max-width: 100%
 
-  .ee-attribute-highlighting-upsale
+  .ee-attribute-highlighting-upsell
     margin-bottom: 1.5rem
+
+  .tab-content
+    overflow-y: scroll
+    @include styled-scroll-bar

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +22,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::Token::Base, type: :model do
-  let(:user) { FactoryBot.build(:user) }
+RSpec.describe Token::Base do
+  let(:user) { build(:user) }
 
-  subject { described_class.new user: user }
+  subject { described_class.new user: }
 
-  it 'should create' do
+  it "creates" do
     subject.save!
-    assert_equal 64, subject.value.length
+    expect(subject.value.length).to eq(64)
   end
 
-  it 'should create_should_remove_existing_tokens' do
+  it "create_should_remove_existing_tokenses" do
     subject.save!
-    t2 = Token::AutoLogin.create user: user
+    t2 = described_class.create(user:)
     expect(subject.value).not_to eq(t2.value)
-    expect(Token::AutoLogin.exists?(subject.id)).to eq false
-    expect(Token::AutoLogin.exists?(t2.id)).to eq true
+    expect(described_class.exists?(subject.id)).to be false
+    expect(described_class.exists?(t2.id)).to be true
+  end
+
+  context "when defining a prefix" do
+    subject { subclass.new(user:) }
+
+    let(:subclass) { Class.new(described_class) { prefix :test } }
+
+    it "has a plaintext value starting with the prefix" do
+      expect(subject.value).to start_with("test-")
+    end
+
+    it "has the regular token value after the prefix" do
+      expect(subject.value.delete_prefix("test-").length).to eq(64)
+    end
   end
 end

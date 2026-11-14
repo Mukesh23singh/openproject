@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,15 +33,15 @@ module UserPreferences
 
     attr_accessor :notifications
 
-    def validate_params(params)
-      contract = ParamsContract.new(model, user, params: params)
+    def validate_params
+      contract = ParamsContract.new(model, user, params:)
 
       ServiceResult.new success: contract.valid?,
                         errors: contract.errors,
                         result: model
     end
 
-    def before_perform(params, _service_result)
+    def before_perform(_service_result)
       self.notifications = params&.delete(:notification_settings)
 
       super
@@ -62,8 +61,8 @@ module UserPreferences
                           .map { |item| item.merge(user_id: model.user_id) }
                           .partition { |setting| setting[:project_id].nil? }
 
-      global_ids = upsert_notifications(global, %i[user_id], 'project_id IS NULL')
-      project_ids = upsert_notifications(project, %i[user_id project_id], 'project_id IS NOT NULL')
+      global_ids = upsert_notifications(global, %i[user_id], "project_id IS NULL")
+      project_ids = upsert_notifications(project, %i[user_id project_id], "project_id IS NOT NULL")
 
       global_ids + project_ids
     end
@@ -89,11 +88,16 @@ module UserPreferences
         .import(
           notifications,
           on_duplicate_key_update: {
-            conflict_target: conflict_target,
-            index_predicate: index_predicate,
+            conflict_target:,
+            index_predicate:,
             columns: %i[watched
-                        involved
+                        assignee
+                        responsible
+                        shared
                         mentioned
+                        start_date
+                        due_date
+                        overdue
                         work_package_commented
                         work_package_created
                         work_package_processed

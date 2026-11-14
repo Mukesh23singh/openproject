@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +20,16 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/assets'
+require "open_project/assets"
 
 # The ng build task must run before assets:environment task.
-# Otherwise Sprockets cannot find the files that webpack produces.
-Rake::Task['assets:precompile']
+# Otherwise Sprockets cannot find the files that the frontend build produces.
+Rake::Task["assets:precompile"]
   .clear_prerequisites
   .enhance(%w[assets:compile_environment assets:prepare_op])
 
@@ -40,46 +37,57 @@ namespace :assets do
   # In this task, set prerequisites for the assets:precompile task
   task compile_environment: :prepare_op do
     # Turn the yarn:install task into a noop.
-    Rake::Task['yarn:install']
+    Rake::Task["yarn:install"]
       .clear
 
-    Rake::Task['assets:environment'].invoke
+    Rake::Task["assets:environment"].invoke
   end
 
-  desc 'Prepare locales and angular assets'
+  desc "Prepare locales and angular assets"
   task prepare_op: %i[export_locales angular]
 
-  desc 'Compile assets with webpack'
+  desc "Compile angular frontend assets"
   task :angular do
     # We skip angular compilation if backend was requested
     # but frontend was not explicitly set
-    if ENV['RECOMPILE_RAILS_ASSETS'] == 'true' && ENV['RECOMPILE_ANGULAR_ASSETS'] != 'true'
-      warn "RECOMPILE_RAILS_ASSETS was set by installation, but RECOMPILE_ANGULAR_ASSETS is false. " \
-           "Skipping angular compilation. Set RECOMPILE_ANGULAR_ASSETS='true' if you need to force it."
+    if ENV["RECOMPILE_RAILS_ASSETS"] == "true" && ENV["RECOMPILE_ANGULAR_ASSETS"] != "true"
       next
     end
 
     OpenProject::Assets.clear!
 
     puts "Linking frontend plugins"
-    Rake::Task['openproject:plugins:register_frontend'].invoke
+    Rake::Task["openproject:plugins:register_frontend"].invoke
 
     puts "Building angular frontend"
-    Dir.chdir Rails.root.join('frontend') do
-      sh 'npm run build' do |ok, res|
+    Dir.chdir Rails.root.join("frontend") do
+      sh("npm run build -- --stats-json") do |ok, res|
         raise "Failed to compile angular frontend: #{res.exitstatus}" if !ok
       end
     end
 
-    Rake::Task['assets:rebuild_manifest'].invoke
+    stats_path = OpenProject::Assets.frontend_asset_path.join("stats.json")
+    begin
+      OpenProject::Plugins::FrontendLinking.verify_bundle!(stats_path)
+    ensure
+      FileUtils.rm_f(stats_path)
+    end
+
+    Rake::Task["assets:rebuild_manifest"].invoke
   end
 
-  desc 'Write angular assets manifest'
+  desc "Write angular assets manifest"
   task :rebuild_manifest do
     puts "Writing angular assets manifest"
     OpenProject::Assets.rebuild_manifest!
   end
 
-  desc 'Export frontend locale files'
-  task export_locales: ['i18n:js:export']
+  desc "Export frontend locale files"
+  task export_locales: :environment do
+    puts "Exporting I18n.js locales"
+    time = Benchmark.realtime do
+      I18nJS.call(config_file: Rails.root.join("config/i18n.yml"))
+    end
+    puts "=> Done in #{time.round(2)}s"
+  end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,41 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Principals::PrincipalQuery, 'integration', type: :model do
-  let(:current_user) { FactoryBot.create(:user) }
+RSpec.describe Queries::Principals::PrincipalQuery, "integration" do
+  let(:current_user) { create(:user) }
   let(:instance) { described_class.new }
+  let!(:non_member_role) { create(:non_member) }
 
   before do
     login_as(current_user)
   end
 
-  context 'with a member filter' do
-    let(:project) { FactoryBot.create(:project) }
-    let(:role) { FactoryBot.create(:role) }
+  context "with a member filter" do
+    let(:project) { create(:project, public: true) }
+    let(:role) { create(:project_role) }
     let(:project_user) do
-      FactoryBot.create(:user,
-                        member_in_project: project,
-                        member_through_role: role) do |u|
+      create(:user,
+             member_with_roles: { project => role }) do |u|
         # Granting another membership in order to better test the "not" filter
-        FactoryBot.create(:member,
-                          principal: u,
-                          project: other_project,
-                          roles: [role])
+        create(:member,
+               principal: u,
+               project: other_project,
+               roles: [role])
       end
     end
-    let(:other_project) { FactoryBot.create(:project) }
+    let(:other_project) { create(:project, public: true) }
     let(:other_project_user) do
-      FactoryBot.create(:user,
-                        member_in_project: other_project,
-                        member_through_role: role)
+      create(:user,
+             member_with_roles: { other_project => role })
     end
 
     let(:users) { [current_user, project_user, other_project_user] }
@@ -63,25 +63,25 @@ describe Queries::Principals::PrincipalQuery, 'integration', type: :model do
       users
     end
 
-    context 'with the = operator' do
+    context "with the = operator" do
       before do
-        instance.where('member', '=', [project.id.to_s])
+        instance.where("member", "=", [project.id.to_s])
       end
 
-      it 'returns all principals being member' do
+      it "returns all principals being member" do
         expect(instance.results)
-          .to match_array [project_user]
+          .to contain_exactly(project_user)
       end
     end
 
-    context 'with the ! operator' do
+    context "with the ! operator" do
       before do
-        instance.where('member', '!', [project.id.to_s])
+        instance.where("member", "!", [project.id.to_s])
       end
 
-      it 'returns all principals not being member' do
+      it "returns all principals not being member" do
         expect(instance.results)
-          .to match_array [current_user, other_project_user]
+          .to contain_exactly(current_user, other_project_user)
       end
     end
   end

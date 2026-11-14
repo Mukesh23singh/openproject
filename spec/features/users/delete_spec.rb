@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,121 +22,143 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'user deletion: ', type: :feature, js: true do
-  let(:dialog) { ::Components::PasswordConfirmationDialog.new }
+RSpec.describe "user deletion:", :js, :selenium do
+  let(:dialog) { Components::PasswordConfirmationDialog.new }
+
+  include Flash::Expectations
 
   before do
     page.set_rack_session(user_id: current_user.id, updated_at: Time.now)
   end
 
-  context 'regular user' do
-    let(:user_password) { 'bob!' * 4 }
+  context "regular user" do
+    let(:user_password) { "bob!" * 4 }
     let(:current_user) do
-      FactoryBot.create(:user,
-                        password: user_password,
-                        password_confirmation: user_password)
+      create(:user,
+             password: user_password,
+             password_confirmation: user_password)
     end
 
-    it 'can delete their own account', js: true do
-      Setting.users_deletable_by_self = 1
-      visit delete_my_account_info_path
+    it "can delete their own account", :signout_via_visit, with_settings: { users_deletable_by_self: true } do
+      visit my_account_path
+      page.find_test_selector("delete-my-account-button").click
 
-      fill_in 'login_verification', with: current_user.login
-      click_on 'Delete'
+      check "I understand that this deletion cannot be reversed."
+      click_on "Delete permanently"
 
       dialog.confirm_flow_with user_password
 
-      expect(page).to have_content 'Account successfully deleted'
-      expect(current_path).to eq '/login'
+      expect(page).to have_text("Account has been scheduled for deletion. " \
+                                "Note that this process takes place in the background. " \
+                                "It might take a few moments until the user is fully deleted.")
+      expect(page).to have_current_path "/login"
     end
 
-    it 'cannot delete their own account if the settings forbid it' do
-      Setting.users_deletable_by_self = 0
+    it "cannot delete their own account if the settings forbid it", with_settings: { users_deletable_by_self: false } do
       visit my_account_path
 
-      within '#main-menu' do
-        expect(page).to_not have_content 'Delete account'
-      end
+      expect(page).not_to have_test_selector("delete-my-account-button")
     end
   end
 
-  context 'user with global add role' do
-    let!(:user) { FactoryBot.create :user }
-    let(:current_user) { FactoryBot.create :user, global_permission: :manage_user }
+  context "user with global add role" do
+    let!(:user) { create(:user) }
+    let(:current_user) { create(:user, global_permissions: %i[manage_user view_all_principals]) }
 
-    it 'can not delete even if settings allow it', js: true do
-      Setting.users_deletable_by_admins = 1
+    it "can not delete even if settings allow it", with_settings: { users_deletable_by_admins: true } do
       visit edit_user_path(user)
 
-      expect(page).to have_content "#{user.firstname} #{user.lastname}"
-      expect(page).to_not have_content 'Delete account'
+      expect(page).to have_text "#{user.firstname} #{user.lastname}"
+      expect(page).to have_no_text "Delete account"
 
       visit deletion_info_user_path(user)
-      expect(page).to have_text 'Error 404'
+      expect(page).to have_text "Error 404"
     end
   end
 
-  context 'admin user' do
-    let!(:user) { FactoryBot.create :user }
-    let(:user_password) { 'admin! * 4' }
+  context "admin user" do
+    let!(:user) { create(:user) }
+    let(:user_password) { "admin! * 4" }
     let(:current_user) do
-      FactoryBot.create(:admin,
-                        password: user_password,
-                        password_confirmation: user_password)
+      create(:admin,
+             password: user_password,
+             password_confirmation: user_password)
     end
 
-    it 'can delete other users if the setting permitts it', selenium: true do
-      Setting.users_deletable_by_admins = 1
+    it "can delete other users if the setting permits it", with_settings: { users_deletable_by_admins: true } do
       visit edit_user_path(user)
 
-      expect(page).to have_content "#{user.firstname} #{user.lastname}"
+      expect(page).to have_text "#{user.firstname} #{user.lastname}"
 
-      click_on 'Delete'
-
-      SeleniumHubWaiter.wait
-      fill_in 'login_verification', with: user.login
-      click_on 'Delete'
-
-      dialog.confirm_flow_with 'wrong', should_fail: true
+      click_on "Delete"
 
       SeleniumHubWaiter.wait
-      fill_in 'login_verification', with: user.login
-      click_on 'Delete'
+      check "I understand that this deletion cannot be reversed."
+      click_on "Delete permanently"
+
+      dialog.confirm_flow_with "wrong", should_fail: true
+
+      click_on "Delete"
+      SeleniumHubWaiter.wait
+      check "I understand that this deletion cannot be reversed."
+      click_on "Delete permanently"
 
       dialog.confirm_flow_with user_password, should_fail: false
 
-      expect(page).to have_content 'Account successfully deleted'
-      expect(current_path).to eq '/users'
+      expect(page).to have_text("Account has been scheduled for deletion. " \
+                                "Note that this process takes place in the background. " \
+                                "It might take a few moments until the user is fully deleted.")
+      expect(page).to have_current_path "/users"
     end
 
-    it 'cannot delete other users if the settings forbid it' do
-      Setting.users_deletable_by_admins = 0
+    it "can delete and confirm with keyboard (Regression #44499)", with_settings: { users_deletable_by_admins: true } do
       visit edit_user_path(user)
 
-      expect(page).to_not have_content 'Delete account'
+      expect(page).to have_text "#{user.firstname} #{user.lastname}"
+
+      click_on "Delete"
+
+      SeleniumHubWaiter.wait
+      check "I understand that this deletion cannot be reversed."
+      click_on "Delete permanently"
+
+      dialog.confirm_flow_with user_password, with_keyboard: true, should_fail: false
+
+      expect(page).to have_text("Account has been scheduled for deletion. " \
+                                "Note that this process takes place in the background. " \
+                                "It might take a few moments until the user is fully deleted.")
+      expect(page).to have_current_path "/users"
     end
 
-    it 'can change the deletablilty settings' do
+    it "cannot delete other users if the settings forbid it", with_settings: { users_deletable_by_admins: false } do
+      visit edit_user_path(user)
+
+      expect(page).to have_text "#{user.firstname} #{user.lastname}"
+      expect(page).to have_no_text "Delete account"
+    end
+
+    it "can change the deletablilty settings" do
       Setting.users_deletable_by_admins = 0
       Setting.users_deletable_by_self = 0
 
       visit admin_settings_users_path
 
-      find(:css, "#settings_users_deletable_by_admins").set(true)
-      find(:css, "#settings_users_deletable_by_self").set(true)
+      check "User accounts deletable by admins"
+      check "Users allowed to delete their accounts"
 
-      click_on 'Save'
+      click_on "Save"
 
-      expect(Setting.users_deletable_by_admins?).to eq true
-      expect(Setting.users_deletable_by_self?).to eq true
+      expect_flash message: "Successful update."
+
+      expect(Setting.users_deletable_by_admins?).to be true
+      expect(Setting.users_deletable_by_self?).to be true
     end
   end
 end

@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,21 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-/***** Auto-complete ****
+%autocomplete-description
+  display: flex
+  align-items: center
+  flex-shrink: 0
+  gap: var(--base-size-4, 4px)
+  color: var(--fgColor-muted)
+  font-size: var(--text-body-size-small, .75rem)
+  font-weight: var(--base-text-weight-normal, 400)
+
+/***** Auto-complete ****/
 
 div.autocomplete
   position: absolute
@@ -45,9 +53,9 @@ div.autocomplete
       padding: 2px
       cursor: pointer
       font-size: 90%
-      border: 1px solid #ccc
-      border-left: 1px solid #ccc
-      border-right: 1px solid #ccc
+      border: 1px solid var(--borderColor-default)
+      border-left: 1px solid var(--borderColor-default)
+      border-right: 1px solid var(--borderColor-default)
       background-color: white
       &.selected
         background-color: #ffb
@@ -58,92 +66,32 @@ div.autocomplete
 #parent_issue_candidates ul li, #related_issue_candidates ul li
   width: 500px
 
-
-/** jquery-ui autocomplete */
-
-.ui-autocomplete
-  position: absolute
-  top: 0
-  left: 0
-  cursor: default
-  margin: 0
-  list-style: none
-  z-index: 10000
-
-  .ui-menu-item
-    border-bottom: 1px solid var(--content-default-border-color)
-
-  a
-    color: var(--body-font-color)
-    padding-left: 5px
-
-  .ui-menu-item-wrapper
-    word-break: break-word
-    padding: 10px 5px
-
-    // Necessary for iOS to recognize as clickable
-    cursor: pointer
-
-    &.ui-state-active,
-    &.selected
-      border: none
-      a
-        color: var(--drop-down-selected-font-color)
-
-    &.ui-state-active
-      background: var(--drop-down-hover-bg-color)
-    &.selected:not(.ui-state-active)
-      background: var(--drop-down-selected-bg-color)
-
-  &.-inplace
-    position: relative
-    border: none
-    padding-top: 15px
-    line-height: 1.6
-    font-size: 1rem
-
-    .ui-menu-item
-      border-bottom: none
-
-    .ui-menu-item-wrapper
-      padding: 4px 10px
-
-.ui-autocomplete--input
-  // Error highlighting
-  &.-error, &.-error:hover, &.-error:focus
-    background: $nm-color-error-background
-    border-color: var(--content-form-danger-zone-bg-color)
-
-mark.ui-autocomplete-match
-  background: none
-  color: var(--primary-color)
-  text-decoration: underline
-  font-weight: bold !important
-
-// Loading indicator
-.ui-autocomplete--loading
-  background: white
-  z-index: 200
-  border: 1px solid #ccc
-  border-top: none
-  padding: 5px
-  // Position bottom of input
-  position: absolute
-  // With same width as input
-  width: 100%
-
-.ui-autocomplete--category
-  padding: 0
-  font-weight: bold
-  text-transform: uppercase
-
-
 // -------------------------- ng-select --------------------------
 .ng-select
   width: 100%
-  font-size: 14px
+  font-size: var(--body-font-size)
+  border-radius: var(--borderRadius-medium)
+
+  &.-error
+    .ng-select-container
+      border-color: var(--content-form-error-color)
+
+  &.ng-select-disabled
+    .ng-select-container,
+    .ng-select-container .ng-value-container input
+      background-color: var(--control-bgColor-disabled) !important
+      border-color: var(--control-borderColor-disabled) !important
+      box-shadow: none !important
+      color: var(--control-fgColor-disabled) !important
+      cursor: not-allowed !important
+      opacity: 1
+      -webkit-text-fill-color: var(--control-fgColor-disabled)
+
+    &.ng-select-searchable .ng-select-container .ng-value-container .ng-input
+      opacity: 0
 
   .ng-value-container
+    min-height: 2rem
     width: calc(100% - 30px)
 
     // Override OPs default padding for inputs which looks strange in the autocompleter
@@ -151,41 +99,110 @@ mark.ui-autocomplete-match
       padding-left: 0px
 
   .ng-select-container
+    border-radius: var(--borderRadius-medium)
     z-index: auto !important
     height: 30px !important
     min-height: 30px !important
+    border-color: var(--borderColor-default) !important
 
     .ng-value-container
       overflow: visible !important
 
       .ng-placeholder
         top: 1px !important
+        color: var(--fgColor-muted)
+        @include text-shortener
 
       input
         height: 100%
         padding: 0
+        line-height: normal
         -webkit-box-sizing: border-box !important
         -moz-box-sizing: border-box !important
         box-sizing: border-box !important
+        color: var(--body-font-color) !important
+
+  &.ng-select-single .ng-select-container .ng-value-container .ng-input
+    top: 0
+    height: 100%
+
   .ng-value
     @include text-shortener
     line-height: 22px
+
+// Override some basic styles to ensure that ngSelect matches the current theme
+.ng-select-container,
+.ng-optgroup:not(.ng-option-marked, .ng-option-disabled),
+.ng-option:not(.ng-option-marked, .ng-option-disabled),
+.ng-dropdown-panel,
+.ng-dropdown-panel-items,
+.ng-dropdown-footer
+  background-color: var(--body-background) !important
+  color: var(--body-font-color) !important
+  border-color: var(--borderColor-default) !important
+
+.ng-select .ng-arrow-wrapper .ng-arrow
+  border-color: var(--fgColor-muted) transparent transparent
+
+.ng-select.ng-select-opened>.ng-select-container .ng-arrow
+  border-color: transparent transparent var(--fgColor-muted)
+
+.ng-select .ng-clear-wrapper
+  color: var(--fgColor-muted)
 
 .ng-select.ng-select-multiple .ng-select-container
   height: initial !important
   min-height: initial !important
 
-  .ng-value-label
+  .ng-value-label:not(:has(span))
     display: initial !important
 
-// Ensure dropdown is above modals
-.ng-dropdown-panel
-  z-index: 9500 !important
+  .ng-value-label:has(span)
+    min-width: 0
 
-.ng-option
-  font-size: 14px
-  line-height: 22px
+    .description
+      @extend %autocomplete-description
+
+  .ng-placeholder
+    // Fix overflow by providing a max width to the input
+    //
+    // We subtract the width and right padding of the dropdown arrow
+    max-width: calc(100% - 25px - 5px)
+
+.ng-dropdown-panel
+  // Overrides for the ng-footer-tmp option
+  .ng-footer-text
+    font-size: 0.9rem
+    padding: 5px
+    font-style: italic
+
+.ng-option-label
+  vertical-align: top
+
+  .description
+    @extend %autocomplete-description
+
+.ng-option, .ng-optgroup
+  font-size: var(--body-font-size)
+
+  .op-avatar
+    margin-right: 8px
+
+  &.ng-option-marked
+    background-color: var(--control-transparent-bgColor-hover) !important
+    border-color: var(--list-item-hover--border-color) !important
+    color: var(--list-item-hover--color) !important
+
+  &.ng-option-disabled
+    background-color: var(--bgColor-disabled) !important
+    border-color: var(--borderColor-disabled) !important
+    color: var(--fgColor-disabled) !important
+
+.ng-dropdown-footer
+  padding: 0 !important
+
+.ng-placeholder
+  line-height: 2rem
+
 .work-package-table--container .ng-dropdown-panel
   z-index: auto !important
-
-

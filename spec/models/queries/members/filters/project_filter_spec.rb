@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +22,54 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Members::Filters::ProjectFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::Members::Filters::ProjectFilter do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :project_id }
     let(:type) { :list_optional }
   end
 
-  it_behaves_like 'list_optional query filter' do
+  it_behaves_like "list_optional query filter" do
     let(:attribute) { :project_id }
     let(:model) { Member }
-    let(:valid_values) { ['1'] }
+    let(:valid_values) { ["1"] }
+  end
+
+  describe "the global sentinel" do
+    let(:instance) do
+      described_class.create!(name: :project_id, operator: "=", values:)
+    end
+
+    context "when selected on its own" do
+      let(:values) { [described_class::GLOBAL_VALUE] }
+
+      it { expect(instance).to be_valid }
+
+      it "matches memberships without a project" do
+        expect(instance.where).to eq("members.project_id IS NULL")
+      end
+    end
+
+    context "when selected alongside projects" do
+      let(:values) { [described_class::GLOBAL_VALUE, "1", "2"] }
+
+      it { expect(instance).to be_valid }
+
+      it "matches those projects as well as the global memberships" do
+        expect(instance.where).to eq("members.project_id IS NULL OR members.project_id IN ('1','2')")
+      end
+    end
+
+    context "when combined with a non numeric project id" do
+      let(:values) { [described_class::GLOBAL_VALUE, "not-an-id"] }
+
+      it { expect(instance).not_to be_valid }
+    end
   end
 end

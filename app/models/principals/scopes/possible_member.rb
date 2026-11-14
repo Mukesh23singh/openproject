@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,14 +38,18 @@ module Principals::Scopes
       # * Group
       # User instances need to be non locked (status)
       # Principals which already are project members are are returned.
-      # @project [Project] The project for which eligible candidates are to be searched
+      # @param [Project] project The project for which eligible candidates are to be searched
+      # @param [String|nil] type The type of principals to be returned. One of 'User', 'Group', 'PlaceholderUser'.
       # @return [ActiveRecord::Relation] A scope of eligible candidates
-      def possible_member(project)
-        Queries::Principals::PrincipalQuery
+      def possible_member(project, type: nil)
+        query = Queries::Principals::PrincipalQuery
           .new(user: ::User.current)
-          .where(:member, '!', [project.id])
-          .where(:status, '!', [statuses[:locked]])
-          .results
+          .where(:member, "!", [project.id])
+          .where(:status, "!", [statuses[:locked]])
+
+        query.where(:type, "=", [type]) if type.present?
+
+        query.results
       end
     end
   end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,47 +20,41 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, OnDestroy, OnInit,
-} from '@angular/core';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { WorkPackageViewPaginationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-pagination.service';
-import { WorkPackageViewPagination } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-table-pagination';
-import { WorkPackageViewSortByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
-import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { combineLatest } from 'rxjs';
+
+import {
+  WorkPackageViewPaginationService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-pagination.service';
+import {
+  WorkPackageViewPagination,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-table-pagination';
+import {
+  WorkPackageViewSortByService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
+import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
 import { TablePaginationComponent } from 'core-app/shared/components/table-pagination/table-pagination.component';
-import { IPaginationOptions, PaginationService } from 'core-app/shared/components/table-pagination/pagination-service';
 
 @Component({
   templateUrl: '../../../../../shared/components/table-pagination/table-pagination.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-table-pagination',
+  standalone: false,
 })
 export class WorkPackageTablePaginationComponent extends TablePaginationComponent implements OnInit, OnDestroy {
-  constructor(protected paginationService:PaginationService,
-    protected cdRef:ChangeDetectorRef,
-    protected wpTablePagination:WorkPackageViewPaginationService,
-    readonly querySpace:IsolatedQuerySpace,
-    readonly wpTableSortBy:WorkPackageViewSortByService,
-    readonly I18n:I18nService) {
-    super(paginationService, cdRef, I18n);
-  }
+  protected wpTablePagination = inject(WorkPackageViewPaginationService);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly wpTableSortBy = inject(WorkPackageViewSortByService);
 
   ngOnInit() {
-    this.paginationService
-      .loadPaginationOptions()
-      .then((paginationOptions:IPaginationOptions) => {
-        this.perPageOptions = paginationOptions.perPageOptions;
-        this.cdRef.detectChanges();
-      });
+    super.ngOnInit();
 
     this.wpTablePagination
       .live$()
@@ -78,7 +72,7 @@ export class WorkPackageTablePaginationComponent extends TablePaginationComponen
       this.wpTableSortBy.live$(),
     ]).pipe(
       this.untilDestroyed(),
-    ).subscribe(([query, sort]) => {
+    ).subscribe(([query]) => {
       this.showPerPage = this.showPageSelections = !this.isManualSortingMode;
       this.infoText = this.paginationInfoText(query.results);
 
@@ -101,7 +95,7 @@ export class WorkPackageTablePaginationComponent extends TablePaginationComponen
 
   public paginationInfoText(work_packages:WorkPackageCollectionResource) {
     if (this.isManualSortingMode && (work_packages.count < work_packages.total)) {
-      return I18n.t('js.work_packages.limited_results',
+      return this.I18n.t('js.work_packages.limited_results',
         { count: work_packages.count });
     }
     return undefined;

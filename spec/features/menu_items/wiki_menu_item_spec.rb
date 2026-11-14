@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,56 +22,49 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'features/page_objects/notification'
-require 'features/work_packages/shared_contexts'
-require 'features/work_packages/work_packages_page'
+require "spec_helper"
+require "features/page_objects/notification"
+require "features/work_packages/shared_contexts"
+require "features/work_packages/work_packages_page"
 
-feature 'Wiki menu items' do
-  let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: %w[view_wiki_pages
-                                                  manage_wiki_menu
-                                                  delete_wiki_pages]
-  end
-  let(:project) { FactoryBot.create :project, enabled_module_names: %w[wiki] }
+RSpec.describe "Wiki menu items", :js do
+  let(:user) { create(:user, member_with_permissions: { project => %i[view_wiki_pages manage_wiki] }) }
+  let(:project) { create(:project, :with_internal_wiki).reload }
   let(:wiki) { project.wiki }
-  let(:parent_menu) { wiki.wiki_menu_items.find_by(name: 'wiki') }
-  let(:wiki_page) { FactoryBot.create :wiki_page_with_content, wiki: wiki }
+  let(:parent_menu) { wiki.wiki_menu_items.find_by(name: "wiki") }
+  let(:wiki_page) { create(:wiki_page, wiki:) }
   let(:other_wiki_page) do
-    FactoryBot.create(:wiki_page_with_content, wiki: wiki, title: "Other page").tap do |page|
+    create(:wiki_page, wiki:, title: "Other page").tap do |page|
       MenuItems::WikiMenuItem.create!(navigatable_id: page.wiki.id,
                                       title: page.title,
                                       name: page.slug)
     end
   end
   let(:another_wiki_page) do
-    FactoryBot.create(:wiki_page_with_content, wiki: wiki)
+    create(:wiki_page, wiki:)
   end
 
   before do
-    allow(User).to receive(:current).and_return user
+    login_as(user)
   end
 
-  context 'with identical names' do
+  context "with identical names" do
     # Create two items with identical slugs (one with space, which is removed)
     let(:item1) do
       MenuItems::WikiMenuItem.new(navigatable_id: wiki.id,
-                                  parent: parent_menu, title: 'Item 1', name: 'slug')
+                                  parent: nil, title: "Item 1", name: "slug ")
     end
     let(:item2) do
       MenuItems::WikiMenuItem.new(navigatable_id: wiki.id,
-                                  parent: parent_menu, title: 'Item 2', name: 'slug ')
+                                  parent: nil, title: "Item 2", name: "slug")
     end
 
-    it 'one is invalid and deleted during visit' do
+    it "one is invalid and deleted during visit" do
       expect(wiki.wiki_menu_items.count).to eq(1)
 
       item1.save!
@@ -85,83 +80,67 @@ feature 'Wiki menu items' do
     end
   end
 
-  it 'allows managing the menu item of a wiki page', js: true do
+  it "allows managing the menu item of a wiki page", :js do
     other_wiki_page
     another_wiki_page
 
     visit project_wiki_path(project, wiki_page)
 
     # creating the menu item with the pages name for the menu item
-    SeleniumHubWaiter.wait
-    click_link 'More'
-    click_link 'Configure menu item'
+    page.find_test_selector("wiki-more-dropdown-menu").click
+    wait_for_turbo do
+      page.find_test_selector("wiki-configure-menu-action-menu-item").click
+    end
 
-    SeleniumHubWaiter.wait
     choose "Show as menu item in project navigation"
 
-    click_button "Save"
+    wait_for_turbo { click_link_or_button "Save" }
 
     expect(page)
-      .to have_selector('.main-menu--children-menu-header', text: wiki_page.title)
+      .to have_css(".main-menu--children-menu-header", text: wiki_page.title)
 
-    SeleniumHubWaiter.wait
-    find('.main-menu--arrow-left-to-project').click
+    find(".main-menu--arrow-left-to-project").click
 
     expect(page)
-      .to have_selector('.main-item-wrapper', text: wiki_page.title)
+      .to have_css(".main-item-wrapper", text: wiki_page.title)
 
     # clicking the menu item leads to the page
-    SeleniumHubWaiter.wait
-    click_link wiki_page.title
-
+    find(".wiki-menu--main-item", text: wiki_page.title).click
     expect(page)
       .to have_current_path(project_wiki_path(project, wiki_page))
 
-    # modifying the menu item to a different name and to be a subpage
+    # modifying the menu item to a different name
 
-    SeleniumHubWaiter.wait
-    click_link 'More'
-    click_link 'Configure menu item'
+    page.find_test_selector("wiki-more-dropdown-menu").click
+    wait_for_turbo do
+      page.find_test_selector("wiki-configure-menu-action-menu-item").click
+    end
 
-    SeleniumHubWaiter.wait
-    fill_in 'Name of menu item', with: 'Custom page name'
+    fill_in "Name of menu item", with: "Custom page name"
 
-    choose "Show as submenu item of"
+    wait_for_turbo { click_link_or_button "Save" }
 
-    select other_wiki_page.slug, from: 'parent_wiki_menu_item'
-
-    click_button "Save"
-
-    # the other page is now the main heading
+    # the custom name is used as the main heading
     expect(page)
-      .to have_selector('.main-menu--children-menu-header', text: other_wiki_page.title)
+      .to have_css(".main-menu--children-menu-header", text: "Custom page name")
 
-    expect(page)
-      .to have_selector('.wiki-menu--sub-item', text: 'Custom page name')
-
-    SeleniumHubWaiter.wait
-    click_link 'Custom page name'
+    # the item is visible on top level
+    visit(project_wiki_path(project, wiki_page))
+    find(".main-menu--arrow-left-to-project").click
 
     expect(page)
-      .to have_current_path(project_wiki_path(project, wiki_page))
-
-    # the submenu item is not visible on top level
-    SeleniumHubWaiter.wait
-    find('.main-menu--arrow-left-to-project').click
-
-    expect(page)
-      .to have_no_selector('.main-item-wrapper', text: 'Custom page name')
+      .to have_css(".main-item-wrapper", text: "Custom page name")
 
     # deleting the page will remove the menu item
     visit project_wiki_path(project, wiki_page)
 
-    click_link 'More'
-    click_link 'Delete'
+    page.find_test_selector("wiki-more-dropdown-menu").click
+    accept_alert do
+      page.find_test_selector("wiki-delete-action-menu-item").click
+    end
 
-    page.driver.browser.switch_to.alert.accept
-
-    within '#menu-sidebar' do
-      expect(page).to have_no_content('Custom page name')
+    within "#menu-sidebar" do
+      expect(page).to have_no_text("Custom page name")
     end
 
     # removing the menu item which is also the last wiki menu item
@@ -169,23 +148,23 @@ feature 'Wiki menu items' do
     MenuItems::WikiMenuItem.where(navigatable_id: project.wiki.id, name: "wiki").delete_all
     visit project_wiki_path(project, other_wiki_page)
 
-    click_link 'More'
-    click_link 'Configure menu item'
+    page.find_test_selector("wiki-more-dropdown-menu").click
+    page.find_test_selector("wiki-configure-menu-action-menu-item").click
 
-    choose 'Do not show this wikipage in project navigation'
+    choose "Do not show this wikipage in project navigation"
 
-    click_button 'Save'
+    click_link_or_button "Save"
+
+    wait_for_network_idle
 
     # Because it is the last wiki menu item, the user is prompted to select another menu item
-    SeleniumHubWaiter.wait
-    select another_wiki_page.title, from: 'main-menu-item-select'
+    select another_wiki_page.title, from: "main-menu-item-select"
 
-    click_button 'Save'
+    click_link_or_button "Save"
 
-    expect(page)
-      .to have_no_selector('.main-menu--children-menu-header', text: other_wiki_page.title)
+    wait_for_network_idle
 
-    expect(page)
-      .to have_selector('.main-menu--children-menu-header', text: another_wiki_page.title)
+    expect(page).to have_css(".main-menu--children-menu-header", text: another_wiki_page.title, visible: :all)
+    expect(page).to have_no_css(".main-menu--children-menu-header", text: other_wiki_page.title, visible: :all)
   end
 end

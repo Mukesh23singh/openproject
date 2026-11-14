@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,74 +22,105 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Seeder
+  class << self
+    attr_writer :logger
+
+    def logger
+      @logger ||= Rails.logger
+    end
+
+    def log_to_stdout!
+      @logger = Logger.new($stdout)
+      @logger.level = Logger::DEBUG
+      @logger.formatter = proc do |_severity, _datetime, _prog_name, msg|
+        "#{msg}\n"
+      end
+    end
+  end
+
+  class_attribute :needs, default: []
+  # The attributes referencing other objects created or looked up during
+  # seeding. The seeder should not run if one of them does not exist.
+  class_attribute :attribute_names_for_required_references, default: []
+
+  attr_reader :seed_data
+
+  def initialize(seed_data = nil)
+    @seed_data = seed_data
+  end
+
   def seed!
     if applicable?
       without_notifications do
         seed_data!
       end
     else
-      puts "   *** #{not_applicable_message}"
+      Seeder.logger.debug { "   *** #{not_applicable_message}" }
+      lookup_existing_references
     end
   end
 
   def seed_data!
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   def applicable?
-    true
+    seed_data.all_references_exist?(all_required_references)
   end
+
+  # Returns the references that are required to be present in the seed data.
+  # Should be overridden by subclasses to gather the references from their model
+  # data.
+  def all_required_references
+    []
+  end
+
+  # Called if the seeding is not applicable to have a chance to lookup
+  # existing records and set some references to them.
+  def lookup_existing_references; end
 
   def not_applicable_message
     "Skipping #{self.class.name}"
   end
 
+  # The user being the author of all data created during seeding.
+  def admin_user
+    @admin_user ||= User.not_builtin.admin.first
+  end
+
+  # Seeders creating users must not run when this is disabled. Environments that re-run the
+  # seeders on every deploy would otherwise have newly added seeders create users on instances
+  # that were seeded long ago, since a seeder can only tell whether its own data is absent.
+  def seed_users_disabled?
+    %w[off false no 0].include? ENV.fetch("OP_DEV_USER_SEEDER_ENABLED", nil)
+  end
+
   protected
 
   def print_status(message)
-    print message
+    Seeder.logger.info message
 
-    return unless block_given?
-
-    yield
-    puts
+    yield if block_given?
   end
 
-  ##
-  # Translate the given string with the fixed interpolation for base_url
-  # Deep interpolation is required in order for interpolations on hashes to work!
-  def translate_with_base_url(string)
-    I18n.t(string, deep_interpolation: true, base_url: "{{opSetting:base_url}}")
+  def print_error(message)
+    Seeder.logger.error message
   end
 
-  def edition_data_for(key)
-    data = translate_with_base_url("seeders.#{OpenProject::Configuration['edition']}.#{key}")
-
-    return nil if data.is_a?(String) && data.start_with?("translation missing")
-
-    data
+  def without_notifications(&)
+    Journal::NotificationConfiguration.with(false, &)
   end
 
-  def demo_data_for(key)
-    edition_data_for("demo_data.#{key}")
-  end
-
-  def project_data_for(project, key)
-    demo_data_for "projects.#{project}.#{key}"
-  end
-
-  def project_has_data_for?(project, key)
-    I18n.exists?("seeders.#{OpenProject::Configuration['edition']}.demo_data.projects.#{project}.#{key}")
-  end
-
-  def without_notifications(&block)
-    Journal::NotificationConfiguration.with(false, &block)
+  def get_required_references(models_data)
+    refs = Array.wrap(models_data).map do |model_data|
+      model_data.values_at(*attribute_names_for_required_references)
+    end
+    refs.flatten.compact.uniq
   end
 end

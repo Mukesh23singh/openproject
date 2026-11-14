@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,35 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Changeset, type: :model do
-  let(:email) { 'bob@bobbit.org' }
+RSpec.describe Changeset do
+  let(:email) { "bob@bobbit.org" }
 
   with_virtual_subversion_repository do
     let(:changeset) do
-      FactoryBot.build(:changeset,
-                       repository: repository,
-                       revision: '1',
-                       committer: email,
-                       comments: 'Initial commit')
+      build(:changeset,
+            repository:,
+            revision: "1",
+            committer: email,
+            comments: "Initial commit")
     end
   end
 
-  shared_examples_for 'valid changeset' do
-    it { expect(changeset.revision).to eq('1') }
+  shared_examples_for "valid changeset" do
+    it { expect(changeset.revision).to eq("1") }
 
     it { expect(changeset.committer).to eq(email) }
 
-    it { expect(changeset.comments).to eq('Initial commit') }
+    it { expect(changeset.comments).to eq("Initial commit") }
 
-    describe 'journal' do
+    describe "journal" do
       let(:journal) { changeset.journals.first }
 
       it { expect(journal.user).to eq(journal_user) }
@@ -57,117 +58,117 @@ describe Changeset, type: :model do
     end
   end
 
-  describe 'empty comment' do
-    it 'should comments empty' do
-      changeset.comments = ''
-      expect(changeset.save).to eq true
-      expect(changeset.comments).to eq ''
+  describe "empty comment" do
+    it "commentses empty" do
+      changeset.comments = ""
+      expect(changeset.save).to be true
+      expect(changeset.comments).to eq ""
 
       if changeset.comments.respond_to?(:force_encoding)
-        assert_equal 'UTF-8', changeset.comments.encoding.to_s
+        expect(changeset.comments.encoding.to_s).to eq("UTF-8")
       end
     end
 
-    it 'should comments nil' do
+    it "commentses nil" do
       changeset.comments = nil
-      expect(changeset.save).to eq true
-      expect(changeset.comments).to eq ''
+      expect(changeset.save).to be true
+      expect(changeset.comments).to eq ""
 
       if changeset.comments.respond_to?(:force_encoding)
-        assert_equal 'UTF-8', changeset.comments.encoding.to_s
+        expect(changeset.comments.encoding.to_s).to eq("UTF-8")
       end
     end
   end
 
-  describe 'stripping commit' do
-    let(:comment) { 'This is a looooooooooooooong comment' + (' ' * 80 + "\n") * 5 }
+  describe "stripping commit" do
+    let(:comment) { "This is a looooooooooooooong comment#{"#{' ' * 80}\n" * 5}" }
+
     with_virtual_subversion_repository do
       let(:changeset) do
-        FactoryBot.build(:changeset,
-                         repository: repository,
-                         revision: '1',
-                         committer: email,
-                         comments: comment)
+        build(:changeset,
+              repository:,
+              revision: "1",
+              committer: email,
+              comments: comment)
       end
     end
 
-    it 'should for changeset comments strip' do
-      expect(changeset.save).to eq true
-      expect(comment).to_not eq changeset.comments
-      expect(changeset.comments).to eq 'This is a looooooooooooooong comment'
+    it "fors changeset comments strip" do
+      expect(changeset.save).to be true
+      expect(comment).not_to eq changeset.comments
+      expect(changeset.comments).to eq "This is a looooooooooooooong comment"
     end
   end
 
-  describe 'mapping' do
-    let!(:user) { FactoryBot.create :user, login: 'jsmith', mail: 'jsmith@somenet.foo' }
-    let!(:repository) { FactoryBot.create(:repository_subversion) }
+  describe "mapping" do
+    let!(:user) { create(:user, login: "jsmith", mail: "jsmith@somenet.foo") }
+    let!(:repository) { create(:repository_subversion) }
 
-    it 'should manual user mapping' do
-      c = Changeset.create! repository: repository,
-                            committer: 'foo',
-                            committed_on: Time.now,
-                            revision: 100,
-                            comments: 'Committed by foo.'
+    it "supports manual user mapping with repository.committer_ids" do
+      c = create(:changeset, repository:, committer: "foo")
 
       expect(c.user).to be_nil
-      repository.committer_ids = { 'foo' => user.id }
+      repository.committer_ids = { "foo" => user.id }
       expect(c.reload.user).to eq user
 
       # committer is now mapped
-      c = Changeset.create! repository: repository,
-                            committer: 'foo',
-                            committed_on: Time.now,
-                            revision: 101,
-                            comments: 'Another commit by foo.'
+      c = create(:changeset, repository:, committer: "foo")
       expect(c.user).to eq user
     end
 
-    it 'should auto user mapping by username' do
-      c = Changeset.create! repository: repository,
-                            committer: 'jsmith',
-                            committed_on: Time.now,
-                            revision: 100,
-                            comments: 'Committed by john.'
+    it "maps user automatically when username matches" do
+      c = create(:changeset, repository:, committer: user.login)
       expect(c.user).to eq user
     end
 
-    it 'should auto user mapping by email' do
-      c = Changeset.create! repository: repository,
-                            committer: 'john <jsmith@somenet.foo>',
-                            committed_on: Time.now,
-                            revision: 100,
-                            comments: 'Committed by john.'
+    it "maps user automatically when email matches" do
+      c = create(:changeset, repository:, committer: "john <#{user.mail}>")
 
       expect(c.user).to eq user
     end
   end
 
-  describe '#scan_comment_for_work_package_ids',
+  describe "#scan_comment_for_work_package_ids",
            with_settings: {
-             commit_fix_done_ratio: '90',
-             commit_ref_keywords: 'refs , references, IssueID',
-             commit_fix_keywords: 'fixes , closes',
-             default_language: 'en'
+             commit_ref_keywords: "refs , references, IssueID",
+             commit_fix_keywords: "fixes , closes",
+             default_language: "en",
+             work_package_done_ratio: "status"
            } do
-    let!(:user) { FactoryBot.create :admin, login: 'dlopper' }
-    let!(:open_status) { FactoryBot.create :status }
-    let!(:closed_status) { FactoryBot.create :closed_status }
+    let!(:user) do
+      create(:admin,
+             login: "dlopper",
+             member_with_roles: { repository.project => role })
+    end
+    let!(:open_status) { create(:status) }
+    let!(:closed_status) { create(:closed_status, default_done_ratio: 90) }
+    let!(:role) { create(:project_role, permissions: %i[view_work_packages edit_work_packages]) }
 
-    let!(:other_work_package) { FactoryBot.create :work_package, status: open_status }
+    let!(:other_work_package) { create(:work_package, status: open_status) }
+    let!(:parent_work_package) { create(:work_package, subject: "Parent wp") }
+    let!(:workflow) do
+      create(:workflow,
+             old_status: open_status,
+             new_status: closed_status,
+             role:,
+             type: work_package.type)
+    end
     let(:comments) { "Some fix made, fixes ##{work_package.id} and fixes ##{other_work_package.id}" }
 
     with_virtual_subversion_repository do
       let!(:work_package) do
-        FactoryBot.create :work_package,
-                          project: repository.project,
-                          status: open_status
+        create(:work_package,
+               project: repository.project,
+               status: open_status,
+               parent: parent_work_package,
+               estimated_hours: 100)
       end
       let(:changeset) do
-        FactoryBot.create(:changeset,
-                          repository: repository,
-                          revision: '123',
-                          committer: user.login,
-                          comments: comments)
+        create(:changeset,
+               repository:,
+               revision: "123",
+               committer: user.login,
+               comments:)
       end
     end
 
@@ -176,11 +177,11 @@ describe Changeset, type: :model do
       allow(Setting).to receive(:commit_fix_status_id).and_return closed_status.id
     end
 
-    describe 'with any matching', with_settings: { commit_ref_keywords: '*' } do
-      describe 'reference with brackets' do
+    describe "with any matching", with_settings: { commit_ref_keywords: "*" } do
+      describe "reference with brackets" do
         let(:comments) { "[##{work_package.id}] Worked on this work_package" }
 
-        it 'should reference' do
+        it "references" do
           changeset.scan_comment_for_work_package_ids
           work_package.reload
 
@@ -188,10 +189,10 @@ describe Changeset, type: :model do
         end
       end
 
-      describe 'reference at line start' do
+      describe "reference at line start" do
         let(:comments) { "##{work_package.id} Worked on this work_package" }
 
-        it 'should reference' do
+        it "references" do
           changeset.scan_comment_for_work_package_ids
           work_package.reload
 
@@ -200,9 +201,10 @@ describe Changeset, type: :model do
       end
     end
 
-    describe 'non matching ref' do
+    describe "non matching ref" do
       let(:comments) { "Some fix ignores ##{work_package.id}" }
-      it 'should reference the work package id' do
+
+      it "references the work package id" do
         changeset.scan_comment_for_work_package_ids
         work_package.reload
 
@@ -210,89 +212,97 @@ describe Changeset, type: :model do
       end
     end
 
-    describe 'with timelogs' do
-      let!(:activity) { FactoryBot.create :activity, is_default: true }
+    describe "with timelogs" do
+      let!(:activity) { create(:activity, is_default: true) }
+
       before do
-        repository.project.enabled_module_names += ['costs']
+        repository.project.enabled_module_names += ["costs"]
         repository.project.save!
       end
 
-      it 'should ref keywords any with timelog' do
-        allow(Setting).to receive(:commit_ref_keywords).and_return '*'
-        allow(Setting).to receive(:commit_logtime_enabled?).and_return true
+      it "refs keywords any with timelog" do # rubocop:disable RSpec/ExampleLength
+        allow(Setting).to receive_messages(
+          commit_ref_keywords: "*",
+          commit_logtime_enabled?: true
+        )
 
         {
-          '2' => 2.0,
-          '2h' => 2.0,
-          '2hours' => 2.0,
-          '15m' => 0.25,
-          '15min' => 0.25,
-          '3h15' => 3.25,
-          '2h15m' => 2.25,
-          '2h15min' => 2.25,
-          '2:15' => 2.25,
-          '2.25' => 2.25,
-          '1.25h' => 1.25,
-          '0,75' => 0.75,
-          '1,25h' => 1.25
+          "2" => 2.0,
+          "2h" => 2.0,
+          "2hours" => 2.0,
+          "15m" => 0.25,
+          "15min" => 0.25,
+          "3h15" => 3.25,
+          "2h15m" => 2.25,
+          "2h15min" => 2.25,
+          "2:15" => 2.25,
+          "2.25" => 2.25,
+          "1.25h" => 1.25,
+          "0,75" => 0.75,
+          "1,25h" => 1.25
         }.each do |syntax, expected_hours|
-          c = Changeset.new repository: repository,
-                            committed_on: 24.hours.ago,
-                            comments: "Worked on this work_package ##{work_package.id} @#{syntax}",
-                            revision: '520',
-                            user: user
+          c = build(:changeset,
+                    repository:,
+                    committed_on: 24.hours.ago,
+                    commit_date: Date.yesterday,
+                    comments: "Worked on this work_package ##{work_package.id} @#{syntax}",
+                    revision: "520",
+                    user:)
 
           expect { c.scan_comment_for_work_package_ids }
-            .to change { TimeEntry.count }.by(1)
+            .to change(TimeEntry, :count).by(1)
 
           expect(c.work_package_ids).to eq [work_package.id]
 
-          time = TimeEntry.order(Arel.sql('id DESC')).first
-          assert_equal work_package.id, time.work_package_id
-          assert_equal work_package.project_id, time.project_id
-          assert_equal user.id, time.user_id
+          time = TimeEntry.order(Arel.sql("id DESC")).first
+          expect(work_package.id).to eq(time.entity_id)
+          expect(work_package.project_id).to eq(time.project_id)
+          expect(user.id).to eq(time.user_id)
 
           expect(time.hours).to eq expected_hours
           expect(time.spent_on).to eq Date.yesterday
 
-          expect(time.activity.is_default).to eq true
-          expect(time.comments).to include 'r520'
+          expect(time.activity).to be_nil
+          expect(time.comments).to include "r520"
         end
       end
 
-      context 'with a second work package' do
-        let!(:work_package2) { FactoryBot.create :work_package, project: repository.project, status: open_status }
-        it 'should ref keywords closing with timelog' do
-          allow(Setting).to receive(:commit_fix_status_id).and_return closed_status.id
-          allow(Setting).to receive(:commit_ref_keywords).and_return '*'
-          allow(Setting).to receive(:commit_fix_keywords).and_return 'fixes , closes'
-          allow(Setting).to receive(:commit_logtime_enabled?).and_return true
+      context "with a second work package" do
+        let!(:work_package2) { create(:work_package, project: repository.project, status: open_status) }
 
-          c = Changeset.new repository: repository,
-                            committed_on: Time.now,
-                            comments: "This is a comment. Fixes ##{work_package.id} @4.5, ##{work_package2.id} @1",
-                            revision: '520',
-                            user: user
+        it "refs keywords closing with timelog" do
+          allow(Setting).to receive_messages(
+            commit_fix_status_id: closed_status.id,
+            commit_ref_keywords: "*",
+            commit_fix_keywords: "fixes , closes",
+            commit_logtime_enabled?: true
+          )
+
+          c = build(:changeset,
+                    repository:,
+                    comments: "This is a comment. Fixes ##{work_package.id} @4.5, ##{work_package2.id} @1",
+                    revision: "520",
+                    user:)
 
           expect { c.scan_comment_for_work_package_ids }
-            .to change { TimeEntry.count }.by(2)
+            .to change(TimeEntry, :count).by(2)
 
-          expect(c.work_package_ids).to match_array [work_package.id, work_package2.id]
+          expect(c.work_package_ids).to contain_exactly(work_package.id, work_package2.id)
 
           work_package.reload
           work_package2.reload
           expect(work_package).to be_closed
           expect(work_package2).to be_closed
 
-          times = TimeEntry.order(Arel.sql('id desc')).limit(2)
-          expect(times.map(&:work_package_id)).to match_array [work_package.id, work_package2.id]
+          times = TimeEntry.order(Arel.sql("id desc")).limit(2)
+          expect(times.map(&:entity_id)).to contain_exactly(work_package.id, work_package2.id)
         end
       end
     end
 
-    it 'should reference the work package id' do
+    it "references the work package id" do
       # make sure work package 1 is not already closed
-      expect(work_package.status.is_closed?).to eq false
+      expect(work_package.status.closed?).to be false
 
       changeset.scan_comment_for_work_package_ids
       work_package.reload
@@ -301,31 +311,39 @@ describe Changeset, type: :model do
 
       expect(work_package.status).to eq closed_status
       expect(work_package.done_ratio).to eq 90
+      expect(work_package.remaining_hours).to eq 10
 
-      # issue change
+      # journal updates
       journal = work_package.journals.last
 
       expect(journal.user).to eq user
-      expect(journal.notes).to eq 'Applied in changeset r123.'
+      expect(journal.notes).to eq "Applied in changeset r123."
 
       # Expect other work package to be unchanged
       # due to other project
       other_work_package.reload
       expect(other_work_package.changesets).to eq []
+
+      # Expect the parent to be updated
+      parent_work_package.reload
+
+      expect(parent_work_package.done_ratio).to eq 0
+      expect(parent_work_package.derived_remaining_hours).to eq 10
+      expect(parent_work_package.derived_done_ratio).to eq 90
     end
 
-    describe 'with work package in parent project' do
-      let(:parent) { FactoryBot.create :project }
-      let!(:work_package) { FactoryBot.create :work_package, project: parent, status: open_status }
+    describe "with work package in parent project" do
+      let(:parent) { create(:project) }
+      let!(:work_package) { create(:work_package, project: parent, status: open_status) }
 
       before do
         repository.project.parent = parent
         repository.project.save!
       end
 
-      it 'can reference it' do
+      it "can reference it" do
         # make sure work package 1 is not already closed
-        expect(work_package.status.is_closed?).to eq false
+        expect(work_package.status.closed?).to be false
 
         changeset.scan_comment_for_work_package_ids
         work_package.reload
@@ -339,9 +357,9 @@ describe Changeset, type: :model do
       end
     end
 
-    describe 'with work package in sub project' do
-      let(:sub) { FactoryBot.create :project }
-      let!(:work_package) { FactoryBot.create :work_package, project: sub, status: open_status }
+    describe "with work package in sub project" do
+      let(:sub) { create(:project) }
+      let!(:work_package) { create(:work_package, project: sub, status: open_status) }
 
       before do
         sub.parent = repository.project
@@ -351,9 +369,9 @@ describe Changeset, type: :model do
         sub.reload
       end
 
-      it 'can reference it' do
+      it "can reference it" do
         # make sure work package 1 is not already closed
-        expect(work_package.status.is_closed?).to eq false
+        expect(work_package.status.closed?).to be false
 
         changeset.scan_comment_for_work_package_ids
         work_package.reload
@@ -368,32 +386,32 @@ describe Changeset, type: :model do
     end
   end
 
-  describe 'assign_openproject user' do
-    describe 'w/o user' do
+  describe "assign_openproject user" do
+    describe "w/o user" do
       before do
         changeset.save!
       end
 
-      it_behaves_like 'valid changeset' do
+      it_behaves_like "valid changeset" do
         let(:journal_user) { User.anonymous }
       end
     end
 
-    describe 'with user is committer' do
-      let!(:committer) { FactoryBot.create(:user, login: email) }
+    describe "with user is committer" do
+      let!(:committer) { create(:user, login: email) }
 
       before do
         changeset.save!
       end
 
-      it_behaves_like 'valid changeset' do
+      it_behaves_like "valid changeset" do
         let(:journal_user) { committer }
       end
     end
 
-    describe 'current user is not committer' do
-      let(:current_user) { FactoryBot.create(:user) }
-      let!(:committer) { FactoryBot.create(:user, login: email) }
+    describe "current user is not committer" do
+      let(:current_user) { create(:user) }
+      let!(:committer) { create(:user, login: email) }
 
       before do
         allow(User).to receive(:current).and_return current_user
@@ -401,7 +419,7 @@ describe Changeset, type: :model do
         changeset.save!
       end
 
-      it_behaves_like 'valid changeset' do
+      it_behaves_like "valid changeset" do
         let(:journal_user) { committer }
       end
     end

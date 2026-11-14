@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,52 +22,32 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.dirname(__FILE__) + '/../spec_helper'
+require "#{File.dirname(__FILE__)}/../spec_helper"
 
-describe DocumentsController do
+RSpec.describe DocumentsController do
   render_views
 
-  let(:admin) { FactoryBot.create(:admin) }
-  let(:project) { FactoryBot.create(:project, name: "Test Project") }
-  let(:user) { FactoryBot.create(:user) }
-  let(:role) { FactoryBot.create(:role, permissions: [:view_documents]) }
+  let(:admin) { create(:admin) }
+  let(:project) { create(:project, name: "Test Project") }
+  let(:user) { create(:user, member_with_permissions: { project => [:view_documents] }) }
 
-  let(:default_category) do
-    FactoryBot.create(:document_category, project: project, name: "Default Category")
+  let(:document_type) do
+    create(:document_type, name: "Default Type")
   end
 
-  let(:document) do
-    FactoryBot.create(:document, title: "Sample Document", project: project, category: default_category)
+  let!(:document) do
+    create(:document, title: "Sample Document", project:, type: document_type)
   end
 
   current_user { admin }
 
   describe "index" do
-    let(:long_description) do
-      <<-LOREM.strip_heredoc
-        Lorem ipsum dolor sit amet, consectetur adipiscing elit.\
-        Ut egestas, mi vehicula varius varius, ipsum massa fermentum orci,\
-        eget tristique ante sem vel mi. Nulla facilisi.\
-        Donec enim libero, luctus ac sagittis sit amet, vehicula sagittis magna.\
-        Duis ultrices molestie ante, eget scelerisque sem iaculis vitae.\
-        Etiam fermentum mauris vitae metus pharetra condimentum fermentum est pretium.\
-        Proin sollicitudin elementum quam quis pharetra.\
-        Aenean facilisis nunc quis elit volutpat mollis.\
-        Aenean eleifend varius euismod. Ut dolor est, congue eget dapibus eget, elementum eu odio.\
-        Integer et lectus neque, nec scelerisque nisi. EndOfLineHere
-
-        Praesent a nunc lorem, ac porttitor eros.
-      LOREM
-    end
-
     before do
-      document.update(description: long_description)
       get :index, params: { project_id: project.identifier }
     end
 
@@ -73,35 +55,51 @@ describe DocumentsController do
       expect(response).to be_successful
       expect(response).to render_template("index")
     end
-
-    it "group documents by category, if no other sorting is given" do
-      expect(assigns(:grouped)).not_to be_nil
-      expect(assigns(:grouped).keys.map(&:name)).to eql [default_category.name]
-    end
-
-    it "renders documents with long descriptions properly" do
-      expect(response.body).to have_selector('.wiki p', visible: :all)
-      expect(response.body).to have_selector('.wiki p', visible: :all, text: (document.description.split("\n").first + '...'))
-      expect(response.body).to have_selector('.wiki p', visible: :all, text: /EndOfLineHere.../)
-    end
   end
 
-  describe 'new' do
+  describe "new" do
     before do
       get :new, params: { project_id: project.id }
     end
 
-    it 'show the new document form' do
-      expect(response).to render_template(partial: 'documents/_form')
+    it "returns render the new page successfully" do
+      expect(response).to be_successful
+      expect(response).to render_template("new")
+    end
+  end
+
+  describe "edit" do
+    context "with a classic document" do
+      before do
+        document.update(kind: :classic)
+        get :edit, params: { id: document.id }
+      end
+
+      it "renders the edit-template successfully" do
+        expect(response).to be_successful
+        expect(response).to render_template("edit")
+      end
+    end
+
+    context "with a collaborative document" do
+      before do
+        document.update(kind: :collaborative)
+        get :edit, params: { id: document.id }
+      end
+
+      it "responds with a bad request" do
+        expect(response).to have_http_status(:bad_request)
+      end
     end
   end
 
   describe "create" do
     let(:document_attributes) do
-      FactoryBot.attributes_for(:document,
-                                title: "New Document",
-                                project_id: project.id,
-                                category_id: default_category.id)
+      attributes_for(:document,
+                     title: "New Document",
+                     project_id: project.id,
+                     type_id: document_type.id,
+                     kind: "classic")
     end
 
     before do
@@ -113,44 +111,38 @@ describe DocumentsController do
         post :create,
              params: {
                project_id: project.identifier,
-               document: FactoryBot.attributes_for(
-                 :document,
-                 title: "New Document",
-                 project_id: project.id,
-                 category_id: default_category.id
-               )
+               document: document_attributes
              }
-      end.to change(Document, :count).by 1
+      end.to change(Document, :count).by(1)
+      expect(Document.last.attributes).to include(document_attributes.stringify_keys)
     end
 
-    it 'does trigger a workflow job for the document' do
+    it "does trigger a workflow job for the document" do
       expect(Notifications::WorkflowJob)
         .to have_been_enqueued
               .with(:create_notifications, document.journals.last, true)
     end
 
     describe "with attachments" do
-      let(:uncontainered) { FactoryBot.create :attachment, container: nil, author: admin }
+      let(:uncontainered) { create(:attachment, container: nil, author: admin) }
 
       before do
-        notify_project = project
-        FactoryBot.create(:member, project: notify_project, user: user, roles: [role])
-
         post :create,
              params: {
-               project_id: notify_project.identifier,
-               document: FactoryBot.attributes_for(:document,
-                                                   title: "New Document",
-                                                   project_id: notify_project.id,
-                                                   category_id: default_category.id),
-               attachments: { '1' => { id: uncontainered.id } }
+               project_id: project.identifier,
+               document: attributes_for(:document,
+                                        title: "New Document",
+                                        project_id: project.id,
+                                        type_id: document_type.id,
+                                        kind: "classic"),
+               attachments: { "1" => { id: uncontainered.id } }
              }
       end
 
       it "adds an attachment" do
         document = Document.last
 
-        expect(document.attachments.count).to eql 1
+        expect(document.attachments.count).to be 1
         attachment = document.attachments.first
         expect(uncontainered.reload).to eql attachment
       end
@@ -161,15 +153,19 @@ describe DocumentsController do
     end
   end
 
-  describe 'show' do
+  describe "show" do
     before do
-      document
+      document.update(kind: :classic)
       get :show, params: { id: document.id }
     end
 
     it "shows the attachment" do
       expect(response).to be_successful
-      expect(response).to render_template('show')
+      expect(response).to render_template("show")
+    end
+
+    it "does not opt out of Turbo snapshot caching" do
+      expect(response.body).not_to include('name="turbo-cache-control"')
     end
   end
 
@@ -178,13 +174,113 @@ describe DocumentsController do
       document
     end
 
-    it "deletes the document and redirect back to documents-page of the project" do
+    it "deletes the document and redirects with 303 See Other" do
       expect do
         delete :destroy, params: { id: document.id }
       end.to change(Document, :count).by -1
 
-      expect(response).to redirect_to "/projects/#{project.identifier}/documents"
+      expect(response).to have_http_status(:see_other)
+      expect(response).to redirect_to project_documents_path(project)
       expect { Document.find(document.id) }.to raise_error ActiveRecord::RecordNotFound
+    end
+  end
+
+  describe "setup_collaboration_context",
+           with_settings: {
+             real_time_text_collaboration_enabled: true,
+             collaborative_editing_hocuspocus_url: "wss://hocuspocus.example.com",
+             collaborative_editing_hocuspocus_secret: "secret1234"
+           } do
+    let(:user_with_manage) { create(:user, member_with_permissions: { project => %i[view_documents manage_documents] }) }
+    let(:user_without_manage) { create(:user, member_with_permissions: { project => [:view_documents] }) }
+
+    before do
+      document.update(kind: :collaborative)
+    end
+
+    context "when user has manage_documents permission" do
+      current_user { user_with_manage }
+
+      it "generates a token payload for show action" do
+        get :show, params: { id: document.id }
+        expect(assigns(:token_payload)).to be_present
+      end
+
+      it "opts the collaborative editor page out of Turbo snapshot caching" do
+        get :show, params: { id: document.id }
+        expect(response.body).to include('<meta name="turbo-cache-control" content="no-cache">')
+      end
+    end
+
+    context "when user does not have manage_documents permission" do
+      current_user { user_without_manage }
+
+      it "generates a token payload for show action" do
+        get :show, params: { id: document.id }
+        expect(assigns(:token_payload)).to be_present
+      end
+    end
+  end
+
+  describe "#search", with_settings: { per_page_options: "1 5 10" } do
+    let!(:document2) { create(:document, title: "Second Document", project:, type: document_type) }
+
+    it "returns a turbo_stream response" do
+      get :search, params: { project_id: project.identifier, per_page: 1 }, format: :turbo_stream
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "renders pagination links that target the index action, not the search action" do
+      get :search, params: { project_id: project.identifier, per_page: 1 }, format: :turbo_stream
+
+      expect(response.body).not_to include("#{search_project_documents_path(project)}?")
+    end
+  end
+
+  describe "#update_title" do
+    subject(:rendered_title) do
+      Nokogiri::HTML5.fragment(response.body).at_css('turbo-stream[action="set_title"]')&.[]("title")
+    end
+
+    it "keeps the browser title in sync with the renamed document" do
+      put :update_title, params: { id: document.id, document: { title: "Renamed document" } }, format: :turbo_stream
+
+      expect(response).to have_http_status(:ok)
+      expect(document.reload.title).to eq("Renamed document")
+      expect(rendered_title).to eq("Renamed document | Documents | Test Project | #{Setting.app_title}")
+    end
+
+    it "leaves the browser title alone when the rename is rejected" do
+      put :update_title, params: { id: document.id, document: { title: "" } }, format: :turbo_stream
+
+      expect(document.reload.title).to eq("Sample Document")
+      expect(rendered_title).to be_nil
+    end
+  end
+
+  describe "#render_avatars" do
+    let(:user) { create(:user, member_with_permissions: { project => [:view_documents] }) }
+    let!(:non_member) { create(:user) }
+
+    current_user { user }
+
+    it "only renders avatars of users that are visible" do
+      get :render_avatars, params: { project_id: project.id, id: document.id, user_ids: [user.id, non_member.id] },
+                           format: :turbo_stream
+
+      expect(assigns(:users)).to contain_exactly(user)
+    end
+
+    context "with an admin user, that can see all users" do
+      current_user { create(:admin) }
+
+      it "renders avatars of all users" do
+        get :render_avatars, params: { project_id: project.id, id: document.id, user_ids: [user.id, non_member.id] },
+                             format: :turbo_stream
+
+        expect(assigns(:users)).to include(user, non_member)
+      end
     end
   end
 

@@ -1,11 +1,38 @@
-require 'features/support/components/ui_autocomplete'
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
 module Components
   module WorkPackages
     class Tabs
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
-      include ::Components::UIAutocompleteHelpers
 
       attr_reader :work_package
 
@@ -15,14 +42,14 @@ module Components
 
       # Check value of counter for the given tab
       def expect_counter(tab, content)
-        expect(tab).to have_selector('[data-qa-selector="tab-count"]')
+        expect(tab).to have_css('[data-test-selector="tab-count"]')
 
-        expect(tab).to have_selector('[data-qa-selector="tab-count"]', text: "(#{content})")
+        expect(tab).to have_css('[data-test-selector="tab-count"]', text: "(#{content})")
       end
 
       # Counter should not be displayed, if there are no relations or watchers
       def expect_no_counter(tab)
-        expect(tab).to have_no_selector('[data-qa-selector="tab-count"]', wait: 10)
+        expect(tab).to have_no_css('[data-test-selector="tab-count"]', wait: 10)
       end
     end
   end

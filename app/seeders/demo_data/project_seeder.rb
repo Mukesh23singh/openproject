@@ -1,9 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
-
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -23,229 +22,181 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
+
 module DemoData
   class ProjectSeeder < Seeder
-    # Careful: The seeding recreates the seeded project before it runs, so any changes
-    # on the seeded project will be lost.
+    attr_reader :project
+    alias_method :project_data, :seed_data
+
+    self.needs = WorkPackageSeeder.needs + [
+      BasicData::ProjectRoleSeeder,
+      BasicData::GlobalRoleSeeder,
+      BasicData::ProjectPhaseDefinitionSeeder
+    ]
+
     def seed_data!
-      puts ' ↳ Updating settings'
-      seed_settings
+      print_status " ↳ Creating project: #{project_data.lookup('name')}"
 
-      seed_projects = demo_data_for('projects').keys
-
-      seed_projects.each do |key|
-        puts " ↳ Creating #{key} project..."
-
-        puts '   -Creating/Resetting project'
-        project = reset_project key
-
-        puts '   -Setting project status.'
-        set_project_status(project, key)
-
-        puts '   -Setting members.'
-        set_members(project)
-
-        puts '   -Creating news.'
-        seed_news(project, key)
-
-        puts '   -Assigning types.'
-        set_types(project, key)
-
-        puts '   -Creating categories'
-        seed_categories(project, key)
-
-        puts '   -Creating versions.'
-        seed_versions(project, key)
-
-        puts '   -Creating queries.'
-        seed_queries(project, key)
-
-        project_data_seeders(project, key).each do |seeder|
-          puts "   -#{seeder.class.name.demodulize}"
-          seeder.seed!
-        end
-
-        Setting.demo_projects_available = 'true'
-      end
-
-      puts ' ↳ Assign groups to projects'
-      set_groups
-
-      puts ' ↳ Update form configuration with global queries'
-      set_form_configuration
+      self.project = reset_project
+      set_members
+      seed_news
+      set_types
+      seed_categories
+      seed_versions
+      seed_queries
+      seed_project_content
     end
 
-    def applicable?
-      Project.count.zero?
-    end
-
-    def project_data_seeders(project, key)
-      seeders = [
+    # override to add additional seeders
+    def project_content_seeder_classes
+      [
+        DemoData::ProjectPhaseSeeder,
         DemoData::WikiSeeder,
-        DemoData::CustomFieldSeeder,
         DemoData::WorkPackageSeeder,
-        DemoData::WorkPackageBoardSeeder
+        DemoData::WorkPackageBoardSeeder,
+        ::Meetings::DemoData::MeetingSeriesSeeder,
+        ::Meetings::DemoData::MeetingAgendaItemsSeeder,
+        ::Meetings::DemoData::MeetingParticipantsSeeder,
+        ::Meetings::DemoData::MeetingSeriesFinalizerSeeder,
+        ::Meetings::DemoData::MeetingOccurrencesSeeder
       ]
-
-      seeders.map { |seeder| seeder.new project, key }
     end
 
-    def seed_settings
-      welcome = demo_data_for('welcome')
-
-      if welcome.present?
-        Setting.welcome_title = welcome[:title]
-        Setting.welcome_text = welcome[:text]
-        Setting.welcome_on_homescreen = 1
-      end
+    def all_required_references
+      [:default_role_project_admin] + types_seed_data
     end
 
-    def reset_project(key)
-      delete_project(key)
-      create_project(key)
+    private
+
+    attr_writer :project
+
+    def reset_project
+      print_status "   -Creating/Resetting project"
+      delete_project
+      create_project
     end
 
-    def create_project(key)
-      Project.create! project_data(key)
+    def delete_project
+      project_to_delete = Project.find_by(identifier: project_data.lookup("identifier"))
+      project_to_delete&.destroy
     end
 
-    def delete_project(key)
-      if delete_me = find_project(key)
-        delete_me.destroy
-      end
+    def create_project
+      Project.create! project_attributes
     end
 
-    def set_project_status(project, key)
-      status_code = project_data_for(key, 'status.code')
-      status_explanation = project_data_for(key, 'status.description')
+    def set_members
+      print_status "   -Setting members."
 
-      if status_code || status_explanation
-        Projects::Status.create!(
-          project: project,
-          code: status_code,
-          explanation: status_explanation
-        )
-      end
-    end
-
-    def set_members(project)
-      role = Role.find_by(name: translate_with_base_url(:default_role_project_admin))
-      user = User.admin.first
+      role = seed_data.find_reference(:default_role_project_admin)
 
       Member.create!(
-        project: project,
-        principal: user,
+        project:,
+        principal: admin_user,
         roles: [role]
       )
+
+      seed_additional_members
     end
 
-    def set_groups
-      DemoData::GroupSeeder.new.add_projects_to_groups
-    end
+    # Adds the members configured via the project's `members` seed data. A principal can be a
+    # user (added directly) or a department (added as a group, with its users inheriting the role).
+    # References may be missing when the departments were not (re-)seeded, in which case we skip them.
+    def seed_additional_members
+      project_data.each("members") do |member_data|
+        principal = seed_data.find_reference(member_data["principal"], default: nil)
+        next if principal.nil?
 
-    def set_form_configuration
-      Type.all.each do |type|
-        BasicData::TypeSeeder.new.set_attribute_groups_for_type(type)
+        role = seed_data.find_reference(member_data["role"])
+        Member.create!(project:, principal:, roles: [role])
+
+        inherit_group_roles(principal) if principal.is_a?(Group)
       end
     end
 
-    def set_types(project, key)
-      project.types.clear
-      Array(project_data_for(key, 'types')).each do |type_name|
-        type = Type.find_by(name: translate_with_base_url(type_name))
-        project.types << type
-      end
+    def inherit_group_roles(group)
+      Groups::CreateInheritedRolesService
+        .new(group, current_user: admin_user)
+        .call(user_ids: group.user_ids, project_ids: [project.id])
     end
 
-    def seed_categories(project, key)
-      Array(project_data_for(key, 'categories')).each do |cat_name|
+    def set_types
+      print_status "   -Assigning types."
+
+      # TODO: should go through Projects::Types::AddService, which owns the family conflict
+      # rules and enables the types' work package custom fields.
+      project.project_types = base_variant_rows_for(seed_data.find_references(types_seed_data))
+    end
+
+    def base_variant_rows_for(types)
+      types.map { |type| ProjectType.new(type:) }
+    end
+
+    def seed_categories
+      print_status "   -Creating categories"
+
+      Array(project_data.lookup("categories")).each do |cat_name|
         project.categories.create name: cat_name
       end
     end
 
-    def seed_news(project, key)
-      user = User.admin.first
-      Array(project_data_for(key, 'news')).each do |news|
-        News.create! project: project, author: user, title: news[:title], summary: news[:summary], description: news[:description]
+    def seed_news
+      print_status "   -Creating news."
+
+      project_data.each("news") do |news|
+        News.create!(project:,
+                     author: admin_user,
+                     title: news["title"],
+                     summary: news["summary"],
+                     description: news["description"])
       end
     end
 
-    def seed_queries(project, key)
-      Array(project_data_for(key, 'queries')).each do |config|
-        QueryBuilder.new(config, project).create!
+    def seed_queries
+      print_status "   -Creating queries."
+
+      Array(project_data.lookup("queries")).each do |config|
+        QueryBuilder.new(config, project:, user: admin_user, seed_data:).create!
       end
     end
 
-    def seed_versions(project, key)
-      version_data = Array(project_data_for(key, 'versions'))
+    def seed_versions
+      print_status "   -Creating versions."
 
-      version_data.each do |attributes|
-        VersionBuilder.new(attributes, project).create!
+      project_data.each("versions") do |attributes|
+        VersionBuilder.new(attributes, project:, user: admin_user, seed_data:).create!
       end
     end
 
-    def seed_board(project)
-      Forum.create!(
-        project: project,
-        name: demo_data_for('board.name'),
-        description: demo_data_for('board.description')
-      )
-    end
+    def seed_project_content
+      project_content_seeder_classes.each do |seeder_class|
+        print_status "   -#{seeder_class.name.demodulize}"
 
-    module Data
-      module_function
-
-      def project_data(key)
-        {
-          name: project_name(key),
-          identifier: project_identifier(key),
-          description: project_description(key),
-          enabled_module_names: project_modules(key),
-          types: project_types,
-          parent_id: parent_project_id(key)
-        }
-      end
-
-      def parent_project_id(key)
-        parent_project(key).try(:id)
-      end
-
-      def parent_project(key)
-        identifier = project_data_for(key, 'parent')
-        return nil unless identifier.present?
-
-        Project.find_by(identifier: identifier)
-      end
-
-      def project_name(key)
-        project_data_for(key, 'name')
-      end
-
-      def project_identifier(key)
-        project_data_for(key, 'identifier')
-      end
-
-      def project_description(key)
-        project_data_for(key, 'description')
-      end
-
-      def project_types
-        Type.all
-      end
-
-      def project_modules(key)
-        project_data_for(key, 'modules')
-      end
-
-      def find_project(key)
-        Project.find_by(identifier: project_identifier(key))
+        seeder = seeder_class.new(project, project_data)
+        seeder.seed!
       end
     end
 
-    include Data
+    def types_seed_data
+      seed_data.lookup("types") || []
+    end
+
+    def project_attributes # rubocop:disable Metrics/AbcSize
+      {
+        name: project_data.lookup("name"),
+        identifier: project_data.lookup("identifier"),
+        status_code: project_data.lookup("status_code"),
+        status_explanation: project_data.lookup("status_explanation"),
+        description: project_data.lookup("description"),
+        enabled_module_names: project_data.lookup("modules"),
+        project_types: base_variant_rows_for(Type.all),
+        parent: Project.find_by(identifier: project_data.lookup("parent")),
+        workspace_type: "project"
+      }
+    end
   end
 end

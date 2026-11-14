@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,7 +31,7 @@ class Queries::WorkPackages::Filter::SearchFilter <
   Queries::WorkPackages::Filter::WorkPackageFilter
   include Queries::WorkPackages::Filter::OrFilterForWpMixin
 
-  CONTAINS_OPERATOR = '~'.freeze
+  CONTAINS_OPERATOR = "~"
 
   CE_FILTERS = [
     Queries::WorkPackages::Filter::FilterConfiguration.new(
@@ -70,30 +69,26 @@ class Queries::WorkPackages::Filter::SearchFilter <
   end
 
   def human_name
-    I18n.t('label_search')
+    I18n.t("label_search")
+  end
+
+  def searchable_in_context
+    return ::WorkPackageCustomField unless context&.project&.persisted?
+
+    ::WorkPackageCustomField.on_visible_type_and_project(projects: context.project)
   end
 
   def custom_field_configurations
-    custom_fields =
-      if context&.project
-        context.project.all_work_package_custom_fields.select do |custom_field|
-          %w(text string).include?(custom_field.field_format) &&
-            custom_field.is_filter == true &&
-            custom_field.searchable == true
-        end
-      else
-        ::WorkPackageCustomField
-          .filter
-          .for_all
-          .where(field_format: %w(text string),
-                 is_filter: true,
-                 searchable: true)
-      end
-
-    custom_fields.map do |custom_field|
+    # Does not remove custom fields that are not marked as filters
+    # as the intend of this filter is to search and it is used in the
+    # search context. Thus, only the searchable flag is of interest.
+    searchable_in_context
+      .where(field_format: %w(text string),
+             searchable: true)
+      .map do |custom_field|
       Queries::WorkPackages::Filter::FilterConfiguration.new(
         Queries::WorkPackages::Filter::CustomFieldFilter,
-        "cf_#{custom_field.id}",
+        custom_field.column_name,
         CONTAINS_OPERATOR
       )
     end
@@ -110,6 +105,6 @@ class Queries::WorkPackages::Filter::SearchFilter <
   private
 
   def attachment_filters_allowed?
-    EnterpriseToken.allows_to?(:attachment_filters) && OpenProject::Database.allows_tsv?
+    OpenProject::Database.allows_tsv?
   end
 end

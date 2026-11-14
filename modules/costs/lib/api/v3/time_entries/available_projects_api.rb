@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,8 +30,9 @@ module API
     module TimeEntries
       class AvailableProjectsAPI < ::API::OpenProjectAPI
         after_validation do
-          authorize_any %i[log_time edit_time_entries edit_own_time_entries],
-                        global: true
+          authorize_in_any_work_package(:edit_own_time_entries) do
+            authorize_in_any_project(%i[log_time edit_time_entries])
+          end
         end
 
         resources :available_projects do
@@ -40,9 +40,10 @@ module API
                  .new(model: Project,
                       scope: -> {
                         Project
-                          .where(id: Project.allowed_to(User.current, :log_time))
+                          .where(id: WorkPackage.allowed_to(User.current, :log_own_time).select(:project_id))
+                          .or(Project.where(id: Project.allowed_to(User.current, :log_time)))
                           .or(Project.where(id: Project.allowed_to(User.current, :edit_time_entries)))
-                          .or(Project.where(id: Project.allowed_to(User.current, :edit_own_time_entries)))
+                          .or(Project.where(id: WorkPackage.allowed_to(User.current, :edit_own_time_entries).select(:project_id)))
                       })
                  .mount
         end

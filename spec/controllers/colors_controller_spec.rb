@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,83 +22,72 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ColorsController, type: :controller do
-  let(:current_user) { FactoryBot.create(:admin) }
+RSpec.describe ColorsController do
+  let(:current_user) { create(:admin) }
 
   before do
     allow(User).to receive(:current).and_return current_user
   end
 
-  describe 'index.html' do
+  describe "new.html" do
     def fetch
-      get 'index'
+      get "new"
     end
-    it_should_behave_like 'a controller action with require_admin'
+    it_behaves_like "a controller action with require_admin"
   end
 
-  describe 'new.html' do
+  describe "create.html" do
     def fetch
-      get 'new'
-    end
-    it_should_behave_like 'a controller action with require_admin'
-  end
-
-  describe 'create.html' do
-    def fetch
-      post 'create', params: { color: FactoryBot.build(:color).attributes }
+      post "create", params: { color: build(:color).attributes }
     end
 
     def expect_redirect_to
-      Regexp.new(colors_path)
+      Regexp.new(Regexp.escape(custom_style_path(tab: :default_colors)))
     end
-    it_should_behave_like 'a controller action with require_admin'
+    it_behaves_like "a controller action with require_admin"
   end
 
-  describe 'edit.html' do
+  describe "edit.html" do
     def fetch
-      @available_color = FactoryBot.create(:color, id: '1337')
-      get 'edit', params: { id: '1337' }
+      @available_color = create(:color, id: "1337")
+      get "edit", params: { id: "1337" }
     end
-    it_should_behave_like 'a controller action with require_admin'
+    it_behaves_like "a controller action with require_admin"
   end
 
-  describe 'update.html' do
+  describe "update.html" do
     def fetch
-      @available_color = FactoryBot.create(:color, id: '1337')
-      put 'update', params: { id: '1337', color: { 'name' => 'blubs' } }
+      @available_color = create(:color, id: "1337")
+      put "update", params: { id: "1337", color: { "name" => "blubs" } }
     end
 
     def expect_redirect_to
-      colors_path
+      custom_style_path(tab: :default_colors)
     end
-    it_should_behave_like 'a controller action with require_admin'
+    it_behaves_like "a controller action with require_admin"
   end
 
-  describe 'confirm_destroy.html' do
+  describe "destroy.html" do
     def fetch
-      @available_color = FactoryBot.create(:color, id: '1337')
-      get 'confirm_destroy', params: { id: '1337' }
-    end
-    it_should_behave_like 'a controller action with require_admin'
-  end
-
-  describe 'destroy.html' do
-    def fetch
-      @available_color = FactoryBot.create(:color, id: '1337')
-      post 'destroy', params: { id: '1337' }
+      @available_color = create(:color, id: "1337")
+      post "destroy", params: { id: "1337" }
     end
 
     def expect_redirect_to
-      colors_path
+      custom_style_path(tab: :default_colors)
     end
-    it_should_behave_like 'a controller action with require_admin'
+    it_behaves_like "a controller action with require_admin"
+
+    it "redirects with 303 See Other" do
+      expect(fetch).to have_http_status(:see_other)
+      expect(fetch).to redirect_to(custom_style_path(tab: :default_colors))
+    end
   end
 end

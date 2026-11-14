@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,67 +22,53 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API::V3::WorkPackages::AvailableProjectsOnEditAPI', type: :request do
+RSpec.describe "API::V3::WorkPackages::AvailableProjectsOnEditAPI" do
   include API::V3::Utilities::PathHelper
 
   let(:edit_role) do
-    FactoryBot.create(:role, permissions: %i[edit_work_packages
-                                             view_work_packages])
+    create(:project_role, permissions: %i[edit_work_packages
+                                          view_work_packages])
   end
   let(:move_role) do
-    FactoryBot.create(:role, permissions: [:move_work_packages])
+    create(:project_role, permissions: [:move_work_packages])
   end
-  let(:project) { FactoryBot.create(:project) }
-  let(:target_project) { FactoryBot.create(:project) }
-  let(:work_package) { FactoryBot.create(:work_package, project: project) }
-  let(:user) do
-    user = FactoryBot.create(:user,
-                             member_in_project: project,
-                             member_through_role: edit_role)
+  let(:project) { create(:project) }
+  let(:target_project) { create(:project) }
+  let(:work_package) { create(:work_package, project:) }
 
-    FactoryBot.create(:member,
-                      user: user,
-                      project: target_project,
-                      roles: [move_role])
-
-    user
+  current_user do
+    create(:user,
+           member_with_roles: { project => edit_role }).tap do |user|
+      create(:member,
+             user:,
+             project: target_project,
+             roles: [move_role])
+    end
   end
 
   before do
-    allow(User).to receive(:current).and_return(user)
     get api_v3_paths.available_projects_on_edit(work_package.id)
   end
 
-  context 'w/ the necessary permissions' do
-    it_behaves_like 'API V3 collection response', 1, 1, 'Project'
-
-    it 'has the project for which the move_work_packages permission exists' do
-      expect(last_response.body).to be_json_eql(target_project.id).at_path('_embedded/elements/0/id')
+  context "with the necessary permissions" do
+    it_behaves_like "API V3 collection response", 1, 1, "Project" do
+      let(:elements) { [target_project] }
     end
   end
 
-  context 'w/o the edit_work_packages permission' do
+  context "without the edit_work_packages permission" do
     let(:edit_role) do
-      FactoryBot.create(:role, permissions: [:view_work_packages])
+      create(:project_role, permissions: [:view_work_packages])
     end
 
-    it { expect(last_response.status).to eq(403) }
-  end
-
-  context 'w/o the view_work_packages permission' do
-    let(:edit_role) do
-      FactoryBot.create(:role, permissions: [:edit_work_packages])
-    end
-
-    it { expect(last_response.status).to eq(404) }
+    it_behaves_like "unauthorized access"
   end
 end

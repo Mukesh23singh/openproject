@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -42,9 +41,9 @@ module Entry
         TimeEntry === obj or CostEntry === obj
       end
 
-      def calculate(type, *args)
-        a = TimeEntry.calculate(type, *args)
-        b = CostEntry.calculate(type, *args)
+      def calculate(type, *)
+        a = TimeEntry.calculate(type, *)
+        b = CostEntry.calculate(type, *)
         case type
         when :sum, :count then a + b
         when :avg then (a + b) / 2
@@ -64,12 +63,12 @@ module Entry
       private
 
       def all(*args)
-        ActiveSupport::Deprecation.warn('Passing arguments is deprecated') if args.any?
+        ActiveSupport::Deprecation.new.warn("Passing arguments is deprecated") if args.any?
         find_many :all # *args
       end
 
       def count(*args)
-        ActiveSupport::Deprecation.warn('Passing arguments is deprecated') if args.any?
+        ActiveSupport::Deprecation.new.warn("Passing arguments is deprecated") if args.any?
         find_many :count # *args
       end
 
@@ -81,16 +80,16 @@ module Entry
 
       def find_from_ids(_args, options) find_many :find_from_ids, options end
 
-      def find_one(*args)
-        TimeEntry.send(*args) || CostEntry.send(*args)
+      def find_one(*)
+        TimeEntry.send(*) || CostEntry.send(*)
       end
 
-      def find_many(*args)
-        TimeEntry.send(*args) + CostEntry.send(*args)
+      def find_many(*)
+        TimeEntry.send(*) + CostEntry.send(*)
       end
 
-      def send_all(*args)
-        [TimeEntry.send(*args), CostEntry.send(*args)]
+      def send_all(*)
+        [TimeEntry.send(*), CostEntry.send(*)]
       end
     end
   end
@@ -116,7 +115,7 @@ module Entry
   rescue NoMethodError
   end
 
-  def self.method_missing(*a, &b)
-    Delegator.send(*a, &b)
+  def self.method_missing(...)
+    Delegator.send(...)
   end
 end

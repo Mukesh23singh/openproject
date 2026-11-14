@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,42 +22,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-shared_examples 'updates the placeholder' do
-  context 'with an empty name' do
+RSpec.shared_examples "updates the placeholder" do
+  context "with an empty name" do
     let(:parameters) do
-      { name: '' }
+      { name: "" }
     end
 
-    it 'returns an error' do
-      expect(last_response.status).to eq(422)
+    it "returns an error" do
+      expect(last_response).to have_http_status(:unprocessable_entity)
       expect(last_response.body)
-        .to be_json_eql('urn:openproject-org:api:v3:errors:PropertyConstraintViolation'.to_json)
-              .at_path('errorIdentifier')
+        .to be_json_eql("urn:openproject-org:api:v3:errors:PropertyConstraintViolation".to_json)
+              .at_path("errorIdentifier")
 
-      expect(parsed_response['_embedded']['details']['attribute'])
-        .to eq 'name'
+      expect(parsed_response["_embedded"]["details"]["attribute"])
+        .to eq "name"
 
-      expect(parsed_response['message'])
+      expect(parsed_response["message"])
         .to eq "Name can't be blank."
     end
   end
 
-  context 'with a new name' do
+  context "with a new name" do
     let(:parameters) do
-      { name: 'my new name' }
+      { name: "my new name" }
     end
 
-    it 'updates the placeholder' do
-      expect(last_response.status).to eq(200)
+    it "updates the placeholder" do
+      expect(last_response).to have_http_status(:ok)
 
       placeholder.reload
 
-      expect(placeholder.name).to eq 'my new name'
+      expect(placeholder.name).to eq "my new name"
     end
   end
 end

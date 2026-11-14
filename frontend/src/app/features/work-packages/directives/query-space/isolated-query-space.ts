@@ -1,9 +1,42 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import {
-  derive, input, InputState, State, StatesGroup,
-} from 'reactivestates';
+  derive,
+  input,
+  InputState,
+  multiInput,
+  State,
+  StatesGroup,
+} from '@openproject/reactivestates';
 import { Subject } from 'rxjs';
 import { Injectable } from '@angular/core';
 import { map } from 'rxjs/operators';
+import { isSelectableOccurrence, type SelectableOccurrence } from 'core-app/features/work-packages/routing/wp-view-base/view-services/rendered-occurrences';
 import { QueryColumn } from 'core-app/features/work-packages/components/wp-query/query-column';
 import {
   GroupObject,
@@ -15,6 +48,7 @@ import { QueryFilterInstanceSchemaResource } from 'core-app/features/hal/resourc
 import { QueryFormResource } from 'core-app/features/hal/resources/query-form-resource';
 import { QuerySortByResource } from 'core-app/features/hal/resources/query-sort-by-resource';
 import { QueryGroupByResource } from 'core-app/features/hal/resources/query-group-by-resource';
+import { ShareResource } from 'core-app/features/hal/resources/share-resource';
 
 @Injectable()
 export class IsolatedQuerySpace extends StatesGroup {
@@ -36,7 +70,7 @@ export class IsolatedQuerySpace extends StatesGroup {
   columns = input<QueryColumn[]>();
 
   // Current state of collapsed groups (if any)
-  collapsedGroups = input<{ [identifier:string]:boolean }>();
+  collapsedGroups = input<Record<string, boolean>>();
 
   // State to be updated when the table is up to date
   tableRendered = input<RenderedWorkPackage[]>();
@@ -44,19 +78,22 @@ export class IsolatedQuerySpace extends StatesGroup {
   // Event to be raised when the timeline is up to date
   timelineRendered = new Subject<null>();
 
-  renderedWorkPackages:State<RenderedWorkPackage[]> = derive(this.tableRendered, ($) => $.pipe(
-    map((rows) => rows.filter((row) => !!row.workPackageId)),
+  renderedWorkPackages:State<SelectableOccurrence[]> = derive(this.tableRendered, ($) => $.pipe(
+    map((rows) => rows.filter(isSelectableOccurrence)),
   ));
 
   renderedWorkPackageIds:State<string[]> = derive(this.renderedWorkPackages, ($) => $.pipe(
-    map((rows) => rows.map((row) => row.workPackageId!.toString())),
+    map((rows) => rows.map((row) => row.workPackageId.toString())),
   ));
 
   // Subject used to unregister all listeners of states above.
-  stopAllSubscriptions = new Subject();
+  stopAllSubscriptions = new Subject<void>();
 
   // Required work packages to be rendered by hierarchy mode + relation columns
   additionalRequiredWorkPackages = input<null>();
+
+  // Cached shares for work packages
+  workPackageSharesCache = multiInput<ShareResource[]>();
 
   // Input state that emits whenever table services have initialized
   initialized = input<unknown>();

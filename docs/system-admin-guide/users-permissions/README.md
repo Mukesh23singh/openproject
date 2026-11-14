@@ -1,23 +1,26 @@
 ---
 sidebar_navigation:
-  title: Users & Permissions
-  priority: 997
+  title: Users and permissions
+  priority: 990
 description: Manage users and permissions.
-robots: index, follow
 keywords: users, permissions, roles, groups, avatars
 ---
-# Users & Permissions
+# Users and permissions
 
-Manage users, placeholder users and permissions in OpenProject.
+In this section of the System Administration guide you can learn how to manage users, placeholder users and permissions in OpenProject.
 
 ## Overview
 
-| Topic                                      | Content                                                      |
-| ------------------------------------------ | :----------------------------------------------------------- |
+| Topic                                     | Content                                                          |
+|-------------------------------------------|:-----------------------------------------------------------------|
+| [User lifecycle overview](user-lifecycle) | An overview of how users are created and deleted in OpenProject. |
 | [Settings](settings)                       | Configure user settings, e.g. default language, time zone, and more. |
 | [Users](users)                             | Manage users: View all users, invite new users, lock users, and more. |
+| [User attributes](user-attributes)         | Create and manage user attributes.                           |
 | [Placeholder users](placeholder-users)     | Create and manage placeholder users.                         |
 | [Groups](groups)                           | View groups, create new groups, add users to groups.         |
+| [Organization](organization)               | Define your company’s structure within OpenProject.          |
 | [Roles and permissions](roles-permissions) | See / manage roles and permissions and add new roles.        |
+| [User visibility](user-visibility)         | Understand which users and groups a user can see.            |
+| [Permissions report](permissions-report)   | View and edit permissions assigned to currently existing roles. |
 | [Avatars](avatars)                         | Activate / deactivate user avatars (profile pictures).       |
-

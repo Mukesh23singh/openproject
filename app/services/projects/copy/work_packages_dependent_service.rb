@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Projects::Copy
   class WorkPackagesDependentService < Dependency
+    include AttachmentCopier
+    include ShareCopier
+
+    attachment_dependent_service ::Projects::Copy::WorkPackageAttachmentsDependentService
+    share_dependent_service ::Projects::Copy::WorkPackageSharesDependentService
+
     def self.human_name
       I18n.t(:label_work_package_plural)
     end
@@ -41,47 +46,57 @@ module Projects::Copy
     protected
 
     def copy_dependency(params:)
+      to_copy = source_work_packages
+
       # Stores the source work_package id as a key and the copied work package ID as the
-      # value.  Used to map the two together for work_package relations.
-      work_packages_map = {}
+      # value. Used to map the two together for work_package relations.
+      work_packages_map = copy_work_packages(to_copy)
+      # Relations after in case copied work_packages are related to each other.
+      copy_work_packages_relations(to_copy, work_packages_map)
 
-      # Get work_packages sorted by their depth in the hierarchy tree
-      # so that parents get copied before their children.
-      to_copy = source
+      state.work_package_id_lookup = work_packages_map
+    end
+
+    # Get work_packages sorted by their depth in the hierarchy tree
+    # so that parents get copied before their children.
+    def source_work_packages
+      source
         .work_packages
-        .includes(:custom_values, :version, :assigned_to, :responsible)
-        .order_by_ancestors('asc')
-        .order('id ASC')
+        .includes(
+          :custom_values,
+          :target_versions,
+          :observed_in_versions,
+          :labels,
+          :assigned_to,
+          :responsible
+        )
+        .order_by_ancestors("asc")
+        .order(:id)
+    end
 
-      user_cf_ids = WorkPackageCustomField.where(field_format: 'user').pluck(:id)
+    def copy_work_packages(to_copy)
+      user_cf_ids = WorkPackageCustomField.where(field_format: "user").pluck(:id)
 
-      to_copy.each do |wp|
+      to_copy.inject({}) do |work_packages_map, wp|
         parent_id = work_packages_map[wp.parent_id] || wp.parent_id
 
         new_wp = copy_work_package(wp, parent_id, user_cf_ids)
 
         work_packages_map[wp.id] = new_wp.id if new_wp
+
+        work_packages_map
       end
-
-      # Relations and attachments after in case work_packages related each other
-      to_copy.each do |wp|
-        new_wp_id = work_packages_map[wp.id]
-        next unless new_wp_id
-
-        copy_relations(wp, new_wp_id, work_packages_map)
-      end
-
-      state.work_package_id_lookup = work_packages_map
     end
 
     def copy_work_package(source_work_package, parent_id, user_cf_ids)
       overrides = copy_work_package_attribute_overrides(source_work_package, parent_id, user_cf_ids)
 
-      service_call = WorkPackages::CopyService
-        .new(user: user,
-             work_package: source_work_package,
-             contract_class: WorkPackages::CopyProjectContract)
-        .call(**overrides)
+      service_call = nil
+      WorkPackage.with_hierarchy_savepoint do
+        service_call = call_copy_service(source_work_package, overrides)
+
+        raise ActiveRecord::Rollback if service_call.failure?
+      end
 
       if service_call.success?
         service_call.result
@@ -96,73 +111,96 @@ module Projects::Copy
       end
     end
 
-    def copy_relations(wp, new_wp_id, work_packages_map)
-      wp.relations_to.non_hierarchy.direct.each do |source_relation|
-        new_relation = Relation.new
-        new_relation.attributes = source_relation.attributes.dup.except('id', 'from_id', 'to_id', 'relation_type')
-        new_relation.to_id = work_packages_map[source_relation.to_id]
-        if new_relation.to_id.nil? && Setting.cross_project_work_package_relations?
-          new_relation.to_id = source_relation.to_id
-        end
-        new_relation.from_id = new_wp_id
-        new_relation.save
-      end
+    def call_copy_service(source_work_package, overrides)
+      WorkPackages::CopyService
+        .new(user:,
+             work_package: source_work_package,
+             contract_class: WorkPackages::CopyProjectContract)
+        .with_state(bulk_duplicate_in_progress: true)
+        .call(
+          copy_attachments: copy_attachments?,
+          copy_share_members: copy_shares?,
+          **overrides
+        )
+    end
 
-      wp.relations_from.non_hierarchy.direct.each do |source_relation|
-        new_relation = Relation.new
-        new_relation.attributes = source_relation.attributes.dup.except('id', 'from_id', 'to_id', 'relation_type')
-        new_relation.from_id = work_packages_map[source_relation.from_id]
-        if new_relation.from_id.nil? && Setting.cross_project_work_package_relations?
-          new_relation.from_id = source_relation.from_id
-        end
-        new_relation.to_id = new_wp_id
-        new_relation.save
+    def copy_work_packages_relations(to_copy, work_packages_map)
+      to_copy.each do |wp|
+        new_wp_id = work_packages_map[wp.id]
+        next unless new_wp_id
+
+        copy_relations(wp, new_wp_id, work_packages_map)
+      end
+    end
+
+    def copy_relations(source_wp, new_wp_id, work_packages_map)
+      Relation.of_work_package(source_wp).each do |source_relation|
+        from_id, to_id = relations_from_to(source_relation, source_wp, new_wp_id, work_packages_map)
+
+        Relation.create(source_relation
+                          .attributes
+                          .except("id", "from_id", "to_id")
+                          .merge(to_id:, from_id:))
       end
     end
 
     def copy_work_package_attribute_overrides(source_work_package, parent_id, user_cf_ids)
-      custom_value_attributes = source_work_package.custom_value_attributes.map do |id, value|
+      target_version_ids = mapped_version_ids(source_work_package.target_versions)
+
+      {
+        project: target,
+        parent_id:,
+        target_version_ids:,
+        observed_in_version_ids: mapped_version_ids(source_work_package.observed_in_versions),
+        assigned_to_id: work_package_assigned_to_id(source_work_package),
+        responsible_id: work_package_responsible_id(source_work_package),
+        custom_field_values: custom_value_attributes(source_work_package, user_cf_ids),
+        # We don't support copying budgets right now
+        budget_id: nil
+      }
+    end
+
+    def mapped_version_ids(versions)
+      lookup = state.version_id_lookup || {}
+
+      versions.filter_map { |version| lookup[version.id] }
+    end
+
+    def work_package_assigned_to_id(source_work_package)
+      possible_principal_id(source_work_package.assigned_to_id)
+    end
+
+    def work_package_responsible_id(source_work_package)
+      possible_principal_id(source_work_package.responsible_id)
+    end
+
+    def custom_value_attributes(source_work_package, user_cf_ids)
+      source_work_package.custom_value_attributes.to_h do |id, value|
         if user_cf_ids.include?(id) && !target.users.detect { |u| u.id.to_s == value }
           [id, nil]
         else
           [id, value]
         end
-      end.to_h
-
-      {
-        project: target,
-        parent_id: parent_id,
-        version_id: work_package_version_id(source_work_package),
-        assigned_to_id: work_package_assigned_to_id(source_work_package),
-        responsible_id: work_package_responsible_id(source_work_package),
-        custom_field_values: custom_value_attributes,
-        # We fetch the value from the global registry to persist it in the job which
-        # will trigger a delayed job for potentially sending the journal notifications.
-        send_notifications: ActionMailer::Base.perform_deliveries
-      }
+      end
     end
 
-    def work_package_version_id(source_work_package)
-      return unless source_work_package.version_id
-
-      state.version_id_lookup[source_work_package.version_id]
-    end
-
-    def work_package_assigned_to_id(source_work_package)
-      possible_principal_id(source_work_package.assigned_to_id,
-                            source_work_package.project)
-    end
-
-    def work_package_responsible_id(source_work_package)
-      possible_principal_id(source_work_package.responsible_id,
-                            source_work_package.project)
-    end
-
-    def possible_principal_id(principal_id, project)
+    def possible_principal_id(principal_id)
       return unless principal_id
 
-      @principals ||= Principal.possible_assignee(project).pluck(:id).to_set
+      @principals ||= Principal.possible_assignee(target).pluck(:id).to_set
       principal_id if @principals.include?(principal_id)
+    end
+
+    def relations_from_to(source_relation, source_wp, new_wp_id, work_packages_map)
+      if source_relation.from_id == source_wp.id
+        [new_wp_id,
+         work_packages_map[source_relation.to_id] ||
+           (Setting.cross_project_work_package_relations? && source_relation.to_id)]
+      else
+        [work_packages_map[source_relation.from_id] ||
+           (Setting.cross_project_work_package_relations? && source_relation.from_id),
+         new_wp_id]
+      end
     end
   end
 end

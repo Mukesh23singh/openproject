@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,11 +20,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module OpenProject::GithubIntegration::Services
   ##
   # Takes user data coming from GitHub webhook data and stores
@@ -38,7 +36,7 @@ module OpenProject::GithubIntegration::Services
   # See: https://docs.github.com/en/developers/webhooks-and-events/webhook-events-and-payloads#pull_request
   class UpsertGithubUser
     def call(payload)
-      GithubUser.find_or_initialize_by(github_id: payload.fetch('id'))
+      GithubUser.find_or_initialize_by(github_id: payload.fetch("id"))
                 .tap do |github_user|
                   github_user.update!(extract_params(payload))
                 end
@@ -52,10 +50,10 @@ module OpenProject::GithubIntegration::Services
     # See: https://docs.github.com/en/rest/reference/users
     def extract_params(payload)
       {
-        github_id: payload.fetch('id'),
-        github_login: payload.fetch('login'),
-        github_html_url: payload.fetch('html_url'),
-        github_avatar_url: payload.fetch('avatar_url')
+        github_id: payload.fetch("id"),
+        github_login: payload.fetch("login"),
+        github_html_url: payload.fetch("html_url"),
+        github_avatar_url: payload.fetch("avatar_url")
       }
     end
   end

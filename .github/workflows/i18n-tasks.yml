@@ -1,0 +1,51 @@
+name: i18n-inconsistency-check
+
+on:
+  push:
+    branches:
+      - dev
+      - release/*
+    paths-ignore:
+      - "docs/**"
+      - "help/**"
+      - "extensions/blocknote-extensions/**"
+      - "extensions/op-blocknote-hocuspocus/**"
+  pull_request:
+    types: [opened, reopened, synchronize]
+    paths-ignore:
+      - "docs/**"
+      - "help/**"
+      - "packaging/**"
+      - ".pkgr.yml"
+      - "extensions/blocknote-extensions/**"
+      - "extensions/op-blocknote-hocuspocus/**"
+
+permissions:
+  contents: read
+
+jobs:
+  i18n-tasks:
+    permissions:
+      contents: read
+    if: github.repository == 'opf/openproject'
+    name: I18n inconsistency check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BUNDLE_ONLY: i18n_tasks
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1.336.0
+        with:
+          bundler-cache: true
+
+      - name: Run inconsistent translations check
+        run: |
+          bundle exec i18n-tasks \
+            check-consistent-interpolations \
+            --config config/i18n-tasks-all-files.yml

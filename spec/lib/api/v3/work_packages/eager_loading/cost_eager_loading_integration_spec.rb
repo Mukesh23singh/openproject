@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,74 +22,71 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::WorkPackages::WorkPackageEagerLoadingWrapper, 'cost eager loading', type: :model do
+RSpec.describe API::V3::WorkPackages::WorkPackageEagerLoadingWrapper, "cost eager loading", type: :model do
   let(:project) do
     work_package.project
   end
   let(:role) do
-    FactoryBot.create(:role,
-                      permissions: %i[view_work_packages
-                                      view_cost_entries
-                                      view_cost_rates
-                                      view_time_entries
-                                      log_time
-                                      log_costs
-                                      view_hourly_rates])
+    create(:project_role,
+           permissions: %i[view_work_packages
+                           view_cost_entries
+                           view_cost_rates
+                           view_time_entries
+                           log_time
+                           log_costs
+                           view_hourly_rates])
   end
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
 
   let(:cost_type) do
-    FactoryBot.create(:cost_type)
+    create(:cost_type)
   end
   let(:work_package) do
-    FactoryBot.create(:work_package)
+    create(:work_package)
   end
   let(:cost_entry1) do
-    FactoryBot.create(:cost_entry,
-                      cost_type: cost_type,
-                      user: user,
-                      work_package: work_package,
-                      project: project)
+    create(:cost_entry,
+           cost_type:,
+           user:,
+           entity: work_package,
+           project:)
   end
   let(:cost_entry2) do
-    FactoryBot.create(:cost_entry,
-                      cost_type: cost_type,
-                      user: user,
-                      work_package: work_package,
-                      project: project)
+    create(:cost_entry,
+           cost_type:,
+           user:,
+           entity: work_package,
+           project:)
   end
   let(:time_entry1) do
-    FactoryBot.create(:time_entry,
-                      user: user,
-                      project: project,
-                      work_package: work_package)
+    create(:time_entry,
+           user:,
+           project:,
+           entity: work_package)
   end
   let(:time_entry2) do
-    FactoryBot.create(:time_entry,
-                      user: user,
-                      project: project,
-                      work_package: work_package)
+    create(:time_entry,
+           user:,
+           project:,
+           entity: work_package)
   end
   let(:user_rates) do
-    FactoryBot.create(:hourly_rate,
-                      user: user,
-                      project: project)
+    create(:hourly_rate,
+           principal: user,
+           project:)
   end
   let(:cost_rate) do
-    FactoryBot.create(:cost_rate,
-                      cost_type: cost_type)
+    create(:cost_rate,
+           cost_type:)
   end
 
   context "combining core's and cost's eager loading" do
@@ -107,15 +106,15 @@ describe ::API::V3::WorkPackages::WorkPackageEagerLoadingWrapper, 'cost eager lo
       time_entry2
     end
 
-    it 'correctly calculates spent time' do
+    it "correctly calculates spent time" do
       expect(scope.to_a.first.hours).to eql time_entry1.hours + time_entry2.hours
     end
 
-    it 'correctly calculates labor costs' do
+    it "correctly calculates labor costs" do
       expect(scope.first.labor_costs).to eql (user_rates.rate * (time_entry1.hours + time_entry2.hours)).to_f
     end
 
-    it 'correctly calculates material costs' do
+    it "correctly calculates material costs" do
       expect(scope.first.material_costs).to eql (cost_entry1.costs + cost_entry2.costs).to_f
     end
   end

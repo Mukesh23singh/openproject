@@ -1,6 +1,6 @@
 //-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
@@ -37,6 +36,10 @@
 
 .wp-table--row
   cursor: pointer
+  // Some padding for the inner cells of the display fields
+  .inline-edit--display-field:not(.op-table-baseline--field)
+    padding: 2px
+
 
 .wp-table--row,
 #empty-row-notification
@@ -46,29 +49,29 @@
   &.-collapsed
     display: none
 
-  &.-dragged
-    height: 0px
-    border: none !important
-    outline: 1px solid var(--primary-color)
-    opacity: 1
-
-    .wp-table--cell-td
-      display: none !important
+  // The Pragmatic engine marks the picked-up row and keeps it in the DOM
+  // for the whole drag; show it in place as a dimmed placeholder
+  // (mirroring the Backlogs card treatment) instead of collapsing it.
+  &[data-dragging="source"]
+    opacity: 0.4
+    background-color: var(--bgColor-inset)
 
   &.wp-table--sums-row:empty
     height: 0
 
 .wp-table--sum-container
-  font-weight: bold
+  font-weight: var(--base-text-weight-bold)
   padding: 3px 6px
 
   &.__internal-sorthandle
     white-space: nowrap
 
-.work-package-table--container table.generic-table tbody td
+.work-package-table--container table.generic-table tbody td,
+.work-package-table--container table.generic-table tbody th[scope="row"]
   padding-left: 0
   padding-top: 0
   padding-bottom: 0
+  vertical-align: middle
   // To display the input field border correctly (input height is 24px)
   line-height: 24px
 
@@ -76,21 +79,35 @@
   .inline-edit--field.ng-select
     min-width: 140px
 
+.work-package-table--container table.generic-table tbody th[scope="row"]
+  font-weight: var(--base-text-weight-normal, 400)
+
+:where(.work-package-table--container) table th:where([scope="row"])
+  padding-right: 6px
+
+.work-package-table--container tr.context-menu-selection > th[scope="row"],
+.work-package-table--container tr.-checked > th[scope="row"]
+  color: var(--body-font-color) !important
+
+  a
+    color: var(--body-font-color) !important
+
 // Styles for inline editable attributes
-.work-package-table--container td.-editable
+.work-package-table--container td.-editable,
+.work-package-table--container th[scope="row"].-editable
   display: table-cell
   width: auto
 
   &:hover .inline-edit--active-field.-error:hover
-    border-color: var(--content-form-danger-zone-bg-color)
+    border-color: var(--borderColor-danger-emphasis)
 
 .wp-table--faulty-query-icon
-  color: var(--content-form-danger-zone-bg-color)
+  color: var(--fgColor-danger)
 
 // Remove padding from grouping rows (exceeds allowed width of 41px)
 .wp-table--group-header
   height: var(--table-timeline--row-height)
-  background-color: var(--gray-light)
+  background-color: var(--bgColor-muted)
   td
     padding: 0 !important
     background-color: transparent !important
@@ -115,29 +132,19 @@ html:not(.-browser-mobile)
     line-height: initial !important
     white-space: nowrap
 
-// Show context menu button when hovering
-.wp-table--context-menu-td a
-  vertical-align: -3px
-  .icon:before
-    color: var(--content-link-color)
-    padding: 0 0 0 0.25rem
-  &.-disabled .icon:before
-    color: var(--gray-dark)
+.wp-table--context-menu-td .Button
+  vertical-align: middle
+  &.-disabled
+    color: var(--fgColor-muted)
   &:hover
     text-decoration: none
-
-.wp-table--details-link
-  padding-right: 5px
-
-.wp-table-context-menu-link
-  padding-left: 5px
 
 .wp-table--cell-container
   @extend .ellipsis
   display: inline-block
   vertical-align: middle
   width: 100%
-  
+
   @media print
     white-space: normal
 
@@ -150,16 +157,6 @@ html:not(.-browser-mobile)
 
     &.bcfThumbnail
       outline: none
-
-// Some padding for the inner cells of the display fields
-.inline-edit--display-field
-  padding: 2px
-
-body.-browser-edge
-  // Ensure height is set in table
-  .work-package-table .inline-edit--display-field
-    height: 22px !important
-    line-height: 22px !important
 
 .inplace-editing--container
   @include unset-button-styles
@@ -178,3 +175,67 @@ body.-browser-edge
   height: 40px
   outline: none
 
+.wp-table--table-header .generic-table--sort-header
+  max-width: none
+
+// The menu's custom elements sit between the flex header and its button and
+// have to pass the available width through for the indicator to reach the edge.
+.generic-table--sort-header > op-action-menu,
+.generic-table--sort-header > op-action-menu > action-menu
+  display: flex
+  flex: 1 1 auto
+  min-width: 0
+
+// The menu is anchored to the header cell, and Primer's `anchored-position`
+// offers no anchor offset below 4px, so the gap is pulled back here.
+.generic-table--sort-header > op-action-menu > action-menu > anchored-position
+  margin-top: calc(-1 * var(--base-size-4))
+
+.wp-table--column-menu-button
+  display: inline-flex
+  flex: 1 1 auto
+  align-items: center
+  gap: var(--base-size-4)
+  min-width: 0
+  max-width: 100%
+  padding: 0
+  border: 0
+  background: none
+  font: inherit
+  color: inherit
+  text-align: start
+  // Like the projects table's menu button: the header's uppercase stops at
+  // `action-menu` (see _table.sass), whose items must not inherit it.
+  text-transform: uppercase
+  letter-spacing: inherit
+  cursor: pointer
+
+.wp-table--column-menu-name
+  @include text-shortener
+
+.wp-table--column-menu-glyph
+  flex: 0 0 auto
+  align-self: center
+
+.wp-table--column-sort-indicator
+  flex: 0 0 auto
+  align-self: center
+  margin-inline-start: var(--base-size-8)
+
+  .generic-table--sort-header > &
+    margin-inline-start: var(--base-size-12)
+
+.wp-table--column-menu-indicator
+  flex: 0 0 auto
+  margin-inline-start: auto
+  visibility: hidden
+
+  th:hover &,
+  th:focus-visible &,
+  tr:focus-visible > th &,
+  .wp-table--column-menu-button:focus-visible &,
+  [aria-expanded="true"] &
+    visibility: visible
+
+  @media (hover: none)
+    visibility: visible

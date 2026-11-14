@@ -1,178 +1,276 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe "Notification center sidemenu", type: :feature, js: true do
-  shared_let(:project) { FactoryBot.create :project }
-  shared_let(:project2) { FactoryBot.create :project }
-  shared_let(:project3) { FactoryBot.create :project, parent: project2 }
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Notification center sidemenu",
+               :js,
+               with_ee: %i[work_package_sharing] do
+  shared_let(:project) { create(:project) }
+  shared_let(:project2) { create(:project) }
+  shared_let(:project3) { create(:project, parent: project2) }
 
   shared_let(:recipient) do
-    FactoryBot.create :user,
-                      member_in_projects: [project, project2, project3],
-                      member_with_permissions: %i[view_work_packages]
+    create(:user,
+           member_with_permissions: {
+             project => %i[view_work_packages],
+             project2 => %i[view_work_packages],
+             project3 => %i[view_work_packages]
+           })
   end
-  shared_let(:other_user) { FactoryBot.create(:user) }
+  shared_let(:other_user) { create(:user) }
 
-  shared_let(:work_package) { FactoryBot.create :work_package, project: project, author: other_user }
-  shared_let(:work_package2) { FactoryBot.create :work_package, project: project2, author: other_user }
-  shared_let(:work_package3) { FactoryBot.create :work_package, project: project3, author: other_user }
-  shared_let(:work_package4) { FactoryBot.create :work_package, project: project3, author: other_user }
+  shared_let(:work_package) { create(:work_package, project:, author: other_user) }
+  shared_let(:work_package2) { create(:work_package, project: project2, author: other_user) }
+  shared_let(:work_package3) { create(:work_package, project: project3, author: other_user) }
+  shared_let(:work_package4) { create(:work_package, project: project3, author: other_user) }
+  shared_let(:work_package5) { create(:work_package, :is_milestone, project: project3, author: other_user) }
+  shared_let(:work_package6) { create(:work_package, :is_milestone, project: project3, author: other_user) }
+  shared_let(:work_package7) { create(:work_package, project: project3, author: other_user) }
 
-  let(:notification) do
-    FactoryBot.create :notification,
-                      recipient: recipient,
-                      project: project,
-                      resource: work_package,
-                      reason: :watched
-  end
-
-  let(:notification2) do
-    FactoryBot.create :notification,
-                      recipient: recipient,
-                      project: project2,
-                      resource: work_package2,
-                      reason: :assigned
+  let(:notification_watched) do
+    create(:notification,
+           recipient:,
+           resource: work_package,
+           reason: :watched)
   end
 
-  let(:notification3) do
-    FactoryBot.create :notification,
-                      recipient: recipient,
-                      project: project3,
-                      resource: work_package3,
-                      reason: :responsible
+  let(:notification_assigned) do
+    create(:notification,
+           recipient:,
+           resource: work_package2,
+           reason: :assigned)
   end
 
-  let(:notification4) do
-    FactoryBot.create :notification,
-                      recipient: recipient,
-                      project: project3,
-                      resource: work_package4,
-                      reason: :mentioned
+  let(:notification_responsible) do
+    create(:notification,
+           recipient:,
+           resource: work_package3,
+           reason: :responsible)
+  end
+
+  let(:notification_mentioned) do
+    create(:notification,
+           recipient:,
+           resource: work_package4,
+           reason: :mentioned)
+  end
+
+  let(:notification_date) do
+    create(:notification,
+           recipient:,
+           resource: work_package5,
+           reason: :date_alert_start_date)
+  end
+
+  let(:notification_shared) do
+    create(:notification,
+           recipient:,
+           resource: work_package6,
+           reason: :shared)
+  end
+
+  let(:notification_reminder) do
+    reminder = create(:reminder, remindable: work_package7, creator: other_user, note: "This is an important reminder")
+    notification = create(:notification,
+                          recipient:,
+                          resource: work_package7,
+                          reason: :reminder)
+    create(:reminder_notification, reminder:, notification:)
+    notification
   end
 
   let(:notifications) do
-    [notification, notification2, notification3, notification4]
+    [notification_watched, notification_assigned, notification_responsible, notification_mentioned, notification_date,
+     notification_shared, notification_reminder]
   end
 
-  let(:center) { ::Pages::Notifications::Center.new }
-  let(:side_menu) { ::Components::Notifications::Sidemenu.new }
+  let(:center) { Pages::Notifications::Center.new }
+  let(:side_menu) { Components::Submenu.new }
 
   before do
     notifications
     login_as recipient
     center.visit!
+    wait_for_reload
   end
 
-  context 'with no notifications to show' do
+  context "with no notifications to show" do
     let(:notifications) { nil }
 
-    it 'still shows the sidebar and a placeholder' do
+    it "still shows the sidebar and a placeholder" do
       side_menu.expect_open
 
-      expect(page).to have_text 'New notifications will appear here when there is activity that concerns you'
+      expect(page).to have_text "New notifications will appear here when there is activity that concerns you"
 
       center.expect_no_toaster
 
-      side_menu.expect_item_with_no_count 'Inbox'
-      side_menu.expect_item_with_no_count 'Assigned'
-      side_menu.expect_item_with_no_count '@mentioned'
-      side_menu.expect_item_with_no_count 'Accountable'
-      side_menu.expect_item_with_no_count 'Watching'
+      side_menu.expect_item_with_no_count "Inbox"
+      side_menu.expect_item_with_no_count "Assignee"
+      side_menu.expect_item_with_no_count "Mentioned"
+      side_menu.expect_item_with_no_count "Accountable"
+      side_menu.expect_item_with_no_count "Watcher"
+      side_menu.expect_item_with_no_count "Date alert"
+      side_menu.expect_item_with_no_count "Shared"
+      side_menu.expect_item_with_no_count "Reminder"
     end
   end
 
-  it 'updates the numbers when a notification is read' do
+  it "updates the numbers when a notification is read" do
     side_menu.expect_open
 
     # Expect standard filters
-    side_menu.expect_item_with_count 'Inbox', 4
-    side_menu.expect_item_with_count 'Assigned', 1
-    side_menu.expect_item_with_count '@mentioned', 1
-    side_menu.expect_item_with_count 'Accountable', 1
-    side_menu.expect_item_with_count 'Watching', 1
+    side_menu.expect_item_with_count "Inbox", 7
+    side_menu.expect_item_with_count "Assignee", 1
+    side_menu.expect_item_with_count "Mentioned", 1
+    side_menu.expect_item_with_count "Accountable", 1
+    side_menu.expect_item_with_count "Watcher", 1
+    side_menu.expect_item_with_count "Date alert", 1
+    side_menu.expect_item_with_count "Shared", 1
+    side_menu.expect_item_with_count "Reminder", 1
 
     # Expect project filters
     side_menu.expect_item_with_count project.name, 1
     side_menu.expect_item_with_count project2.name, 1
-    side_menu.expect_item_with_count "... #{project3.name}", 2
+    side_menu.expect_item_with_count "... #{project3.name}", 5
 
     # Reading a notification...
-    center.mark_notification_as_read notification
+    center.mark_notification_as_read notification_watched
 
     # ...  will change the filter counts
-    side_menu.expect_item_with_count 'Inbox', 3
-    side_menu.expect_item_with_count 'Assigned', 1
-    side_menu.expect_item_with_count '@mentioned', 1
-    side_menu.expect_item_with_count 'Accountable', 1
-    side_menu.expect_item_with_no_count 'Watching'
+    side_menu.expect_item_with_count "Inbox", 6
+    side_menu.expect_item_with_count "Assignee", 1
+    side_menu.expect_item_with_count "Mentioned", 1
+    side_menu.expect_item_with_count "Accountable", 1
+    side_menu.expect_item_with_count "Date alert", 1
+    side_menu.expect_item_with_count "Shared", 1
+    side_menu.expect_item_with_count "Reminder", 1
+    side_menu.expect_item_with_no_count "Watcher"
 
     # ... and show only those projects with a notification
-    side_menu.expect_item_not_visible project.name
+    side_menu.expect_no_item project.name
     side_menu.expect_item_with_count project2.name, 1
-    side_menu.expect_item_with_count "... #{project3.name}", 2
+    side_menu.expect_item_with_count "... #{project3.name}", 5
 
     # Empty filter sets have a separate message
-    side_menu.click_item 'Watching'
+    side_menu.click_item "Watcher"
     side_menu.finished_loading
-    expect(page).to have_text 'There are no notifications in this view at the moment'
+    expect(page).to have_text "Looks like you are all caught up for this filter"
 
     # Marking all as read
-    side_menu.click_item 'Inbox'
+    side_menu.click_item "Inbox"
     side_menu.finished_loading
     center.mark_all_read
-    side_menu.expect_item_with_no_count 'Inbox'
-    side_menu.expect_item_with_no_count 'Assigned'
-    side_menu.expect_item_with_no_count '@mentioned'
-    side_menu.expect_item_with_no_count 'Accountable'
-    side_menu.expect_item_with_no_count 'Watching'
+    side_menu.expect_item_with_no_count "Inbox"
+    side_menu.expect_item_with_no_count "Assignee"
+    side_menu.expect_item_with_no_count "Mentioned"
+    side_menu.expect_item_with_no_count "Accountable"
+    side_menu.expect_item_with_no_count "Watcher"
+    side_menu.expect_item_with_no_count "Date alert"
+    side_menu.expect_item_with_no_count "Shared"
+    side_menu.expect_item_with_no_count "Reminder"
 
-    side_menu.expect_item_not_visible project.name
-    side_menu.expect_item_not_visible project2.name
-    side_menu.expect_item_not_visible "... #{project3.name}"
+    side_menu.expect_no_item project.name
+    side_menu.expect_no_item project2.name
+    side_menu.expect_no_item "... #{project3.name}"
   end
 
-  it 'updates the content when a filter is clicked' do
+  it "updates the content when a filter is clicked" do
     # All notifications are shown
-    center.expect_work_package_item notification, notification2, notification3, notification4
+    center.expect_work_package_item(*notifications)
 
-    # Filter for "Watching"
-    side_menu.click_item 'Watching'
+    # Filter for "Watcher"
+    side_menu.click_item "Watcher"
     side_menu.finished_loading
-    center.expect_work_package_item notification
-    center.expect_no_item notification2, notification3, notification4
+    center.expect_work_package_item notification_watched
+    center.expect_no_item notification_assigned, notification_responsible, notification_mentioned, notification_date,
+                          notification_shared, notification_reminder
 
     # Filter for "Assignee"
-    side_menu.click_item 'Assigned'
+    side_menu.click_item "Assignee"
     side_menu.finished_loading
-    center.expect_work_package_item notification2
-    center.expect_no_item notification, notification3, notification4
+    center.expect_work_package_item notification_assigned
+    center.expect_no_item notification_watched, notification_responsible, notification_mentioned, notification_date,
+                          notification_shared, notification_reminder
 
     # Filter for "Accountable"
-    side_menu.click_item 'Accountable'
+    side_menu.click_item "Accountable"
     side_menu.finished_loading
-    center.expect_work_package_item notification3
-    center.expect_no_item notification, notification2, notification4
+    center.expect_work_package_item notification_responsible
+    center.expect_no_item notification_watched, notification_assigned, notification_mentioned, notification_date,
+                          notification_shared, notification_reminder
 
-    # Filter for "@mentioned"
-    side_menu.click_item '@mentioned'
+    # Filter for "Mentioned"
+    side_menu.click_item "Mentioned"
     side_menu.finished_loading
-    center.expect_work_package_item notification4
-    center.expect_no_item notification, notification2, notification3
+    center.expect_work_package_item notification_mentioned
+    center.expect_no_item notification_watched, notification_assigned, notification_responsible, notification_date,
+                          notification_shared, notification_reminder
+
+    # Filter for "Date alert"
+    side_menu.click_item "Date alert"
+    side_menu.finished_loading
+    center.expect_work_package_item notification_date
+    center.expect_no_item notification_watched, notification_assigned, notification_responsible, notification_mentioned,
+                          notification_shared, notification_reminder
+
+    # Filter for "Shared"
+    side_menu.click_item "Shared"
+    side_menu.finished_loading
+    center.expect_work_package_item notification_shared
+    center.expect_no_item notification_watched, notification_assigned, notification_responsible, notification_mentioned,
+                          notification_date, notification_reminder
+
+    # Filter for "Reminder"
+    side_menu.click_item "Reminder"
+    side_menu.finished_loading
+    center.expect_work_package_item notification_reminder
+    center.expect_no_item notification_watched, notification_assigned, notification_responsible, notification_mentioned,
+                          notification_date, notification_shared
 
     # Filter for project1
     side_menu.click_item project.name
     side_menu.finished_loading
-    center.expect_work_package_item notification
-    center.expect_no_item notification2, notification3, notification4
+    center.expect_work_package_item notification_watched
+    center.expect_no_item notification_assigned, notification_responsible, notification_mentioned, notification_date,
+                          notification_shared, notification_reminder
 
     # Filter for project3
     side_menu.click_item "... #{project3.name}"
     side_menu.finished_loading
-    center.expect_work_package_item notification3, notification4
-    center.expect_no_item notification, notification2
+    center.expect_work_package_item notification_responsible, notification_mentioned, notification_date, notification_shared,
+                                    notification_reminder
+    center.expect_no_item notification_watched, notification_assigned
 
     # Reset by clicking on the Inbox
-    side_menu.click_item 'Inbox'
+    side_menu.click_item "Inbox"
     side_menu.finished_loading
-    center.expect_work_package_item notification, notification2, notification3, notification4
+    center.expect_work_package_item(*notifications)
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require_relative './attachment_resource_shared_examples'
+require "spec_helper"
+require_relative "attachment_resource_shared_examples"
 
-describe "forum message attachments" do
-  it_behaves_like "an APIv3 attachment resource", include_by_container = false do
+RSpec.describe "forum message attachments" do
+  it_behaves_like "an APIv3 attachment resource", include_by_container: false do
     let(:attachment_type) { :forum_message }
 
     let(:create_permission) { nil }
     let(:read_permission) { nil }
     let(:update_permission) { :edit_messages }
 
-    let(:forum) { FactoryBot.create(:forum, project: project) }
-    let(:forum_message) { FactoryBot.create(:message, forum: forum) }
+    let(:forum) { create(:forum, project:) }
+    let(:forum_message) { create(:message, forum:) }
 
-    let(:missing_permissions_user) { FactoryBot.create(:user) }
+    let(:missing_permissions_user) { create(:user) }
   end
 end

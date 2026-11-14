@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,23 +20,52 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
+import { InputState } from '@openproject/reactivestates';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import Formattable = api.v3.Formattable;
+import { MeetingResource } from 'core-app/features/hal/resources/meeting-resource';
+import idFromLink from 'core-app/features/hal/helpers/id-from-link';
+import { formatWorkPackageId } from 'core-app/shared/helpers/work-package-id-pattern';
 
 export class TimeEntryResource extends HalResource {
-  public get state() {
-    return this.states.timeEntries.get(this.id!) as any;
+  project:ProjectResource;
+
+  activity:HalResource|null;
+
+  comment:Formattable;
+
+  entity:WorkPackageResource|MeetingResource;
+
+  spentOn:string;
+
+  ongoing:boolean;
+
+  hours:string;
+
+  delete?:CallableHalLink|null;
+
+  public get state():InputState<this> {
+    return this.states.timeEntries.get(this.id!) as unknown as InputState<this>;
   }
 
   /**
    * Exclude the schema _link from the linkable Resources.
    */
   public $linkableKeys():string[] {
-    return _.without(super.$linkableKeys(), 'schema');
+    return super.$linkableKeys().filter((key) => key !== 'schema');
   }
+}
+
+export function formatTimeEntryEntityName(entity:WorkPackageResource|MeetingResource):string {
+  const displayId = entity.$link?.displayId;
+  const formattedId = displayId ? formatWorkPackageId(displayId) : `#${idFromLink(entity.href)}`;
+  return `${formattedId}: ${entity.name}`;
 }

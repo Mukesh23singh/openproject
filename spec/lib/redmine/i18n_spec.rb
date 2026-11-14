@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,191 +22,743 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
 module OpenProject
-  describe I18n, type: :helper do
+  RSpec.describe I18n, type: :helper do
     include Redmine::I18n
 
-    let(:format) { '%d/%m/%Y' }
-    let(:user) { FactoryBot.build_stubbed :user }
+    describe "#format_date with time" do
+      let(:format) { "%d/%m/%Y" }
 
-    after do
-      Time.zone = nil
-    end
+      current_user { build_stubbed(:user, preferences: { time_zone: user_time_zone }) }
 
-    describe 'with user time zone' do
-      before do
-        login_as user
-        allow(user).to receive(:time_zone).and_return(ActiveSupport::TimeZone['Athens'])
-      end
-      it 'returns a date in the user timezone for a utc timestamp' do
-        Time.zone = 'UTC'
-        time = Time.zone.local(2013, 0o6, 30, 23, 59)
-        expect(format_time_as_date(time, format)).to eq '01/07/2013'
-      end
+      describe "with user time zone" do
+        let(:user_time_zone) { "Europe/Athens" }
 
-      it 'returns a date in the user timezone for a non-utc timestamp' do
-        Time.zone = 'Berlin'
-        time = Time.zone.local(2013, 0o6, 30, 23, 59)
-        expect(format_time_as_date(time, format)).to eq '01/07/2013'
-      end
-    end
+        it "returns a date string in the user timezone for a utc timestamp" do
+          time = ActiveSupport::TimeZone["UTC"].local(2013, 6, 30, 23, 59)
+          expect(format_date(time, format:)).to eq "01/07/2013"
+        end
 
-    describe 'without user time zone' do
-      before { allow(User.current).to receive(:time_zone).and_return(nil) }
-
-      it 'returns a date in the local system timezone for a utc timestamp' do
-        Time.zone = 'UTC'
-        time = Time.zone.local(2013, 0o6, 30, 23, 59)
-        allow(time).to receive(:localtime).and_return(ActiveSupport::TimeZone['Athens'].local(2013, 0o7, 0o1, 0o1, 59))
-        expect(format_time_as_date(time, format)).to eq '01/07/2013'
+        it "returns a date string in the user timezone for a non-utc timestamp" do
+          time = ActiveSupport::TimeZone["Berlin"].local(2013, 6, 30, 23, 59)
+          expect(format_date(time, format:)).to eq "01/07/2013"
+        end
       end
 
-      it 'returns a date in the original timezone for a non-utc timestamp' do
-        Time.zone = 'Berlin'
-        time = Time.zone.local(2013, 0o6, 30, 23, 59)
-        expect(format_time_as_date(time, format)).to eq '30/06/2013'
+      describe "without user time zone" do
+        let(:user_time_zone) { "" }
+
+        it "returns a date string in the utc timezone for a utc timestamp" do
+          time = ActiveSupport::TimeZone["UTC"].local(2013, 6, 30, 23, 59)
+          expect(format_date(time, format:)).to eq "30/06/2013"
+        end
+
+        it "returns a date string in the utc timezone for a non-utc timestamp" do
+          time = ActiveSupport::TimeZone["Berlin"].local(2013, 6, 30, 23, 59)
+          expect(format_date(time, format:)).to eq "30/06/2013"
+        end
       end
     end
 
-    describe 'all_languages' do
+    describe "#format_date_range" do
+      let(:from) { Date.new(2025, 1, 6) }
+      let(:to) { Date.new(2025, 1, 17) }
+
+      context "with an Array" do
+        it "renders both dates separated by an en-dash" do
+          expected =
+            "<time datetime=\"2025-01-06\">#{helper.format_date(from)}</time>" \
+            "\u00A0\u2013\u00A0" \
+            "<time datetime=\"2025-01-17\">#{helper.format_date(to)}</time>"
+
+          expect(helper.format_date_range([from, to])).to be_html_eql(expected)
+        end
+      end
+
+      context "when both dates are nil" do
+        it "returns nil" do
+          expect(helper.format_date_range([nil, nil])).to be_nil
+        end
+      end
+
+      context "when only the start date is present" do
+        it "renders the start date with an en-dash" do
+          expected =
+            "<time datetime=\"2025-01-06\">#{helper.format_date(from)}</time>" \
+            "\u00A0\u2013\u00A0"
+
+          expect(helper.format_date_range([from, nil])).to be_html_eql(expected)
+        end
+      end
+
+      context "when only the end date is present" do
+        it "renders the end date with an en-dash" do
+          expected =
+            "\u00A0\u2013\u00A0" \
+            "<time datetime=\"2025-01-17\">#{helper.format_date(to)}</time>"
+
+          expect(helper.format_date_range([nil, to])).to be_html_eql(expected)
+        end
+      end
+    end
+
+    describe "#format_date_range with times" do
+      let(:time) { Time.utc(2025, 1, 16, 9, 30) }
+      let(:date) { Date.new(2025, 1, 29) }
+
+      current_user { build_stubbed(:user) }
+
+      it "gives only the time a title with the full timestamp" do
+        fragment = Capybara.string(helper.format_date_range([time, date]))
+
+        expect(fragment).to have_element(:time, datetime: "2025-01-16T09:30:00Z", title: helper.format_time(time),
+                                                text: helper.format_date(time), exact_text: true)
+        expect(fragment).to have_element(:time, datetime: "2025-01-29")
+      end
+
+      it "renders an open range with the time of day" do
+        expected =
+          "<time datetime=\"2025-01-16T09:30:00Z\">#{helper.format_time(time)}</time>" \
+          "\u00A0\u2013\u00A0"
+
+        expect(helper.format_date_range([time, nil], include_time: true)).to be_html_eql(expected)
+      end
+    end
+
+    describe "#format_date_tag" do
+      let(:user_time_zone) { "Etc/UTC" }
+
+      current_user { build_stubbed(:user, preferences: { time_zone: user_time_zone }) }
+
+      context "with a date" do
+        let(:date) { Date.new(2025, 1, 6) }
+
+        it "renders the date in a time element" do
+          expect(helper.format_date_tag(date))
+            .to be_html_eql("<time datetime=\"2025-01-06\">#{helper.format_date(date)}</time>")
+        end
+
+        it "renders the same when asked to include the time" do
+          expect(helper.format_date_tag(date, include_time: true))
+            .to be_html_eql("<time datetime=\"2025-01-06\">#{helper.format_date(date)}</time>")
+        end
+      end
+
+      context "with nil" do
+        it "returns nil" do
+          expect(helper.format_date_tag(nil)).to be_nil
+        end
+      end
+
+      context "with a time" do
+        let(:time) { Time.utc(2025, 1, 16, 9, 30) }
+
+        it "renders the date and keeps the full timestamp as title" do
+          expected =
+            "<time datetime=\"2025-01-16T09:30:00Z\" title=\"#{helper.format_time(time)}\">" \
+            "#{helper.format_date(time)}</time>"
+
+          expect(helper.format_date_tag(time)).to be_html_eql(expected)
+        end
+
+        it "renders the timestamp without a title when asked to include the time" do
+          expect(helper.format_date_tag(time, include_time: true))
+            .to be_html_eql("<time datetime=\"2025-01-16T09:30:00Z\">#{helper.format_time(time)}</time>")
+        end
+
+        it "includes the time of day in the timestamp" do
+          expect(helper.format_date_tag(time, include_time: true)).to include("09:30")
+        end
+      end
+
+      context "with a time late in the UTC day and a user ahead of UTC" do
+        let(:user_time_zone) { "Asia/Tokyo" }
+        let(:time) { Time.utc(2025, 1, 15, 23, 30) }
+
+        it "renders the user's calendar day" do
+          fragment = Capybara.string(helper.format_date_tag(time))
+
+          expect(fragment).to have_element(:time, text: helper.format_date(Date.new(2025, 1, 16)), exact_text: true)
+          expect(fragment.find("time")[:title]).to include("08:30")
+        end
+      end
+    end
+
+    describe "all_languages" do
       # Those are the two languages we support
-      it 'includes en' do
-        expect(all_languages).to include(:en)
-      end
-      it 'includes de' do
-        expect(all_languages).to include(:de)
+      it "includes en" do
+        expect(all_languages).to include("en")
       end
 
-      it 'should return no js language as they are duplicates of the rest of the other language' do
-        expect(all_languages.any? { |l| /\Ajs-/.match(l.to_s) }).to be_falsey
+      it "includes de" do
+        expect(all_languages).to include("de")
+      end
+
+      it "returns no js language as they are duplicates of the rest of the other language" do
+        expect(all_languages).not_to(be_any { |l| l.to_s.start_with?("js-") })
       end
 
       # it is OK if more languages exist
-      it 'has multiple languages' do
-        expect(all_languages).to include :en, :de, :fr, :es
+      it "has multiple languages" do
+        expect(all_languages).to include "en", "de", "fr", "es"
         expect(all_languages.size).to be >= 25
       end
     end
 
-    describe 'valid_languages' do
-      it 'allows only languages that are available' do
-        allow(Setting).to receive(:available_languages).and_return([:en])
+    describe "#translate_language" do
+      subject(:language_options) { all_languages.map { translate_language(it) } }
 
-        expect(valid_languages).to eql [:en]
+      it 'has all languages translated ("English" should appear only once)' do
+        impostor_locales = language_options.filter_map { |lang, locale| locale if lang == "English" && locale != "en" }
+        expect(impostor_locales.count).to eq(0), <<~ERR
+          The locales #{impostor_locales.to_sentence} display themselves as "English"!
+
+          Probably because new languages were added, and the translation for their language is not
+          available, so it fallbacks to the English translation.
+
+          To fix it, generate translation files from CLDR by running
+
+              script/i18n/generate_languages_translations
+
+          And commit the yml files added in "config/locales/generated/*.yml".
+        ERR
       end
 
-      it 'allows only languages that exist' do
-        allow(Setting).to receive(:available_languages).and_return([:'123'])
+      it "has distinct languages translation" do
+        duplicates =
+          language_options
+            .group_by(&:first)
+            .transform_values { it.map(&:last) }
+            .reject { |_lang, locales| locales.one? }
 
-        expect(valid_languages).to be_empty
+        expect(duplicates).to be_empty, <<~ERR
+          Some identical language names are used for different locales!
+
+            duplicates: #{duplicates}
+
+          This happens when a new language is added to Crowdin: new translation files are
+          generated and the new language is available in Setting.all_languages, but there
+          is no translation for its name yet, and so it falls back to "English".
+
+          To fix it:
+            - run the script "script/i18n/generate_languages_translations"
+            - commit the additional translation file generated in
+              "config/locales/generated/*.yml".
+        ERR
       end
     end
 
-    describe 'set_language_if_valid' do
-      before do
-        allow(Setting).to receive(:available_languages).and_return(Setting.all_languages)
+    describe "valid_languages" do
+      it "allows languages that are available" do
+        with_settings(available_languages: ["en"])
+
+        expect(valid_languages).to eq ["en"]
       end
 
-      Setting.all_languages.each do |lang|
-        it "should set I18n.locale to #{lang}" do
-          allow(I18n).to receive(:locale=)
-          expect(I18n).to receive(:locale=).with(lang)
+      it "allows language which is not in available languages list but is the default language" do
+        with_settings(available_languages: ["en"], default_language: "fr")
 
-          set_language_if_valid(lang)
+        expect(valid_languages).to eq ["en", "fr"]
+      end
+
+      it "allows only languages that exist" do
+        with_settings(available_languages: ["en", "de", "klingon"])
+
+        expect(valid_languages).to contain_exactly("en", "de")
+      end
+
+      it "is sorted alphabetically" do
+        with_settings(available_languages: ["de", "en"], default_language: "fr")
+        expect(valid_languages).to eq(valid_languages.sort)
+
+        with_settings(available_languages: ["en", "fr"], default_language: "de")
+        expect(valid_languages).to eq(valid_languages.sort)
+      end
+    end
+
+    describe "set_language_if_valid" do
+      before do
+        allow(described_class).to receive(:locale=)
+      end
+
+      context "with all supported languages available" do
+        before do
+          with_settings(available_languages: Redmine::I18n.all_languages)
+        end
+
+        Setting.all_languages.each do |lang|
+          it "sets I18n.locale to #{lang.inspect}" do
+            set_language_if_valid(lang.to_s)
+            set_language_if_valid(lang.to_sym)
+            expect(described_class).to have_received(:locale=).with(lang.to_s).twice
+          end
         end
       end
 
-      it 'should not set I18n.locale to an invalid language' do
-        allow(Setting).to receive(:available_languages).and_return([:en])
+      it "does not set I18n.locale to an unavailable language" do
+        with_settings(available_languages: ["en"])
 
-        expect(I18n).not_to receive(:locale=).with(:de)
+        set_language_if_valid("de")
+        set_language_if_valid(:de)
+        expect(described_class).not_to have_received(:locale=).with(:de)
+        expect(described_class).not_to have_received(:locale=).with("de")
       end
     end
 
-    describe 'find_language' do
+    describe "find_language" do
       before do
-        allow(Setting).to receive(:available_languages).and_return([:de])
+        with_settings(available_languages: ["de"], default_language: "en")
       end
 
-      it 'is nil if language is not active' do
-        expect(find_language(:en)).to be_nil
+      it "is nil if language is not available nor the default language" do
+        expect(find_language(:fr)).to be_nil
       end
 
-      it 'is nil if no language is given' do
-        expect(find_language('')).to be_nil
+      it "is nil if no language is given" do
+        expect(find_language("")).to be_nil
         expect(find_language(nil)).to be_nil
       end
 
-      it 'is the language if it is active' do
-        expect(find_language(:de)).to eql :de
+      it "is the language if it is in available languages" do
+        expect(find_language(:de)).to eq "de"
+        expect(find_language("de")).to eq "de"
       end
 
-      it 'can be found by uppercase if it is active' do
-        expect(find_language(:DE)).to eql :de
+      it "is the language if it is the default language" do
+        expect(find_language(:en)).to eq "en"
+        expect(find_language("en")).to eq "en"
       end
 
-      it 'is nil if non valid string is passed' do
-        expect(find_language('*')).to be_nil
-        expect(find_language('78445')).to be_nil
-        expect(find_language('/)(')).to be_nil
+      it "can be found by uppercase" do
+        expect(find_language(:DE)).to eq "de"
+        expect(find_language("DE")).to eq "de"
+        expect(find_language(:EN)).to eq "en"
+        expect(find_language("EN")).to eq "en"
+      end
+
+      it "is nil if non valid string is passed" do
+        expect(find_language("*")).to be_nil
+        expect(find_language("78445")).to be_nil
+        expect(find_language("/)(")).to be_nil
       end
     end
 
-    describe 'link_translation' do
-      let(:locale) { :en }
-      let(:urls) do
-        { url_1: 'http://openproject.com/foobar', url_2: '/baz' }
-      end
+    describe "link_translation" do
+      let(:urls) { { url1: "http://openproject.com/foo", url2: "/baz" } }
 
       before do
         allow(::I18n)
-          .to receive(:t)
-          .with('translation_with_a_link', locale: locale)
-          .and_return('There is a [link](url_1) in this translation! Maybe even [two](url_2)?')
+          .to receive(:translate)
+          .with("translation_with_a_link", *any_args)
+          .and_return("There is a [link](url1) in this translation! Maybe even [two](url2)?")
       end
 
-      it 'allows to insert links into translations' do
-        translated = link_translate :translation_with_a_link, links: urls
+      it "allows to insert links into translations" do
+        translated = link_translate :translation_with_a_link, links: urls, external: false
+        fragment = Capybara.string(translated)
 
-        expect(translated).to eq(
-          "There is a <a href=\"http://openproject.com/foobar\">link</a> in this translation!" +
-          " Maybe even <a href=\"/baz\">two</a>?"
-        )
+        links = fragment.all("a")
+        expect(links.size).to eq(2)
+
+        expect(links[0].text).to eq("link")
+        expect(links[0][:href]).to eq("http://openproject.com/foo")
+
+        expect(links[1].text).to eq("two")
+        expect(links[1][:href]).to eq("/baz")
       end
 
-      context 'with locale' do
-        let(:locale) { :de }
-        it 'uses the passed locale' do
-          translated = link_translate :translation_with_a_link, links: urls, locale: locale
+      context "when the link text contains an apostrophe" do
+        before do
+          allow(::I18n)
+            .to receive(:translate)
+            .with("translation_with_apostrophe", *any_args)
+            .and_return("Here's [what's new](url) to see.")
+        end
 
-          expect(translated).to eq(
-            "There is a <a href=\"http://openproject.com/foobar\">link</a> in this translation!" +
-            " Maybe even <a href=\"/baz\">two</a>?"
-          )
+        it "does not double-escape the apostrophe in the link text" do
+          translated = link_translate :translation_with_apostrophe,
+                                      links: { url: "https://example.com" },
+                                      external: false
+          fragment = Capybara.string(translated)
+
+          link = fragment.find("a")
+          expect(link.text).to eq("what's new")
+        end
+      end
+
+      context "when passing URLs as a list of symbols" do
+        let(:urls) { { url1: %i[a b], url2: %i[a c] } }
+
+        before do
+          allow(OpenProject::Static::Links).to receive(:url_for).and_return("/no-args")
+          allow(OpenProject::Static::Links).to receive(:url_for).with(:a, :b).and_return("https://example.com/a-b")
+          allow(OpenProject::Static::Links).to receive(:url_for).with(:a, :c).and_return("/a-c")
+        end
+
+        it "resolves the links from static links" do
+          translated = link_translate :translation_with_a_link, links: urls, external: false
+          fragment = Capybara.string(translated)
+
+          links = fragment.all("a")
+          expect(links.size).to eq(2)
+
+          expect(links[0].text).to eq("link")
+          expect(links[0][:href]).to eq("https://example.com/a-b")
+
+          expect(links[1].text).to eq("two")
+          expect(links[1][:href]).to eq("/a-c")
         end
       end
     end
 
-    describe '#format_date' do
-      context 'without a date_format setting', with_settings: { date_format: '' } do
-        it 'uses the locale formate' do
-          expect(format_date(Date.today))
-            .to eql I18n.l(Date.today)
+    describe "#format_date" do
+      context "without a date_format setting", with_settings: { date_format: "" } do
+        it "uses the locale format" do
+          expect(format_date(Time.zone.today))
+            .to eql described_class.l(Time.zone.today)
         end
       end
 
-      context 'with a date_format setting', with_settings: { date_format: '%d %m %Y' } do
-        it 'adheres to the format' do
-          expect(format_date(Date.today))
-            .to eql Date.today.strftime('%d %m %Y')
+      context "with a date_format setting", with_settings: { date_format: "%d %m %Y" } do
+        it "adheres to the format" do
+          expect(format_date(Time.zone.today))
+            .to eql Time.zone.today.strftime("%d %m %Y")
+        end
+
+        context "with a date_format preference" do
+          current_user { build_stubbed(:user, preferences: { date_format: "%Y-%m-%d" }) }
+
+          it "adheres to the preference" do
+            expect(format_date(Time.zone.today))
+              .to eql Time.zone.today.strftime("%Y-%m-%d")
+          end
+        end
+      end
+
+      valid_languages.each do |lang|
+        context "for lang #{lang}" do
+          it "raises no error" do
+            described_class.with_locale lang do
+              expect { format_date(Time.zone.today) }
+                .not_to raise_error
+            end
+          end
+        end
+      end
+    end
+
+    describe "#number_to_human_size" do
+      valid_languages.each do |lang|
+        context "for locale #{lang}" do
+          it "does not raise an error" do
+            described_class.with_locale lang do
+              expect { number_to_human_size(1024 * 1024 * 4) }
+                .not_to raise_error
+            end
+          end
+        end
+      end
+    end
+
+    describe "#format_time", with_settings: {
+      time_format: "%H %M",
+      date_format: "%d %m %Y"
+    } do
+      let(:user_time_zone) { "" }
+      let(:now) { Time.zone.parse("2011-02-20 15:45:22") }
+
+      current_user { build_stubbed(:user, preferences: { time_zone: user_time_zone }) }
+
+      it "with date and hours" do
+        expect(format_time(now))
+          .to eql now.strftime("%d %m %Y %H %M")
+      end
+
+      it "with only hours" do
+        expect(format_time(now, include_date: false))
+          .to eql now.strftime("%H %M")
+      end
+
+      it "renders correctly for only hours and when providing a custom format" do
+        expect(format_time(now, include_date: false, format: "%H:%M"))
+          .to eql now.strftime("%H:%M")
+      end
+
+      context "with another time zone configured for the user" do
+        # Kathmandu has a +05:45 offset
+        let(:user_time_zone) { "Kathmandu" }
+
+        it "renders correctly for data and hours" do
+          expect(format_time(now))
+            .to eql "20 02 2011 21 30"
+        end
+
+        it "renders correctly for only hours" do
+          expect(format_time(now, include_date: false))
+            .to eql "21 30"
+        end
+
+        it "renders correctly for only hours and when providing a custom format" do
+          expect(format_time(now, include_date: false, format: "%H:%M"))
+            .to eql "21:30"
+        end
+      end
+
+      context "with a different format defined", with_settings: {
+        time_format: "%H:%M",
+        date_format: "%Y-%m-%d"
+      } do
+        it "renders date and hours" do
+          expect(format_time(now))
+            .to eql "2011-02-20 15:45"
+        end
+
+        it "renders only hours" do
+          expect(format_time(now, include_date: false))
+            .to eql "15:45"
+        end
+      end
+
+      context "with a different user preference" do
+        current_user do
+          build_stubbed(:user,
+                        preferences: {
+                          time_zone: user_time_zone,
+                          date_format: "%Y-%m-%d",
+                          time_format: "%H:%M"
+                        })
+        end
+
+        it "renders date and hours" do
+          expect(format_time(now))
+            .to eql "2011-02-20 15:45"
+        end
+
+        it "renders only hours" do
+          expect(format_time(now, include_date: false))
+            .to eql "15:45"
+        end
+      end
+
+      context "without time and date format", with_settings: {
+        time_format: "",
+        date_format: ""
+      } do
+        it "falls back to default for date and hours" do
+          expect(format_time(now))
+            .to eql "02/20/2011 03:45 PM"
+        end
+
+        it "falls back to default for only hours" do
+          expect(format_time(now, include_date: false))
+            .to eql "03:45 PM"
+        end
+
+        valid_languages.each do |lang|
+          context "for lang #{lang}" do
+            it "raises no error for date and hours" do
+              described_class.with_locale lang do
+                expect { format_time(now) }
+                  .not_to raise_error
+              end
+            end
+
+            it "raises no error for only hours" do
+              described_class.with_locale lang do
+                expect { format_time(now, include_date: false) }
+                  .not_to raise_error
+              end
+            end
+          end
+        end
+      end
+
+      context "without time format", with_settings: {
+        time_format: "",
+        date_format: "%Y-%m-%d"
+      } do
+        it "falls back to default for date and hours" do
+          expect(format_time(now))
+            .to eql "2011-02-20 03:45 PM"
+        end
+
+        it "falls back to default for only hours" do
+          expect(format_time(now, include_date: false))
+            .to eql "03:45 PM"
+        end
+      end
+
+      context "without date format", with_settings: {
+        time_format: "%H:%M",
+        date_format: ""
+      } do
+        it "falls back to default for date and hours" do
+          expect(format_time(now))
+            .to eql "02/20/2011 15:45"
+        end
+
+        it "falls back to default for only hours" do
+          expect(format_time(now, include_date: false))
+            .to eql "15:45"
+        end
+      end
+    end
+
+    describe "#format_time_of_day" do
+      # Kathmandu has a +05:45 offset, so a converted clock would read 08:45
+      current_user { build_stubbed(:user, preferences: { time_zone: "Kathmandu" }) }
+
+      let(:time) { Time.new(2026, 10, 2, 23, 0, 0, "-04:00") }
+
+      it "formats the clock time as given without converting its zone" do
+        expect(format_time_of_day(time, format: "%H:%M"))
+          .to eql "23:00"
+      end
+
+      it "falls back to the locale time format when the format is blank" do
+        expect(format_time_of_day(time, format: ""))
+          .to eql "11:00 PM"
+      end
+    end
+
+    describe "#formatted_time_zone_offset" do
+      current_user { build_stubbed(:user, preferences: { time_zone: user_time_zone }) }
+      let(:user_time_zone) { "" }
+
+      let(:berlin_gmt) { ActiveSupport::TimeZone["Europe/Berlin"].now.utc_offset == 7200 ? "UTC+02:00" : "UTC+01:00" }
+
+      context "with the current user having set a time zone" do
+        let(:user_time_zone) { "Europe/Berlin" }
+
+        it "renders the time zone of the user" do
+          expect(formatted_time_zone_offset).to eql berlin_gmt
+        end
+      end
+
+      context "without the current user having a time zone and no default one configured" do
+        let(:user_time_zone) { "" }
+
+        it "renders the UTC time zone" do
+          expect(formatted_time_zone_offset).to eql "UTC+00:00"
+        end
+      end
+
+      context "without the current user having a time zone but with a default one configured",
+              with_settings: { user_default_timezone: "Europe/Berlin" } do
+        let(:user_time_zone) { "" }
+
+        it "renders the default time zone" do
+          expect(formatted_time_zone_offset).to eql berlin_gmt
+        end
+      end
+
+      context "without the current user having a time zone and also a default one configured",
+              with_settings: { user_default_timezone: "America/Atlanta" } do
+        let(:user_time_zone) { "Europe/Berlin" }
+
+        it "renders the default time zone" do
+          expect(formatted_time_zone_offset).to eql berlin_gmt
+        end
+      end
+    end
+
+    describe "day names" do
+      valid_languages.each do |lang|
+        context "for locale #{lang}" do
+          it "is an array" do
+            described_class.with_locale lang do
+              expect(described_class.t("date.day_names"))
+                .to be_a Array
+            end
+          end
+
+          it "has 7 elements" do
+            described_class.with_locale lang do
+              expect(described_class.t("date.day_names").size)
+                .to eq 7
+            end
+          end
+        end
+      end
+    end
+
+    describe "month names" do
+      valid_languages.each do |lang|
+        context "for locale #{lang}" do
+          it "is an array" do
+            described_class.with_locale lang do
+              expect(described_class.t("date.month_names"))
+                .to be_a Array
+            end
+          end
+
+          it "has 13 elements" do
+            described_class.with_locale lang do
+              expect(described_class.t("date.month_names").size)
+                .to eq 13
+            end
+          end
+        end
+      end
+    end
+
+    describe "#ordinalize" do
+      it "uses german default ordinal formatting for day numbers" do
+        described_class.with_locale :de do
+          expect(ordinalize(16)).to eq("16.")
+        end
+      end
+
+      it "falls back to inflector output when no locale-specific key exists" do
+        described_class.with_locale :en do
+          expect(ordinalize(16)).to eq("16th")
+        end
+      end
+    end
+
+    describe "#date_time_format_example" do
+      it "renders the sample date, independent of the current date" do
+        travel_to(Time.utc(2020, 1, 1)) do
+          expect(date_time_format_example("%d.%m.%Y")).to eq "28.02.2026"
+        end
+      end
+
+      it "renders every allowed date format distinctly" do
+        examples = Settings::Definition[:date_format].allowed.map { date_time_format_example(it) }
+
+        expect(examples).to eq(examples.uniq)
+      end
+
+      it "renders every allowed time format distinctly" do
+        examples = Settings::Definition[:time_format].allowed.map { date_time_format_example(it) }
+
+        expect(examples).to eq(examples.uniq)
+      end
+    end
+
+    describe ".l" do
+      valid_languages.each do |lang|
+        context "for locale #{lang}" do
+          it "is not 'default' for a date" do
+            described_class.with_locale lang do
+              expect(described_class.l(Time.zone.today, format: :default))
+                .not_to eq "default"
+            end
+          end
+
+          it "is not 'default' for a time" do
+            described_class.with_locale lang do
+              expect(described_class.l(Time.zone.now, format: :default))
+                .not_to eq "time"
+            end
+          end
         end
       end
     end

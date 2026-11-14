@@ -2,13 +2,13 @@
 ---
 get:
   parameters:
-  - description: QueryFilter identifier
-    example: status
-    in: path
-    name: id
-    required: true
-    schema:
-      type: string
+    - description: QueryFilter identifier
+      example: status
+      in: path
+      name: id
+      required: true
+      schema:
+        type: string
   responses:
     '200':
       content:
@@ -23,12 +23,14 @@ get:
                 _type: QueryFilter
                 id: status
           schema:
-            "$ref": "../components/schemas/query_filter_model.yml"
+            $ref: "../components/schemas/query_filter_model.yml"
       description: OK
       headers: {}
     '403':
       content:
         application/hal+json:
+          schema:
+            $ref: "../components/schemas/error_response.yml"
           examples:
             response:
               value:
@@ -43,6 +45,8 @@ get:
     '404':
       content:
         application/hal+json:
+          schema:
+            $ref: "../components/schemas/error_response.yml"
           examples:
             response:
               value:
@@ -52,7 +56,7 @@ get:
       description: Returned if the QueryFilter does not exist.
       headers: {}
   tags:
-  - Query Filters
+    - Query Filters
   description: Retrieve an individual QueryFilter as identified by the id parameter.
-  operationId: View_Query_Filter
+  operationId: get_query_filter
   summary: View Query Filter

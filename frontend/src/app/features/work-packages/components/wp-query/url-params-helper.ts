@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,137 +20,216 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
+import { merge } from 'lodash-es';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { QuerySortByResource } from 'core-app/features/hal/resources/query-sort-by-resource';
 import { HalLink } from 'core-app/features/hal/hal-link/hal-link';
 import idFromLink from 'core-app/features/hal/helpers/id-from-link';
 import isPersistedResource from 'core-app/features/hal/helpers/is-persisted-resource';
-import { Injectable } from '@angular/core';
-import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
-import { ApiV3Filter, FilterOperator } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
+import { Injectable, inject } from '@angular/core';
+import { QueryFilterInstanceResource, QueryFilterValue } from 'core-app/features/hal/resources/query-filter-instance-resource';
+import { ApiV3Filter, ApiV3FilterBuilder, FilterOperator } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
 import { PaginationService } from 'core-app/shared/components/table-pagination/pagination-service';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
+
+export interface QueryPropsFilter {
+  n:string;
+  o:string
+  v:unknown;
+}
+
+export interface QueryProps {
+  // Columns
+  c:string[];
+  // Sums enabled?
+  s?:boolean;
+  // Sort by criteria
+  t?:string;
+  // Group by criteria
+  g:string|null;
+  // Filters
+  f:QueryPropsFilter[];
+  // Hierarchies
+  hi:boolean;
+  // Highlighting mode
+  hl?:string;
+  // Highlighted attributes
+  hla?:string[];
+  // Display representation
+  dr?:string;
+  // Include subprojects
+  is?:boolean;
+  // Pagination
+  pa?:string|number;
+  pp?:string|number;
+
+  // Timeline options
+  tv?:boolean;
+  tzl?:string;
+  tll?:string;
+
+  // Timestamps options
+  ts?:string;
+}
+
+export interface QueryRequestParams {
+  page?:string|number;
+  pageSize:string|number;
+  offset:string|number;
+  'columns[]':string[];
+  showSums:boolean;
+  timelineVisible:boolean;
+  timelineLabels:string;
+  timelineZoomLevel:string;
+  displayRepresentation:string;
+  includeSubprojects:boolean;
+  highlightingMode:string;
+  'highlightedAttributes[]':string[];
+  showHierarchies:boolean;
+  groupBy:string|null;
+  filters:string;
+  sortBy:string;
+  query_id:string|null;
+  timestamps:string;
+  valid_subset?:boolean;
+}
+
+interface QueryValueLink {
+  href:string;
+}
 
 @Injectable({ providedIn: 'root' })
 export class UrlParamsHelperService {
-  public constructor(public paginationService:PaginationService) {
-  }
+  paginationService = inject(PaginationService);
+
 
   // copied more or less from angular buildUrl
-  public buildQueryString(params:any) {
+  public buildQueryString(params:object|null|undefined) {
     if (!params) {
       return undefined;
     }
 
     const parts:string[] = [];
-    _.each(params, (value, key) => {
-      if (!value) {
+    Object.entries(params as Record<string, unknown>).forEach(([key, value]) => {
+      if (value === undefined || value === null) {
         return;
       }
-      if (!Array.isArray(value)) {
-        value = [value];
-      }
+      const values:unknown[] = Array.isArray(value) ? value as unknown[] : [value];
 
-      _.each(value, (v) => {
-        if (v !== null && typeof v === 'object') {
-          v = JSON.stringify(v);
-        }
+      values.forEach((v) => {
+        const encoded = (v !== null && typeof v === 'object') ? JSON.stringify(v) : v as string;
         parts.push(`${encodeURIComponent(key)}=${
-          encodeURIComponent(v)}`);
+          encodeURIComponent(encoded)}`);
       });
     });
 
     return parts.join('&');
   }
 
-  public encodeQueryJsonParams(query:QueryResource, additional:any = {}) {
-    let paramsData:any = {};
+  public encodeQueryJsonParams(
+    query:QueryResource,
+    extender?:Partial<QueryProps>|((paramsData:QueryProps) => QueryProps),
+  ):string {
+    const paramsData:QueryProps = {
+      c: query.columns.map((column) => column.id),
+      hi: !!query.showHierarchies,
+      g: query.groupBy?.id ?? '',
+      dr: query.displayRepresentation,
+      is: query.includeSubprojects,
+      ...this.encodeSums(query),
+      ...this.encodeTimelineVisible(query),
+      ...this.encodeHighlightingMode(query),
+      ...this.encodeHighlightedAttributes(query),
+      ...this.encodeSortBy(query),
+      ...this.encodeFilters(query.filters),
+      ...this.encodeTimestamps(query),
+    };
 
-    paramsData = this.encodeColumns(paramsData, query);
-    paramsData = this.encodeSums(paramsData, query);
-    paramsData = this.encodeTimelineVisible(paramsData, query);
-    paramsData = this.encodeHighlightingMode(paramsData, query);
-    paramsData = this.encodeHighlightedAttributes(paramsData, query);
-    paramsData.hi = !!query.showHierarchies;
-    paramsData.g = _.get(query.groupBy, 'id', '');
-    paramsData = this.encodeSortBy(paramsData, query);
-    paramsData = this.encodeFilters(paramsData, query.filters);
-    paramsData.pa = additional.page;
-    paramsData.pp = additional.perPage;
-    paramsData.dr = query.displayRepresentation;
+    if (typeof extender === 'function') {
+      return JSON.stringify(extender(paramsData));
+    }
+
+    if (typeof extender === 'object') {
+      return JSON.stringify(merge(paramsData, extender));
+    }
 
     return JSON.stringify(paramsData);
   }
 
-  private encodeColumns(paramsData:any, query:QueryResource) {
-    paramsData.c = query.columns.map((column) => column.id);
-
-    return paramsData;
-  }
-
-  private encodeSums(paramsData:any, query:QueryResource) {
+  private encodeSums(query:QueryResource):Partial<QueryProps> {
     if (query.sums) {
-      paramsData.s = query.sums;
+      return { s: query.sums };
     }
-    return paramsData;
+
+    return {};
   }
 
-  private encodeHighlightingMode(paramsData:any, query:QueryResource) {
+  private encodeHighlightingMode(query:QueryResource):Partial<QueryProps> {
     if (query.highlightingMode && (isPersistedResource(query) || query.highlightingMode !== 'inline')) {
-      paramsData.hl = query.highlightingMode;
+      return { hl: query.highlightingMode };
     }
-    return paramsData;
+
+    return {};
   }
 
-  private encodeHighlightedAttributes(paramsData:any, query:QueryResource) {
+  private encodeHighlightedAttributes(query:QueryResource):Partial<QueryProps> {
     if (query.highlightingMode === 'inline') {
       if (Array.isArray(query.highlightedAttributes) && query.highlightedAttributes.length > 0) {
-        paramsData.hla = query.highlightedAttributes.map((el) => el.id);
+        return { hla: query.highlightedAttributes.map((el) => idFromLink(el.href)) };
       }
     }
-    return paramsData;
+
+    return {};
   }
 
-  private encodeSortBy(paramsData:any, query:QueryResource) {
+  private encodeSortBy(query:QueryResource):Partial<QueryProps> {
     if (query.sortBy) {
-      paramsData.t = query
-        .sortBy
-        .map((sort:QuerySortByResource) => sort.id!.replace('-', ':'))
-        .join();
+      return {
+        t: query
+          .sortBy
+          .map((sort:QuerySortByResource) => sort.id!.replace('-', ':'))
+          .join(),
+      };
     }
-    return paramsData;
+
+    return {};
   }
 
-  public encodeFilters(paramsData:any, filters:QueryFilterInstanceResource[]) {
+  private encodeTimestamps(query:QueryResource):Partial<QueryProps> {
+    if (query.timestamps) {
+      return { ts: query.timestamps.join(',') };
+    }
+
+    return {};
+  }
+
+  public encodeFilters(filters:QueryFilterInstanceResource[]):Pick<QueryProps, 'f'> {
     if (filters && filters.length > 0) {
-      paramsData.f = filters
-        .map((filter:any) => {
-          const { id } = filter;
+      const filterProps:QueryPropsFilter[] = filters.map((filter) => ({
+        n: filter.id,
+        o: filter.operator.id,
+        v: filter.values.map((value) => this.queryFilterValueToParam(value)),
+      }));
 
-          const operator = filter.operator.id;
-
-          return {
-            n: id,
-            o: operator,
-            v: _.map(filter.values, (v) => this.queryFilterValueToParam(v)),
-          };
-        });
-    } else {
-      paramsData.f = [];
+      return { f: filterProps };
     }
-    return paramsData;
+
+    return { f: [] };
   }
 
-  private encodeTimelineVisible(paramsData:any, query:QueryResource) {
+  private encodeTimelineVisible(query:QueryResource):Partial<QueryProps> {
+    const paramsData:Partial<QueryProps> = {};
+
     if (query.timelineVisible) {
       paramsData.tv = query.timelineVisible;
 
-      if (!_.isEmpty(query.timelineLabels)) {
+      if (Object.keys(query.timelineLabels ?? {}).length > 0) {
         paramsData.tll = JSON.stringify(query.timelineLabels);
       }
 
@@ -158,11 +237,12 @@ export class UrlParamsHelperService {
     } else {
       paramsData.tv = false;
     }
+
     return paramsData;
   }
 
   public buildV3GetQueryFromJsonParams(updateJson:string|null) {
-    const queryData:any = {
+    const queryData:Partial<QueryRequestParams> = {
       pageSize: this.paginationService.getPerPage(),
     };
 
@@ -170,10 +250,10 @@ export class UrlParamsHelperService {
       return queryData;
     }
 
-    const properties = JSON.parse(updateJson);
+    const properties = JSON.parse(updateJson) as QueryProps;
 
     if (properties.c) {
-      queryData['columns[]'] = properties.c.map((column:any) => column);
+      queryData['columns[]'] = properties.c.map((column) => column);
     }
     if (properties.s) {
       queryData.showSums = properties.s;
@@ -195,33 +275,37 @@ export class UrlParamsHelperService {
       queryData.displayRepresentation = properties.dr;
     }
 
+    if (properties.is !== undefined) {
+      queryData.includeSubprojects = properties.is;
+    }
+
     if (properties.hl) {
       queryData.highlightingMode = properties.hl;
     }
 
     if (properties.hla) {
-      queryData['highlightedAttributes[]'] = properties.hla.map((column:any) => column);
+      queryData['highlightedAttributes[]'] = properties.hla.map((column) => column);
     }
 
-    if (properties.hi === false || properties.hi === true) {
+    if (properties.hi !== undefined) {
       queryData.showHierarchies = properties.hi;
     }
 
-    queryData.groupBy = _.get(properties, 'g', '');
+    queryData.groupBy = properties.g ?? '';
 
     // Filters
     if (properties.f) {
-      const filters = properties.f.map((urlFilter:any) => {
-        const attributes = {
+      const filters = properties.f.map((urlFilter:QueryPropsFilter) => {
+        const attributes:{ operator:string, values?:unknown[] } = {
           operator: decodeURIComponent(urlFilter.o),
         };
         if (urlFilter.v) {
           // the array check is only there for backwards compatibility reasons.
           // Nowadays, it will always be an array;
           const vs = Array.isArray(urlFilter.v) ? urlFilter.v : [urlFilter.v];
-          _.extend(attributes, { values: vs });
+          attributes.values = vs;
         }
-        const filterData:any = {};
+        const filterData:Record<string, typeof attributes> = {};
         filterData[urlFilter.n] = attributes;
 
         return filterData;
@@ -230,9 +314,13 @@ export class UrlParamsHelperService {
       queryData.filters = JSON.stringify(filters);
     }
 
-    // Sortation
+    // Sorting
     if (properties.t) {
-      queryData.sortBy = JSON.stringify(properties.t.split(',').map((sort:any) => sort.split(':')));
+      queryData.sortBy = JSON.stringify(properties.t.split(',').map((sort) => sort.split(':')));
+    }
+
+    if (properties.ts) {
+      queryData.timestamps = properties.ts;
     }
 
     // Pagination
@@ -246,8 +334,12 @@ export class UrlParamsHelperService {
     return queryData;
   }
 
-  public buildV3GetQueryFromQueryResource(query:QueryResource, additionalParams:any = {}, contextual:any = {}) {
-    const queryData:any = {};
+  public buildV3GetQueryFromQueryResource(
+    query:QueryResource,
+    additionalParams:object = {},
+    contextual:Record<string, string> = {},
+  ):Partial<QueryRequestParams> {
+    const queryData:Partial<QueryRequestParams> = {};
 
     queryData['columns[]'] = this.buildV3GetColumnsFromQueryResource(query);
     queryData.showSums = query.sums;
@@ -263,58 +355,72 @@ export class UrlParamsHelperService {
     }
 
     if (query.highlightedAttributes && query.highlightingMode === 'inline') {
-      queryData['highlightedAttributes[]'] = query.highlightedAttributes.map((el) => el.href);
+      queryData['highlightedAttributes[]'] = query.highlightedAttributes.map((el) => el.href!);
     }
 
     if (query.displayRepresentation) {
       queryData.displayRepresentation = query.displayRepresentation;
     }
 
+    queryData.includeSubprojects = !!query.includeSubprojects;
     queryData.showHierarchies = !!query.showHierarchies;
-    queryData.groupBy = _.get(query.groupBy, 'id', '');
+    queryData.groupBy = query.groupBy?.id ?? '';
 
     // Filters
     queryData.filters = this.buildV3GetFiltersAsJson(query.filters, contextual);
 
-    // Sortation
+    // Sorting
     queryData.sortBy = this.buildV3GetSortByFromQuery(query);
+    queryData.timestamps = query.timestamps.join(',');
 
-    return _.extend(additionalParams, queryData);
+    return Object.assign(additionalParams, queryData);
   }
 
-  public queryFilterValueToParam(value:any) {
+  public queryFilterValueToParam(value:QueryFilterValue|boolean):string {
     if (typeof (value) === 'boolean') {
       return value ? 't' : 'f';
     }
 
     if (!value) {
       return '';
-    } if (value.id) {
+    }
+
+    if (typeof value === 'string' || typeof value === 'number') {
+      return value.toString();
+    }
+
+    if (value.id) {
       return value.id.toString();
-    } if (value.href) {
-      return value.href.split('/').pop().toString();
     }
-    return value.toString();
+    if (value.href) {
+      return value.href.split('/').pop()!;
+    }
+
+    if (value instanceof HalResource) {
+      return value.toString();
+    }
+
+    return String(value.id ?? '');
   }
 
-  private buildV3GetColumnsFromQueryResource(query:QueryResource) {
+  private buildV3GetColumnsFromQueryResource(query:QueryResource):string[] {
     if (query.columns) {
-      return query.columns.map((column:any) => column.id || idFromLink(column.href));
-    } if (query._links.columns) {
-      return query._links.columns.map((column:HalLink) => {
-        const id = column.href!;
-
-        return this.idFromHref(id);
-      });
+      return query.columns.map((column) => column.id || idFromLink(column.href));
     }
+    const links = query._links as { columns?:HalLink[] };
+    if (links.columns) {
+      return links.columns.map((column:HalLink) => idFromLink(column.href));
+    }
+
+    return [];
   }
 
-  public buildV3GetFilters(filters:QueryFilterInstanceResource[], replacements = {}):ApiV3Filter[] {
+  public buildV3GetFilters(filters:QueryFilterInstanceResource[], replacements:Record<string, string> = {}):ApiV3Filter[] {
     const newFilters = filters.map((filter:QueryFilterInstanceResource) => {
       const id = this.buildV3GetFilterIdFromFilter(filter);
       const operator = this.buildV3GetOperatorIdFromFilter(filter);
-      const values = this.buildV3GetValuesFromFilter(filter).map((value) => {
-        _.each(replacements, (val:string, key:string) => {
+      const values = this.buildV3GetValuesFromFilter(filter).map((value:string) => {
+        Object.entries(replacements).forEach(([key, val]:[string, string]) => {
           value = value.replace(`{${key}}`, val);
         });
 
@@ -330,51 +436,55 @@ export class UrlParamsHelperService {
     return newFilters;
   }
 
-  public buildV3GetFiltersAsJson(filter:QueryFilterInstanceResource[], contextual = {}) {
+  public filterBuilderFrom(filters:QueryFilterInstanceResource[]) {
+    const builder:ApiV3FilterBuilder = new ApiV3FilterBuilder();
+
+    filters.forEach((filter:QueryFilterInstanceResource) => {
+      const id = this.buildV3GetFilterIdFromFilter(filter);
+      const operator = this.buildV3GetOperatorIdFromFilter(filter) as FilterOperator;
+      const values = this.buildV3GetValuesFromFilter(filter);
+
+      builder.add(id, operator, values);
+    });
+
+    return builder;
+  }
+
+  public buildV3GetFiltersAsJson(filter:QueryFilterInstanceResource[], contextual:Record<string, string> = {}) {
     return JSON.stringify(this.buildV3GetFilters(filter, contextual));
   }
 
   public buildV3GetFilterIdFromFilter(filter:QueryFilterInstanceResource) {
-    const href = filter.filter ? filter.filter.href : filter._links.filter.href;
+    const href = filter.filter ? filter.filter.href : (filter._links as { filter:HalLink }).filter.href;
 
-    return this.idFromHref(href);
+    return idFromLink(href);
+  }
+
+  public buildV3GetValuesFromFilter(filter:QueryFilterInstanceResource|QueryFilterResource):string[] {
+    if (filter.values) {
+      return (filter.values as (QueryFilterValue|boolean)[]).map((v) => this.queryFilterValueToParam(v));
+    }
+    return (filter._links as { values:QueryValueLink[] }).values.map((v) => idFromLink(v.href));
   }
 
   private buildV3GetOperatorIdFromFilter(filter:QueryFilterInstanceResource) {
     if (filter.operator) {
       return filter.operator.id || idFromLink(filter.operator.href);
     }
-    const { href } = filter._links.operator;
+    const { href } = (filter._links as { operator:HalLink }).operator;
 
-    return this.idFromHref(href);
-  }
-
-  private buildV3GetValuesFromFilter(filter:QueryFilterInstanceResource) {
-    if (filter.values) {
-      return _.map(filter.values, (v:any) => this.queryFilterValueToParam(v));
-    }
-    return _.map(filter._links.values, (v:any) => this.idFromHref(v.href));
+    return idFromLink(href);
   }
 
   private buildV3GetSortByFromQuery(query:QueryResource) {
-    const sortBys = query.sortBy ? query.sortBy : query._links.sortBy;
+    const sortBys = query.sortBy ? query.sortBy : (query._links as { sortBy:QuerySortByResource[] }).sortBy;
     const sortByIds = sortBys.map((sort:QuerySortByResource) => {
       if (sort.id) {
         return sort.id;
       }
-      const href = sort.href!;
-
-      const id = this.idFromHref(href);
-
-      return id;
+      return idFromLink(sort.href);
     });
 
     return JSON.stringify(sortByIds.map((id:string) => id.split('-')));
-  }
-
-  private idFromHref(href:string) {
-    const id = href.substring(href.lastIndexOf('/') + 1, href.length);
-
-    return decodeURIComponent(id);
   }
 }

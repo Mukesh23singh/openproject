@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,65 +22,64 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-shared_examples_for 'labelled' do
-  it 'has a label with title' do
-    is_expected.to have_selector 'label.form--label[title]'
+RSpec.shared_examples_for "labeled" do
+  it "has a label with title" do
+    expect(subject).to have_css "label.form--label[title]"
   end
 end
 
-shared_examples_for 'not labelled' do
-  it 'does not have a label with title' do
-    is_expected.not_to have_selector 'label.form--label[title]'
+RSpec.shared_examples_for "not labeled" do
+  it "does not have a label with title" do
+    expect(subject).to have_no_css "label.form--label[title]"
   end
 end
 
-shared_examples_for 'labelled by default' do
-  context 'by default' do
-    it_behaves_like 'labelled'
+RSpec.shared_examples_for "labeled by default" do
+  context "by default" do
+    it_behaves_like "labeled"
   end
 
-  context 'with no_label option' do
+  context "with no_label option" do
     let(:options) { { no_label: true, label: false } }
 
-    it_behaves_like 'not labelled'
+    it_behaves_like "not labeled"
   end
 end
 
-shared_examples_for 'wrapped in container' do |container = 'field-container'|
-  it { is_expected.to have_selector "span.form--#{container}", count: 1 }
+RSpec.shared_examples_for "wrapped in container" do |container = "field-container"|
+  it { is_expected.to have_css "span.form--#{container}", count: 1 }
 
-  context 'with additional class provided' do
-    let(:css_class) { 'my-additional-class' }
+  context "with additional class provided" do
+    let(:css_class) { "my-additional-class" }
     let(:expected_container_count) { defined?(container_count) ? container_count : 1 }
 
     before do
       options[:container_class] = css_class
     end
 
-    it 'has the class' do
-      is_expected.to have_selector "span.#{css_class}", count: expected_container_count
+    it "has the class" do
+      expect(subject).to have_css "span.#{css_class}", count: expected_container_count
     end
   end
 end
 
-shared_examples_for 'not wrapped in container' do |container = 'field-container'|
-  it { is_expected.not_to have_selector "span.form--#{container}" }
+RSpec.shared_examples_for "not wrapped in container" do |container = "field-container"|
+  it { is_expected.to have_no_css "span.form--#{container}" }
 end
 
-shared_examples_for 'wrapped in field-container by default' do
-  context 'by default' do
-    it_behaves_like 'wrapped in container'
+RSpec.shared_examples_for "wrapped in field-container by default" do
+  context "by default" do
+    it_behaves_like "wrapped in container"
   end
 
-  context 'with no_label option' do
+  context "with no_label option" do
     let(:options) { { no_label: true, label: false } }
 
-    it_behaves_like 'not wrapped in container'
+    it_behaves_like "not wrapped in container"
   end
 end

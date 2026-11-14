@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +22,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe UserInvitation do
-  describe '.reinvite_user' do
-    let(:user) { FactoryBot.create :invited_user }
-    let!(:token) { FactoryBot.create :invitation_token, user: user }
+RSpec.describe UserInvitation do
+  describe ".reinvite_user" do
+    let(:user) { create(:invited_user) }
+    let!(:token) { create(:invitation_token, user:) }
 
-    it 'notifies listeners of the re-invite' do
+    it "notifies listeners of the re-invite" do
       expect(OpenProject::Notifications).to receive(:send) do |event, _new_token|
-        expect(event).to eq 'user_reinvited'
+        expect(event).to eq "user_reinvited"
       end
 
       UserInvitation.reinvite_user user.id
     end
 
-    it 'creates a new token' do
+    it "creates a new token" do
       new_token = UserInvitation.reinvite_user user.id
 
       expect(new_token.value).not_to eq token.value
-      expect(Token::Invitation.exists?(token.id)).to eq false
+      expect(Token::Invitation.exists?(token.id)).to be false
     end
   end
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,100 +22,147 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Wysiwyg embedded work package tables',
-         type: :feature, js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
-  let(:user) { admin }
-  let(:type_task) { FactoryBot.create :type_task }
-  let(:type_bug) { FactoryBot.create :type_bug }
-  let(:project) do
-    FactoryBot.create(:project, types: [type_task, type_bug], enabled_module_names: %w[wiki work_package_tracking])
+RSpec.describe "Wysiwyg embedded work package tables",
+               :js do
+  shared_let(:admin) { create(:admin) }
+  shared_let(:type_task) { create(:type_task) }
+  shared_let(:type_bug) { create(:type_bug) }
+  shared_let(:project) do
+    create(:project, :with_internal_wiki, types: [type_task, type_bug], enabled_module_names: %w[work_package_tracking])
   end
-  let(:editor) { ::Components::WysiwygEditor.new }
-  let!(:wp_task) { FactoryBot.create(:work_package, project: project, type: type_task) }
-  let!(:wp_bug) { FactoryBot.create(:work_package, project: project, type: type_bug) }
+  shared_let(:wp_task) { create(:work_package, project:, type: type_task) }
+  shared_let(:wp_bug) { create(:work_package, project:, type: type_bug) }
 
-  let(:modal) { ::Components::WorkPackages::TableConfigurationModal.new }
-  let(:filters) { ::Components::WorkPackages::TableConfiguration::Filters.new }
-  let(:columns) { ::Components::WorkPackages::Columns.new }
+  let(:editor) { Components::WysiwygEditor.new }
+  let(:modal) { Components::WorkPackages::TableConfigurationModal.new }
+  let(:filters) { Components::WorkPackages::TableConfiguration::Filters.new }
+  let(:columns) { Components::WorkPackages::Columns.new }
+
+  let(:user) { admin }
 
   before do
     login_as(user)
   end
 
-  describe 'in wikis' do
-    describe 'creating a wiki page' do
+  describe "in wikis" do
+    describe "creating a wiki page" do
       before do
         visit project_wiki_path(project, :wiki)
       end
 
-      it 'can add and edit an embedded table widget' do
+      it "can add and edit an embedded table widget" do
         editor.in_editor do |_container, editable|
-          editor.insert_macro 'Embed work package table'
+          editor.insert_macro "Embed work package table"
 
           modal.expect_open
-          modal.switch_to 'Filters'
+          modal.switch_to "Filters"
           filters.expect_filter_count 2
-          filters.add_filter_by('Type', 'is', type_task.name)
+          filters.add_filter_by("Type", "is (OR)", type_task.name)
 
-          modal.switch_to 'Columns'
+          modal.switch_to "Columns"
           columns.assume_opened
           columns.uncheck_all save_changes: false
-          columns.add 'ID', save_changes: false
-          columns.add 'Subject', save_changes: false
-          columns.add 'Type', save_changes: false
-          columns.expect_checked 'ID'
-          columns.expect_checked 'Subject'
-          columns.expect_checked 'Type'
+          columns.add "ID", save_changes: false
+          columns.add "Subject", save_changes: false
+          columns.add "Type", save_changes: false
+          columns.expect_checked "ID"
+          columns.expect_checked "Subject"
+          columns.expect_checked "Type"
 
           # Save widget
           modal.save
 
           # Find widget, click to show toolbar
-          macro = editable.find('.ck-widget.op-uc-placeholder')
+          macro = editable.find(".ck-widget.op-uc-placeholder")
           macro.click
 
           # Edit widget again
-          page.find('.ck-balloon-panel .ck-button', visible: :all, text: 'Edit').click
+          page.find(".ck-balloon-panel .ck-button", visible: :all, text: "Edit").click
 
           modal.expect_open
-          modal.switch_to 'Filters'
+          modal.switch_to "Filters"
           filters.expect_filter_count 3
-          modal.switch_to 'Columns'
+          modal.switch_to "Columns"
           columns.assume_opened
-          columns.expect_checked 'ID'
-          columns.expect_checked 'Subject'
-          columns.expect_checked 'Type'
+          columns.expect_checked "ID"
+          columns.expect_checked "Subject"
+          columns.expect_checked "Type"
           modal.cancel
-
-          # Expect we can preview the table within ckeditor-augmented-textarea
-          editor.within_enabled_preview do |preview_container|
-            embedded_table = ::Pages::EmbeddedWorkPackagesTable.new preview_container
-            embedded_table.expect_work_package_listed wp_task
-            embedded_table.ensure_work_package_not_listed! wp_bug
-          end
         end
 
         # Save wiki page
-        click_on 'Save'
+        click_on "Create"
 
-        expect(page).to have_selector('.flash.notice')
+        expect_flash(message: "Successful creation.")
 
-        embedded_table = ::Pages::EmbeddedWorkPackagesTable.new find('.wiki-content')
+        embedded_table = Pages::EmbeddedWorkPackagesTable.new find(".wiki-content")
         embedded_table.expect_work_package_listed wp_task
         embedded_table.ensure_work_package_not_listed! wp_bug
 
         # Clicking on work package ID redirects
         full_view = embedded_table.open_full_screen_by_doubleclick wp_task
         full_view.ensure_page_loaded
+      end
+
+      context "with a subproject that gets deleted" do
+        let!(:subproject) do
+          create(:project, :with_internal_wiki, parent: project)
+        end
+
+        it "can still edit the embedded table widget" do
+          editor.in_editor do |_container, editable|
+            editor.insert_macro "Embed work package table"
+
+            modal.expect_open
+            modal.switch_to "Filters"
+            filters.expect_filter_count 2
+            filters.add_filter_by("Including subproject", "is (OR)", subproject.name, "subprojectId")
+
+            # Save widget
+            modal.save
+
+            # Find widget, click to show toolbar
+            macro = editable.find(".ck-widget.op-uc-placeholder")
+            macro.click
+          end
+
+          # Save wiki page
+          click_on "Create"
+
+          expect_and_dismiss_flash(message: "Successful creation.")
+
+          # Embedded queries
+          wikipage = project.wiki.pages.last
+          expect(wikipage.text).to include("subprojectId")
+
+          # Delete the project
+          subproject.destroy!
+
+          click_on "Edit"
+
+          # Find widget, click to show toolbar
+          editor.in_editor do |_container, editable|
+            macro = editable.find(".ck-widget.op-uc-placeholder")
+            macro.click
+          end
+
+          # Edit widget again
+          page.find(".ck-balloon-panel .ck-button", visible: :all, text: "Edit").click
+
+          modal.expect_open
+          modal.switch_to "Filters"
+
+          # Subproject filter is gone
+          filters.expect_filter_count 2
+          expect(page).to have_no_text "Subproject"
+        end
       end
     end
   end

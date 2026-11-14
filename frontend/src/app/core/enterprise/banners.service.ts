@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +20,42 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Inject, Injectable } from '@angular/core';
-import { DOCUMENT } from '@angular/common';
+import { Injectable, DOCUMENT, inject } from '@angular/core';
 import { enterpriseEditionUrl } from 'core-app/core/setup/globals/constants.const';
+import { ConfigurationService } from 'core-app/core/config/configuration.service';
 
 @Injectable({ providedIn: 'root' })
 export class BannersService {
-  private readonly _banners:boolean = true;
+  protected documentElement = inject<Document>(DOCUMENT);
+  protected configuration = inject(ConfigurationService);
 
-  constructor(@Inject(DOCUMENT) protected documentElement:Document) {
-    this._banners = documentElement.body.classList.contains('ee-banners-visible');
+  private readonly _bannersHidden:boolean = true;
+
+  constructor() {
+    const documentElement = this.documentElement;
+
+    this._bannersHidden = documentElement.body.classList.contains('ee-banners-hidden');
   }
 
-  public get eeShowBanners():boolean {
-    return this._banners;
+  public showBannerFor(feature:string):boolean {
+    if (this._bannersHidden) {
+      return false;
+    }
+
+    return !this.allowsTo(feature) || this.trialling(feature);
+  }
+
+  public allowsTo(feature:string):boolean {
+    return this.configuration.availableFeatures.includes(feature);
+  }
+
+  public trialling(feature:string):boolean {
+    return this.configuration.triallingFeatures.includes(feature);
   }
 
   public getEnterPriseEditionUrl({ referrer, hash }:{ referrer?:string, hash?:string } = {}) {
@@ -55,11 +71,17 @@ export class BannersService {
     return url.toString();
   }
 
-  public conditional(bannersVisible?:() => void, bannersNotVisible?:() => void) {
-    this._banners ? this.callMaybe(bannersVisible) : this.callMaybe(bannersNotVisible);
+  public async conditional(feature:string, featureNotAvailable?:() => void, featureAvailable?:() => void) {
+    await this.configuration.initialize();
+
+    if (this.allowsTo(feature)) {
+      this.callMaybe(featureAvailable);
+    } else {
+      this.callMaybe(featureNotAvailable);
+    }
   }
 
-  private callMaybe(func?:Function) {
-    func && func();
+  private callMaybe(func?:() => unknown) {
+    func?.();
   }
 }

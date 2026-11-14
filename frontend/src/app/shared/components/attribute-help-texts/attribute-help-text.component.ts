@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +20,34 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  Injector,
-  Input,
-  OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, Injector, Input, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { OpModalService } from 'core-app/shared/components/modal/modal.service';
+import { populateInputsFromDataset } from 'core-app/shared/components/dataset-inputs';
 import { AttributeHelpTextsService } from './attribute-help-text.service';
-import { AttributeHelpTextModalComponent } from './attribute-help-text.modal';
-import { DatasetInputs } from 'core-app/shared/components/dataset-inputs.decorator';
+import { AttributeHelpTextModalService } from './attribute-help-text-modal.service';
+import { uniqueId } from 'lodash-es';
 
 export const attributeHelpTextSelector = 'attribute-help-text';
 
-@DatasetInputs
 @Component({
   selector: attributeHelpTextSelector,
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './attribute-help-text.component.html',
+  standalone: false,
 })
 export class AttributeHelpTextComponent implements OnInit {
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  protected attributeHelpTexts = inject(AttributeHelpTextsService);
+  protected attributeHelpTextModalService = inject(AttributeHelpTextModalService);
+  protected cdRef = inject(ChangeDetectorRef);
+  protected injector = inject(Injector);
+  protected I18n = inject(I18nService);
+
   // Attribute to show help text for
   @Input() public attribute:string;
 
@@ -58,52 +56,63 @@ export class AttributeHelpTextComponent implements OnInit {
   // Scope to search for
   @Input() public attributeScope:string;
 
-  // Load single id entry if given
+  // Use single id entry if given
   @Input() public helpTextId?:string|number;
 
-  public exists = false;
+  isLoading = false;
+
+  readonly tooltipId = uniqueId('tooltip-');
 
   readonly text = {
     open_dialog: this.I18n.t('js.help_texts.show_modal'),
-    edit: this.I18n.t('js.button_edit'),
-    close: this.I18n.t('js.button_close'),
   };
 
-  constructor(
-    readonly elementRef:ElementRef,
-    protected attributeHelpTexts:AttributeHelpTextsService,
-    protected opModalService:OpModalService,
-    protected cdRef:ChangeDetectorRef,
-    protected injector:Injector,
-    protected I18n:I18nService,
-  ) {
+  constructor() {
+    populateInputsFromDataset(this);
   }
 
   ngOnInit() {
-    if (this.helpTextId) {
-      this.exists = true;
-    } else {
-      // Need to load the promise to find out if the attribute exists
-      this.load().then((resource) => {
-        this.exists = !!resource;
+    // Need to load the promise to find out if the attribute exists
+    this.getId()
+      .then((id) => {
+        this.helpTextId = id;
         this.cdRef.detectChanges();
-        return resource;
-      });
-    }
+      })
+      .catch(() => {});
+  }
+
+  public get exists() {
+    return this.helpTextId != null;
+  }
+
+  public get buttonId():string {
+   return `attribute-help-text-component-${this.helpTextId}`;
   }
 
   public handleClick(event:Event):void {
-    this.load().then((resource) => {
-      this.opModalService.show(AttributeHelpTextModalComponent, this.injector, { helpText: resource });
-    });
+    if (this.isLoading) return;
+    this.isLoading = true;
+
+    void this.getId()
+      .then((id) => this.attributeHelpTextModalService.show(id))
+      .finally(() => {
+        this.isLoading = false;
+        this.cdRef.detectChanges();
+      });
 
     event.preventDefault();
   }
 
+  private async getId() {
+    if (this.exists) return this.helpTextId!.toString();
+
+    const resource = await this.load();
+    const id = resource?.id;
+    if (!id) return Promise.reject();
+    return id;
+  }
+
   private load() {
-    if (this.helpTextId) {
-      return this.attributeHelpTexts.requireById(this.helpTextId);
-    }
     return this.attributeHelpTexts.require(this.attribute, this.attributeScope);
   }
 }

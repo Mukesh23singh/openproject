@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,84 +22,57 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module OpenProject::CustomStyles
-  class ColorThemes
-    OpenProject::CustomStyles::ColorThemes::DEFAULT_THEME_NAME = 'OpenProject'.freeze
+  module ColorThemes
+    module_function
+
+    OpenProject::CustomStyles::ColorThemes::DEFAULT_THEME_NAME = "OpenProject (default)"
+
+    DEPRECATED_MAIN_MENU_COLOR = "#333739"
+    PRIMER_PRIMARY_BUTTON_COLOR = "#1F883D"
+    ACCENT_COLOR = "#0F41B5"
+    DEFAULT_HEADER_BG_COLOR = "#0F41B5"
 
     THEMES = [
       {
         theme: OpenProject::CustomStyles::ColorThemes::DEFAULT_THEME_NAME,
         colors: {
-          'primary-color' => "#1A67A3",
-          'primary-color-dark' => "#175A8E",
-          'alternative-color' => "#35C53F",
-          'content-link-color' => "#175A8E",
-          'header-bg-color' => "#1A67A3",
-          'header-item-bg-hover-color' => "#175A8E",
-          'header-item-font-color' => "#FFFFFF",
-          'header-item-font-hover-color' => "#FFFFFF",
-          'header-border-bottom-color' => "",
-          'main-menu-bg-color' => "#333739",
-          'main-menu-bg-selected-background' => "#175A8E",
-          'main-menu-bg-hover-background' => "#124E7C",
-          'main-menu-font-color' => "#FFFFFF",
-          'main-menu-hover-font-color' => "#FFFFFF",
-          'main-menu-selected-font-color' => "#FFFFFF",
-          'main-menu-border-color' => "#EAEAEA"
+          "primary-button-color" => PRIMER_PRIMARY_BUTTON_COLOR,
+          "accent-color" => ACCENT_COLOR,
+          "header-bg-color" => DEFAULT_HEADER_BG_COLOR,
+          "main-menu-bg-color" => "#FFFFFF",
+          "main-menu-bg-selected-background" => "#0F41B5"
         }
       },
       {
-        theme: 'OpenProject Light',
+        theme: "OpenProject Gray",
         colors: {
-          'primary-color' => "#1A67A3",
-          'primary-color-dark' => "#175A8E",
-          'alternative-color' => "#138E1B",
-          'content-link-color' => "#175A8E",
-          'header-bg-color' => "#FAFAFA",
-          'header-item-bg-hover-color' => "#E1E1E1",
-          'header-item-font-color' => "#313131",
-          'header-item-font-hover-color' => "#313131",
-          'header-border-bottom-color' => "#E1E1E1",
-          'main-menu-bg-color' => "#ECECEC",
-          'main-menu-bg-selected-background' => "#A9A9A9",
-          'main-menu-bg-hover-background' => "#FFFFFF",
-          'main-menu-font-color' => "#000000",
-          'main-menu-hover-font-color' => "#000000",
-          'main-menu-selected-font-color' => "#000000",
-          'main-menu-border-color' => "#EAEAEA"
+          "primary-button-color" => PRIMER_PRIMARY_BUTTON_COLOR,
+          "accent-color" => ACCENT_COLOR,
+          "header-bg-color" => "#FAFAFA",
+          "main-menu-bg-color" => "#ECECEC",
+          "main-menu-bg-selected-background" => "#A9A9A9"
         },
-        logo: 'logo_openproject.png'
+        logo: "logo_openproject.png"
       },
       {
-        theme: 'OpenProject Dark',
+        theme: "OpenProject Navy Blue",
         colors: {
-          'primary-color' => "#3270DB",
-          'primary-color-dark' => "#163473",
-          'alternative-color' => "#349939",
-          'content-link-color' => "#275BB5",
-          'header-bg-color' => "#05002C",
-          'header-item-bg-hover-color' => "#163473",
-          'header-item-font-color' => "#FFFFFF",
-          'header-item-font-hover-color' => "#FFFFFF",
-          'header-border-bottom-color' => "",
-          'main-menu-bg-color' => "#0E2045",
-          'main-menu-bg-selected-background' => "#3270DB",
-          'main-menu-bg-hover-background' => "#163473",
-          'main-menu-font-color' => "#FFFFFF",
-          'main-menu-hover-font-color' => "#FFFFFF",
-          'main-menu-selected-font-color' => "#FFFFFF",
-          'main-menu-border-color' => "#EAEAEA"
+          "primary-button-color" => PRIMER_PRIMARY_BUTTON_COLOR,
+          "accent-color" => ACCENT_COLOR,
+          "header-bg-color" => "#05002C",
+          "main-menu-bg-color" => "#0E2045",
+          "main-menu-bg-selected-background" => "#3270DB"
         }
       }
     ].freeze
 
-    def self.themes
+    def themes
       THEMES
     end
   end

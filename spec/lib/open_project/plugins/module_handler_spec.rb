@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,30 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-describe OpenProject::Plugins::ModuleHandler do
-  let!(:all_former_permissions) { OpenProject::AccessControl.permissions }
+require "spec_helper"
+RSpec.describe OpenProject::Plugins::ModuleHandler do
+  around do |example|
+    old_mapped_permissions = OpenProject::AccessControl.instance_variable_get(:@mapped_permissions).deep_dup
+    described_class.disable_modules!("repository")
 
-  before do
-    disabled_modules = OpenProject::Plugins::ModuleHandler.disable_modules('repository')
-    OpenProject::Plugins::ModuleHandler.disable(disabled_modules)
-  end
-
-  after do
-    raise 'Test outdated' unless OpenProject::AccessControl.instance_variable_defined?(:@permissions)
-
-    OpenProject::AccessControl.instance_variable_set(:@permissions, all_former_permissions)
+    example.run
+  ensure
+    OpenProject::AccessControl.instance_variable_set(:@mapped_permissions, old_mapped_permissions)
     OpenProject::AccessControl.clear_caches
   end
 
-  context '#disable' do
-    it 'should disable repository module' do
+  describe "#disable" do
+    it "disables repository module" do
       expect(OpenProject::AccessControl.available_project_modules).not_to include(:repository)
     end
   end

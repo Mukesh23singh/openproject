@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,11 +33,32 @@ module Queries::WorkPackages::Filter::FilterForWpMixin
   end
 
   def allowed_values
-    raise NotImplementedError, 'There would be too many candidates'
+    raise NotImplementedError, "There would be too many candidates"
+  end
+
+  # Tell `Filters::FilterFormComponent`'s dispatch to render these filters with a
+  # server-side autocompleter (the candidate set is too large for an inline
+  # `<select>`). Mirrors what the legacy Angular WP filter UI does — see
+  # `filter-searchable-multiselect-value.component.html`, which renders an
+  # `op-autocompleter` against the `work_packages` resource using the
+  # `typeahead` filter for search.
+  #
+  # Subclasses that override `type` to something other than `:list` (e.g.
+  # `SearchFilter` / `SubjectOrIdFilter` use `:search`, `RelatableFilter`
+  # uses `:relation`) get an empty hash so the dispatch falls back to the
+  # appropriate non-autocomplete input.
+  def autocomplete_options
+    return {} unless type == :list
+
+    {
+      component: "opce-autocompleter",
+      resource: "work_packages",
+      searchKey: "typeahead"
+    }
   end
 
   def value_objects
-    objects = visible_scope.find(no_templated_values)
+    objects = visible_scope.find(work_package_ids)
 
     if has_templated_value?
       objects << ::Queries::Filters::TemplatedValue.new(WorkPackage)
@@ -48,11 +68,11 @@ module Queries::WorkPackages::Filter::FilterForWpMixin
   end
 
   def allowed_objects
-    raise NotImplementedError, 'There would be too many candidates'
+    raise NotImplementedError, "There would be too many candidates"
   end
 
   def available?
-    key = 'Queries::WorkPackages::Filter::FilterForWpMixin/available'
+    key = "Queries::WorkPackages::Filter::FilterForWpMixin/available"
 
     RequestStore.fetch(key) do
       visible_scope.exists?
@@ -64,7 +84,8 @@ module Queries::WorkPackages::Filter::FilterForWpMixin
   end
 
   def allowed_values_subset
-    id_values = visible_scope.where(id: no_templated_values).pluck(:id).map(&:to_s)
+    visible_ids = visible_scope.where(id: work_package_ids).pluck(:id).to_set(&:to_s)
+    id_values = ids_by_value.select { |_, id| visible_ids.include?(id) }.keys
 
     if has_templated_value?
       id_values + templated_value_keys
@@ -73,7 +94,28 @@ module Queries::WorkPackages::Filter::FilterForWpMixin
     end
   end
 
+  def has_templated_value?
+    values.intersect?(templated_value_keys)
+  end
+
+  def values=(values)
+    super
+    @ids_by_value = nil
+  end
+
   private
+
+  def work_package_ids
+    ids_by_value.values.uniq
+  end
+
+  def ids_by_value
+    @ids_by_value ||= if no_templated_values.any? { WorkPackage::SemanticIdentifier.semantic_id?(it) }
+                        WorkPackage.ids_by_display_id(no_templated_values).transform_values(&:to_s)
+                      else
+                        no_templated_values.index_with(&:itself)
+                      end
+  end
 
   def visible_scope
     if context.project
@@ -103,9 +145,5 @@ module Queries::WorkPackages::Filter::FilterForWpMixin
 
   def deprecated_templated_value_key
     ::Queries::Filters::TemplatedValue::DEPRECATED_KEY
-  end
-
-  def has_templated_value?
-    (values & templated_value_keys).any?
   end
 end

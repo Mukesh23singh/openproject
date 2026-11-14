@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,40 +31,55 @@
 # No data is to be removed.
 module Principals
   class ReplaceReferencesService
+    class << self
+      attr_reader :replacements, :foreign_keys
+
+      def add_replacements(attributes_by_class_name)
+        attributes_by_class_name.each do |class_name, attributes|
+          Array(attributes).each { |attribute| add_replacement(class_name, attribute) }
+        end
+      end
+
+      def add_replacement(class_name, attribute)
+        @replacements ||= {}
+        @replacements[class_name] ||= Set.new
+        @replacements[class_name] << attribute
+
+        @foreign_keys ||= Set.new
+        @foreign_keys << attribute.to_s
+      end
+    end
+
     def call(from:, to:)
       rewrite_active_models(from, to)
       rewrite_custom_value(from, to)
       rewrite_default_journals(from, to)
       rewrite_customizable_journals(from, to)
 
-      ServiceResult.new success: true
+      ServiceResult.success
     end
 
     private
 
-    # rubocop:disable Rails/SkipsModelValidations
     def rewrite_active_models(from, to)
-      rewrite_author(from, to)
-      rewrite_user(from, to)
-      rewrite_assigned_to(from, to)
-      rewrite_responsible(from, to)
-      rewrite_actor(from, to)
+      self.class.replacements.each do |class_name, attributes|
+        klass = class_name.constantize
+        attributes.each { |attribute| rewrite(klass, attribute, from, to) }
+      end
     end
 
     def rewrite_custom_value(from, to)
       CustomValue
-        .where(custom_field_id: CustomField.where(field_format: 'user'))
+        .where(custom_field_id: CustomField.where(field_format: "user"))
         .where(value: from.id.to_s)
         .update_all(value: to.id.to_s)
     end
 
     def rewrite_default_journals(from, to)
       journal_classes.each do |klass|
-        foreign_keys.each do |foreign_key|
+        self.class.foreign_keys.each do |foreign_key|
           if klass.column_names.include? foreign_key
-            klass
-              .where(foreign_key => from.id)
-              .update_all(foreign_key => to.id)
+            rewrite(klass, foreign_key, from, to)
           end
         end
       end
@@ -74,60 +88,17 @@ module Principals
     def rewrite_customizable_journals(from, to)
       Journal::CustomizableJournal
         .joins(:custom_field)
-        .where(custom_fields: { field_format: 'user' })
+        .where(custom_fields: { field_format: "user" })
         .where(value: from.id.to_s)
         .update_all(value: to.id.to_s)
     end
-
-    def rewrite_author(from, to)
-      [WorkPackage,
-       Attachment,
-       WikiContent,
-       News,
-       Comment,
-       Message,
-       Budget,
-       MeetingAgenda,
-       MeetingMinutes].each do |klass|
-        klass.where(author_id: from.id).update_all(author_id: to.id)
-      end
-    end
-
-    def rewrite_user(from, to)
-      [TimeEntry,
-       ::Query,
-       Changeset,
-       CostQuery,
-       MeetingParticipant].each do |klass|
-        klass.where(user_id: from.id).update_all(user_id: to.id)
-      end
-    end
-
-    def rewrite_actor(from, to)
-      [::Notification].each do |klass|
-        klass.where(actor_id: from.id).update_all(actor_id: to.id)
-      end
-    end
-
-    def rewrite_assigned_to(from, to)
-      [WorkPackage].each do |klass|
-        klass.where(assigned_to_id: from.id).update_all(assigned_to_id: to.id)
-      end
-    end
-
-    def rewrite_responsible(from, to)
-      [WorkPackage].each do |klass|
-        klass.where(responsible_id: from.id).update_all(responsible_id: to.id)
-      end
-    end
-    # rubocop:enable Rails/SkipsModelValidations
 
     def journal_classes
       [Journal] + Journal::BaseJournal.subclasses
     end
 
-    def foreign_keys
-      %w[author_id user_id assigned_to_id responsible_id]
+    def rewrite(klass, attribute, from, to)
+      klass.where(attribute => from.id).update_all(attribute => to.id)
     end
   end
 end

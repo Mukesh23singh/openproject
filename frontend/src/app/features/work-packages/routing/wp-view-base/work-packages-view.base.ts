@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,107 +20,146 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef, Directive, Injector, OnDestroy, OnInit,
-} from '@angular/core';
-import { StateService, TransitionService } from '@uirouter/core';
+import { ChangeDetectorRef, Directive, Injector, OnDestroy, OnInit, inject } from '@angular/core';
 import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
 import { filter, take, withLatestFrom } from 'rxjs/operators';
 import { LoadingIndicatorService } from 'core-app/core/loading-indicator/loading-indicator.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { StaticQueriesService } from 'core-app/shared/components/op-query-select/op-static-queries.service';
-import { WorkPackageViewHighlightingService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-highlighting.service';
+import { StaticQueriesService } from 'core-app/shared/components/op-view-select/op-static-queries.service';
+import {
+  WorkPackageViewHighlightingService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-highlighting.service';
 import { States } from 'core-app/core/states/states.service';
-import { WorkPackageViewColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-columns.service';
-import { WorkPackageViewSortByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
-import { WorkPackageViewGroupByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-group-by.service';
-import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
-import { WorkPackageViewSumService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sum.service';
-import { WorkPackageViewTimelineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-timeline.service';
-import { WorkPackageViewHierarchiesService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-hierarchy.service';
-import { WorkPackageViewPaginationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-pagination.service';
+import {
+  WorkPackageViewColumnsService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-columns.service';
+import {
+  WorkPackageViewSortByService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
+import {
+  WorkPackageViewGroupByService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-group-by.service';
+import {
+  WorkPackageViewFiltersService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
+import {
+  WorkPackageViewSumService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sum.service';
+import {
+  WorkPackageViewTimelineService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-timeline.service';
+import {
+  WorkPackageViewHierarchiesService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-hierarchy.service';
+import {
+  WorkPackageViewPaginationService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-pagination.service';
 import { WorkPackagesListService } from 'core-app/features/work-packages/components/wp-list/wp-list.service';
-import { WorkPackagesListChecksumService } from 'core-app/features/work-packages/components/wp-list/wp-list-checksum.service';
-import { WorkPackageQueryStateService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-base.service';
-import { WorkPackageStatesInitializationService } from 'core-app/features/work-packages/components/wp-list/wp-states-initialization.service';
-import { WorkPackageViewOrderService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-order.service';
-import { WorkPackageViewDisplayRepresentationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-display-representation.service';
+import {
+  WorkPackagesListChecksumService,
+} from 'core-app/features/work-packages/components/wp-list/wp-list-checksum.service';
+import {
+  WorkPackageQueryStateService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-base.service';
+import {
+  WorkPackageStatesInitializationService,
+} from 'core-app/features/work-packages/components/wp-list/wp-states-initialization.service';
+import {
+  WorkPackageViewOrderService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-order.service';
+import {
+  WorkPackageViewDisplayRepresentationService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-display-representation.service';
+import {
+  WorkPackageViewIncludeSubprojectsService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-include-subprojects.service';
 import { HalEvent, HalEventsService } from 'core-app/features/hal/services/hal-events.service';
+import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
+import { resolveRoutingId } from 'core-app/features/work-packages/helpers/work-package-id-resolvers';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
 import { DeviceService } from 'core-app/core/browser/device.service';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import {
+  WorkPackageViewBaselineService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
+import { ActionsService } from 'core-app/core/state/actions/actions.service';
+import { tableRefreshRequest } from 'core-app/features/work-packages/routing/wp-view-base/work-packages-view.actions';
 
 @Directive()
 export abstract class WorkPackagesViewBase extends UntilDestroyedMixin implements OnInit, OnDestroy {
-  @InjectField() $state:StateService;
 
-  @InjectField() states:States;
+  injector = inject(Injector);
 
-  @InjectField() querySpace:IsolatedQuerySpace;
+  readonly states = inject(States);
 
-  @InjectField() authorisationService:AuthorisationService;
+  readonly querySpace = inject(IsolatedQuerySpace);
 
-  @InjectField() wpTableColumns:WorkPackageViewColumnsService;
+  readonly authorisationService = inject(AuthorisationService);
 
-  @InjectField() wpTableHighlighting:WorkPackageViewHighlightingService;
+  readonly wpTableColumns = inject(WorkPackageViewColumnsService);
 
-  @InjectField() wpTableSortBy:WorkPackageViewSortByService;
+  readonly wpTableHighlighting = inject(WorkPackageViewHighlightingService);
 
-  @InjectField() wpTableGroupBy:WorkPackageViewGroupByService;
+  readonly wpTableSortBy = inject(WorkPackageViewSortByService);
 
-  @InjectField() wpTableFilters:WorkPackageViewFiltersService;
+  readonly wpTableGroupBy = inject(WorkPackageViewGroupByService);
 
-  @InjectField() wpTableSum:WorkPackageViewSumService;
+  readonly wpTableFilters = inject(WorkPackageViewFiltersService);
 
-  @InjectField() wpTableTimeline:WorkPackageViewTimelineService;
+  readonly wpTableSum = inject(WorkPackageViewSumService);
 
-  @InjectField() wpTableHierarchies:WorkPackageViewHierarchiesService;
+  readonly wpTableTimeline = inject(WorkPackageViewTimelineService);
 
-  @InjectField() wpTablePagination:WorkPackageViewPaginationService;
+  readonly wpTableHierarchies = inject(WorkPackageViewHierarchiesService);
 
-  @InjectField() wpTableOrder:WorkPackageViewOrderService;
+  readonly wpTablePagination = inject(WorkPackageViewPaginationService);
 
-  @InjectField() wpListService:WorkPackagesListService;
+  readonly wpTableOrder = inject(WorkPackageViewOrderService);
 
-  @InjectField() wpListChecksumService:WorkPackagesListChecksumService;
+  readonly wpListService = inject(WorkPackagesListService);
 
-  @InjectField() loadingIndicatorService:LoadingIndicatorService;
+  readonly wpListChecksumService = inject(WorkPackagesListChecksumService);
 
-  @InjectField() $transitions:TransitionService;
+  readonly loadingIndicatorService = inject(LoadingIndicatorService);
 
-  @InjectField() I18n!:I18nService;
+  readonly I18n = inject(I18nService);
 
-  @InjectField() opStaticQueries:StaticQueriesService;
+  readonly opStaticQueries = inject(StaticQueriesService);
 
-  @InjectField() wpStatesInitialization:WorkPackageStatesInitializationService;
+  readonly wpStatesInitialization = inject(WorkPackageStatesInitializationService);
 
-  @InjectField() cdRef:ChangeDetectorRef;
+  readonly cdRef = inject(ChangeDetectorRef);
 
-  @InjectField() wpDisplayRepresentation:WorkPackageViewDisplayRepresentationService;
+  readonly wpDisplayRepresentation = inject(WorkPackageViewDisplayRepresentationService);
 
-  @InjectField() halEvents:HalEventsService;
+  readonly wpIncludeSubprojects = inject(WorkPackageViewIncludeSubprojectsService);
 
-  @InjectField() deviceService:DeviceService;
+  readonly wpTableBaseline = inject(WorkPackageViewBaselineService);
 
-  @InjectField() currentProject:CurrentProjectService;
+  readonly halEvents = inject(HalEventsService);
+
+  readonly wpTableFocus = inject(WorkPackageViewFocusService);
+
+  readonly urlParams = inject(UrlParamsService);
+
+  readonly deviceService = inject(DeviceService);
+
+  readonly currentProject = inject(CurrentProjectService);
+
+  readonly actions$ = inject(ActionsService);
 
   /** Determine when query is initially loaded */
   queryLoaded = false;
 
   /** Remember explicitly when this component was destroyed */
   destroyed = false;
-
-  constructor(public injector:Injector) {
-    super();
-  }
 
   ngOnInit() {
     // Listen to changes on the query state objects
@@ -156,6 +195,8 @@ export abstract class WorkPackagesViewBase extends UntilDestroyedMixin implement
     this.setupChangeObserver(this.wpTableHighlighting);
     this.setupChangeObserver(this.wpTableOrder);
     this.setupChangeObserver(this.wpDisplayRepresentation);
+    this.setupChangeObserver(this.wpIncludeSubprojects);
+    this.setupChangeObserver(this.wpTableBaseline);
   }
 
   /**
@@ -208,6 +249,17 @@ export abstract class WorkPackagesViewBase extends UntilDestroyedMixin implement
       )
       .subscribe((events:HalEvent[]) => {
         this.refresh(false, false);
+        this.focusNewlyCreatedWorkPackageIfOpenInDetails(events);
+      });
+
+    this
+      .actions$
+      .ofType(tableRefreshRequest)
+      .pipe(
+        this.untilDestroyed(),
+      )
+      .subscribe(() => {
+        this.refresh(false, false);
       });
   }
 
@@ -217,7 +269,7 @@ export abstract class WorkPackagesViewBase extends UntilDestroyedMixin implement
    *
    * @param A refresh request
    */
-  public abstract refresh(visibly:boolean, firstPage:boolean):Promise<unknown>;
+  public abstract refresh(visibly:boolean, firstPage:boolean):void;
 
   /**
    * Set the loading indicator for this set instance
@@ -233,19 +285,42 @@ export abstract class WorkPackagesViewBase extends UntilDestroyedMixin implement
    */
   protected filterRefreshEvents(events:HalEvent[]):boolean {
     const source:string[] = this.querySpace.renderedWorkPackageIds.value
-      || this.querySpace.results.value?.elements.map((el) => el.id as string)
+      || this.querySpace.results.value?.elements.map((el) => el.id!)
       || [];
 
     const rendered = new Set(source);
 
-    for (let i = 0; i < events.length; i++) {
-      const item = events[i];
+    for (const item of events) {
       if (rendered.has(item.id) || item.eventType === 'created') {
         return true;
       }
     }
 
     return false;
+  }
+
+  /**
+   * If a work package is currently open in the split view (per the URL) and it just got
+   * created, mark it selected/focused in this list's own WorkPackageViewSelectionService.
+   *
+   * The split-create view lives in its own isolated query space,
+   * so it cannot update this list's selection state directly -
+   * it can only signal "a WorkPackage was created" via the root-provided
+   * HalEventsService, which is what triggers this handler.
+   */
+  private focusNewlyCreatedWorkPackageIfOpenInDetails(events:HalEvent[]):void {
+    const details = this.urlParams.currentDetailsRouteParams();
+    if (!details) {
+      return;
+    }
+
+    const created = events.find(
+      (event) => event.eventType === 'created' && resolveRoutingId(this.states, event.id) === details.routingId,
+    );
+
+    if (created) {
+      this.wpTableFocus.initializeSelectionAndFocus(created.id, false, false);
+    }
   }
 
   protected setupQueryLoadedListener() {

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
+require "support/flash/expectations"
+
 module Components
   class CostReportsBaseTable
     include Capybara::DSL
+    include Capybara::RSpecMatchers
     include RSpec::Matchers
+    include Flash::Expectations
+    include Redmine::I18n
 
     attr_reader :time_logging_modal
 
@@ -38,59 +44,84 @@ module Components
     end
 
     def rows_count(count)
-      expect(page).to have_selector('#result-table tbody tr', count: count)
+      expect(page).to have_css("#result-table tbody tr", count:)
     end
 
     def expect_action_icon(icon, row, present: true)
       if present
-        expect(page).to have_selector("#{row_selector(row)} .icon-#{icon}")
+        expect(page).to have_css("#{row_selector(row)} .icon-#{icon}")
       else
-        expect(page).to have_no_selector("#{row_selector(row)} .icon-#{icon}")
+        expect(page).to have_no_css("#{row_selector(row)} .icon-#{icon}")
       end
     end
 
-    def expect_value(value, row)
-      expect(page).to have_selector("#{row_selector(row)} .units", text: value)
+    def expect_value(value, row, wait: Capybara.default_max_wait_time)
+      expect(page).to have_css("#{row_selector(row)} .units", text: value, wait:)
     end
 
-    def edit_time_entry(new_value, row)
+    def expect_cell_text(value, row, column)
+      expect(page).to have_css(cell_selector(row, column), text: value)
+    end
+
+    def expect_sort_header_column(text, present: true)
+      if present
+        expect(page).to have_css("#result-table .generic-table--sort-header", text:)
+      else
+        expect(page).to have_no_css("#result-table .generic-table--sort-header", text:)
+      end
+    end
+
+    def edit_time_entry(row, hours:)
       SeleniumHubWaiter.wait
       page.find("#{row_selector(row)} .icon-edit").click
 
       time_logging_modal.is_visible true
-      time_logging_modal.update_field 'hours', new_value
-      time_logging_modal.work_package_is_missing false
+      expect(page).to have_css("opce-time-entries-work-package-autocompleter .ng-value", wait: 10)
+      time_logging_modal.change_hours(hours)
+      time_logging_modal.activity_input_disabled_because_work_package_missing? false
 
-      time_logging_modal.perform_action 'Save'
-      SeleniumHubWaiter.wait
+      time_logging_modal.submit
+      if using_cuprite?
+        wait_for_reload(20)
+      else
+        sleep 1
+      end
 
-      expect_action_icon 'edit', row
-      expect_value new_value, row
+      expect_action_icon "edit", row
+      expect_value l_hours(hours), row, wait: 20
     end
 
     def edit_cost_entry(new_value, row, cost_entry_id)
       SeleniumHubWaiter.wait
       page.find("#{row_selector(row)} .icon-edit").click
 
-      expect(page).to have_current_path('/cost_entries/' + cost_entry_id + '/edit')
+      expect(page).to have_current_path("/cost_entries/#{cost_entry_id}/edit")
 
       SeleniumHubWaiter.wait
-      fill_in('cost_entry_units', with: new_value)
-      click_button 'Save'
-      expect(page).to have_selector('.flash.notice')
+      fill_in("cost_entry_units", with: new_value)
+      click_button "Save"
+      expect_flash(message: "Successful update.")
     end
 
     def delete_entry(row)
       SeleniumHubWaiter.wait
-      page.find("#{row_selector(row)} .icon-delete").click
 
-      page.driver.browser.switch_to.alert.accept
+      if using_cuprite?
+        accept_confirm { page.find("#{row_selector(row)} .icon-delete").click }
+      else
+        page.find("#{row_selector(row)} .icon-delete").click
+        page.driver.browser.switch_to.alert.accept
+      end
     end
 
     private
 
     def row_selector(row)
       "#result-table tbody tr:nth-of-type(#{row})"
+    end
+
+    def cell_selector(row, column)
+      "#{row_selector(row)} td:nth-of-type(#{column})"
     end
   end
 end

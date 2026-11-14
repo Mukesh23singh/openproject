@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,45 +22,63 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Project < ApplicationRecord
-  extend Pagination::Model
-  extend FriendlyId
-
-  include Projects::Storage
   include Projects::Activity
+  include Projects::AncestorsFromRoot
+  include Projects::CustomFields
+  include Projects::Hierarchy
+  include Projects::Storage
+  include Projects::EnabledTypes
+  include Projects::Versions
+  include Projects::CreationWizard
+  include Projects::Identifier
+  include Projects::SemanticIdentifier
+
   include ::Scopes::Scoped
 
-  # Maximum length for project identifiers
-  IDENTIFIER_MAX_LENGTH = 100
+  enum :workspace_type, {
+    project: "project",
+    program: "program",
+    portfolio: "portfolio"
+  }, validate: true
 
-  # reserved identifiers
-  RESERVED_IDENTIFIERS = %w(new).freeze
+  ALLOWED_PARENT_WORKSPACE_TYPES = {
+    project: %i[portfolio program project],
+    program: %i[portfolio],
+    portfolio: %i[]
+  }.with_indifferent_access
 
-  has_many :members, -> {
-    # TODO: check whether this should
-    # remain to be limited to User only
+  # rubocop:disable Rails/HasManyOrHasOneDependent, Rails/InverseOf
+  has_many :members, -> { not_locked }
+
+  has_many :member_users, -> {
     includes(:principal, :roles)
       .merge(Principal.not_locked.user)
       .references(:principal, :roles)
-  }
+  }, class_name: "Member"
 
-  has_many :memberships, class_name: 'Member'
-  has_many :member_principals,
-           -> { not_locked },
-           class_name: 'Member'
-  has_many :users, through: :members, source: :principal
-  has_many :principals, through: :member_principals, source: :principal
+  has_many :member_groups, -> {
+    includes(:principal)
+      .where("#{Principal.table_name}.type='Group'")
+  }, class_name: "Member"
+  # rubocop:enable Rails/HasManyOrHasOneDependent, Rails/InverseOf
 
-  has_many :enabled_modules, dependent: :delete_all
-  has_and_belongs_to_many :types, -> {
-    order("#{::Type.table_name}.position")
-  }
+  has_many :memberships, class_name: "Member"
+  has_many :users, through: :member_users, source: :principal
+  has_many :groups, through: :member_groups, source: :principal
+  has_many :principals, through: :members, source: :principal
+  has_many :calculated_value_errors, dependent: :delete_all, as: :customized
+
+  has_many :enabled_modules, dependent: :delete_all, after_remove: :module_disabled
+  has_many :project_types, dependent: :delete_all
+  # The variants this project authored. Removal is left to the FK's cascade.
+  has_many :owned_type_variants, class_name: "TypeVariant", dependent: nil
+
   has_many :work_packages, -> {
     order("#{WorkPackage.table_name}.created_at DESC")
       .includes(:status, :type)
@@ -71,206 +89,170 @@ class Project < ApplicationRecord
   }, dependent: :destroy
   has_many :time_entries, dependent: :delete_all
   has_many :time_entry_activities_projects, dependent: :delete_all
-  has_many :queries, dependent: :delete_all
+  has_many :queries, dependent: :destroy
+  has_many :persisted_views, dependent: :destroy
   has_many :news, -> { includes(:author) }, dependent: :destroy
   has_many :categories, -> { order("#{Category.table_name}.name") }, dependent: :delete_all
-  has_many :forums, -> { order('position ASC') }, dependent: :destroy
+  has_many :forums, -> { order("position ASC") }, dependent: :destroy
   has_one :repository, dependent: :destroy
   has_many :changesets, through: :repository
   has_one :wiki, dependent: :destroy
-  # Custom field for the project's work_packages
-  has_and_belongs_to_many :work_package_custom_fields, -> {
-    order("#{CustomField.table_name}.position")
-  }, class_name: 'WorkPackageCustomField',
-     join_table: "#{table_name_prefix}custom_fields_projects#{table_name_suffix}",
-     association_foreign_key: 'custom_field_id'
-  has_one :status, class_name: 'Projects::Status', dependent: :destroy
   has_many :budgets, dependent: :destroy
   has_many :notification_settings, dependent: :destroy
+  has_many :project_storages, dependent: :destroy, class_name: "Storages::ProjectStorage"
+  has_many :storages, through: :project_storages
+  has_many :phases, class_name: "Project::Phase", dependent: :destroy
+  has_many :available_phases,
+           -> { visible.order_by_position },
+           class_name: "Project::Phase",
+           inverse_of: :project
 
-  acts_as_nested_set order_column: :name, dependent: :destroy
+  has_many :recurring_meetings, dependent: :destroy
 
-  acts_as_customizable
+  belongs_to :template, class_name: "Project", optional: true
+
+  has_many :templated_projects,
+           class_name: "Project",
+           foreign_key: "template_id",
+           inverse_of: :template,
+           dependent: nil
+
+  has_many :subproject_template_assignments,
+           dependent: :delete_all
+
+  accepts_nested_attributes_for :available_phases
+  validates_associated :available_phases, on: :saving_phases
+
+  store_attribute :settings, :deactivate_work_package_attachments, :boolean
+  store_attribute :settings, :enabled_internal_comments, :boolean
+  store_attribute :settings, :excluded_role_ids_on_copy, :json, default: []
+
+  acts_as_favoritable
+
+  acts_as_customizable validate_on: :saving_custom_fields, comments: true, admin_only_allowed: true
+  # extended in Projects::CustomFields in order to support sections
+  # and project-level activation of custom fields
+
   acts_as_searchable columns: %W(#{table_name}.name #{table_name}.identifier #{table_name}.description),
                      date_column: "#{table_name}.created_at",
-                     project_key: 'id',
+                     project_key: "id",
                      permission: nil
+
+  acts_as_journalized
 
   # Necessary for acts_as_searchable which depends on the event_datetime method for sorting
   acts_as_event title: Proc.new { |o| "#{Project.model_name.human}: #{o.name}" },
-                url: Proc.new { |o| { controller: 'overviews/overviews', action: 'show', project_id: o } },
+                url: Proc.new { |o| { controller: "overviews/overviews", action: "show", project_id: o } },
                 author: nil,
                 datetime: :created_at
+
+  register_journal_formatted_fields "active", formatter_key: :active_status
+  register_journal_formatted_fields "cause", formatter_key: :cause
+  register_journal_formatted_fields "templated", formatter_key: :template
+  register_journal_formatted_fields "identifier", "name", formatter_key: :plaintext
+  register_journal_formatted_fields "status_explanation", "description", formatter_key: :diff
+  register_journal_formatted_fields "status_code", formatter_key: :project_status_code
+  register_journal_formatted_fields "public", formatter_key: :visibility
+  register_journal_formatted_fields "parent_id", formatter_key: :subproject_named_association
+
+  # In addition to :view_project_attributes, admin_only custom fields/comments
+  # are only visible to admins, regardless of :view_project_attributes.
+  custom_field_view_permission = lambda { |custom_field|
+    User.current.admin? ||
+    (
+      custom_field &&
+      !custom_field.admin_only? &&
+      User.current.allowed_in_project?(:view_project_attributes, project)
+    )
+  }
+
+  register_journal_formatted_fields /\Acustom_fields_\d+\z/,
+                                    formatter_key: :custom_field,
+                                    view_permission: custom_field_view_permission
+  register_journal_formatted_fields /\Acustom_comment_\d+\z/,
+                                    formatter_key: :custom_comment,
+                                    view_permission: custom_field_view_permission
+  register_journal_formatted_fields /\Aproject_phase_\d+_active\z/, formatter_key: :project_phase_active
+  register_journal_formatted_fields /\Aproject_phase_\d+_date_range\z/, formatter_key: :project_phase_dates
+  register_journal_formatted_fields /\Aproject_phase_\d+_status\z/, formatter_key: :project_phase_status
+
+  has_paper_trail
 
   validates :name,
             presence: true,
             length: { maximum: 255 }
 
-  before_validation :remove_white_spaces_from_project_name
+  normalizes :name, with: ->(name) { name.squish }
 
   # TODO: we temporarily disable this validation because it leads to failed tests
   # it implicitly assumes a db:seed-created standard type to be present and currently
   # neither development nor deployment setups are prepared for this
   # validates_presence_of :types
 
-  acts_as_url :name,
-              url_attribute: :identifier,
-              sync_url: false, # Don't update identifier when name changes
-              only_when_blank: true, # Only generate when identifier not set
-              limit: IDENTIFIER_MAX_LENGTH,
-              blacklist: RESERVED_IDENTIFIERS,
-              adapter: OpenProject::ActsAsUrl::Adapter::OpActiveRecord # use a custom adapter able to handle edge cases
+  validates_associated :repository
 
-  validates :identifier,
-            presence: true,
-            uniqueness: { case_sensitive: true },
-            length: { maximum: IDENTIFIER_MAX_LENGTH },
-            exclusion: RESERVED_IDENTIFIERS,
-            if: ->(p) { p.persisted? || p.identifier.present? }
-
-  # Contains only a-z, 0-9, dashes and underscores but cannot consist of numbers only as it would clash with the id.
-  validates :identifier,
-            format: { with: /\A(?!^\d+\z)[a-z0-9\-_]+\z/ },
-            if: ->(p) { p.identifier_changed? && p.identifier.present? }
-
-  validates_associated :repository, :wiki
-
-  friendly_id :identifier, use: :finders
+  scopes :activated_in_storage,
+         :allowed_to,
+         :assignable_parents,
+         :available_custom_fields,
+         :available_templates,
+         :self_and_ancestors_of,
+         :visible,
+         :with_settings
 
   scope :has_module, ->(mod) {
     where(["#{Project.table_name}.id IN (SELECT em.project_id FROM #{EnabledModule.table_name} em WHERE em.name=?)", mod.to_s])
   }
   scope :public_projects, -> { where(public: true) }
-  scope :visible, ->(user = User.current) { merge(Project.visible_by(user)) }
+  scope :with_visible_work_packages, ->(user = User.current) do
+    where(id: WorkPackage.visible(user).select(:project_id)).or(allowed_to(user, :view_work_packages))
+  end
   scope :newest, -> { order(created_at: :desc) }
   scope :active, -> { where(active: true) }
+  scope :archived, -> { where(active: false) }
+  scope :with_member, ->(user = User.current) { where(id: user.memberships.select(:project_id)) }
+  scope :without_member, ->(user = User.current) { where.not(id: user.memberships.select(:project_id)) }
+  scope :workspace_type, ->(workspace_type) { workspace_types.key?(workspace_type) ? where(workspace_type:) : none }
+  scope :templated, -> { where(templated: true) }
+  scope :with_internal_comments_enabled, -> {
+    EnterpriseToken.allows_to?(:internal_comments) ? with_settings(enabled_internal_comments: "true") : none
+  }
 
   scopes :activated_time_activity,
-         :visible_with_activated_time_activity
+         :visible_with_activated_time_activity,
+         :available_cost_types
+
+  enum :status_code, {
+    on_track: 0,
+    at_risk: 1,
+    off_track: 2,
+    not_started: 3,
+    finished: 4,
+    discontinued: 5
+  }
 
   def visible?(user = User.current)
-    active? and (public? or user.admin? or user.member_of?(self))
+    active? && (public? || user.admin? || user.access_to?(self))
+  end
+
+  def internal_comments_enabled?
+    EnterpriseToken.allows_to?(:internal_comments) && enabled_internal_comments.present?
   end
 
   def archived?
     !active?
   end
 
+  def being_archived?
+    (active == false) && (active_was == true)
+  end
+
   def copy_allowed?
-    User.current.allowed_to?(:copy_projects, self)
+    User.current.allowed_in_project?(:copy_projects, self)
   end
 
   def self.selectable_projects
     Project.visible.select { |p| User.current.member_of? p }.sort_by(&:to_s)
-  end
-
-  def self.search_scope(query)
-    # overwritten from Pagination::Model
-    visible.like(query)
-  end
-
-  # Returns all projects the user is allowed to see.
-  #
-  # Employs the :view_project permission to perform the
-  # authorization check as the permission is public, meaning it is granted
-  # to everybody having at least one role in a project regardless of the
-  # role's permissions.
-  def self.visible_by(user = User.current)
-    allowed_to(user, :view_project)
-  end
-
-  # Returns a ActiveRecord::Relation to find all projects for which
-  # +user+ has the given +permission+
-  def self.allowed_to(user, permission)
-    Authorization.projects(permission, user)
-  end
-
-  def reload(*args)
-    @all_work_package_custom_fields = nil
-
-    super
-  end
-
-  # Returns a :conditions SQL string that can be used to find the issues associated with this project.
-  #
-  # Examples:
-  #   project.project_condition(true)  => "(projects.id = 1 OR (projects.lft > 1 AND projects.rgt < 10))"
-  #   project.project_condition(false) => "projects.id = 1"
-  def project_condition(with_subprojects)
-    projects_table = Project.arel_table
-
-    stmt = projects_table[:id].eq(id)
-    stmt = stmt.or(projects_table[:lft].gt(lft).and(projects_table[:rgt].lt(rgt))) if with_subprojects
-    stmt
-  end
-
-  def types_used_by_work_packages
-    ::Type.where(id: WorkPackage.where(project_id: project.id)
-                                .select(:type_id)
-                                .distinct)
-  end
-
-  # Returns a scope of the types used by the project and its active sub projects
-  def rolled_up_types
-    ::Type
-      .joins(:projects)
-      .select("DISTINCT #{::Type.table_name}.*")
-      .where(projects: { id: self_and_descendants.select(:id) })
-      .merge(Project.active)
-      .order("#{::Type.table_name}.position")
-  end
-
-  # Closes open and locked project versions that are completed
-  def close_completed_versions
-    Version.transaction do
-      versions.where(status: %w(open locked)).each do |version|
-        if version.completed?
-          version.update_attribute(:status, 'closed')
-        end
-      end
-    end
-  end
-
-  # Returns a scope of the Versions on subprojects
-  def rolled_up_versions
-    Version.rolled_up(self)
-  end
-
-  # Returns a scope of the Versions used by the project
-  def shared_versions
-    Version.shared_with(self)
-  end
-
-  # Returns all versions a work package can be assigned to.  Opposed to
-  # #shared_versions this returns an array of Versions, not a scope.
-  #
-  # The main benefit is in scenarios where work packages' projects are eager
-  # loaded.  Because eager loading the project e.g. via
-  # WorkPackage.includes(:project).where(type: 5) will assign the same instance
-  # (same object_id) for every work package having the same project this will
-  # reduce the number of db queries when performing operations including the
-  # project's versions.
-  def assignable_versions
-    @assignable_versions ||= shared_versions.references(:project).with_status_open.order_by_semver_name.to_a
-  end
-
-  # Returns a hash of project users grouped by role
-  def users_by_role
-    members.includes(:principal, :roles).inject({}) do |h, m|
-      m.roles.each do |r|
-        h[r] ||= []
-        h[r] << m.principal
-      end
-      h
-    end
-  end
-
-  # Returns an AR scope of all custom fields enabled for project's work packages
-  # (explicitly associated custom fields and custom fields enabled for all projects)
-  def all_work_package_custom_fields
-    WorkPackageCustomField
-      .for_all
-      .or(WorkPackageCustomField.where(id: work_package_custom_fields))
   end
 
   def project
@@ -283,6 +265,17 @@ class Project < ApplicationRecord
 
   def to_s
     name
+  end
+
+  def workspace_label
+    case workspace_type
+    when "program"
+      I18n.t("label_program")
+    when "portfolio"
+      I18n.t("label_portfolio")
+    else
+      I18n.t("label_project")
+    end
   end
 
   # Return true if this project is allowed to do the specified action.
@@ -303,12 +296,12 @@ class Project < ApplicationRecord
   end
 
   def enabled_module_names=(module_names)
-    if module_names&.is_a?(Array)
-      module_names = module_names.map(&:to_s).reject(&:blank?)
+    if module_names.is_a?(Array)
+      module_names = module_names.map(&:to_s).compact_blank
       self.enabled_modules = module_names.map do |name|
         enabled_modules.detect do |mod|
           mod.name == name
-        end || EnabledModule.new(name: name)
+        end || EnabledModule.new(name:)
       end
     else
       enabled_modules.clear
@@ -320,114 +313,31 @@ class Project < ApplicationRecord
     enabled_modules.map(&:name)
   end
 
-  # Returns an array of projects that are in this project's hierarchy
-  #
-  # Example: parents, children, siblings
-  def hierarchy
-    parents = project.self_and_ancestors || []
-    descendants = project.descendants || []
-    parents | descendants # Set union
-  end
+  def reload(*)
+    @allowed_permissions = nil
+    @allowed_actions = nil
 
-  class << self
-    # builds up a project hierarchy helper structure for use with #project_tree_from_hierarchy
-    #
-    # it expects a simple list of projects with a #lft column (awesome_nested_set)
-    # and returns a hierarchy based on #lft
-    #
-    # the result is a nested list of root level projects that contain their child projects
-    # but, each entry is actually a ruby hash wrapping the project and child projects
-    # the keys are :project and :children where :children is in the same format again
-    #
-    #   result = [ root_level_project_info_1, root_level_project_info_2, ... ]
-    #
-    # where each entry has the form
-    #
-    #   project_info = { project: the_project, children: [ child_info_1, child_info_2, ... ] }
-    #
-    # if a project has no children the :children array is just empty
-    #
-    def build_projects_hierarchy(projects)
-      ancestors = []
-      result    = []
-
-      projects.sort_by(&:lft).each do |project|
-        while ancestors.any? && !project.is_descendant_of?(ancestors.last[:project])
-          # before we pop back one level, we sort the child projects by name
-          ancestors.last[:children] = sort_by_name(ancestors.last[:children])
-          ancestors.pop
-        end
-
-        current_hierarchy = { project: project, children: [] }
-        current_tree      = ancestors.any? ? ancestors.last[:children] : result
-
-        current_tree << current_hierarchy
-        ancestors << current_hierarchy
-      end
-
-      # When the last project is deeply nested, we need to sort
-      # all layers we are in.
-      ancestors.each do |level|
-        level[:children] = sort_by_name(level[:children])
-      end
-      # we need one extra element to ensure sorting at the end
-      # at the end the root level must be sorted as well
-      sort_by_name(result)
-    end
-
-    def project_tree_from_hierarchy(projects_hierarchy, level, &block)
-      projects_hierarchy.each do |hierarchy|
-        project = hierarchy[:project]
-        children = hierarchy[:children]
-        yield project, level
-        # recursively show children
-        project_tree_from_hierarchy(children, level + 1, &block) if children.any?
-      end
-    end
-
-    # Yields the given block for each project with its level in the tree
-    def project_tree(projects, &block)
-      projects_hierarchy = build_projects_hierarchy(projects)
-      project_tree_from_hierarchy(projects_hierarchy, 0, &block)
-    end
-
-    def project_level_list(projects)
-      list = []
-      project_tree(projects) do |project, level|
-        element = {
-          project: project,
-          level: level
-        }
-
-        element.merge!(yield(project)) if block_given?
-
-        list << element
-      end
-      list
-    end
-
-    private
-
-    def sort_by_name(project_hashes)
-      project_hashes.sort_by { |h| h[:project].name&.downcase }
-    end
+    super
   end
 
   def allowed_permissions
-    @allowed_permissions ||= begin
-      names = enabled_modules.loaded? ? enabled_module_names : enabled_modules.pluck(:name)
+    @allowed_permissions ||=
+      begin
+        names = enabled_modules.loaded? ? enabled_module_names : enabled_modules.pluck(:name)
 
-      OpenProject::AccessControl.modules_permissions(names).map(&:name)
-    end
+        OpenProject::AccessControl.modules_permissions(names).map(&:name)
+      end
   end
 
   def allowed_actions
-    @actions_allowed ||= allowed_permissions
-                         .map { |permission| OpenProject::AccessControl.allowed_actions(permission) }
-                         .flatten
+    @allowed_actions ||= allowed_permissions.flat_map do |permission|
+      OpenProject::AccessControl.allowed_actions(permission)
+    end
   end
 
-  def remove_white_spaces_from_project_name
-    self.name = name.squish unless name.nil?
+  def module_disabled(disabled_module)
+    OpenProject::Notifications.send(
+      OpenProject::Events::MODULE_DISABLED, disabled_module:
+    )
   end
 end

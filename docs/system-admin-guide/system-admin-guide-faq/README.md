@@ -3,7 +3,6 @@ sidebar_navigation:
   title: System admin FAQ
   priority: 001
 description: Frequently asked questions regarding system administration
-robots: index, follow
 keywords: system admin FAQ, global admin, administration, system settings
 ---
 
@@ -11,7 +10,7 @@ keywords: system admin FAQ, global admin, administration, system settings
 
 ## How do I know if I have system admin permissions?
 
-If you can choose *Administration* when clicking on your avatar you have system admin permissions.
+If you can choose _Administration_ when clicking on your avatar you have system admin permissions.
 
 ## How can I use the Slack plugin?
 
@@ -28,7 +27,6 @@ Please have a look at [these instructions](../../installation-and-operations/ope
 ## I'm seeing HTTP timeouts (408 Request Timeout) upon uploading larger files
 
 The OpenProject installations do not configure a default timeout for the outer Apache2 web server. Please increase the Apache `Timeout` directive. Please see the Apache web server documentation for more information: [https://httpd.apache.org/docs/2.4/mod/core.html#timeout](https://httpd.apache.org/docs/2.4/mod/core.html#timeout)
-
 
 ## Further information
 

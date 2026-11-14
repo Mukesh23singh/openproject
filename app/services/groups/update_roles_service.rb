@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,46 +31,47 @@
 
 module Groups
   class UpdateRolesService < ::BaseServices::BaseContracted
-    include Groups::Concerns::MembershipManipulation
+    include MembershipManipulation
 
     def initialize(group, current_user:, contract_class: AdminOnlyContract)
       self.model = group
 
-      super user: current_user,
-            contract_class: contract_class
+      super(user: current_user,
+            contract_class:)
     end
 
     private
 
     def modify_members_and_roles(params)
       member = params.fetch(:member)
+      user_ids = params.fetch(:user_ids) do
+        group_ids = model.descendants.pluck(:id)
+        (model.self_and_descendants.flat_map(&:user_ids) + group_ids).uniq
+      end
 
       sql_query = ::OpenProject::SqlSanitization
-                    .sanitize update_roles_cte,
-                              group_id: model.id,
+                    .sanitize(update_roles_cte,
                               member_id: member.id,
                               project_id: member.project_id,
-                              role_ids: member.role_ids
+                              entity_type: member.entity_type,
+                              entity_id: member.entity_id,
+                              role_ids: member.role_ids,
+                              user_ids:)
 
       execute_query(sql_query)
     end
 
-    # rubocop:disable Metrics/AbcSize
     def update_roles_cte
       <<~SQL
         WITH
-        -- select all users of the group
-        group_users AS (
-          SELECT user_id
-          FROM #{GroupUser.table_name}
-          WHERE group_id = :group_id
-        ),
-        -- select all members of the users of the group
+        -- select all members of the users of the group (direct and descendants)
         user_members AS (
           SELECT id
           FROM #{Member.table_name}
-          WHERE user_id IN (SELECT user_id FROM group_users)
-          AND project_id = :project_id
+          WHERE user_id IN (:user_ids)
+          AND project_id IS NOT DISTINCT FROM :project_id
+          AND entity_type IS NOT DISTINCT FROM :entity_type
+          AND entity_id IS NOT DISTINCT FROM :entity_id
         ),
         -- select all member roles the group has for the member
         group_member_roles AS (
@@ -77,17 +79,23 @@ module Groups
                  member_roles.id
           FROM #{MemberRole.table_name} member_roles
           WHERE member_roles.member_id = :member_id
+          AND member_roles.inherited_from IS NULL
         ),
         -- delete all roles assigned to users that group no longer has but keep those that the user
-        -- has independently of the group (not inherited)
+        -- has independently of the group (not inherited) or inherited from a different group
         remove_roles AS (
-          DELETE FROM #{MemberRole.table_name}
+          DELETE FROM #{MemberRole.table_name} delete_member_roles
           USING #{MemberRole.table_name} user_member_roles
           JOIN user_members ON user_members.id = user_member_roles.member_id
-          LEFT JOIN group_member_roles ON user_member_roles.role_id = group_member_roles.role_id
-          WHERE user_member_roles.inherited_from IS NOT NULL AND group_member_roles.role_id IS NULL
-          AND member_roles.id = user_member_roles.id
-          RETURNING #{MemberRole.table_name}.id, #{MemberRole.table_name}.member_id, #{MemberRole.table_name}.role_id
+          LEFT JOIN #{MemberRole.table_name} inheriting_member_roles
+            ON user_member_roles.role_id = inheriting_member_roles.role_id
+            AND user_member_roles.inherited_from = inheriting_member_roles.id
+          WHERE user_member_roles.inherited_from IS NOT NULL AND inheriting_member_roles.id IS NULL
+          AND delete_member_roles.id = user_member_roles.id
+          RETURNING
+            delete_member_roles.id,
+            delete_member_roles.member_id,
+            delete_member_roles.role_id
         ),
         -- add all roles to the user memberships
         add_roles AS (
@@ -123,6 +131,5 @@ module Groups
         UNION SELECT member_id from members_with_added_roles
       SQL
     end
-    # rubocop:enable Metrics/AbcSize
   end
 end

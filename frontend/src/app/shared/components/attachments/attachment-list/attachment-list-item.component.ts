@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,109 +20,187 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Component, EventEmitter, Input, Output,
-} from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, OnInit, Output, ViewChild, inject } from '@angular/core';
+import { BehaviorSubject, combineLatest, Observable } from 'rxjs';
+import { distinctUntilChanged } from 'rxjs/operators';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { IPrincipal } from 'core-app/core/state/principals/principal.model';
+import { IAttachment } from 'core-app/core/state/attachments/attachment.model';
+import { TimezoneService } from 'core-app/core/datetime/timezone.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { States } from 'core-app/core/states/states.service';
-import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
+import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import { PrincipalsResourceService } from 'core-app/core/state/principals/principals.service';
+import { PrincipalRendererService } from 'core-app/shared/components/principal/principal-renderer.service';
+import { ConfirmDialogService } from 'core-app/shared/components/modals/confirm-dialog/confirm-dialog.service';
+import { ConfirmDialogOptions } from 'core-app/shared/components/modals/confirm-dialog/confirm-dialog.modal';
+import { getIconForMimeType } from 'core-app/shared/components/storages/functions/storages.functions';
+import { IFileIcon } from 'core-app/shared/components/storages/icons.mapping';
+import SpotDropAlignmentOption from 'core-app/spot/drop-alignment-options';
 
 @Component({
-  selector: 'attachment-list-item',
-  templateUrl: './attachment-list-item.html',
+  // eslint-disable-next-line @angular-eslint/component-selector
+  selector: '[op-attachment-list-item]',
+  templateUrl: './attachment-list-item.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
-export class AttachmentListItemComponent {
-  @Input() public resource:HalResource;
+export class OpAttachmentListItemComponent extends UntilDestroyedMixin implements OnInit, AfterViewInit {
+  private readonly I18n = inject(I18nService);
+  private readonly pathHelper = inject(PathHelperService);
+  private readonly timezoneService = inject(TimezoneService);
+  private readonly confirmDialogService = inject(ConfirmDialogService);
+  private readonly principalsResourceService = inject(PrincipalsResourceService);
+  private readonly principalRendererService = inject(PrincipalRendererService);
 
-  @Input() public attachment:any;
+  @Input() public attachment:IAttachment;
 
-  @Input() public index:any;
+  @Input() public index:number;
 
-  @Input() destroyImmediately = true;
+  @Input() public showTimestamp = true;
+
+  @Input() public showDelete = true;
 
   @Output() public removeAttachment = new EventEmitter<void>();
+
+  @ViewChild('avatar') avatar:ElementRef<HTMLDivElement>;
 
   static imageFileExtensions:string[] = ['jpeg', 'jpg', 'gif', 'bmp', 'png'];
 
   public text = {
+    quarantinedHint: this.I18n.t('js.attachments.quarantined_hint'),
+    importPreparedHint: this.I18n.t('js.attachments.import_prepared_hint'),
+    importFailedHint: this.I18n.t('js.attachments.import_failed_hint'),
     dragHint: this.I18n.t('js.attachments.draggable_hint'),
-    destroyConfirmation: this.I18n.t('js.text_attachment_destroy_confirmation'),
-    removeFile: (arg:any) => this.I18n.t('js.label_remove_file', arg),
+    deleteTitle: this.I18n.t('js.attachments.delete'),
+    deleteConfirmation: this.I18n.t('js.attachments.delete_confirmation'),
+    removeFile: (arg:object):string => this.I18n.t('js.label_remove_file', arg),
   };
 
-  constructor(protected halNotification:HalResourceNotificationService,
-    readonly I18n:I18nService,
-    readonly states:States,
-    readonly pathHelper:PathHelperService) {
+  public get deleteIconTitle():string {
+    return this.text.removeFile({ fileName: this.attachment.fileName });
+  }
+
+  public get hasTooltip():boolean {
+    return this.tooltip !== '';
+  }
+
+  public get incompleteImport():boolean {
+    return ['import_prepared', 'import_failed'].includes(this.attachment.status);
+  }
+
+  public author$:Observable<IPrincipal>;
+
+  public timestampText:string;
+
+  public fileIcon:IFileIcon;
+
+  public tooltipAlignment:SpotDropAlignmentOption = SpotDropAlignmentOption.TopLeft;
+
+  public tooltip:string;
+
+  private viewInitialized$ = new BehaviorSubject<boolean>(false);
+
+  ngOnInit():void {
+    this.fileIcon = getIconForMimeType(this.attachment.contentType);
+
+    this.tooltip = this.toolTipText();
+
+    const href = this.attachment._links.author.href;
+    this.author$ = this.principalsResourceService.requireEntity(href);
+
+    this.timestampText = this.timezoneService.parseDatetime(this.attachment.createdAt).fromNow();
+
+    combineLatest([
+      this.author$,
+      this.viewInitialized$.pipe(distinctUntilChanged()),
+    ]).pipe(this.untilDestroyed())
+      .subscribe(([user, initialized]) => {
+        if (!initialized) {
+          return;
+        }
+
+        this.principalRendererService.render(
+          this.avatar.nativeElement,
+          user,
+          { hide: true, link: false },
+          { hide: false, size: 'mini' },
+        );
+      });
+  }
+
+  ngAfterViewInit():void {
+    this.viewInitialized$.next(true);
   }
 
   /**
    * Set the appropriate data for drag & drop of an attachment item.
    * @param evt DragEvent
    */
-  public setDragData(evt:DragEvent) {
+  public setDragData(evt:DragEvent):void {
     const url = this.downloadPath;
     const previewElement = this.draggableHTML(url);
 
-    evt.dataTransfer!.setData('text/plain', url);
-    evt.dataTransfer!.setData('text/html', previewElement.outerHTML);
-    evt.dataTransfer!.setData('text/uri-list', url);
-    evt.dataTransfer!.setDragImage(previewElement, 0, 0);
+    if (evt.dataTransfer == null) return;
+
+    evt.dataTransfer.setData('text/plain', url);
+    evt.dataTransfer.setData('text/html', previewElement.outerHTML);
+    evt.dataTransfer.setData('text/uri-list', url);
+    evt.dataTransfer.setDragImage(previewElement, 0, 0);
   }
 
-  public draggableHTML(url:string) {
+  public draggableHTML(url:string):HTMLImageElement|HTMLAnchorElement {
     let el:HTMLImageElement|HTMLAnchorElement;
 
     if (this.isImage) {
       el = document.createElement('img');
       el.src = url;
-      el.textContent = this.fileName;
+      el.textContent = this.attachment.fileName;
     } else {
       el = document.createElement('a');
       el.href = url;
-      el.textContent = this.fileName;
+      el.textContent = this.attachment.fileName;
     }
 
     return el;
   }
 
-  public get downloadPath() {
-    return this.pathHelper.attachmentDownloadPath(this.attachment.id, this.fileName);
+  private get downloadPath():string {
+    return this.pathHelper.attachmentDownloadPath(String(this.attachment.id), this.attachment.fileName);
   }
 
-  public get isImage() {
-    const ext = this.fileName.split('.').pop() || '';
-    return AttachmentListItemComponent.imageFileExtensions.indexOf(ext.toLowerCase()) > -1;
+  private get isImage():boolean {
+    const ext = this.attachment.fileName.split('.').pop() || '';
+    return OpAttachmentListItemComponent.imageFileExtensions.includes(ext.toLowerCase());
   }
 
-  public get fileName() {
-    const a = this.attachment;
-    return a.fileName || a.customName || a.name;
-  }
-
-  public confirmRemoveAttachment($event:JQuery.TriggeredEvent) {
-    if (!window.confirm(this.text.destroyConfirmation)) {
-      $event.stopImmediatePropagation();
-      $event.preventDefault();
-      return false;
+  private toolTipText():string {
+    switch (this.attachment.status) {
+      case 'import_prepared':
+        return this.text.importPreparedHint;
+      case 'import_failed':
+        return this.text.importFailedHint;
+      default:
+        return '';
     }
+  }
 
-    this.removeAttachment.emit();
-
-    if (this.destroyImmediately) {
-      this
-        .resource
-        .removeAttachment(this.attachment);
-    }
-
-    return false;
+  public confirmRemoveAttachment():void {
+    const options:ConfirmDialogOptions = {
+      text: {
+        text: this.text.deleteConfirmation,
+        title: this.text.deleteTitle,
+        button_continue: this.text.deleteTitle,
+      },
+      dangerHighlighting: true,
+    };
+    void this.confirmDialogService
+      .confirm(options)
+      .then(() => { this.removeAttachment.emit(); })
+      .catch(() => { /* confirmation rejected */ });
   }
 }

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,38 +20,35 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
-import {
-  Component,
-  ElementRef,
-  EventEmitter,
-  Injector,
-  Input,
-  OnChanges,
-  OnInit,
-  Output,
-  SimpleChanges,
-  ViewChild,
-} from '@angular/core';
+
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef, EventEmitter, HostBinding, Injector, Input, OnChanges, OnInit, Output, SimpleChanges, ViewChild, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { whenOutside } from 'core-app/shared/directives/focus/contain-helpers';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
 
 export const triggerEditingEvent = 'op:selectableTitle:trigger';
 export const selectableTitleIdentifier = 'editable-toolbar-title';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'editable-toolbar-title',
   templateUrl: './editable-toolbar-title.html',
   styleUrls: ['./editable-toolbar-title.sass'],
-  host: { class: 'title-container' },
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class EditableToolbarTitleComponent implements OnInit, OnChanges {
-  @Input('title') public inputTitle:string;
+  readonly injector = inject(Injector);
+  private cdRef = inject(ChangeDetectorRef);
+
+  // eslint-disable-next-line @angular-eslint/no-input-rename
+  @Input('title') public inputTitle?:string;
 
   @Input() public editable = true;
 
@@ -63,19 +60,28 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
 
   @Input() public smallHeader = false;
 
+  // eslint-disable-next-line @angular-eslint/no-output-on-prefix
   @Output() public onSave = new EventEmitter<string>();
 
+  // eslint-disable-next-line @angular-eslint/no-output-on-prefix
   @Output() public onEmptySubmit = new EventEmitter<void>();
 
-  @ViewChild('editableTitleInput') inputField?:ElementRef;
+  @HostBinding('class.title-container') baseClass = true;
 
-  public selectedTitle:string;
+  @HostBinding('class.title-container_editable')
+  public get editableClass():boolean {
+    return this.editable;
+  }
+
+  @ViewChild('editableTitleInput') inputField?:ElementRef<HTMLInputElement>;
+
+  public selectedTitle?:string;
 
   public selectableTitleIdentifier = selectableTitleIdentifier;
 
-  @InjectField() protected readonly elementRef:ElementRef;
+  protected readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
 
-  @InjectField() I18n!:I18nService;
+  readonly I18n = inject(I18nService);
 
   public text = {
     click_to_edit: this.I18n.t('js.work_packages.query.click_to_edit_query_name'),
@@ -83,24 +89,21 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
     query_has_changed_click_to_save: this.I18n.t('js.label_view_has_changed'),
     input_title: '',
     input_placeholder: this.I18n.t('js.work_packages.query.rename_query_placeholder'),
-    search_query_title: this.I18n.t('js.toolbar.search_query_title'),
     confirm_edit_cancel: this.I18n.t('js.work_packages.query.confirm_edit_cancel'),
     duplicate_query_title: this.I18n.t('js.work_packages.query.errors.duplicate_query_title'),
   };
 
-  constructor(readonly injector:Injector) {
-  }
-
-  ngOnInit() {
+  ngOnInit():void {
     this.text.input_title = `${this.text.click_to_edit} ${this.text.press_enter_to_save}`;
 
-    jQuery(this.elementRef.nativeElement).on(triggerEditingEvent, (evt:Event, val = '') => {
+    this.elementRef.nativeElement.addEventListener(triggerEditingEvent, (evt:CustomEvent<string|undefined>) => {
       // In case we're not editable, ignore request
       if (!this.inputField) {
         return;
       }
 
-      this.selectedTitle = val;
+      this.selectedTitle = evt.detail ?? '';
+      this.cdRef.markForCheck();
       setTimeout(() => {
         const field:HTMLInputElement = this.inputField!.nativeElement;
         field.focus();
@@ -112,49 +115,49 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
 
   ngOnChanges(changes:SimpleChanges):void {
     if (changes.inputTitle) {
-      this.selectedTitle = changes.inputTitle.currentValue;
+      this.selectedTitle = this.inputTitle;
     }
 
     if (changes.initialFocus && changes.initialFocus.firstChange && this.inputField!) {
-      const field:HTMLInputElement = this.inputField.nativeElement;
+      const field = this.inputField.nativeElement;
       this.selectInputOnInitalFocus(field);
     }
   }
 
-  public onFocus(event:FocusEvent) {
+  public onFocus(event:FocusEvent):void {
     this.toggleToolbarButtonVisibility(true);
     this.selectInputOnInitalFocus(event.target as HTMLInputElement);
   }
 
-  public onBlur() {
+  public onBlur():void {
     this.toggleToolbarButtonVisibility(false);
   }
 
-  public selectInputOnInitalFocus(input:HTMLInputElement) {
+  public selectInputOnInitalFocus(input:HTMLInputElement):void {
     if (this.initialFocus) {
       input.select();
       this.initialFocus = false;
     }
   }
 
-  public saveWhenFocusOutside($event:FocusEvent) {
+  public saveWhenFocusOutside($event:FocusEvent):void {
     whenOutside(this.elementRef.nativeElement, () => this.save($event));
   }
 
-  public reset() {
+  public reset():void {
     this.resetInputField();
     this.selectedTitle = this.inputTitle;
   }
 
-  public get showSave() {
+  public get showSave():boolean {
     return this.editable && this.showSaveCondition;
   }
 
-  public save($event:Event, force = false) {
+  public save($event:Event, force = false):void {
     $event.preventDefault();
 
     this.resetInputField();
-    this.selectedTitle = this.selectedTitle.trim();
+    this.selectedTitle = (this.selectedTitle ?? '').trim();
 
     // If the title is empty, show an error
     if (this.isEmpty) {
@@ -168,7 +171,7 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
 
     // Blur this element
     if (this.inputField) {
-      (this.inputField.nativeElement as HTMLInputElement).blur();
+      this.inputField.nativeElement.blur();
     }
 
     // Avoid double saving
@@ -181,7 +184,7 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
     this.emitSave(this.selectedTitle);
 
     // Unset in-flight after some delay not to trigger the blur
-    setTimeout(() => this.inFlight = false, 100);
+    setTimeout(() => { this.inFlight = false; this.cdRef.markForCheck(); }, 100);
   }
 
   public get isEmpty():boolean {
@@ -191,20 +194,20 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
   /**
    * Called when saving the changed title
    */
-  private emitSave(title:string) {
+  private emitSave(title:string):void {
     this.onSave.emit(title);
   }
 
   /**
    * Called when trying to save an empty text
    */
-  private onEmptyError() {
+  private onEmptyError():void {
     // this.updateItemInMenu();  // Throws an error message, when name is empty
     this.onEmptySubmit.emit();
     this.focusInputOnError();
   }
 
-  private focusInputOnError() {
+  private focusInputOnError():void {
     if (this.inputField) {
       const el = this.inputField.nativeElement;
       el.classList.add('-error');
@@ -212,14 +215,14 @@ export class EditableToolbarTitleComponent implements OnInit, OnChanges {
     }
   }
 
-  private resetInputField() {
+  private resetInputField():void {
     if (this.inputField) {
       const el = this.inputField.nativeElement;
       el.classList.remove('-error');
     }
   }
 
-  private toggleToolbarButtonVisibility(hidden:boolean) {
-    jQuery('.toolbar-items').toggleClass('hidden-for-mobile', hidden);
+  private toggleToolbarButtonVisibility(hidden:boolean):void {
+    document.querySelectorAll('.toolbar-items').forEach((toolbarItem) => toolbarItem.classList.toggle('hidden-for-mobile', hidden));
   }
 }

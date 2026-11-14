@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,23 +20,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Utilities::PathHelper do
-  let(:helper) { Class.new.tap { |c| c.extend(::API::V3::Utilities::PathHelper) }.api_v3_paths }
+RSpec.describe API::V3::Utilities::PathHelper do
+  let(:helper) { Class.new.tap { |c| c.extend(API::V3::Utilities::PathHelper) }.api_v3_paths }
 
-  context 'attachments paths' do
-    describe '#attachments_by_grid' do
+  context "attachments paths" do
+    describe "#attachments_by_grid" do
       subject { helper.attachments_by_grid 1 }
 
-      it 'provides the path' do
-        is_expected.to match('/grids/1/attachments')
+      it "provides the path" do
+        expect(subject).to match("/grids/1/attachments")
       end
     end
   end

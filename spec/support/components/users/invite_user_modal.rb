@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require_relative '../common/modal'
-require_relative '../ng_select_autocomplete_helpers'
+
+require_relative "../common/modal"
+require_relative "../autocompleter/ng_select_autocomplete_helpers"
 
 module Components
   module Users
     class InviteUserModal < ::Components::Common::Modal
-      include ::Components::NgSelectAutocompleteHelpers
+      include ::Components::Autocompleter::NgSelectAutocompleteHelpers
 
       attr_accessor :project, :principal, :role, :invite_message
 
-      def initialize(project:, principal:, role:, invite_message: 'Welcome!')
+      def initialize(project:, principal:, role:, invite_message: "Welcome!")
         self.project = project
         self.principal = principal
         self.role = role
@@ -44,33 +46,19 @@ module Components
         super()
       end
 
-      def run_all_steps
+      def run_all_steps(skip_project_autocomplete: false)
         expect_open
 
         # STEP 1: Project and type
-        project_step
+        project_step(skip_autocomplete: skip_project_autocomplete)
 
         # STEP 2: User name
         principal_step
 
-        # STEP 3: Role name
-        role_step
+        expect_invited_successfully
+      end
 
-        # STEP 4: Invite message
-        invitation_step unless placeholder?
-
-        # STEP 5: Confirmation screen
-        confirmation_step
-
-        # Step 6: Perform invite
-        click_modal_button 'Send invitation'
-
-        if invite_user?
-          expect_text "Invite #{principal.mail} to #{project.name}"
-        else
-          expect_text "#{principal_name} was invited!"
-        end
-
+      def expect_invited_successfully
         text =
           case principal
           when User
@@ -83,49 +71,68 @@ module Components
             raise ArgumentError, "Wrong type"
           end
 
-        expect_text text
-
-        # Close
-        click_modal_button 'Continue'
         expect_closed
+        expect_flash message: text
       end
 
-      def project_step(next_step: true)
-        expect_title 'Invite user'
-        autocomplete project.name
+      def project_step(next_step: true, skip_autocomplete: false)
+        expect_title "Invite user"
+        autocomplete "opce-project-autocompleter", project.name unless skip_autocomplete
         select_type type
 
-        click_next if next_step
+        click_continue if next_step
       end
 
-      def open_select_in_step(query = '')
-        search_autocomplete modal_element.find('.ng-select-container'),
-                            query: query,
-                            results_selector: 'body'
+      def open_select_in_step(selector, query = "")
+        select_field = modal_element.find(selector, wait: 5)
+
+        search_autocomplete select_field,
+                            query:,
+                            results_selector: "#user-invitation-dialog .ng-dropdown-panel"
       end
 
       def principal_step(next_step: true)
-        # Without it, the "Invite/Create new option is sometimes not displayed"
-        sleep(0.1)
+        principal_autocomplete
+        role_autocomplete
+        invitation_message invite_message unless placeholder?
+        click_continue(label: "Invite") if next_step
+      end
 
+      def role_autocomplete(name = role.name)
+        autocomplete "opce-autocompleter", name
+      end
+
+      def principal_autocomplete(name = principal_name)
         if invite_user?
-          autocomplete principal_name, select_text: "Invite: #{principal_name}"
+          retry_block do
+            autocomplete "opce-members-autocompleter", name, select_text: "Send invite to #{name}"
+          end
         else
-          autocomplete principal_name
+          autocomplete "opce-members-autocompleter", name
         end
+      end
 
-        click_next if next_step
+      def principal_search(query)
+        search_autocomplete(modal_element.find("opce-members-autocompleter"),
+                            query:,
+                            results_selector: "#user-invitation-dialog .ng-dropdown-panel")
+      end
+
+      def project_search(query)
+        search_autocomplete(modal_element.find("opce-project-autocompleter"),
+                            query:,
+                            results_selector: "#user-invitation-dialog .ng-dropdown-panel")
       end
 
       def role_step(next_step: true)
-        autocomplete role.name
+        autocomplete "opce-autocompleter", role.name
 
-        click_next if next_step
+        click_continue if next_step
       end
 
       def invitation_step(next_step: true)
         invitation_message invite_message
-        click_modal_button 'Review invitation' if next_step
+        click_modal_button "Review invitation" if next_step
       end
 
       def confirmation_step
@@ -137,26 +144,31 @@ module Components
         end
       end
 
-      def autocomplete(query, select_text: query)
-        select_autocomplete modal_element.find('.ng-select-container'),
-                            query: query,
-                            select_text: select_text,
-                            results_selector: 'body'
+      def autocomplete(selector, query, select_text: query)
+        select_field = modal_element.find(selector, wait: 5)
+
+        select_autocomplete select_field,
+                            query:,
+                            select_text:,
+                            results_selector: "#user-invitation-dialog .ng-dropdown-panel"
+
+        select_field
       end
 
       def select_type(type)
         within_modal do
-          page.find('.op-option-list--item', text: type).click
+          choose type
         end
       end
 
-      def click_next
-        click_modal_button 'Next'
+      def click_continue(label: "Continue")
+        click_modal_button label
+        wait_for_reload
       end
 
       def invitation_message(text)
         within_modal do
-          find('textarea').set text
+          find("textarea").set text
         end
       end
 
@@ -182,15 +194,14 @@ module Components
 
       def expect_error_displayed(message)
         within_modal do
-          expect(page)
-            .to have_selector('.op-form-field--error', text: message)
+          expect(page).to have_text(message)
         end
       end
 
       def expect_help_displayed(message)
         within_modal do
           expect(page)
-            .to have_selector('.op-form-field--help-text', text: message)
+            .to have_text(message)
         end
       end
     end

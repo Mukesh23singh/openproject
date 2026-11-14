@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,42 +22,41 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-require 'support/shared/acts_as_watchable'
+require "support/shared/acts_as_watchable"
 
-describe Message, type: :model do
-  let(:message) { FactoryBot.create(:message) }
+RSpec.describe Message do
+  let(:message) { create(:message) }
 
-  it_behaves_like 'acts_as_watchable included' do
+  it_behaves_like "acts_as_watchable included" do
     let(:model_instance) { message }
     let(:watch_permission) { :view_messages } # view_messages is a public permission
     let(:project) { model_instance.forum.project }
   end
 
-  it_behaves_like 'acts_as_attachable included' do
-    let(:model_instance) { FactoryBot.create(:message) }
+  it_behaves_like "acts_as_attachable included" do
+    let(:model_instance) { create(:message) }
   end
 
-  describe '#project' do
-    it 'is the same as the project on wiki' do
+  describe "#project" do
+    it "is the same as the project on wiki" do
       expect(message.project).to eql(message.forum.project)
     end
   end
 
-  describe 'with forum' do
-    shared_let(:forum) { FactoryBot.create :forum }
+  describe "with forum" do
+    shared_let(:forum) { create(:forum) }
     let(:message) do
-      FactoryBot.build(:message, forum: forum, subject: 'Test message', content: 'Test message content')
+      build(:message, forum:, subject: "Test message", content: "Test message content")
     end
 
-    it 'should create' do
+    it "creates" do
       topics_count = forum.topics_count
       messages_count = forum.messages_count
 
@@ -70,13 +71,13 @@ describe Message, type: :model do
       message.reload
     end
 
-    context 'with previous message' do
-      let(:topic) { FactoryBot.create :message }
+    context "with previous message" do
+      let(:topic) { create(:message) }
       let(:reply) do
-        FactoryBot.create :message, forum: forum, subject: 'Test reply', parent: topic
+        create(:message, forum:, subject: "Test reply", parent: topic)
       end
 
-      it 'should reply' do
+      it "replies" do
         topics_count = forum.topics_count
         messages_count = forum.messages_count
         replies_count = topic.replies_count
@@ -96,12 +97,12 @@ describe Message, type: :model do
       end
     end
 
-    describe 'moving' do
-      let!(:forum1) { FactoryBot.create :forum }
-      let!(:forum2) { FactoryBot.create :forum }
-      let!(:message) { FactoryBot.create :message, forum: forum1 }
+    describe "moving" do
+      let!(:forum1) { create(:forum) }
+      let!(:forum2) { create(:forum) }
+      let!(:message) { create(:message, forum: forum1) }
 
-      it 'should moving message should update counters' do
+      it "movings message should update counters" do
         expect do
           forum1.reload
           expect(forum1.topics_count).to eq 1
@@ -119,7 +120,7 @@ describe Message, type: :model do
       end
     end
 
-    it 'should set sticky' do
+    it "sets sticky" do
       message = Message.new
       expect(message.sticky).to eq 0
       message.sticky = nil
@@ -128,18 +129,18 @@ describe Message, type: :model do
       expect(message.sticky).to eq 0
       message.sticky = true
       expect(message.sticky).to eq 1
-      message.sticky = '0'
+      message.sticky = "0"
       expect(message.sticky).to eq 0
-      message.sticky = '1'
+      message.sticky = "1"
       expect(message.sticky).to eq 1
     end
 
-    describe 'with reply set' do
+    describe "with reply set" do
       let!(:reply) do
-        FactoryBot.create :message, forum: message.forum, parent: message
+        create(:message, forum: message.forum, parent: message)
       end
 
-      it 'should destroy topic' do
+      it "destroys topic" do
         forum = message.forum.reload
         expect(forum.topics_count).to eq 1
         expect(forum.messages_count).to eq 2
@@ -151,7 +152,7 @@ describe Message, type: :model do
         expect(forum.messages_count).to eq 0
       end
 
-      it 'should destroy reply' do
+      it "destroys reply" do
         forum = message.forum
         expect(forum.topics_count).to eq 1
         expect(forum.messages_count).to eq 2
@@ -162,6 +163,30 @@ describe Message, type: :model do
         # Checks counters
         expect(forum.topics_count).to eq 1
         expect(forum.messages_count).to eq 1
+      end
+    end
+  end
+
+  describe "accepted solutions" do
+    shared_let(:project) { create(:project) }
+    shared_let(:forum) { create(:forum, project:) }
+    shared_let(:topic_author) { create(:user) }
+    shared_let(:topic) { create(:message, forum:, author: topic_author) }
+    shared_let(:later) { create(:message, forum:, parent: topic, accepted_solution: true, created_at: 2.hours.ago) }
+    shared_let(:earlier) { create(:message, forum:, parent: topic, accepted_solution: true, created_at: 3.hours.ago) }
+    shared_let(:plain_reply) { create(:message, forum:, parent: topic) }
+
+    describe "#accepted_solutions" do
+      it "lists the topic's accepted replies, oldest first" do
+        expect(topic.accepted_solutions).to eq([earlier, later])
+      end
+    end
+
+    describe ".with_accepted_solution_ids" do
+      let!(:unsolved_topic) { create(:message, forum:) }
+
+      it "keeps only the topics that have an accepted reply" do
+        expect(described_class.with_accepted_solution_ids([topic.id, unsolved_topic.id])).to eq(Set[topic.id])
       end
     end
   end

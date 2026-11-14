@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,222 +20,222 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Custom fields reporting', type: :feature, js: true do
-  let(:type) { FactoryBot.create :type }
-  let(:project) { FactoryBot.create :project, types: [type] }
+RSpec.describe "Custom fields reporting", :js do
+  let(:type) { create(:type) }
+  let(:project) { create(:project, types: [type]) }
 
-  let(:user) { FactoryBot.create :admin }
+  let(:user) { create(:admin) }
 
   let(:work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      custom_values: initial_custom_values
+    create(:work_package,
+           project:,
+           type:,
+           custom_values: initial_custom_values)
   end
 
   let!(:time_entry1) do
-    FactoryBot.create :time_entry,
-                      user: user,
-                      work_package: work_package,
-                      project: project,
-                      hours: 10
+    create(:time_entry,
+           user:,
+           entity: work_package,
+           project:,
+           hours: 10)
   end
 
   let!(:time_entry2) do
-    FactoryBot.create :time_entry,
-                      user: user,
-                      work_package: work_package,
-                      project: project,
-                      hours: 2.50
+    create(:time_entry,
+           user:,
+           entity: work_package,
+           project:,
+           hours: 2.50)
   end
 
   def custom_value_for(cf, str)
     cf.custom_options.find { |co| co.value == str }.try(:id)
   end
 
-  context 'with multi value cf' do
+  current_user { user }
+
+  context "with multi value cf" do
     let!(:custom_field) do
-      FactoryBot.create(:list_wp_custom_field,
-                        name: "List CF",
-                        multi_value: true,
-                        types: [type],
-                        projects: [project],
-                        possible_values: ['First option', 'Second option'])
+      create(:list_wp_custom_field,
+             name: "List CF",
+             multi_value: true,
+             types: [type],
+             possible_values: ["First option", "Second option"])
     end
 
-    let(:initial_custom_values) { { custom_field.id => custom_value_for(custom_field, 'First option') } }
-    let(:cf_id) { "custom_field#{custom_field.id}" }
+    let(:initial_custom_values) { { custom_field.id => custom_value_for(custom_field, "First option") } }
+    let(:cf_id) { custom_field.column_name }
 
     # Have a second work package in the test that will have no values
     # as this caused problems with casting the nil value of the custom value to 0.
     let!(:work_package2) do
-      FactoryBot.create :work_package,
-                        project: project,
-                        type: type
+      create(:work_package,
+             project:,
+             type:)
     end
 
     before do
-      login_as(user)
-      visit '/cost_reports'
+      visit reporting_cost_reports_path
+      sleep(0.1)
     end
 
-    it 'filters by the multi CF' do
-      expect(page).to have_selector('#add_filter_select option', text: 'List CF')
-      select 'List CF', from: 'add_filter_select'
+    it "filters by the multi CF" do
+      expect(page).to have_css("#add_filter_select option", text: "List CF")
+      select "List CF", from: "add_filter_select"
 
       # Adds filter to page, filtering out the time entries on the work package
-      expect(page).to have_selector("label##{cf_id}")
+      expect(page).to have_css("label##{cf_id}")
       custom_field_selector = "##{cf_id}_arg_1_val"
       select = find(custom_field_selector)
-      expect(select).to have_selector('option', text: 'First option')
-      expect(select).to have_selector('option', text: 'Second option')
-      select.find('option', text: 'Second option').select_option
+      expect(select).to have_css("option", text: "First option")
+      expect(select).to have_css("option", text: "Second option")
+      select.find("option", text: "Second option").select_option
 
-      find('#query-icon-apply-button').click
+      click_on "Apply"
 
       # Expect empty result table
-      within('#result-table') do
-        expect(page).to have_no_selector('.top.result', text: '12.50 hours')
+      within("#result-table") do
+        expect(page).to have_no_css(".top.result", text: "12.50 hours")
       end
-      expect(page).to have_selector('.generic-table--no-results-title')
+      expect(page).to have_css(".generic-table--no-results-title")
 
       # Update filter to value the work package has
       select = find(custom_field_selector)
-      select.find('option', text: 'First option').select_option
-      find('#query-icon-apply-button').click
+      select.find("option", text: "First option").select_option
+      find_by_id("query-icon-apply-button").click
 
       # Expect row of work package
-      within('#result-table') do
-        expect(page).to have_selector('.top.result', text: '12.50 hours')
+      within("#result-table") do
+        expect(page).to have_css(".top.result", text: "12.50 hours")
       end
     end
 
-    it 'groups by the multi CF (Regression #26050)' do
-      expect(page).to have_selector('#group-by--add-columns')
-      expect(page).to have_selector('#group-by--add-rows')
+    it "groups by the multi CF (Regression #26050)" do
+      expect(page).to have_css("#group-by--add-columns")
+      expect(page).to have_css("#group-by--add-rows")
 
-      select 'List CF', from: 'group-by--add-columns'
-      select 'Work package', from: 'group-by--add-rows'
+      select "List CF", from: "group-by--add-columns"
+      select "Work package", from: "group-by--add-rows"
 
-      find('#query-icon-apply-button').click
+      click_on "Apply"
 
       # Expect row of work package
-      within('#result-table') do
-        expect(page).to have_selector('a.work_package', text: "#{work_package.type} ##{work_package.id}")
-        expect(page).to have_selector('th.inner', text: 'First option')
-        expect(page).to have_no_selector('th.inner', text: 'Second option')
+      within("#result-table") do
+        expect(page).to have_css("a.work_package", text: "#{work_package.type} ##{work_package.id}")
+        # There used to be additional and unwanted text after the option name being rendered.
+        expect(page).to have_css("th.inner", text: /^First option$/)
+        expect(page).to have_no_css("th.inner", text: "Second option")
 
         # Only first option should have content for the work package
-        expect(page).to have_selector('table.report tbody tr', count: 1)
-        row_elements = page.all('table.report tr.odd th')
+        expect(page).to have_css("table.report tbody tr", count: 1)
+        row_elements = page.all("table.report tr.odd th")
 
         expect(row_elements[0].text).to eq(project.name)
         expect(row_elements[1].text).to eq(work_package.to_s)
 
-        row_elements = page.all('table.report tr.odd td')
-        expect(row_elements[0].text).to eq('12.50 hours')
+        row_elements = page.all("table.report tr.odd td")
+        expect(row_elements[0].text).to eq("12.50 hours")
       end
     end
 
-    context 'with additional WP with invalid value' do
+    context "with additional WP with invalid value" do
       let!(:custom_field_2) do
-        FactoryBot.create(:list_wp_custom_field,
-                          name: "Invalid List CF",
-                          multi_value: true,
-                          types: [type],
-                          projects: [project],
-                          possible_values: %w[A B])
+        create(:list_wp_custom_field,
+               name: "Invalid List CF",
+               multi_value: true,
+               types: [type],
+               possible_values: %w[A B])
       end
 
       let!(:work_package2) do
-        FactoryBot.create :work_package,
-                          project: project,
-                          custom_values: { custom_field_2.id => custom_value_for(custom_field_2, 'A') }
+        create(:work_package,
+               project:,
+               custom_values: { custom_field_2.id => custom_value_for(custom_field_2, "A") })
       end
 
       let!(:time_entry1) do
-        FactoryBot.create :time_entry,
-                          user: user,
-                          work_package: work_package2,
-                          project: project,
-                          hours: 10
+        create(:time_entry,
+               user:,
+               entity: work_package2,
+               project:,
+               hours: 10)
       end
 
       before do
-        CustomValue.find_by(customized_id: work_package2.id).update_columns(value: 'invalid')
+        CustomValue.find_by(customized_id: work_package2.id).update_columns(value: "invalid")
         work_package2.reload
 
-        login_as(user)
-        visit '/cost_reports'
+        visit reporting_cost_reports_path
+        sleep(0.1)
       end
 
-      it 'groups by the raw values when an invalid value exists' do
-        expect(work_package2.send("custom_field_#{custom_field_2.id}")).to eq(['invalid not found'])
+      it "groups by the raw values when an invalid value exists" do
+        expect(work_package2.send(custom_field_2.attribute_getter)).to eq(["invalid not found"])
 
-        expect(page).to have_selector('#group-by--add-columns')
-        expect(page).to have_selector('#group-by--add-rows')
+        expect(page).to have_css("#group-by--add-columns")
+        expect(page).to have_css("#group-by--add-rows")
 
-        select 'Invalid List CF', from: 'group-by--add-columns'
-        select 'Work package', from: 'group-by--add-rows'
+        select "Invalid List CF", from: "group-by--add-columns"
+        select "Work package", from: "group-by--add-rows"
 
-        find('#query-icon-apply-button').click
+        sleep(0.1)
+        click_on "Apply"
 
         # Expect row of work package
-        within('#result-table') do
-          expect(page).to have_selector('a.work_package', text: "#{work_package.type} ##{work_package.id}")
-          expect(page).to have_selector('th.inner', text: '1')
-          expect(page).to have_no_selector('th.inner', text: 'invalid!')
+        within("#result-table") do
+          expect(page).to have_css("a.work_package", text: "#{work_package.type} ##{work_package.id}")
+          expect(page).to have_css("th.inner", text: "1")
+          expect(page).to have_no_css("th.inner", text: "invalid!")
         end
       end
     end
   end
 
-  context 'with text CF' do
+  context "with text CF" do
     let(:custom_field) do
-      FactoryBot.create(:text_wp_custom_field,
-                        name: 'Text CF',
-                        types: [type],
-                        projects: [project])
+      create(:text_wp_custom_field,
+             name: "Text CF",
+             types: [type])
     end
-    let(:initial_custom_values) { { custom_field.id => 'foo' } }
+    let(:initial_custom_values) { { custom_field.id => "foo" } }
 
     before do
-      login_as(user)
-      visit '/cost_reports'
+      visit reporting_cost_reports_path
+      sleep(0.1)
     end
 
-    it 'groups by a text CF' do
-      expect(page).to have_selector('#group-by--add-columns')
-      expect(page).to have_selector('#group-by--add-rows')
+    it "groups by a text CF" do
+      expect(page).to have_css("#group-by--add-columns")
+      expect(page).to have_css("#group-by--add-rows")
 
-      select 'Text CF', from: 'group-by--add-columns'
-      select 'Work package', from: 'group-by--add-rows'
+      select "Text CF", from: "group-by--add-columns"
+      select "Work package", from: "group-by--add-rows"
 
-      find('#query-icon-apply-button').click
+      click_on "Apply"
 
       # Expect row of work package
-      within('#result-table') do
-        expect(page).to have_selector('a.work_package', text: "#{work_package.type} ##{work_package.id}")
-        expect(page).to have_selector('th.inner', text: 'foo')
-        expect(page).to have_no_selector('th.inner', text: 'None')
+      within("#result-table") do
+        expect(page).to have_css("a.work_package", text: "#{work_package.type} ##{work_package.id}")
+        expect(page).to have_css("th.inner", text: "foo")
+        expect(page).to have_no_css("th.inner", text: "None")
 
         # Only first option should have content for the work package
-        expect(page).to have_selector('table.report tbody tr', count: 1)
-        row_elements = page.all('table.report tr.odd th')
+        expect(page).to have_css("table.report tbody tr", count: 1)
+        row_elements = page.all("table.report tr.odd th")
 
         expect(row_elements[0].text).to eq(project.name)
         expect(row_elements[1].text).to eq(work_package.to_s)
 
-        row_elements = page.all('table.report tr.odd td')
-        expect(row_elements[0].text).to eq('12.50 hours')
+        row_elements = page.all("table.report tr.odd td")
+        expect(row_elements[0].text).to eq("12.50 hours")
       end
     end
   end

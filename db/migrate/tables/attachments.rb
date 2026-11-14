@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,33 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require_relative 'base'
+require_relative "base"
 
 class Tables::Attachments < Tables::Base
-  def self.table(migration)
+  def self.table(migration) # rubocop:disable Metrics/AbcSize
     create_table migration do |t|
-      t.integer :container_id, default: 0, null: false
-      t.string :container_type, limit: 30, default: '', null: false
-      t.string :filename, default: '', null: false
-      t.string :disk_filename, default: '', null: false
-      t.integer :filesize, default: 0, null: false
-      t.string :content_type, default: ''
-      t.string :digest, limit: 40, default: '', null: false
+      t.bigint :container_id, default: nil, null: true
+      t.string :container_type, limit: 30, null: true
+      t.string :filename, default: "", null: false
+      t.string :disk_filename, default: "", null: false
+      t.integer :filesize, default: 0, null: false, limit: 8
+      t.string :content_type, default: ""
+      t.string :digest, limit: 40, default: "", null: false
       t.integer :downloads, default: 0, null: false
-      t.integer :author_id, default: 0, null: false
-      t.datetime :created_on
+      t.bigint :author_id, null: false
+      t.datetime :created_at, precision: nil
       t.string :description
       t.string :file
+      t.text :fulltext, limit: 4.megabytes
+      t.tsvector :fulltext_tsv
+      t.tsvector :file_tsv
+      t.datetime :updated_at, precision: nil
+      t.integer :status, default: 0, null: false
 
-      t.index :author_id, name: 'index_attachments_on_author_id'
-      t.index %i[container_id container_type], name: 'index_attachments_on_container_id_and_container_type'
-      t.index :created_on, name: 'index_attachments_on_created_on'
+      t.index :author_id, name: "index_attachments_on_author_id"
+      t.index %i[container_id container_type], name: "index_attachments_on_container_id_and_container_type"
+      t.index :created_at, name: "index_attachments_on_created_at"
+      t.index :fulltext_tsv, using: "gin"
+      t.index :file_tsv, using: "gin"
     end
   end
 end

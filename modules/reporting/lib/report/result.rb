@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,6 +34,7 @@ class Report::Result
     alias values value
     include Enumerable
     include Report::QueryUtils
+    include ActionView::Helpers::OutputSafetyHelper
 
     def initialize(value)
       @important_fields ||= []
@@ -42,8 +42,8 @@ class Report::Result
       @value = value
     end
 
-    def recursive_each_with_level(level = 0, _depth_first = true, &block)
-      block.call(level, self)
+    def recursive_each_with_level(level = 0, _depth_first = true)
+      yield(level, self)
     end
 
     def recursive_each
@@ -54,9 +54,7 @@ class Report::Result
       fields.dup
     end
 
-    def [](key)
-      fields[key]
-    end
+    delegate :[], to: :fields
 
     ##
     # Override if you want to influence the result grouping.
@@ -78,30 +76,29 @@ class Report::Result
 
     def grouped_by(fields, type, important_fields = [])
       @grouped_by ||= {}
-      list = begin
-        @grouped_by[fields] ||= begin
-          # sub results, have fields
-          # i.e. grouping by foo, bar
-          data = group_by do |entry|
-            # index for group is a hash
-            # i.e. { :foo => 10, :bar => 20 } <= this is just the KEY!!!!
-            fields.inject({}) do |hash, key|
-              val = map_group_by_value(key, entry.fields[key])
-              hash.merge key => val
-            end
+      list = @grouped_by[fields] ||= begin
+        # sub results, have fields
+        # i.e. grouping by foo, bar
+        data = group_by do |entry|
+          # index for group is a hash
+          # i.e. { :foo => 10, :bar => 20 } <= this is just the KEY!!!!
+          fields.inject({}) do |hash, key|
+            val = map_group_by_value(key, entry.fields[key])
+            hash.merge key => val
           end
-          group_by_data_ready(data)
-          # map group back to array, all fields with same key get grouped into one list
-          data.keys.map { |f| engine::Result.new data[f], f, type, important_fields }
         end
+        group_by_data_ready(data)
+        # map group back to array, all fields with same key get grouped into one list
+        data.keys.map { |f| engine::Result.new data[f], f, type, important_fields }
       end
+
       # create a single result from that list
       engine::Result.new list, {}, type, important_fields
     end
 
     def inspect
       "<##{self.class}: @fields=#{fields.inspect} @type=#{type.inspect} " \
-      "@size=#{size} @count=#{count} @units=#{units}>"
+        "@size=#{size} @count=#{count} @units=#{units}>"
     end
 
     def row?
@@ -149,7 +146,8 @@ class Report::Result
     end
 
     def render(keys = important_fields)
-      fields.map { |k, v| yield(k, v) if keys.include? k }.join
+      rendered = fields.map { |k, v| yield(k, v) if keys.include? k }
+      safe_join(rendered)
     end
 
     def set_key(index = [])
@@ -165,11 +163,11 @@ class Report::Result
     end
 
     def count
-      self['count'].to_i
+      self["count"].to_i
     end
 
     def units
-      self['units'].to_d
+      self["units"].to_d
     end
 
     ##
@@ -232,10 +230,10 @@ class Report::Result
       @sum_for[field] ||= sum { |v| v.send(field) || 0 }
     end
 
-    def recursive_each_with_level(level = 0, depth_first = true, &block)
+    def recursive_each_with_level(level = 0, depth_first = true, &)
       if depth_first
         super
-        each { |c| c.recursive_each_with_level(level + 1, depth_first, &block) }
+        each { |c| c.recursive_each_with_level(level + 1, depth_first, &) }
       else # width-first
         to_evaluate = [self]
         lvl = level
@@ -243,7 +241,7 @@ class Report::Result
           # evaluate all stored results and find the results we need to evaluate soon
           to_evaluate_soon = []
           to_evaluate.each do |r|
-            block.call(lvl, r)
+            yield(lvl, r)
             to_evaluate_soon.concat r.values if r.size > 0
           end
           # take new results to evaluate
@@ -265,15 +263,15 @@ class Report::Result
       values
     end
 
-    def each(&block)
-      values.each(&block)
+    def each(&)
+      values.each(&)
     end
 
-    def each_direct_result(cached = true, &block)
+    def each_direct_result(cached = true, &)
       return enum_for(__method__) unless block_given?
 
       if @direct_results
-        @direct_results.each(&block)
+        @direct_results.each(&)
       else
         values.each do |value|
           value.each_direct_result(false) do |result|
@@ -290,20 +288,19 @@ class Report::Result
 
     ##
     # @return [Integer] Number of child results
-    def size
-      values.size
-    end
+    delegate :size, to: :values
   end
 
   def self.new(value, fields = {}, type = nil, important_fields = [])
-    result = begin
-      case value
-      when ActiveRecord::Result, Array then engine::Result::WrappedResult.new value.map { |e| new e, {}, nil, important_fields }
-      when Hash  then engine::Result::DirectResult.new value.with_indifferent_access
-      when Base  then value
-      else raise ArgumentError, "Cannot create Result from #{value.inspect}"
-      end
-    end
+    result = case value
+             when ActiveRecord::Result, Array then engine::Result::WrappedResult.new(value.map do |e|
+                                                                                       new e, {}, nil, important_fields
+                                                                                     end)
+             when Hash  then engine::Result::DirectResult.new value.with_indifferent_access
+             when Base  then value
+             else raise ArgumentError, "Cannot create Result from #{value.inspect}"
+             end
+
     result.fields.merge! fields
     result.type = type if type
     result.important_fields = important_fields unless result == value

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,38 +20,37 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Utilities::PathHelper do
+RSpec.describe API::V3::Utilities::PathHelper do
   let(:helper) { Class.new.tap { |c| c.extend(described_class) }.api_v3_paths }
 
-  describe '#cost_entry' do
+  describe "#cost_entry" do
     subject { helper.cost_entry 42 }
 
-    it { is_expected.to eql('/api/v3/cost_entries/42') }
+    it { is_expected.to eql("/api/v3/cost_entries/42") }
   end
 
-  describe '#cost_entries_by_work_package' do
+  describe "#cost_entries_by_work_package" do
     subject { helper.cost_entries_by_work_package 42 }
 
-    it { is_expected.to eql('/api/v3/work_packages/42/cost_entries') }
+    it { is_expected.to eql("/api/v3/work_packages/42/cost_entries") }
   end
 
-  describe '#summarized_work_package_costs_by_type' do
+  describe "#summarized_work_package_costs_by_type" do
     subject { helper.summarized_work_package_costs_by_type 42 }
 
-    it { is_expected.to eql('/api/v3/work_packages/42/summarized_costs_by_type') }
+    it { is_expected.to eql("/api/v3/work_packages/42/summarized_costs_by_type") }
   end
 
-  describe '#cost_type' do
+  describe "#cost_type" do
     subject { helper.cost_type 42 }
 
-    it { is_expected.to eql('/api/v3/cost_types/42') }
+    it { is_expected.to eql("/api/v3/cost_types/42") }
   end
 end

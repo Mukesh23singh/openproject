@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,22 +32,34 @@ module API
         include API::Decorators::DateProperty
         include ::API::Caching::CachedRepresenter
 
+        cached_representer({})
+
         self_link
 
         property :id
+
         property :name
+
+        property :description,
+                 render_nil: true
+
         property :color,
-                 getter: ->(*) { color.hexcode if color },
+                 getter: ->(*) { color&.hexcode },
                  render_nil: true
         property :position
-        property :is_default
+        # Kept on the type in the API: the flag moved to the configurations a project applies
+        # the type through, and a new project gets the type when any of them carries it.
+        # Asked of the collection rather than of #default_variant, which is nil until a type
+        # is saved — representers render unsaved and stubbed types too.
+        property :is_default,
+                 getter: ->(*) { variants.any?(&:enabled_in_new_projects?) }
         property :is_milestone
 
         date_time_property :created_at
         date_time_property :updated_at
 
         def _type
-          'Type'
+          "Type"
         end
       end
     end

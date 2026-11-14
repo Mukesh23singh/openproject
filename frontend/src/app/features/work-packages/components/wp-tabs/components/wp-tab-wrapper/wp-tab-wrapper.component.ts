@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,14 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
-// ++
+//++
 
-import { UIRouterGlobals } from '@uirouter/core';
-import {
-  Component,
-  OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, Input, OnInit, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { WpTabDefinition } from 'core-app/features/work-packages/components/wp-tabs/components/wp-tab-wrapper/tab';
@@ -42,24 +37,26 @@ import { WorkPackageResource } from 'core-app/features/hal/resources/work-packag
 @Component({
   templateUrl: './wp-tab-wrapper.html',
   selector: 'op-wp-tab',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class WpTabWrapperComponent implements OnInit {
+  readonly I18n = inject(I18nService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly wpTabsService = inject(WorkPackageTabsService);
+
+  @Input() public workPackageId:string;
+  @Input() public tabIdentifier:string;
+
   workPackage:WorkPackageResource;
 
   ndcDynamicInputs$:Observable<{
     workPackage:WorkPackageResource;
     tab:WpTabDefinition | undefined;
   }>;
-
-  get workPackageId():string {
-    const { workPackageId } = this.uiRouterGlobals.params as unknown as { workPackageId:string };
-    return workPackageId;
-  }
-
-  constructor(readonly I18n:I18nService,
-    readonly uiRouterGlobals:UIRouterGlobals,
-    readonly apiV3Service:APIV3Service,
-    readonly wpTabsService:WorkPackageTabsService) {}
 
   ngOnInit() {
     this.ndcDynamicInputs$ = this
@@ -76,8 +73,6 @@ export class WpTabWrapperComponent implements OnInit {
   }
 
   findTab(workPackage:WorkPackageResource):WpTabDefinition | undefined {
-    const { tabIdentifier } = this.uiRouterGlobals.params as unknown as { tabIdentifier:string };
-
-    return this.wpTabsService.getTab(tabIdentifier, workPackage);
+    return this.wpTabsService.getTab(this.tabIdentifier, workPackage);
   }
 }

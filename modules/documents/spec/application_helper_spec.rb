@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ApplicationHelper do
+RSpec.describe ApplicationHelper do
   include ApplicationHelper
   include ActionView::Helpers
   include ActionDispatch::Routing
   include Rails.application.routes.url_helpers
 
   describe ".format_text" do
-    let(:project) { FactoryBot.create :valid_project }
+    let(:project) { create(:valid_project) }
     let(:identifier) { project.identifier }
     let(:role) do
-      FactoryBot.create(:role, permissions: %i[
-                          view_work_packages edit_work_packages view_documents browse_repository view_changesets view_wiki_pages
-                        ])
+      create(:project_role, permissions: %i[
+               view_work_packages edit_work_packages view_documents browse_repository view_changesets view_wiki_pages
+             ])
     end
     let(:project_member) do
-      FactoryBot.create :user, member_in_project: project,
-                               member_through_role: role
+      create(:user, member_with_roles: { project => role })
     end
     let(:document) do
-      FactoryBot.create :document,
-                        title: 'Test document',
-                        project: project
+      create(:document,
+             title: "Test document",
+             project:)
     end
 
     before do
@@ -63,50 +63,56 @@ describe ApplicationHelper do
 
     context "Simple Document links" do
       let(:document_link) do
-        link_to('Test document',
-                { controller: 'documents', action: 'show', id: document.id },
-                class: 'document op-uc-link')
+        link_to("Test document",
+                { controller: "documents", action: "show", id: document.id },
+                class: "document op-uc-link",
+                aria: { label: "Test document: A dynamic link to a document placed using a macro." },
+                target: "_top")
       end
 
       context "Plain link" do
         subject { format_text("document##{document.id}") }
 
-        it { is_expected.to eq("<p class=\"op-uc-p\">#{document_link}</p>") }
+        it { is_expected.to be_html_eql("<p class=\"op-uc-p\">#{document_link}</p>") }
       end
 
       context "Link with document name" do
         subject { format_text("document##{document.id}") }
 
-        it { is_expected.to eq("<p class=\"op-uc-p\">#{document_link}</p>") }
+        it { is_expected.to be_html_eql("<p class=\"op-uc-p\">#{document_link}</p>") }
       end
 
       context "Escaping plain link" do
         subject { format_text("!document##{document.id}") }
 
-        it { is_expected.to eq("<p class=\"op-uc-p\">document##{document.id}</p>") }
+        it { is_expected.to be_html_eql("<p class=\"op-uc-p\">document##{document.id}</p>") }
       end
 
       context "Escaping link with document name" do
         subject { format_text('!document:"Test document"') }
 
-        it { is_expected.to eq('<p class="op-uc-p">document:"Test document"</p>') }
+        it { is_expected.to be_html_eql('<p class="op-uc-p">document:"Test document"</p>') }
       end
     end
 
-    context 'Cross-Project Document Links' do
-      let(:the_other_project) { FactoryBot.create :valid_project }
+    context "Cross-Project Document Links" do
+      let(:the_other_project) { create(:valid_project) }
 
       context "By name without project" do
         subject { format_text("document:\"#{document.title}\"", project: the_other_project) }
 
-        it { is_expected.to eq('<p class="op-uc-p">document:"Test document"</p>') }
+        it { is_expected.to be_html_eql('<p class="op-uc-p">document:"Test document"</p>') }
       end
 
       context "By id and given project" do
         subject { format_text("#{identifier}:document##{document.id}", project: the_other_project) }
 
         it {
-          is_expected.to eq("<p class=\"op-uc-p\"><a class=\"document op-uc-link\" href=\"/documents/#{document.id}\">Test document</a></p>")
+          expect(subject).to be_html_eql(%{
+            <p class="op-uc-p"><a class="document op-uc-link"
+               aria-label="Test document: A dynamic link to a document placed using a macro."
+               href="/documents/#{document.id}" target="_top">Test document</a></p>
+          })
         }
       end
 
@@ -114,14 +120,18 @@ describe ApplicationHelper do
         subject { format_text("#{identifier}:document:\"#{document.title}\"", project: the_other_project) }
 
         it {
-          is_expected.to eq("<p class=\"op-uc-p\"><a class=\"document op-uc-link\" href=\"/documents/#{document.id}\">Test document</a></p>")
+          expect(subject).to be_html_eql(%{
+            <p class="op-uc-p"><a class="document op-uc-link"
+               aria-label="Test document: A dynamic link to a document placed using a macro."
+               href="/documents/#{document.id}" target="_top">Test document</a></p>
+          })
         }
       end
 
       context "Invalid link" do
         subject { format_text("invalid:document:\"Test document\"", project: the_other_project) }
 
-        it { is_expected.to eq('<p class="op-uc-p">invalid:document:"Test document"</p>') }
+        it { is_expected.to be_html_eql('<p class="op-uc-p">invalid:document:"Test document"</p>') }
       end
     end
   end

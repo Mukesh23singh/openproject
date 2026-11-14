@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +22,82 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Widget::Controls::Delete < Widget::Controls
-  def render
-    return '' if @subject.new_record? or !@options[:can_delete]
+  DIALOG_ID = "delete_form"
+  private_constant :DIALOG_ID
 
-    button = link_to(I18n.t(:button_delete),
-                     '#',
-                     id: 'query-icon-delete',
-                     class: 'button icon-context icon-delete')
-    popup = content_tag :div, id: 'delete_form', style: 'display:none', class: 'button_form' do
-      question = content_tag :p, I18n.t(:label_really_delete_question)
+  option :can_delete, default: -> { false }
 
-      url_opts = { id: @subject.id }
-      url_opts[request_forgery_protection_token] = form_authenticity_token # if protect_against_forgery?
-      opt1 = link_to I18n.t(:button_delete),
-                     url_for(url_opts),
-                     method: :delete,
-                     class: 'button -highlight icon-context icon-delete'
-      opt2 = link_to I18n.t(:button_cancel),
-                     '#',
-                     id: 'query-icon-delete-cancel',
-                     class: 'button icon-context icon-cancel'
-      opt1 + opt2
+  def render_control
+    render_popup
+  end
 
-      question + opt1 + opt2
+  def render?
+    @subject.persisted? && can_delete
+  end
+
+  private
+
+  def render_popup
+    render(
+      Primer::Alpha::Dialog.new(
+        id: DIALOG_ID,
+        title: t(:label_really_delete_question),
+        subtitle: nil,
+        visually_hide_title: true,
+        classes: "DangerDialog",
+        role: "alertdialog"
+      )
+    ) do |dialog|
+      dialog.with_show_button(scheme: :invisible) do |button|
+        button.with_leading_visual_icon(icon: :trash)
+
+        I18n.t(:button_delete)
+      end
+
+      dialog.with_body do
+        render Primer::OpenProject::FeedbackMessage.new(
+          icon_arguments: { icon: :alert, color: :danger },
+          border: false
+        ) do |message|
+          message.with_heading(tag: :h2) { I18n.t(:label_really_delete_question) }
+        end
+      end
+
+      dialog.with_footer(show_divider: true) do
+        render_popup_buttons
+      end
     end
-    write(button + popup)
+  end
+
+  def render_popup_buttons
+    delete_button = render_button(
+      scheme: :danger,
+      type: :submit,
+      formaction: url_for(destroy_url_options),
+      formmethod: :delete,
+      data: { submit_dialog_id: DIALOG_ID }
+    ) do
+      I18n.t(:button_delete)
+    end
+
+    cancel_button = render_button(data: { close_dialog_id: DIALOG_ID }) do
+      I18n.t(:button_cancel)
+    end
+
+    safe_join([cancel_button, delete_button])
+  end
+
+  def destroy_url_options
+    if @subject.project
+      { controller: "cost_reports", action: "destroy", id: @subject.id, project_id: @subject.project.id }
+    else
+      { controller: "cost_reports", action: "destroy", id: @subject.id }
+    end
   end
 end

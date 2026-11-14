@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,43 +22,48 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Logout', type: :feature, js: true do
-  let(:user_password) { 'b0B' * 4 }
+RSpec.describe "Logout",
+               :js do
+  let(:user_password) { "b0B" * 4 }
   let(:user) do
-    FactoryBot.create(:user,
-                      password: user_password,
-                      password_confirmation: user_password)
+    create(:user,
+           password: user_password,
+           password_confirmation: user_password)
   end
+  let(:user_menu) { Components::UserMenu.new }
 
   before do
     login_with(user.login, user_password)
+    wait_for_network_idle
   end
 
-  it 'prevents the user from making any more changes' do
+  it "prevents the user from making any more changes" do
     visit my_page_path
 
-    within '.op-app-header' do
-      page.find("a[title='#{user.name}']").click
+    within ".op-app-header" do
+      user_menu.open
 
       click_link I18n.t(:label_logout)
     end
 
     expect(page)
-      .to have_current_path home_path
+      .to have_current_path /login/
 
     # Can not access the my page but is redirected
     # to login instead.
     visit my_page_path
 
     expect(page)
-      .to have_field('Username')
+      .to have_current_path /login/
+
+    expect(page)
+      .to have_field("Username or email")
   end
 end

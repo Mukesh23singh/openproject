@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,20 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Enterprise trial management',
-         type: :feature,
-         driver: :chrome_billy do
-  let(:admin) { FactoryBot.create(:admin) }
+RSpec.describe "Enterprise trial management",
+               :js,
+               :webmock do
+  include Redmine::I18n
 
-  let(:trial_id) { '1b6486b4-5a30-4042-8714-99d7c8e6b637' }
+  let(:admin) { create(:admin) }
+
+  let(:trial_id) { "1b6486b4-5a30-4042-8714-99d7c8e6b637" }
   let(:created_body) do
     {
       _type: "enterprise-trial",
@@ -42,11 +45,11 @@ describe 'Enterprise trial management',
         {
           self:
             {
-              href: "https://augur.openproject-edge.com/public/v1/trials/#{trial_id}"
+              href: "https://start.openproject-edge.com/public/v1/trials/#{trial_id}"
             },
           details:
             {
-              href: "https://augur.openproject-edge.com/public/v1/trials/#{trial_id}/details"
+              href: "https://start.openproject-edge.com/public/v1/trials/#{trial_id}/details"
             }
         }
     }
@@ -60,11 +63,11 @@ describe 'Enterprise trial management',
       description: "User has to confirm their email address",
       _links: {
         resend: {
-          href: "https://augur.openproject-edge.com/public/v1/trials/#{trial_id}/resend",
+          href: "https://start.openproject-edge.com/public/v1/trials/#{trial_id}/resend",
           method: "POST"
         },
         details: {
-          href: "https://augur.openproject-edge.com/public/v1/trials/#{trial_id}/details"
+          href: "https://start.openproject-edge.com/public/v1/trials/#{trial_id}/details"
         }
       }
     }
@@ -123,7 +126,7 @@ describe 'Enterprise trial management',
       token_retrieved: false,
       _links: {
         self: {
-          href: "https://augur.openproject-edge.com/public/v1/trials/#{trial_id}"
+          href: "https://start.openproject-edge.com/public/v1/trials/#{trial_id}"
         }
       }
     }
@@ -163,127 +166,129 @@ describe 'Enterprise trial management',
 
   before do
     login_as(admin)
-    visit enterprise_path
+    visit enterprise_tokens_path
   end
 
-  def fill_out_modal(mail: 'foo@foocorp.example')
-    fill_in 'Company', with: 'Foo Corp.'
-    fill_in 'First name', with: 'Foo'
-    fill_in 'Last name', with: 'Bar'
-    fill_in 'Email', with: mail
+  def fill_out_modal(mail: "foo@foocorp.example")
+    fill_in "Company", with: "Foo Corp."
+    fill_in "First name", with: "Foo"
+    fill_in "Last name", with: "Bar"
+    fill_in "Email", with: mail
 
-    find('#trial-general-consent').check
+    check "general_consent", allow_label_click: true
+    expect(page).to have_checked_field("general_consent")
   end
 
-  it 'blocks the request assuming the mail was used' do
-    proxy.stub('https://augur.openproject-edge.com:443/public/v1/trials', method: 'post')
-      .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 422, body: mail_in_use_body.to_json)
+  it "does not send a request when an internal validation fails" do
+    click_link_or_button("Start free trial")
+    fill_in "Company", with: "Foo Corp."
 
-    find('.button', text: 'Start free trial').click
+    # No stubbed request with webmock -> No allowed requests
+    click_link_or_button("Continue")
+
+    page.within("#enterprise-trial-dialog") do
+      expect(page).to have_text("First name can't be blank.")
+      expect(page).to have_text("Last name can't be blank.")
+      expect(page).to have_text("Email can't be blank.")
+    end
+  end
+
+  it "blocks the request assuming the mail was used" do
+    stub_request(:post, "https://start.openproject-edge.com:443/public/v1/trials")
+      .to_return(status: 422, headers: { "Content-Type" => "application/json" }, body: mail_in_use_body.to_json)
+
+    click_link_or_button("Start free trial")
     fill_out_modal
-    find('.button:not(:disabled)', text: 'Submit').click
+    click_link_or_button("Continue")
 
-    expect(page).to have_selector('.-required-highlighting #trial-email')
-    expect(page).to have_text('Each user can only create one trial.')
-    expect(page).to have_no_text 'email sent - waiting for confirmation'
+    page.within("#enterprise-trial-dialog") do
+      expect(page).to have_text("Email was already used to create a trial.")
+    end
   end
 
-  it 'blocks the request assuming the domain was used' do
-    proxy.stub('https://augur.openproject-edge.com:443/public/v1/trials', method: 'post')
-      .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 422, body: domain_in_use_body.to_json)
+  it "blocks the request assuming the domain was used" do
+    stub_request(:post, "https://start.openproject-edge.com:443/public/v1/trials")
+      .to_return(status: 422, headers: { "Content-Type" => "application/json" }, body: domain_in_use_body.to_json)
 
-    find('.button', text: 'Start free trial').click
+    click_link_or_button("Start free trial")
     fill_out_modal
-    find('.button:not(:disabled)', text: 'Submit').click
+    click_link_or_button("Continue")
 
-    expect(page).to have_selector('.-required-highlighting #trial-domain-name')
-    expect(page).to have_text('There can only be one active trial per domain.')
-    expect(page).to have_no_text 'email sent - waiting for confirmation'
+    page.within("#enterprise-trial-dialog") do
+      expect(page).to have_text("Domain was already used to create a trial.")
+    end
   end
 
-  it 'shows an error in case of other errors' do
-    proxy.stub('https://augur.openproject-edge.com:443/public/v1/trials', method: 'post')
-      .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 409, body: other_error_body.to_json)
+  it "shows an error in case of other errors" do
+    stub_request(:post, "https://start.openproject-edge.com:443/public/v1/trials")
+      .to_return(status: 409, headers: { "Content-Type" => "application/json" }, body: other_error_body.to_json)
 
-    find('.button', text: 'Start free trial').click
+    click_link("Start free trial")
     fill_out_modal
-    find('.button:not(:disabled)', text: 'Submit').click
+    click_link_or_button("Continue")
 
-    expect(page).to have_text('Token version is invalid')
-    expect(page).to have_no_text 'email sent - waiting for confirmation'
+    page.within("#enterprise-trial-dialog") do
+      expect(page).to have_text("Token version is invalid")
+    end
   end
 
-  context 'with a waiting request pending' do
+  context "with a waiting request pending" do
     before do
-      proxy.stub('https://augur.openproject-edge.com:443/public/v1/trials', method: 'post')
-        .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 200, body: created_body.to_json)
+      stub_request(:post, "https://start.openproject-edge.com:443/public/v1/trials")
+        .to_return(status: 202, headers: { "Content-Type" => "application/json" }, body: created_body.to_json)
 
-      proxy.stub("https://augur.openproject-edge.com:443/public/v1/trials/#{trial_id}")
-        .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 422, body: waiting_body.to_json)
+      stub_request(:get, "https://start.openproject-edge.com:443/public/v1/trials/#{trial_id}")
+        .to_return(status: 422, headers: { "Content-Type" => "application/json" }, body: waiting_body.to_json)
 
-      proxy.stub("https://augur.openproject-edge.com:443/public/v1/trials/#{trial_id}/resend", method: 'post')
-        .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 200, body: waiting_body.to_json)
+      stub_request(:post, "https://start.openproject-edge.com:443/public/v1/trials/#{trial_id}/resend")
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" }, body: waiting_body.to_json)
 
-      find('.button', text: 'Start free trial').click
+      click_link("Start free trial")
       fill_out_modal
-      find('.button:not(:disabled)', text: 'Submit').click
-
-      expect(page).to have_text 'foo@foocorp.example'
-      expect(page).to have_text 'email sent - waiting for confirmation'
+      click_link_or_button("Continue")
+      wait_for_network_idle
     end
 
-    it 'can get the trial if reloading the page' do
-      # We need to go to another page to stop the request cycle
-      visit info_admin_index_path
-
+    it "can get the trial if reloading the page" do
       # Stub with successful body
       # Stub the proxy to a successful return
       # which marks the user has confirmed the mail link
-      proxy.stub("https://augur.openproject-edge.com:443/public/v1/trials/#{trial_id}")
-        .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 200, body: confirmed_body.to_json)
+      stub_request(:get, "https://start.openproject-edge.com:443/public/v1/trials/#{trial_id}")
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" }, body: confirmed_body.to_json)
 
-      # Stub the details URL to still return 403
-      proxy.stub("https://augur.openproject-edge.com:443/public/v1/trials/#{trial_id}/details")
-        .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 403)
+      visit enterprise_tokens_path
 
-      visit enterprise_path
+      expect(page).to have_text("Quick feature overview")
+      expect(page).to have_css("#enterprise-trial-welcome-dialog video")
+      page.find('[data-close-dialog-id="enterprise-trial-welcome-dialog"]').click
 
-      expect(page).to have_selector('.attributes-key-value--value-container', text: 'OpenProject Test', wait: 20)
-      expect(page).to have_selector('.attributes-key-value--value-container', text: '01/01/2020')
-      expect(page).to have_selector('.attributes-key-value--value-container', text: '01/02/2020')
-      expect(page).to have_selector('.attributes-key-value--value-container', text: '5')
-      # Generated expired token has different mail
-      expect(page).to have_selector('.attributes-key-value--value-container', text: 'info@openproject.com')
+      expect(page).to have_text("Enterprise Plan")
+      expect(page).to have_text("Expired")
+      expect(page).to have_text("OpenProject Test")
+      expect(page).to have_text("5")
+      expect(page).to have_text("01/01/2020 – 01/02/2020")
     end
 
-    it 'can confirm that trial regularly' do
-      find('.op-modal--body [data-qa-selector="op-ee-trial-waiting-resend-link"]', text: 'Resend').click
-      expect(page).to have_selector('.op-toast.-success', text: 'Email has been resent.', wait: 20)
-
-      expect(page).to have_text 'foo@foocorp.example'
-      expect(page).to have_text 'email sent - waiting for confirmation'
-
+    it "can confirm that trial regularly" do
+      expect(page).to have_text "We sent you an email on #{format_date(Date.current)} to foo@foocorp.example"
       # Stub the proxy to a successful return
       # which marks the user has confirmed the mail link
-      proxy.stub("https://augur.openproject-edge.com:443/public/v1/trials/#{trial_id}")
-        .and_return(headers: { 'Access-Control-Allow-Origin' => '*' }, code: 200, body: confirmed_body.to_json)
+      stub_request(:get, "https://start.openproject-edge.com:443/public/v1/trials/#{trial_id}")
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" }, body: confirmed_body.to_json)
 
-      # Wait until the next request
-      expect(page).to have_selector '[data-qa-selector="op-ee-trial-waiting-status--confirmed"]', text: 'confirmed', wait: 20
+      # Expect flash with resend link
+      page.within("#primerized-flash-messages") do
+        click_link_or_button("Resend confirmation email")
+      end
 
-      # advance to video
-      click_on 'Continue'
+      expect(page).to have_text("Quick feature overview", wait: 10)
+      expect(page).to have_css("#enterprise-trial-welcome-dialog video")
 
-      # advance to close
-      click_on 'Continue'
-
-      expect(page).to have_selector('.flash.notice', text: 'Successful update.', wait: 10)
-      expect(page).to have_selector('.attributes-key-value--value-container', text: 'OpenProject Test')
-      expect(page).to have_selector('.attributes-key-value--value-container', text: '01/01/2020')
-      expect(page).to have_selector('.attributes-key-value--value-container', text: '01/02/2020')
-      expect(page).to have_selector('.attributes-key-value--value-container', text: '5')
-      # Generated expired token has different mail
-      expect(page).to have_selector('.attributes-key-value--value-container', text: 'info@openproject.com')
+      expect(page).to have_text("Enterprise Plan")
+      expect(page).to have_text("Expired")
+      expect(page).to have_text("OpenProject Test")
+      expect(page).to have_text("5")
+      expect(page).to have_text("01/01/2020 – 01/02/2020")
     end
   end
 end

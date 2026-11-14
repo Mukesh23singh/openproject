@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'task_list/filter'
+require "task_list/filter"
 
 module OpenProject::TextFormatting
   module Filters
@@ -58,11 +57,11 @@ module OpenProject::TextFormatting
       # Modifications apply to the parsed document directly.
       #
       # Returns nothing.
-      def filter!
-        list_items(doc).reverse.each do |li|
+      def filter! # rubocop:disable Metrics/AbcSize
+        list_items(doc).reverse_each do |li|
           next if list_items(li.parent).empty?
 
-          add_css_class(li.parent, 'op-uc-list_task-list')
+          add_css_class(li.parent, "op-uc-list_task-list")
 
           outer, inner =
             if p = li.xpath(ItemParaSelector)[0]
@@ -70,7 +69,7 @@ module OpenProject::TextFormatting
             else
               [li, li.inner_html]
             end
-          if match = (inner.chomp =~ ItemPattern && $1)
+          if match = inner.chomp =~ ItemPattern && $1
             item = TaskList::Item.new(match, inner)
             # prepend because we're iterating in reverse
             task_list_items.unshift item

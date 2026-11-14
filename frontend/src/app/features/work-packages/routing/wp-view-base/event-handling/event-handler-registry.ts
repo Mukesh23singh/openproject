@@ -1,29 +1,69 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { EventEmitter, InjectionToken, Injector } from '@angular/core';
+import { runCleanup } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
+import { delegate, DelegateEvent } from '@knowledgecode/delegate';
+
+export type EventType = keyof HTMLElementEventMap;
 
 export interface WorkPackageViewEventHandler<T> {
   /** Event name to register * */
-  EVENT:string;
+  EVENT:EventType|EventType[];
 
   /** Event context CSS selector */
   SELECTOR:string;
 
   /** Event callback handler */
-  handleEvent(view:T, evt:JQuery.TriggeredEvent):void;
+  handleEvent(view:T, evt:Event):void;
 
   /** Event scope method */
-  eventScope(view:T):JQuery;
+  eventScope(view:T):HTMLElement;
+}
+
+export interface WorkPackageViewAttachment {
+  destroy():void;
+}
+
+export interface WorkPackageStateLinkEvent {
+  workPackageId:string;
+  requestedState:'split'|'show';
 }
 
 export interface WorkPackageViewOutputs {
-  // On selection updated
-  selectionChanged:EventEmitter<string[]>;
   // On row (double) clicked
   itemClicked:EventEmitter<{ workPackageId:string, double:boolean }>;
   // On work package link / details icon clicked
-  stateLinkClicked:EventEmitter<{ workPackageId:string, requestedState:string }>;
+  stateLinkClicked:EventEmitter<WorkPackageStateLinkEvent>;
 }
 
-export const WorkPackageViewHandlerToken = new InjectionToken<WorkPackageViewEventHandler<any>>('CardEventHandler');
+export const WorkPackageViewHandlerToken = new InjectionToken<
+  WorkPackageViewHandlerRegistry<unknown>|(new (injector:Injector) => WorkPackageViewHandlerRegistry<unknown>)
+>('CardEventHandler');
 
 /**
  * Abstract view handler registry for globally handling arbitrary event on the
@@ -36,16 +76,25 @@ export abstract class WorkPackageViewHandlerRegistry<T> {
 
   protected abstract eventHandlers:((view:T) => WorkPackageViewEventHandler<T>)[];
 
-  attachTo(viewRef:T) {
-    this.eventHandlers.map((factory) => {
-      const handler = factory(viewRef);
-      const target = handler.eventScope(viewRef);
+  attachTo(viewRef:T):WorkPackageViewAttachment {
+    const cleanups:(() => void)[] = [];
+    try {
+      this.eventHandlers.forEach((factory) => {
+        const handler = factory(viewRef);
+        const target = handler.eventScope(viewRef);
+        const types = Array.isArray(handler.EVENT) ? handler.EVENT : [handler.EVENT];
 
-      target.on(handler.EVENT, handler.SELECTOR, (evt:JQuery.TriggeredEvent) => {
-        handler.handleEvent(viewRef, evt);
+        types.forEach((type) => {
+          const callback = (event:DelegateEvent) => handler.handleEvent(viewRef, event.nativeEvent);
+          delegate(target).on(type, handler.SELECTOR, callback);
+          cleanups.push(() => delegate(target).off(type, handler.SELECTOR, callback));
+        });
       });
+    } catch (error) {
+      cleanups.splice(0).reverse().forEach((cleanup) => runCleanup(cleanup));
+      throw error;
+    }
 
-      return handler;
-    });
+    return { destroy: () => cleanups.splice(0).reverse().forEach((cleanup) => runCleanup(cleanup)) };
   }
 }

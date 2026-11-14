@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/plugins'
-require_relative './patches/api/work_package_representer'
-require_relative './patches/api/work_package_schema_representer'
+require "open_project/plugins"
+require_relative "patches/api/work_package_representer"
+require_relative "patches/api/work_package_schema_representer"
 
 module OpenProject::Backlogs
   class Engine < ::Rails::Engine
@@ -37,9 +38,7 @@ module OpenProject::Backlogs
     def self.settings
       {
         default: {
-          'story_types' => nil,
-          'task_type' => nil,
-          'card_spec' => nil
+          "points_burn_direction" => "up"
         },
         menu_item: :backlogs_settings
       }
@@ -47,167 +46,214 @@ module OpenProject::Backlogs
 
     include OpenProject::Plugins::ActsAsOpEngine
 
-    register 'openproject-backlogs',
-             author_url: 'https://www.openproject.org',
+    register("openproject-backlogs",
+             author_url: "https://www.openproject.org",
              bundled: true,
-             settings: settings do
-      OpenProject::AccessControl.permission(:add_work_packages).tap do |add|
-        add.controller_actions << 'rb_stories/create'
-        add.controller_actions << 'rb_tasks/create'
-        add.controller_actions << 'rb_impediments/create'
-      end
+             settings:) do
+      project_module :backlogs, dependencies: %i[work_package_tracking board_view] do
+        enabled_by_default!
 
-      OpenProject::AccessControl.permission(:edit_work_packages).tap do |edit|
-        edit.controller_actions << 'rb_stories/update'
-        edit.controller_actions << 'rb_tasks/update'
-        edit.controller_actions << 'rb_impediments/update'
-      end
+        permission :view_sprints,
+                   { "backlogs/backlog": %i[show details],
+                     "backlogs/filters": :show,
+                     "backlogs/work_packages": %i[index show menu],
+                     "backlogs/inbox": :menu,
+                     "backlogs/burndown_chart": :show,
+                     "backlogs/sprints": :index,
+                     "backlogs/sprint_reports": :show,
+                     "backlogs/taskboard": :show },
+                   permissible_on: :project,
+                   dependencies: %i[view_work_packages show_board_views]
 
-      project_module :backlogs, dependencies: :work_package_tracking do
-        # SYNTAX: permission :name_of_permission, { :controller_name => [:action1, :action2] }
-
-        # Master backlog permissions
-        permission :view_master_backlog,
-                   rb_master_backlogs: :index,
-                   rb_sprints: %i[index show],
-                   rb_wikis: :show,
-                   rb_stories: %i[index show],
-                   rb_queries: :show,
-                   rb_burndown_charts: :show,
-                   rb_export_card_configurations: %i[index show]
-
-        permission :view_taskboards,
-                   rb_taskboards: :show,
-                   rb_sprints: :show,
-                   rb_stories: :show,
-                   rb_tasks: %i[index show],
-                   rb_impediments: %i[index show],
-                   rb_wikis: :show,
-                   rb_burndown_charts: :show,
-                   rb_export_card_configurations: %i[index show]
-
-        permission :select_done_statuses,
+        permission :manage_backlogs_configuration,
                    {
-                     'projects/settings/backlogs': %i[show update rebuild_positions]
+                     "projects/settings/backlogs": %i[show update rebuild_positions],
+                     "projects/settings/backlog_estimation_units": %i[show update]
                    },
+                   permissible_on: :project,
                    require: :member
 
-        # Sprint permissions
-        # :show_sprints and :list_sprints are implicit in :view_master_backlog permission
-        permission :update_sprints,
-                   {
-                     rb_sprints: %i[edit update],
-                     rb_wikis: %i[edit update]
-                   },
-                   require: :member
+        permission :create_sprints,
+                   { "backlogs/buckets": %i[new_dialog create edit_dialog update destroy_dialog destroy],
+                     "backlogs/sprints": %i[new_dialog refresh_form create edit_dialog update] },
+                   permissible_on: :project,
+                   require: :member,
+                   dependencies: :view_sprints
+
+        permission :start_complete_sprint,
+                   { "backlogs/sprints": %i[start finish] },
+                   permissible_on: :project,
+                   require: :member,
+                   dependencies: %i[view_sprints manage_board_views manage_sprint_items]
+
+        permission :manage_sprint_items,
+                   { "backlogs/work_packages": %i[
+                     move
+                     move_collection
+                     move_to_sprint_dialog
+                     move_to_bucket_dialog
+                     add_existing_dialog
+                     add_existing
+                   ] },
+                   permissible_on: :project,
+                   require: :member,
+                   dependencies: %i[view_sprints edit_work_packages]
+
+        permission :share_sprint,
+                   { "projects/settings/backlog_sharings": %i[show update],
+                     "projects/settings/backlog_multiple_active_sprints": %i[show toggle_multiple_active_sprints] },
+                   permissible_on: :project,
+                   require: :member,
+                   dependencies: :create_sprints
+      end
+
+      ::Redmine::MenuManager.map(:admin_menu) do |menu|
+        menu.push :admin_backlogs,
+                  { controller: "/backlogs/settings", action: :show },
+                  if: ->(_) { User.current.admin? },
+                  caption: :label_backlogs,
+                  icon: "op-backlogs"
       end
 
       menu :project_menu,
            :backlogs,
-           { controller: '/rb_master_backlogs', action: :index },
+           { controller: "/backlogs/backlog", action: :show },
+           if: Proc.new { |project| project.module_enabled?(:backlogs) },
            caption: :project_module_backlogs,
-           before: :calendar,
-           icon: 'icon2 icon-backlogs'
+           after: :work_packages,
+           icon: "op-backlogs"
 
       menu :project_menu,
+           :backlog,
+           { controller: "/backlogs/backlog", action: :show },
+           if: Proc.new { |project| project.module_enabled?(:backlogs) },
+           caption: :label_backlog_and_sprints,
+           parent: :backlogs
+
+      menu :project_menu,
+           :all_sprints,
+           { controller: "/backlogs/sprints", action: :index },
+           if: Proc.new { |project| project.module_enabled?(:backlogs) },
+           caption: :label_all_sprints,
+           parent: :backlogs
+
+      # Menu items that are always present
+      menu :project_menu,
            :settings_backlogs,
-           { controller: '/projects/settings/backlogs', action: :show },
+           { controller: "/projects/settings/backlogs", action: :show },
+           if: Proc.new { |project| project.module_enabled?(:backlogs) },
            caption: :label_backlogs,
            parent: :settings,
            before: :settings_storage
     end
 
-    # We still override version and project settings views from the core! URH
-    override_core_views!
+    assets %w(enterprise/multiple-active-sprints-light.png enterprise/multiple-active-sprints-dark.png)
 
     patches %i[PermittedParams
                WorkPackage
-               Status
-               Type
-               Project
-               User
-               VersionsController
-               Version]
+               Project]
 
-    patch_with_namespace :API, :V3, :WorkPackages, :Schema, :SpecificWorkPackageSchema
-    patch_with_namespace :BasicData, :SettingSeeder
-    patch_with_namespace :DemoData, :ProjectSeeder
-    patch_with_namespace :WorkPackages, :UpdateAncestorsService
-    patch_with_namespace :WorkPackages, :UpdateService
+    patch_with_namespace :Projects, :CopyService
+    patch_with_namespace :Projects, :SetAttributesService
     patch_with_namespace :WorkPackages, :SetAttributesService
     patch_with_namespace :WorkPackages, :BaseContract
-    patch_with_namespace :Versions, :RowCell
+    patch_with_namespace :WorkPackages, :UpdateContract
+    patch_with_namespace :Projects, :Copy, :WorkPackagesDependentService
+    patch_with_namespace :Queries, :Copy, :FiltersMapper
+    patch_with_namespace :API, :V3, :WorkPackages, :Schema, :SpecificWorkPackageSchema
 
-    config.to_prepare do
-      next if Versions::BaseContract.included_modules.include?(OpenProject::Backlogs::Patches::Versions::BaseContractPatch)
-
-      Versions::BaseContract.prepend(OpenProject::Backlogs::Patches::Versions::BaseContractPatch)
-
-      # Add available settings to the user preferences
-      UserPreferences::Schema.merge!(
-        'definitions/UserPreferences/properties',
-        {
-          'backlogs_task_color' => {
-            'type' => 'string'
-          },
-          'backlogs_versions_default_fold_state' => {
-            'type' => 'string',
-            "enum" => %w[open closed]
-          }
-        }
-      )
-    end
+    additional_permitted_attributes new_work_package: %i[backlog_bucket_id sprint_id story_points]
 
     extend_api_response(:v3, :work_packages, :work_package,
-                        &::OpenProject::Backlogs::Patches::API::WorkPackageRepresenter.extension)
-
-    extend_api_response(:v3, :work_packages, :work_package_payload,
                         &::OpenProject::Backlogs::Patches::API::WorkPackageRepresenter.extension)
 
     extend_api_response(:v3, :work_packages, :schema, :work_package_schema,
                         &::OpenProject::Backlogs::Patches::API::WorkPackageSchemaRepresenter.extension)
 
-    add_api_attribute on: :work_package, ar_name: :story_points
-    add_api_attribute on: :work_package, ar_name: :remaining_hours, writeable: ->(*) { model.leaf? }
+    add_api_resource_paths :sprint, only: %i[index show]
 
-    add_api_path :backlogs_type do |id|
-      # There is no api endpoint for this url
-      "#{root}/backlogs_types/#{id}"
+    add_api_path :project_sprints do |id|
+      "#{root}/projects/#{id}/sprints"
     end
 
-    initializer 'backlogs.register_hooks' do
-      require 'open_project/backlogs/hooks'
-      require 'open_project/backlogs/hooks/user_settings_hook'
+    add_api_resource_paths :backlog_bucket, only: %i[index show]
+
+    add_api_path :project_backlog_buckets do |id|
+      "#{root}/projects/#{id}/backlog_buckets"
+    end
+
+    add_api_endpoint "API::V3::Root" do
+      mount ::API::V3::Sprints::SprintsAPI
+      mount ::API::V3::BacklogBuckets::BacklogBucketsAPI
+    end
+
+    add_api_endpoint "API::V3::Projects::ProjectsAPI", :id do
+      mount ::API::V3::Sprints::SprintsByProjectAPI
+      mount ::API::V3::BacklogBuckets::BacklogBucketsByProjectAPI
+    end
+
+    initializer "openproject_backlogs.event_subscriptions" do
+      Rails.application.config.after_initialize do
+        # When the backlogs module is first enabled on a project, automatically populate
+        # the project's done_statuses with all statuses that are globally marked as closed
+        # (category: "closed"). This mirrors the form behavior where these statuses are
+        # pre-selected and disabled, so users never have to visit the settings page just
+        # to get sensible defaults.
+        OpenProject::Notifications.subscribe(OpenProject::Events::MODULE_ENABLED) do |payload|
+          enabled_module = payload[:enabled_module]
+          next unless enabled_module.name == "backlogs"
+
+          project = enabled_module.project
+          next unless project
+
+          mandatory_ids = Status.closed.pluck(:id)
+          next if mandatory_ids.empty?
+
+          merged_ids = project.done_statuses.reorder(nil).pluck(:id) | mandatory_ids
+
+          project.class.transaction do
+            project.done_statuses = [] # explicit clearing is necessary due to HABTM cache behavior
+            project.done_statuses = Status.where(id: merged_ids)
+          end
+        end
+
+        OpenProject::Notifications.subscribe(OpenProject::Events::MODULE_DISABLED) do |payload|
+          disabled_module = payload[:disabled_module]
+          next unless disabled_module.name == "backlogs"
+
+          disabled_module.project.not_sharing_sprints!
+        end
+
+        OpenProject::Notifications.subscribe(OpenProject::Events::PROJECT_ARCHIVED) do |payload|
+          payload[:project].not_sharing_sprints!
+        end
+      end
     end
 
     config.to_prepare do
-      ::Type.add_constraint :position, ->(type, project: nil) do
-        if project.present?
-          project.backlogs_enabled? && type.story?
-        else
-          # Allow globally configuring the attribute if story
-          type.story?
-        end
+      require "open_project/backlogs/hooks/work_package_hook"
+
+      %i[position story_points sprint backlog_bucket].each do |attribute|
+        ::TypeVariant.add_constraint attribute, ->(_type, project: nil) { project.nil? || project.backlogs_enabled? }
       end
 
-      ::Type.add_constraint :story_points, ->(type, project: nil) do
-        if project.present?
-          project.backlogs_enabled? && type.story?
-        else
-          # Allow globally configuring the attribute if story
-          type.story?
-        end
+      ::TypeVariant.add_default_mapping(:estimates_and_progress, :story_points)
+      ::TypeVariant.add_default_mapping(:other, :position)
+      ::TypeVariant.add_default_mapping(:details, :sprint)
+      ::TypeVariant.add_default_mapping(:details, :backlog_bucket)
+
+      ::API::V3::WorkPackages::EagerLoading::Checksum.add_checksum_associations(:sprint)
+      ::API::V3::WorkPackages::WorkPackageRepresenter.to_eager_load |= %i[sprint backlog_bucket]
+
+      ::Queries::Register.register(::Query) do
+        filter Queries::WorkPackages::Filter::BacklogBucketFilter
+        filter Queries::WorkPackages::Filter::BacklogInboxFilter
+        filter Queries::WorkPackages::Filter::SprintFilter
+
+        select OpenProject::Backlogs::QueryBacklogsSelect
+        select OpenProject::Backlogs::WorkPackageBucketSelect
+        select OpenProject::Backlogs::WorkPackageSprintSelect
       end
-
-      ::Type.add_constraint :remaining_time, ->(_type, project: nil) do
-        project.nil? || project.backlogs_enabled?
-      end
-
-      ::Type.add_default_mapping(:estimates_and_time, :story_points, :remaining_time)
-      ::Type.add_default_mapping(:other, :position)
-
-      Queries::Register.filter Query, OpenProject::Backlogs::WorkPackageFilter
-      Queries::Register.column Query, OpenProject::Backlogs::QueryBacklogsColumn
     end
   end
 end

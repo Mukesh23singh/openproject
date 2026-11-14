@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,26 +31,31 @@ module Components
   module WorkPackages
     class Activities
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
+      include RSpec::Wait
+      include WaitHelpers
 
       attr_reader :work_package
 
       def initialize(work_package)
         @work_package = work_package
-        @container = '.work-package-details-activities-list'
       end
 
       def expect_wp_has_been_created_activity(work_package)
-        within @container do
-          expect(page).to have_content("created on #{work_package.created_at.strftime('%m/%d/%Y')}")
+        within "#work-package-activites-container" do
+          created_date = work_package.created_at.strftime("%m/%d/%Y")
+          expect(page).to have_text("created this on", wait: 10)
+          expect(page).to have_text(created_date, wait: 10)
         end
       end
 
       def hover_action(journal_id, action)
         retry_block do
           # Focus type edit to expose buttons
-          activity = page.find("#activity-#{journal_id} .work-package-details-activities-activity-contents")
-          page.driver.browser.action.move_to(activity.native).perform
+          page
+            .find("#activity-#{journal_id} .work-package-details-activities-activity-contents")
+            .hover
 
           # Click the corresponding action button
           case action
@@ -57,6 +63,389 @@ module Components
             page.find("#activity-#{journal_id} .comments-icons .icon-quote").click
           end
         end
+      end
+
+      # helpers for new primerized activities
+
+      def ckeditor
+        Components::WysiwygEditor.new("#work-package-journal-form-element")
+      end
+
+      def get_editor_form_field_element
+        FormFields::Primerized::EditorFormField.new("notes", selector: "#work-package-journal-form-element")
+      end
+
+      def journals_container_class_name
+        "work-packages-activities-tab-journals-index-component"
+      end
+
+      def within_journals_container(&)
+        page.within(".#{journals_container_class_name}", &)
+      end
+
+      def within_journal_entry(journal, &)
+        retry_block(screenshot: true) do
+          expect(page).to have_test_selector("op-wp-journal-entry-#{journal.id}")
+        end
+
+        page.within_test_selector("op-wp-journal-entry-#{journal.id}", &)
+      end
+
+      def expect_internal_comment_confirmation_dialog
+        page.within_test_selector("op-work-package-internal-comment-confirmation-dialog") do
+          expect(page).to have_text("Make this comment public?")
+          expect(page).to have_text("Your comment will be visible to anyone who can access this work package. " \
+                                    "Are you sure you want to do this?")
+
+          yield if block_given?
+        end
+      end
+
+      def expect_internal_comment_checked
+        page.within_test_selector("op-work-package-journal-form-element") do
+          expect(page).to have_checked_field("Internal comment")
+        end
+      end
+
+      def expect_internal_comment_unchecked
+        page.within_test_selector("op-work-package-journal-form-element") do
+          expect(page).to have_no_checked_field("Internal comment")
+        end
+      end
+
+      def expect_journal_changed_attribute(text:)
+        expect(page).to have_test_selector("op-journal-detail-description", text:, wait: 10)
+      end
+
+      def expect_no_journal_changed_attribute(text: nil)
+        expect(page).not_to have_test_selector("op-journal-detail-description", text:, wait: 10)
+      end
+
+      def expect_no_journal_notes(text: nil)
+        expect(page).not_to have_test_selector("op-journal-notes-body", text:, wait: 10)
+      end
+
+      def expect_journal_details_header(text: nil, count: nil)
+        expect(page).to have_test_selector("op-journal-details-header", text:, count:, wait: 10)
+      end
+
+      def expect_no_journal_details_header(text: nil)
+        expect(page).not_to have_test_selector("op-journal-details-header", text:, wait: 10)
+      end
+
+      def expect_journal_notes_header(text: nil)
+        expect(page).to have_test_selector("op-journal-notes-header", text:, wait: 10)
+      end
+
+      def expect_no_journal_notes_header(text: nil)
+        expect(page).not_to have_test_selector("op-journal-notes-header", text:, wait: 10)
+      end
+
+      def expect_journal_notes(text: nil, subselector: nil, count: nil)
+        if text && subselector
+          expect(page).to have_css("#{page.test_selector('op-journal-notes-body')} #{subselector}", text:, wait: 10)
+        elsif text
+          expect(page).to have_test_selector("op-journal-notes-body", text:, wait: 10)
+        elsif count
+          expect(page).to have_test_selector("op-journal-notes-body", count:, wait: 10)
+        end
+      end
+
+      def expect_journal_mention(text: nil)
+        expect_journal_notes # wait for the notes to be loaded
+
+        expect(page).to have_css("a.user-mention", text:, wait: 10)
+      end
+
+      def expect_notification_bubble
+        expect(page).to have_test_selector("op-journal-unread-notification", wait: 10)
+      end
+
+      def expect_no_notification_bubble
+        expect(page).not_to have_test_selector("op-journal-unread-notification", wait: 10)
+      end
+
+      def expect_journal_container_at_bottom
+        wait_for do
+          page.evaluate_script(<<~JS)
+            (() => {
+              const container = document.querySelector('.tabcontent');
+              return container.scrollHeight - container.clientHeight - container.scrollTop;
+            })()
+          JS
+        end.to be_within(10).of(0)
+      end
+
+      def expect_journal_container_at_top
+        wait_for do
+          page.evaluate_script('document.querySelector(".tabcontent").scrollTop')
+        end.to eq(0)
+      end
+
+      def expect_journal_in_view(journal)
+        entry = page.find("[data-anchor-comment-id='#{journal.id}']")
+        wait_for do
+          entry.evaluate_script(<<~JS)
+            ((entry) => {
+              const rect = entry.getBoundingClientRect();
+              const x = rect.left + rect.width / 2;
+              return rect.height > 0 && [rect.top + 1, rect.bottom - 1].every(y =>
+                y > 0 && y < window.innerHeight && entry.contains(document.elementFromPoint(x, y))
+              );
+            })(this)
+          JS
+        end.to be(true)
+      end
+
+      def expect_empty_state
+        expect(page).to have_test_selector("op-wp-journals-container-empty", wait: 10)
+      end
+
+      def expect_no_empty_state
+        expect(page).not_to have_test_selector("op-wp-journals-container-empty", wait: 10)
+      end
+
+      def expect_input_field
+        expect(page).to have_test_selector("op-work-package-journal-form", wait: 10)
+      end
+
+      def expect_no_input_field
+        expect(page).not_to have_test_selector("op-work-package-journal-form", wait: 10)
+      end
+
+      def open_new_comment_editor
+        page.find_test_selector("op-open-work-package-journal-form-trigger").click
+      end
+
+      def refocus_editor
+        ckeditor.refocus
+        expect_focus_on_editor
+      end
+
+      def expect_focus_on_editor
+        page.within_test_selector("op-work-package-journal-form-element") do
+          expect(page).to have_css(".ck-content:focus", wait: 10)
+        end
+      end
+
+      def expect_blur_on_editor
+        page.within_test_selector("op-work-package-journal-form-element") do
+          expect(page).to have_css(".ck-content:not(:focus)", wait: 10)
+        end
+      end
+
+      def expect_activity_anchor_link(text:)
+        expect(page).to have_test_selector("activity-anchor-link", text:)
+      end
+
+      def expect_unsaved_content(text)
+        page.within_test_selector("op-work-package-journal-form-element") do
+          editor = get_editor_form_field_element
+          expect(editor.input_element.value).to eq(text)
+        end
+      end
+
+      def type_comment(text)
+        # Wait for any pending Turbo Stream updates to complete
+        wait_for_network_idle
+
+        begin
+          open_new_comment_editor if page.find_test_selector("op-open-work-package-journal-form-trigger")
+        rescue Capybara::ElementNotFound
+          # If the editor is already open, we don't need to open it again
+        end
+
+        # Wait for the editor form to be present and ready
+        wait_for { page }.to have_test_selector("op-work-package-journal-form-element")
+
+        page.within_test_selector("op-work-package-journal-form-element") do
+          editor = get_editor_form_field_element
+          # Wait for the editor to be initialized
+          wait_for { editor.input_element }.to be_present
+          editor.input_element.send_keys(text)
+        end
+
+        # Wait for any pending requests to complete
+        wait_for_network_idle
+      end
+
+      def clear_comment(blur: false)
+        page.within_test_selector("op-work-package-journal-form-element") do
+          editor = get_editor_form_field_element
+          editor.set_value("")
+
+          if blur
+            editor.input_element.send_keys(:tab) # triggers blur by moving focus away
+          end
+        end
+      end
+
+      def submit_comment
+        page.find_test_selector("op-submit-work-package-journal-form").click
+      end
+
+      def add_comment(text: nil, save: true, internal: false)
+        if page.find_test_selector("op-open-work-package-journal-form-trigger")
+          open_new_comment_editor
+        else
+          expect(page).to have_test_selector("op-work-package-journal-form-element")
+        end
+
+        page.within_test_selector("op-work-package-journal-form-element") do
+          get_editor_form_field_element.set_value(text)
+
+          check_internal_comment_checkbox if internal
+
+          if save
+            wait_for_turbo_stream do
+              page.find_test_selector("op-submit-work-package-journal-form").click
+            end
+          end
+        end
+
+        wait_for_network_idle
+
+        if save
+          # wait for the comment to be loaded
+          expect(page).to have_test_selector("op-journal-notes-body", text:, wait: 10)
+        end
+      end
+
+      def edit_comment(journal, text: nil, save: true)
+        select_journal_action(journal, "edit")
+
+        page.within_test_selector("op-work-package-journal-form-element") do
+          get_editor_form_field_element.set_value(text)
+
+          if save
+            wait_for_turbo_stream do
+              page.find_test_selector("op-submit-work-package-journal-form").click
+            end
+          end
+        end
+
+        if save
+          within_journal_entry(journal) do
+            expect(page).to have_test_selector("op-journal-notes-body", text:)
+          end
+        end
+      end
+
+      def type_comment_in_edit(journal, text)
+        select_journal_action(journal, "edit")
+
+        page.within_test_selector("op-work-package-journal-form-element") do
+          editor = get_editor_form_field_element
+          # Wait for the editor to be initialized
+          wait_for { editor.input_element }.to be_present
+          editor.input_element.send_keys(text)
+        end
+      end
+
+      def quote_comment(journal)
+        select_journal_action(journal, "quote")
+
+        expect(page).to have_test_selector("op-work-package-journal-form-element")
+      end
+
+      def select_journal_action(journal, action)
+        entry_selector = "op-wp-journal-entry-#{journal.id}"
+        menu_selector = "op-wp-journal-#{journal.id}-action-menu"
+        action_selector = "op-wp-journal-#{journal.id}-#{action}"
+
+        page.document.synchronize(30) do
+          entry = page.document.find(:test_id, entry_selector, wait: 0)
+          action_item = entry.first(:test_id, action_selector, minimum: 0, wait: 0)
+
+          if action_item
+            action_item.click
+          else
+            menu = entry.find(:test_id, menu_selector, wait: 0)
+            menu.click unless menu.has_css?(":popover-open", wait: 0)
+            raise Capybara::ElementNotFound, "Waiting for journal action #{action}"
+          end
+        end
+      end
+
+      def check_internal_comment_checkbox
+        expect(page).to have_test_selector("op-work-package-journal-internal-comment-checkbox")
+        page.check("Internal comment")
+      end
+
+      def uncheck_internal_comment_checkbox
+        expect(page).to have_test_selector("op-work-package-journal-internal-comment-checkbox")
+        page.uncheck("Internal comment")
+      end
+
+      def dismiss_comment_editor_with_esc
+        page.find_test_selector("op-work-package-journal-form-element").send_keys(:escape)
+      end
+
+      def dismiss_comment_editor_with_cancel_button
+        page.within_test_selector("op-work-package-journal-form") do
+          click_on "Dismiss"
+        end
+      end
+
+      def expect_comments_order(items)
+        comments = page.all(
+          ".work-packages-activities-tab-journals-item-component--journal-notes-body",
+          count: items.size
+        )
+
+        expect(comments.map(&:text)).to eq(items)
+      end
+
+      def filter_journals(filter)
+        option = {
+          all: "all",
+          only_comments: "only-comments",
+          only_changes: "only-changes"
+        }.fetch(filter)
+        option_selector = "[data-test-selector='op-wp-journals-filter-show-#{option}']"
+
+        wait_for_turbo_stream do
+          page.document.synchronize do
+            unless page.has_css?(option_selector, wait: 0)
+              menu = page.find(
+                "action-menu[data-ready='true'][data-test-selector='op-wp-journals-filter-menu']"
+              )
+              menu.find("button[aria-haspopup='true']").click
+            end
+
+            page.find(option_selector).click
+          end
+        end
+
+        expect(page).to have_css("[data-test-selector^='op-wp-journals-#{filter}-']")
+      end
+
+      def set_journal_sorting(sorting, default_filter: :all)
+        option_selector = "[data-test-selector='op-wp-journals-sorting-#{sorting}']"
+
+        wait_for_turbo_stream do
+          page.document.synchronize do
+            unless page.has_css?(option_selector, wait: 0)
+              page.find(
+                "action-menu[data-ready='true'] [data-test-selector='op-wp-journals-sorting-menu']"
+              ).click
+            end
+
+            page.find(option_selector).click
+          end
+        end
+
+        expect(page).to have_test_selector("op-wp-journals-#{default_filter}-#{sorting}")
+      end
+
+      def trigger_update_streams_poll
+        page.execute_script(<<~JS)
+          var target = document.querySelector('[data-controller*="work-packages--activities-tab--polling"]')
+          var controller = window.Stimulus.getControllerForElementAndIdentifier(target, 'work-packages--activities-tab--polling')
+          controller.updateActivitiesList();
+        JS
+
+        wait_for_network_idle
       end
     end
   end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,56 +22,55 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe DocumentsController do
+RSpec.describe DocumentsController do
   describe "routing" do
     it {
-      expect(get('/projects/567/documents')).to route_to(controller: 'documents',
-                                                         action: 'index',
-                                                         project_id: '567')
+      expect(get("/projects/567/documents")).to route_to(controller: "documents",
+                                                         action: "index",
+                                                         project_id: "567")
     }
 
     it {
-      expect(get('/projects/567/documents/new')).to route_to(controller: 'documents',
-                                                             action: 'new',
-                                                             project_id: '567')
+      expect(get("/projects/567/documents/new")).to route_to(controller: "documents",
+                                                             action: "new",
+                                                             project_id: "567")
     }
 
     it {
-      expect(get('/documents/22')).to route_to(controller: 'documents',
-                                               action: 'show',
-                                               id: '22')
+      expect(get("/documents/22")).to route_to(controller: "documents",
+                                               action: "show",
+                                               id: "22")
     }
 
     it {
-      expect(get('/documents/22/edit')).to route_to(controller: 'documents',
-                                                    action: 'edit',
-                                                    id: '22')
+      expect(get("/documents/22/edit")).to route_to(controller: "documents",
+                                                    action: "edit",
+                                                    id: "22")
     }
 
     it {
-      expect(post('/projects/567/documents')).to route_to(controller: 'documents',
-                                                          action: 'create',
-                                                          project_id: '567')
+      expect(post("/projects/567/documents")).to route_to(controller: "documents",
+                                                          action: "create",
+                                                          project_id: "567")
     }
 
     it {
-      expect(put('/documents/567')).to route_to(controller: 'documents',
-                                                action: 'update',
-                                                id: '567')
+      expect(put("/documents/567")).to route_to(controller: "documents",
+                                                action: "update",
+                                                id: "567")
     }
 
     it {
-      expect(delete('/documents/567')).to route_to(controller: 'documents',
-                                                   action: 'destroy',
-                                                   id: '567')
+      expect(delete("/documents/567")).to route_to(controller: "documents",
+                                                   action: "destroy",
+                                                   id: "567")
     }
   end
 end

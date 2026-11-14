@@ -1,63 +1,132 @@
 ---
 sidebar_navigation:
   title: Versions
-  priority: 600
+  priority: 500
 description: Manage versions in OpenProject.
-robots: index, follow
 keywords: manage versions
 ---
 # Manage versions
 
-Versions will be used, e.g. for roadmap planning to track certain product versions or releases. Work packages can be assigned to a version. They will be displayed in the [Roadmap](../../../roadmap).
-
-Also, version will  be used to enable the Backlogs module, i.e. to create a product backlog and sprints in OpenProject.
-
-[Read here how to create a new backlogs version](../../../backlogs-scrum/manage-sprints).
+Versions help you structure and track work towards releases, milestones, or other delivery goals. Assign work packages to a version to plan and monitor their progress in the [Roadmap](../../../roadmap).
 
 ## Create a new version
 
-Press the green **+ Version** button to create a new version for a project.
+Navigate to _Project settings → Versions_ in the project menu. You will see an overview of all existing versions. By default, the existing versions will be sorted by the _Name_, which is indicated by an arrow next to the column header. To change the sorting order, click the name of the column you want to sort by.
 
-![User-guide-project-settings-versions](User-guide-project-settings-versions.png)
+To create a new version for your project, click the green **+ Version** button. 
 
-You can configure the following information.
+![Versions in project settings in OpenProject](openproject_user_guide_project_settings_work_packages_versions.png)
 
-1. Set a **name** for the version.
-2. Add a **description** to specify the version.
-3. Set **status** of a version, the default status is open.
-4. Choose a **wiki page** that you want to open directly from a version in the Roadmap.
-5. Set a **start date and finish date** for the version.
-6. Choose whether the version shall be **shared** with other projects, e.g. in the project hierarchy or subprojects.
-**Please note**: To give you maximum flexibility you will have to choose the column in the backlog individually for all projects using this version.
-7. Select a **column in backlogs view**. This is only required if you use the versions to manage your [Scrum backlog](../../../backlogs-scrum).
-8. Press the blue **Create** button to save your changes.
+![Create new version under project settings in OpenProject](openproject_user_guide_project_settings_work_packages_versions_new.png)
 
-![User-guide-project-settings-create-version](User-guide-project-settings-create-version.png)
+You can configure the following details:
 
-## Edit or delete versions
+- **Name**: Set a name for the version.
+- **Description**: Add a description to clarify the purpose of the version.
+- **Status**: Choose the status of the version. The default status is open.
+- **Wiki page**: Select a wiki page to link directly from the version in the Roadmap.
+- **Start and finish date**: Set the planned start and finish dates.
+- **Sharing**: Choose which projects the version should be shared with. Depending on the selected option, the version can be available only in the current project or also in related projects.
 
-1. Click on the **edit** icon at the right of the row to edit the version.
-2. Press the **delete** button at the right of the version to delete a version.
-3. You can **close all completed versions** with the button at the bottom of the list. In order to close only certain versions, open the details view and adapt the version **Status** (see above).
+For example, let's consider the following project hierarchy:
 
-Please note: You can only edit versions (i.e. edit icon visible) in their original project, not in projects they're shared with.
+```text
+Parent project
+├── Project A
+│   ├── Project A1
+│   │   └── Project A1a
+│   └── Project A2
+└── Project B
+    ├── Project B1  ← current project
+    │   ├── Project B1a
+    │   │   └── Project B1a-i
+    │   └── Project B1b
+    └── Project B2
+```
 
-![User-guide-project-settings-edit-versions](User-guide-project-settings-edit-versions.png)
+Assuming the version you are creating or editing belongs to **Project B1**:
+  - **Not shared**: The version is available only in the current project.
+
+  ```text
+  Project B1  ✓  ← current project
+  ```
+  - **With subprojects**: The version is available in the current project and all of its subprojects, including subprojects nested at lower levels.
+
+  ```text
+  Project B1          ✓  ← current project
+  ├── Project B1a     ✓
+  │   └── Project B1a-i ✓
+  └── Project B1b     ✓
+  ```
+  - **With project hierarchy**: The version is available in the current project, all of its parent projects, and all of its subprojects. Other projects under the same parent are not included.
+
+  ```text
+  Parent project      ✓
+  └── Project B       ✓
+      ├── Project B1  ✓  ← current project
+      │   ├── B1a     ✓
+      │   └── B1b     ✓
+      └── Project B2  ✗
+  ```
+  -  **With project tree**: The version is available in all projects that belong to the same project tree. This includes the current project, its parent projects and subprojects, as well as other projects under the same top-level parent and their subprojects.
+
+In this example, **Project A** and **Project B** have the same top-level parent, **Parent project**, so they and their subprojects are part of the same project tree.
+
+  ```text
+  Parent project          ✓  ← common parent
+  ├── Project A           ✓
+  │   ├── Project A1      ✓
+  │   │   └── Project A1a ✓
+  │   └── Project A2      ✓
+  └── Project B           ✓
+      ├── Project B1      ✓  ← current project
+      │   ├── Project B1a ✓
+      │   └── Project B1b ✓
+      └── Project B2      ✓
+  ```
+
+  - **With all projects**: The version is available in all projects across the entire OpenProject instance, regardless of their position in the project hierarchy.
 
 
+Click the Create button to save your changes.
+
+
+## Edit a version
+
+Click on the **edit** icon at the right of the row to edit the version.
+
+> [!NOTE]
+> You can only edit versions in the project they were originally created in. In projects where a version is shared, the edit option won’t be available.
+
+![Edit or close version under project settings in OpenProject](openproject_user_guide_project_settings_work_packages_versions_edit.png)
 
 ## Close a version
 
-To close a version, open the details view of a version and set the **Status** to *Closed*.
+To close a version, open its details and set the **Status** to _Closed_.
 
-![close version](image-20200129161010953.png)
+![Close a version under project settings in OpenProject](openproject_user_guide_project_settings_work_packages_versions_closed.png)
+
+## Close completed versions
+
+To close all completed versions at once, click the **More (three dots)** icon in the top right corner and click **Close completed versions**.
+
+![Close completed versions in OpenProject project settings](openproject_user_guide_project_settings_work_packages_versions_close_completed.png)
+
+## Delete a version
+
+To remove a version, press the respective **delete** button at the end of the corresponding line in the Versions overview.
+
+![Delete a version under project settings in OpenProject](openproject_user_guide_project_settings_work_packages_versions_delete.png)
 
 ## Differences between open, locked and closed versions
 
-There are (of course) a few differences between open, locked and closed versions:
+There are a few differences between open, locked and closed versions:
 
-- **Open version**: Can be used in all places where version can be used. Work packages can be added and removed. The version is visible in the Backlogs module. It will also be shown in the Roadmap module.
-- **Locked version**: No work packages can be added or removed. The version is not visible in the Backlogs module anymore. The version is still visible in the Roadmap module.
-  Use case: E.g. the scope of a new software release or a sprint has been decided and should not be changed anymore. It is currently being worked on.
-- **Closed version**: No work packages can be added or removed. The version is not visible in the Backlogs module any more. It will also not be shown in the Roadmap module unless you explicitly filter for it.
-  Use case: A closed version is meant as a completed version, e.g. the new software release mentioned earlier has been finished and you're working on the next one.
+- **Open version**:
+Versions in this state can be used throughout the system. Work packages can be added or removed. The version is visible in both the Backlogs and Roadmap modules.
+- **Locked version**:
+Work packages cannot be added or removed. The version is **not** visible in the Backlogs module but is still shown in the Roadmap module.
+_Use case:_ You’ve finalized the scope of a sprint or release and want to prevent changes while it's being worked on.
+- **Closed version**:
+Work packages cannot be added or removed. The version is no longer shown in the Backlogs or Roadmap modules, unless you explicitly filter for closed versions.
+_Use case:_ The release or sprint is complete, and you’ve moved on to the next one.

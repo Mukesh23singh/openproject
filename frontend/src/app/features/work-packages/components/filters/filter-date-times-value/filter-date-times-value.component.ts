@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,29 +20,34 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { Moment } from 'moment';
-import {
-  Component, Input, OnInit, Output,
-} from '@angular/core';
-import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { ChangeDetectionStrategy, Component, HostBinding, Input, OnInit, Output } from '@angular/core';
 import { DebouncedEventEmitter } from 'core-app/shared/helpers/rxjs/debounced-event-emitter';
 import { componentDestroyed } from '@w11k/ngx-componentdestroyed';
-import { TimezoneService } from 'core-app/core/datetime/timezone.service';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
 import { AbstractDateTimeValueController } from '../abstract-filter-date-time-value/abstract-filter-date-time-value.controller';
 
 @Component({
-  selector: 'filter-date-times-value',
+  selector: 'op-filter-date-times-value',
   templateUrl: './filter-date-times-value.component.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class FilterDateTimesValueComponent extends AbstractDateTimeValueController implements OnInit {
+  @HostBinding('id') get id() {
+    return `div-values-${this.filter.id}`;
+  }
+
+  @HostBinding('class.inline-label') className = true;
+
   @Input() public shouldFocus = false;
 
   @Input() public filter:QueryFilterInstanceResource;
@@ -53,26 +58,21 @@ export class FilterDateTimesValueComponent extends AbstractDateTimeValueControll
     spacer: this.I18n.t('js.filter.value_spacer'),
   };
 
-  constructor(readonly I18n:I18nService,
-    readonly timezoneService:TimezoneService) {
-    super(I18n, timezoneService);
+  public get begin():string {
+    return (this.filter.values[0] || '') as string;
   }
 
-  public get begin():HalResource|string {
-    return this.filter.values[0];
-  }
-
-  public set begin(val) {
+  public set begin(val:string) {
     this.filter.values[0] = val || '';
     this.filterChanged.emit(this.filter);
   }
 
-  public get end() {
-    return this.filter.values[1];
+  public get end():string {
+    return (this.filter.values[1] || '') as string;
   }
 
-  public set end(val) {
-    this.filter.values[1] = val || '';
+  public set end(val:string) {
+    this.filter.values = [this.begin, val || ''] as string[];
     this.filterChanged.emit(this.filter);
   }
 

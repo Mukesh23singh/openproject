@@ -1,12 +1,40 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { States } from 'core-app/core/states/states.service';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { AuthorisationService } from 'core-app/core/model-auth/model-auth.service';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { WorkPackageViewHighlightingService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-highlighting.service';
 import { take } from 'rxjs/operators';
 import { WorkPackageViewOrderService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-order.service';
 import { WorkPackageViewDisplayRepresentationService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-display-representation.service';
+import { WorkPackageViewIncludeSubprojectsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-include-subprojects.service';
 import { WorkPackageViewSumService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sum.service';
 import { WorkPackageViewColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-columns.service';
 import { WorkPackageViewSortByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
@@ -17,36 +45,39 @@ import { WorkPackageViewTimelineService } from 'core-app/features/work-packages/
 import { WorkPackageViewGroupByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-group-by.service';
 import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { WorkPackageViewRelationColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-relation-columns.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { WorkPackageViewCollapsedGroupsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-collapsed-groups.service';
 import { QueryFormResource } from 'core-app/features/hal/resources/query-form-resource';
 import { QuerySchemaResource } from 'core-app/features/hal/resources/query-schema-resource';
 import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
 import { SchemaResource } from 'core-app/features/hal/resources/schema-resource';
 import { WorkPackagesListChecksumService } from './wp-list-checksum.service';
+import { WorkPackageViewBaselineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
 
 @Injectable()
 export class WorkPackageStatesInitializationService {
-  constructor(protected states:States,
-    protected querySpace:IsolatedQuerySpace,
-    protected wpTableColumns:WorkPackageViewColumnsService,
-    protected wpTableGroupBy:WorkPackageViewGroupByService,
-    protected wpTableGroupFold:WorkPackageViewCollapsedGroupsService,
-    protected wpTableSortBy:WorkPackageViewSortByService,
-    protected wpTableFilters:WorkPackageViewFiltersService,
-    protected wpTableSum:WorkPackageViewSumService,
-    protected wpTableTimeline:WorkPackageViewTimelineService,
-    protected wpTableHierarchies:WorkPackageViewHierarchiesService,
-    protected wpTableHighlighting:WorkPackageViewHighlightingService,
-    protected wpTableRelationColumns:WorkPackageViewRelationColumnsService,
-    protected wpTablePagination:WorkPackageViewPaginationService,
-    protected wpTableOrder:WorkPackageViewOrderService,
-    protected wpTableAdditionalElements:WorkPackageViewAdditionalElementsService,
-    protected apiV3Service:APIV3Service,
-    protected wpListChecksumService:WorkPackagesListChecksumService,
-    protected authorisationService:AuthorisationService,
-    protected wpDisplayRepresentation:WorkPackageViewDisplayRepresentationService) {
-  }
+  protected states = inject(States);
+  protected querySpace = inject(IsolatedQuerySpace);
+  protected wpTableColumns = inject(WorkPackageViewColumnsService);
+  protected wpTableGroupBy = inject(WorkPackageViewGroupByService);
+  protected wpTableGroupFold = inject(WorkPackageViewCollapsedGroupsService);
+  protected wpTableSortBy = inject(WorkPackageViewSortByService);
+  protected wpTableFilters = inject(WorkPackageViewFiltersService);
+  protected wpTableSum = inject(WorkPackageViewSumService);
+  protected wpTableTimeline = inject(WorkPackageViewTimelineService);
+  protected wpTableHierarchies = inject(WorkPackageViewHierarchiesService);
+  protected wpTableHighlighting = inject(WorkPackageViewHighlightingService);
+  protected wpTableRelationColumns = inject(WorkPackageViewRelationColumnsService);
+  protected wpTablePagination = inject(WorkPackageViewPaginationService);
+  protected wpTableOrder = inject(WorkPackageViewOrderService);
+  protected wpTableAdditionalElements = inject(WorkPackageViewAdditionalElementsService);
+  protected apiV3Service = inject(ApiV3Service);
+  protected wpListChecksumService = inject(WorkPackagesListChecksumService);
+  protected authorisationService = inject(AuthorisationService);
+  protected wpDisplayRepresentation = inject(WorkPackageViewDisplayRepresentationService);
+  protected wpIncludeSubprojects = inject(WorkPackageViewIncludeSubprojectsService);
+  protected wpTimestamps = inject(WorkPackageViewBaselineService);
+
 
   /**
    * Initialize the query and table states from the given query and results.
@@ -82,10 +113,10 @@ export class WorkPackageStatesInitializationService {
    * @param form
    */
   public updateStatesFromForm(query:QueryResource, form:QueryFormResource) {
-    const schema:QuerySchemaResource = form.schema as any;
+    const schema = form.schema as QuerySchemaResource;
 
-    _.each(schema.filtersSchemas.elements, (schema) => {
-      this.states.schemas.get(schema.href as string).putValue(schema as any);
+    schema.filtersSchemas.elements.forEach((schema) => {
+      this.states.schemas.get(schema.href!).putValue(schema);
     });
 
     this.wpTableFilters.initializeFilters(query, schema);
@@ -103,8 +134,8 @@ export class WorkPackageStatesInitializationService {
     this.querySpace.tableRendered.clear('Clearing rendered data before upgrading query space');
 
     if (results.schemas) {
-      _.each(results.schemas.elements, (schema:SchemaResource) => {
-        this.states.schemas.get(schema.href as string).putValue(schema);
+      results.schemas.elements.forEach((schema:SchemaResource) => {
+        this.states.schemas.get(schema.href!).putValue(schema);
       });
     }
 
@@ -124,9 +155,13 @@ export class WorkPackageStatesInitializationService {
 
     this.wpTableAdditionalElements.initialize(query, results);
 
-    this.wpTableOrder.initialize(query, results);
+    this.wpTableOrder.initialize(query);
 
     this.wpDisplayRepresentation.initialize(query, results);
+
+    this.wpIncludeSubprojects.initialize(query, results);
+
+    this.wpTimestamps.initialize(query, results);
 
     this.querySpace.additionalRequiredWorkPackages
       .values$()
@@ -151,6 +186,7 @@ export class WorkPackageStatesInitializationService {
     this.wpTableHierarchies.initialize(query, results);
     this.wpTableHighlighting.initialize(query, results);
     this.wpDisplayRepresentation.initialize(query, results);
+    this.wpIncludeSubprojects.initialize(query, results);
 
     this.authorisationService.initModelAuth('query', query.$links);
     this.authorisationService.initModelAuth('work_packages', results.$links);
@@ -168,6 +204,7 @@ export class WorkPackageStatesInitializationService {
     this.wpTableHierarchies.applyToQuery(query);
     this.wpTableOrder.applyToQuery(query);
     this.wpDisplayRepresentation.applyToQuery(query);
+    this.wpIncludeSubprojects.applyToQuery(query);
   }
 
   public clearStates() {
@@ -186,6 +223,7 @@ export class WorkPackageStatesInitializationService {
     this.wpTableGroupBy.clear(reason);
     this.wpTableGroupFold.clear(reason);
     this.wpDisplayRepresentation.clear(reason);
+    this.wpIncludeSubprojects.clear(reason);
     this.wpTableSum.clear(reason);
 
     // Clear rendered state

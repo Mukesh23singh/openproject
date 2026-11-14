@@ -1,4 +1,31 @@
-import * as moment from 'moment';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import moment, { Moment } from 'moment';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { DisplayFieldRenderer } from 'core-app/shared/components/fields/display/display-field-renderer';
 import { Injector } from '@angular/core';
@@ -6,23 +33,13 @@ import { Highlighting } from 'core-app/features/work-packages/components/wp-fast
 import { HierarchyRenderPass } from 'core-app/features/work-packages/components/wp-fast-table/builders/modes/hierarchy/hierarchy-render-pass';
 import { WorkPackageViewTimelineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-timeline.service';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { lazyInject } from 'core-app/shared/helpers/angular/lazy-inject';
+import { getCSSVariable } from 'core-app/shared/helpers/dom-helpers';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { WeekdayService } from 'core-app/core/days/weekday.service';
 import { WorkPackageTimelineTableController } from '../container/wp-timeline-container.directive';
-import { classNameBarLabel, classNameLeftHandle, classNameRightHandle } from './wp-timeline-cell-mouse-handler';
-import {
-  classNameFarRightLabel,
-  classNameHideOnHover,
-  classNameHoverStyle,
-  classNameLeftHoverLabel,
-  classNameLeftLabel,
-  classNameRightContainer,
-  classNameRightHoverLabel,
-  classNameRightLabel,
-  classNameShowOnHover,
-  WorkPackageCellLabels,
-} from './wp-timeline-cell';
+import { WorkPackageCellLabels } from './wp-timeline-cell-labels';
 import {
   calculatePositionValueForDayCount,
   calculatePositionValueForDayCountingPx,
@@ -31,74 +48,86 @@ import {
   timelineElementCssClass,
   timelineMarkerSelectionStartClass,
 } from '../wp-timeline';
-import Moment = moment.Moment;
+import { IOPFieldSchema } from 'core-app/features/hal/interfaces';
 
 export interface CellDateMovement {
   // Target values to move work package to
-  startDate?:moment.Moment;
-  dueDate?:moment.Moment;
+  startDate?:Moment;
+  dueDate?:Moment;
   // Target value to move milestone to
-  date?:moment.Moment;
+  date?:Moment;
 }
 
 export type LabelPosition = 'left'|'right'|'farRight';
+export type MouseDirection = 'left'|'right'|'both'|'create'|'dragright';
 
-class TimezoneService {
-}
+export const classNameLeftLabel = 'labelLeft';
+export const classNameRightContainer = 'containerRight';
+export const classNameRightLabel = 'labelRight';
+export const classNameLeftHoverLabel = 'labelHoverLeft';
+export const classNameRightHoverLabel = 'labelHoverRight';
+export const classNameHoverStyle = '-label-style';
+export const classNameFarRightLabel = 'labelFarRight';
+export const classNameShowOnHover = 'show-on-hover';
+export const classNameHideOnHover = 'hide-on-hover';
+export const classNameLeftHandle = 'leftHandle';
+export const classNameRightHandle = 'rightHandle';
+export const classNameBarLabel = 'bar-label';
 
 export class TimelineCellRenderer {
-  @InjectField() wpTableTimeline:WorkPackageViewTimelineService;
+  readonly wpTableTimeline = lazyInject(WorkPackageViewTimelineService, { injector: () => this.injector });
 
-  @InjectField() TimezoneService:TimezoneService;
+  readonly weekdayService = lazyInject(WeekdayService, { injector: () => this.injector });
 
-  @InjectField() schemaCache:SchemaCacheService;
+  readonly schemaCache = lazyInject(SchemaCacheService, { injector: () => this.injector });
 
-  @InjectField() I18n!:I18nService;
+  readonly I18n = lazyInject(I18nService, { injector: () => this.injector });
 
   public text = {
-    label_children_derived_duration: this.I18n.t('js.label_children_derived_duration'),
+    label_children_derived_duration: this.I18n().t('js.label_children_derived_duration'),
   };
 
   public ganttChartRowHeight:number;
 
+  public mouseDirection:MouseDirection;
+
   public fieldRenderer:DisplayFieldRenderer = new DisplayFieldRenderer(this.injector, 'timeline');
 
-  protected dateDisplaysOnMouseMove:{ left?:HTMLElement; right?:HTMLElement } = {};
+  protected mouseDownCursorType:string;
 
   constructor(readonly injector:Injector,
     readonly workPackageTimeline:WorkPackageTimelineTableController) {
-    this.ganttChartRowHeight = +getComputedStyle(document.documentElement)
-      .getPropertyValue('--table-timeline--row-height')
-      .replace('px', '');
+    this.ganttChartRowHeight = +getCSSVariable('--table-timeline--row-height').replace('px', '');
   }
 
   public get type():string {
     return 'bar';
   }
 
-  public canMoveDates(wp:WorkPackageResource) {
-    const schema = this.schemaCache.of(wp);
-    return schema.startDate.writable && schema.dueDate.writable && schema.isAttributeEditable('startDate');
+  public canMoveDates(wp:WorkPackageResource):boolean {
+    const schema = this.schemaCache().of(wp);
+    return (schema.startDate as IOPFieldSchema).writable && (schema.dueDate as IOPFieldSchema).writable && schema.isAttributeEditable('startDate');
   }
 
   public isEmpty(wp:WorkPackageResource) {
-    const start = moment(wp.startDate as any);
-    const due = moment(wp.dueDate as any);
-    const noStartAndDueValues = _.isNaN(start.valueOf()) && _.isNaN(due.valueOf());
+    const start = moment(wp.startDate);
+    const due = moment(wp.dueDate);
+    const noStartAndDueValues = Number.isNaN(start.valueOf()) && Number.isNaN(due.valueOf());
     return noStartAndDueValues;
   }
 
   public displayPlaceholderUnderCursor(ev:MouseEvent, renderInfo:RenderInfo):HTMLElement {
-    const days = Math.floor(ev.offsetX / renderInfo.viewParams.pixelPerDay);
+    const [dateUnderCursor, dayOffset] = this.cursorDateAndDayOffset(ev, renderInfo);
+    const duration = this.displayDurationForDate(renderInfo, dateUnderCursor);
+    const width = duration * renderInfo.viewParams.pixelPerDay || 30;
 
     const placeholder = document.createElement('div');
     placeholder.style.pointerEvents = 'none';
     placeholder.style.position = 'absolute';
     placeholder.style.height = '1em';
-    placeholder.style.width = '30px';
+    placeholder.style.width = `${width}px`;
     placeholder.style.zIndex = '9999';
-    placeholder.style.left = `${days * renderInfo.viewParams.pixelPerDay}px`;
-
+    placeholder.style.left = `${dayOffset * renderInfo.viewParams.pixelPerDay}px`;
     this.applyTypeColor(renderInfo, placeholder);
 
     return placeholder;
@@ -109,11 +138,13 @@ export class TimelineCellRenderer {
    * For generic work packages, assigns start and finish date.
    *
    */
-  public assignDateValues(change:WorkPackageChangeset,
+  public assignDateValues(
+    change:WorkPackageChangeset,
     labels:WorkPackageCellLabels,
-    dates:any):void {
-    this.assignDate(change, 'startDate', dates.startDate);
-    this.assignDate(change, 'dueDate', dates.dueDate);
+    dates:CellDateMovement,
+  ):void {
+    this.assignDate(change, 'startDate', dates.startDate!);
+    this.assignDate(change, 'dueDate', dates.dueDate!);
 
     this.updateLabels(true, labels, change);
   }
@@ -125,7 +156,7 @@ export class TimelineCellRenderer {
   public onDaysMoved(change:WorkPackageChangeset,
     dayUnderCursor:Moment,
     delta:number,
-    direction:'left'|'right'|'both'|'create'|'dragright'):CellDateMovement {
+    direction:MouseDirection):CellDateMovement {
     const initialStartDate = change.pristineResource.startDate;
     const initialDueDate = change.pristineResource.dueDate;
 
@@ -139,7 +170,12 @@ export class TimelineCellRenderer {
     if (direction === 'left') {
       dates.startDate = moment(initialStartDate || initialDueDate).add(delta, 'days');
     } else if (direction === 'right') {
-      dates.dueDate = moment(initialDueDate || now).add(delta, 'days');
+      // When no due date is present and the start date is in the past,
+      // we assume the task hasn't finished yet, meaning the end date is not in the past.
+      // To cover this case we have to choose the start date, only when it's in the future,
+      // and choose now if the start date is in the past.
+      const calculatedDueDate = initialDueDate || (now > initialStartDate ? now : initialStartDate);
+      dates.dueDate = moment(calculatedDueDate).add(delta, 'days');
     } else if (direction === 'both') {
       if (initialStartDate) {
         dates.startDate = moment(initialStartDate).add(delta, 'days');
@@ -153,9 +189,9 @@ export class TimelineCellRenderer {
 
     // avoid negative "overdrag" if only start or due are changed
     if (direction !== 'both') {
-      if (dates.startDate !== undefined && dates.startDate.isAfter(dueDate)) {
+      if (dates.startDate?.isAfter(dueDate)) {
         dates.startDate = dueDate;
-      } else if (dates.dueDate !== undefined && dates.dueDate.isBefore(startDate)) {
+      } else if (dates.dueDate?.isBefore(startDate)) {
         dates.dueDate = startDate;
       }
     }
@@ -166,40 +202,51 @@ export class TimelineCellRenderer {
   public onMouseDown(ev:MouseEvent,
     dateForCreate:string|null,
     renderInfo:RenderInfo,
-    labels:WorkPackageCellLabels,
-    elem:HTMLElement):'left'|'right'|'both'|'dragright'|'create' {
+    labels:WorkPackageCellLabels):MouseDirection {
     // check for active selection mode
     if (renderInfo.viewParams.activeSelectionMode) {
       renderInfo.viewParams.activeSelectionMode(renderInfo.workPackage);
       ev.preventDefault();
+      this.mouseDirection = 'both';
       return 'both'; // irrelevant
     }
 
     const projection = renderInfo.change.projectedResource;
-    let direction:'left'|'right'|'both'|'dragright';
+    let direction:Exclude<MouseDirection, 'create'>;
+
+    const target = ev.target as HTMLElement;
 
     // Update the cursor and maybe set start/due values
-    if (jQuery(ev.target!).hasClass(classNameLeftHandle)) {
+    if (target.classList.contains(classNameLeftHandle)) {
       // only left
       direction = 'left';
-      this.workPackageTimeline.forceCursor('col-resize');
+      this.mouseDirection = 'left';
+      this.mouseDownCursorType = 'col-resize';
       if (projection.startDate === null) {
         projection.startDate = projection.dueDate;
       }
-    } else if (jQuery(ev.target!).hasClass(classNameRightHandle) || dateForCreate) {
+    } else if (target.classList.contains(classNameRightHandle) || dateForCreate) {
       // only right
       direction = 'right';
-      this.workPackageTimeline.forceCursor('col-resize');
+      this.mouseDirection = 'right';
+      this.mouseDownCursorType = 'col-resize';
     } else {
       // both
       direction = 'both';
-      this.workPackageTimeline.forceCursor('ew-resize');
+      this.mouseDirection = 'both';
+      this.mouseDownCursorType = 'ew-resize';
     }
 
+    this.workPackageTimeline.forceCursor(this.mouseDownCursorType);
+
     if (dateForCreate) {
+      const dateUnderCursor = this.cursorDateAndDayOffset(ev, renderInfo)[0];
+      const duration = this.displayDurationForDate(renderInfo, dateUnderCursor) - 1;
+
       projection.startDate = dateForCreate;
-      projection.dueDate = dateForCreate;
+      projection.dueDate = moment(dateForCreate).add(duration, 'days').format('YYYY-MM-DD');
       direction = 'dragright';
+      this.mouseDirection = 'dragright';
     }
 
     this.updateLabels(true, labels, renderInfo.change);
@@ -208,6 +255,9 @@ export class TimelineCellRenderer {
   }
 
   public onMouseDownEnd(labels:WorkPackageCellLabels, change:WorkPackageChangeset) {
+    // Reset the cursor set by onMouseDown
+    this.mouseDownCursorType = '';
+    this.workPackageTimeline.forceCursor(this.mouseDownCursorType);
     this.updateLabels(false, labels, change);
   }
 
@@ -217,27 +267,29 @@ export class TimelineCellRenderer {
    */
   public update(element:HTMLDivElement, labels:WorkPackageCellLabels|null, renderInfo:RenderInfo):boolean {
     const { change } = renderInfo;
-    const bar = element.querySelector(`.${timelineBackgroundElementClass}`) as HTMLElement;
+    const bar = element.querySelector<HTMLElement>(`.${timelineBackgroundElementClass}`);
+    if (!bar) { return false; }
+
     let start = moment(change.projectedResource.startDate);
     let due = moment(change.projectedResource.dueDate);
 
-    if (_.isNaN(start.valueOf()) && _.isNaN(due.valueOf())) {
+    if (Number.isNaN(start.valueOf()) && Number.isNaN(due.valueOf())) {
       element.style.visibility = 'hidden';
     } else {
       element.style.visibility = 'visible';
     }
 
     // only start date, fade out bar to the right
-    if (_.isNaN(due.valueOf()) && !_.isNaN(start.valueOf())) {
+    if (Number.isNaN(due.valueOf()) && !Number.isNaN(start.valueOf())) {
       // Set due date to today
       due = moment();
-      bar.style.backgroundImage = 'linear-gradient(90deg, rgba(255,255,255,0) 0%, #F1F1F1 100%)';
+      bar.setAttribute('style', 'background-image: linear-gradient(90deg, rgba(255,255,255,0) 0%, #F1F1F1 100%) !important');
     }
 
     // only finish date, fade out bar to the left
-    if (_.isNaN(start.valueOf()) && !_.isNaN(due.valueOf())) {
+    if (Number.isNaN(start.valueOf()) && !Number.isNaN(due.valueOf())) {
       start = due.clone();
-      bar.style.backgroundImage = 'linear-gradient(90deg, #F1F1F1 0%, rgba(255,255,255,0) 80%)';
+      bar.setAttribute('style', 'background-image: linear-gradient(90deg, #F1F1F1 0%, rgba(255,255,255,0) 80%) !important');
     }
 
     this.setElementPositionAndSize(element, renderInfo, start, due);
@@ -254,15 +306,56 @@ export class TimelineCellRenderer {
     return true;
   }
 
+  public cursorDateAndDayOffset(ev:MouseEvent, renderInfo:RenderInfo):[Moment, number] {
+    const dayOffset = Math.floor(ev.offsetX / renderInfo.viewParams.pixelPerDay);
+    const dateUnderCursor = renderInfo.viewParams.dateDisplayStart.clone().add(dayOffset, 'days');
+    return [dateUnderCursor, dayOffset];
+  }
+
   protected checkForActiveSelectionMode(renderInfo:RenderInfo, element:HTMLElement) {
     if (renderInfo.viewParams.activeSelectionMode) {
       element.style.backgroundImage = ''; // required! unable to disable "fade out bar" with css
 
       if (renderInfo.viewParams.selectionModeStart === `${renderInfo.workPackage.id!}`) {
-        jQuery(element).addClass(timelineMarkerSelectionStartClass);
+        element.classList.add(timelineMarkerSelectionStartClass);
         element.style.background = 'none';
       }
     }
+  }
+
+  /**
+   * Takes the date under the cursor and the work package's duration.
+   * It calculates the adjusted duration based on the number of NonWorkingDays
+   * that fall in the range of the ( date .. date + duration ).
+   * @param renderInfo
+   * @param date where we start the duration calculation from
+   * @return {number} the NonWorkingDays adjusted duration
+   */
+
+  protected displayDurationForDate(renderInfo:RenderInfo, date:Moment):number {
+    const { workPackage } = renderInfo;
+    let duration = Number(moment.duration(workPackage.duration || 'P1D').asDays().toFixed(0));
+
+    if (workPackage.ignoreNonWorkingDays) {
+      return duration;
+    }
+
+    const { dateDisplayEnd } = renderInfo.viewParams;
+    let newDuration = 0;
+
+    for (newDuration; newDuration < duration; newDuration++) {
+      const currentDate = date.clone().add(newDuration, 'days');
+
+      // Stop adding duration when we reach end of the visible table
+      if (currentDate > dateDisplayEnd) {
+        break;
+      }
+      // Extend the duration if the currentDate is non-working
+      if (this.weekdayService().isNonWorkingDay(currentDate.toDate() || this.workPackageTimeline.isNonWorkingDay(currentDate.toDate()))) {
+        duration += 1;
+      }
+    }
+    return newDuration;
   }
 
   getMarginLeftOfLeftSide(renderInfo:RenderInfo):number {
@@ -270,7 +363,7 @@ export class TimelineCellRenderer {
 
     let start = moment(projection.startDate);
     const due = moment(projection.dueDate);
-    start = _.isNaN(start.valueOf()) ? due.clone() : start;
+    start = Number.isNaN(start.valueOf()) ? due.clone() : start;
 
     const offsetStart = start.diff(renderInfo.viewParams.dateDisplayStart, 'days');
 
@@ -283,8 +376,8 @@ export class TimelineCellRenderer {
     let start = moment(projection.startDate);
     let due = moment(projection.dueDate);
 
-    start = _.isNaN(start.valueOf()) ? due.clone() : start;
-    due = _.isNaN(due.valueOf()) ? start.clone() : due;
+    start = Number.isNaN(start.valueOf()) ? due.clone() : start;
+    due = Number.isNaN(due.valueOf()) ? start.clone() : due;
 
     const offsetStart = start.diff(renderInfo.viewParams.dateDisplayStart, 'days');
     const duration = due.diff(start, 'days') + 1;
@@ -296,7 +389,7 @@ export class TimelineCellRenderer {
     return renderInfo.viewParams.pixelPerDay / 8;
   }
 
-  getPaddingRightForOutgoingRelationLines(renderInfo:RenderInfo):number {
+  getPaddingRightForOutgoingRelationLines(_renderInfo:RenderInfo):number {
     return 0;
   }
 
@@ -304,7 +397,7 @@ export class TimelineCellRenderer {
    * Render the generic cell element, a bar spanning from
    * start to finish date.
    */
-  public render(renderInfo:RenderInfo):HTMLDivElement {
+  public render(_renderInfo:RenderInfo):HTMLDivElement {
     const container = document.createElement('div');
     const bar = document.createElement('div');
     const left = document.createElement('div');
@@ -371,20 +464,21 @@ export class TimelineCellRenderer {
 
     // Don't apply the class in selection mode
     const { id } = type;
+    const highlightClasses = Highlighting.backgroundClass('type', id!).split(' ');
     if (selectionMode) {
-      bg.classList.remove(Highlighting.backgroundClass('type', id!));
+      bg.classList.remove(...highlightClasses);
     } else {
-      bg.classList.add(Highlighting.backgroundClass('type', id!));
+      bg.classList.add(...highlightClasses);
     }
   }
 
-  protected assignDate(change:WorkPackageChangeset, attributeName:string, value:moment.Moment) {
+  protected assignDate(change:WorkPackageChangeset, attributeName:string, value:Moment) {
     if (value) {
       change.projectedResource[attributeName] = value.format('YYYY-MM-DD');
     }
   }
 
-  setElementPositionAndSize(element:HTMLElement, renderInfo:RenderInfo, start:moment.Moment, due:moment.Moment) {
+  setElementPositionAndSize(element:HTMLElement, renderInfo:RenderInfo, start:Moment, due:Moment) {
     const { viewParams } = renderInfo;
     // offset left
     const offsetStart = start.diff(viewParams.dateDisplayStart, 'days');
@@ -395,10 +489,25 @@ export class TimelineCellRenderer {
     element.style.width = calculatePositionValueForDayCount(viewParams, duration);
 
     // ensure minimum width
-    if (!_.isNaN(start.valueOf()) || !_.isNaN(due.valueOf())) {
-      const minWidth = _.max([renderInfo.viewParams.pixelPerDay, 2]);
+    if (!Number.isNaN(start.valueOf()) || !Number.isNaN(due.valueOf())) {
+      const minWidth = Math.max(renderInfo.viewParams.pixelPerDay, 2);
       element.style.minWidth = `${minWidth}px`;
     }
+  }
+
+  cursorOrDatesAreNonWorking(evOrDates:MouseEvent|Moment[], renderInfo:RenderInfo, direction?:MouseDirection|null):boolean {
+    if (renderInfo.workPackage.ignoreNonWorkingDays) {
+      return false;
+    }
+
+    const dates = (evOrDates instanceof MouseEvent)
+      ? [this.cursorDateAndDayOffset(evOrDates, renderInfo)[0]]
+      : evOrDates;
+    if (!renderInfo.workPackage.ignoreNonWorkingDays && direction === 'both'
+      && (this.weekdayService().isNonWorkingDay(dates[dates.length - 1].toDate() || this.workPackageTimeline.isNonWorkingDay(dates[dates.length - 1].toDate())))) {
+      return false;
+    }
+    return dates.some((date) => (this.weekdayService().isNonWorkingDay(date.toDate()) || this.workPackageTimeline.isNonWorkingDay(date.toDate())));
   }
 
   /**
@@ -451,12 +560,24 @@ export class TimelineCellRenderer {
       childrenDurationBar.appendChild(childrenDurationHoverContainer);
       row.appendChild(childrenDurationBar);
     }
+
+    // Check for non-working days and display a not-allowed cursor
+    // when the startDate, dueDate are non-working days
+    const { startDate, dueDate } = renderInfo.change.projectedResource;
+    const invalidDates = this.cursorOrDatesAreNonWorking([moment(startDate), moment(dueDate)], renderInfo, this.mouseDirection);
+
+    if (invalidDates) {
+      this.workPackageTimeline.forceCursor('not-allowed');
+    } else {
+      // Restore the previous cursor set by onMouseDown
+      this.workPackageTimeline.forceCursor(this.mouseDownCursorType);
+    }
   }
 
   protected updateLabels(activeDragNDrop:boolean,
     labels:WorkPackageCellLabels,
     change:WorkPackageChangeset) {
-    const labelConfiguration = this.wpTableTimeline.getNormalizedLabels(change.projectedResource);
+    const labelConfiguration = this.wpTableTimeline().getNormalizedLabels(change.projectedResource);
 
     if (!activeDragNDrop) {
       // normal display

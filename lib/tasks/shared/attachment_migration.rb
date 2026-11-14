@@ -1,3 +1,32 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module Tasks
   module Shared
     module AttachmentMigration
@@ -76,7 +105,7 @@ module Tasks
           .where(container_type: model.name)
           .group(:container_id)
           .pluck(:container_id)
-          .map { |id| model.find_by(id: id) }
+          .map { |id| model.find_by(id:) }
       end
 
       def enable_wiki!(project)
@@ -84,14 +113,14 @@ module Tasks
           project.enabled_modules.create name: "wiki"
 
           if project.wiki.nil?
-            Wiki.create! project: project, start_page: "Wiki", status: 1
+            Wiki.create! project:, start_page: "Wiki", status: 1
             project.reload
           end
         end
       end
 
       def create_project_attachments_page!(project, name: "Project Attachments")
-        page = attachments_page! project.wiki, name: name
+        page = attachments_page!(project.wiki, name:)
 
         if page.content.nil?
           text = I18n.t(
@@ -101,7 +130,7 @@ module Tasks
           )
 
           Migrations::Attachments::CurrentWikiContent.create!(
-            page_id: page.id, author_id: User.system.id, text: text
+            page_id: page.id, author_id: User.system.id, text:
           )
         end
 
@@ -109,7 +138,7 @@ module Tasks
       end
 
       def create_version_attachments_page!(version, name: "Version '#{version.name}' Attachments")
-        page = attachments_page! version.project.wiki, name: name
+        page = attachments_page!(version.project.wiki, name:)
 
         if page.content.nil?
           text = I18n.t(
@@ -119,7 +148,7 @@ module Tasks
           )
 
           Migrations::Attachments::CurrentWikiContent.create!(
-            page_id: page.id, author_id: User.system.id, text: text
+            page_id: page.id, author_id: User.system.id, text:
           )
         end
 
@@ -134,16 +163,16 @@ module Tasks
 
       def try_delete_attachments_from_projects_and_versions
         if !$stdout.isatty || user_agrees_to_delete_versions_and_projects_documents
-          puts 'Delete all attachments attached to projects or versions...'
+          puts "Delete all attachments attached to projects or versions..."
 
-          Attachment.where(container_type: ['Version', 'Project']).destroy_all
+          Attachment.where(container_type: ["Version", "Project"]).destroy_all
         end
       rescue StandardError
-        raise 'Cannot delete attachments from projects and versions! There may be migrations missing...?'
+        raise "Cannot delete attachments from projects and versions! There may be migrations missing...?"
       end
 
       def user_agrees_to_delete_versions_and_projects_documents
-        questions = ['CAUTION: This rake task will delete ALL attachments attached to versions or projects!',
+        questions = ["CAUTION: This rake task will delete ALL attachments attached to versions or projects!",
                      "DISCLAIMER: This is the final warning: You're going to lose information!"]
 
         ask_for_confirmation(questions)

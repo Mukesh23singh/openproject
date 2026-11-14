@@ -1,0 +1,289 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injector } from '@angular/core';
+import { I18nService } from 'core-app/core/i18n/i18n.service';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
+import { GroupObject } from 'core-app/features/hal/resources/wp-collection-resource';
+import { WorkPackageTable } from 'core-app/features/work-packages/components/wp-fast-table/wp-fast-table';
+import { WorkPackageTableRow } from 'core-app/features/work-packages/components/wp-fast-table/wp-table.interfaces';
+import { SingleRowBuilder } from 'core-app/features/work-packages/components/wp-fast-table/builders/rows/single-row-builder';
+import { WorkPackageViewBaselineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
+import { WorkPackageViewColumnsService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-columns.service';
+import { groupedRowClassName } from 'core-app/features/work-packages/components/wp-fast-table/builders/modes/grouped/grouped-rows-helpers';
+import {
+  GroupedRenderPass,
+} from 'core-app/features/work-packages/components/wp-fast-table/builders/modes/grouped/grouped-render-pass';
+import {
+  GroupHeaderBuilder,
+} from 'core-app/features/work-packages/components/wp-fast-table/builders/modes/grouped/group-header-builder';
+import { buildTable, TableHarness } from 'core-app/features/work-packages/components/wp-fast-table/testing/table-harness';
+import { RenderedOccurrenceLedger } from 'core-app/features/work-packages/components/wp-fast-table/rendered-occurrence-ledger';
+
+class TestGroupedRenderPass extends GroupedRenderPass {
+  public renderRows():this {
+    this.tableBody = document.createDocumentFragment();
+    this.draft = this.workPackageTable.ledger.beginRender();
+    this.doRender();
+
+    return this;
+  }
+}
+
+describe('GroupedRenderPass', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders a work package under its multi-value group when hrefs match in different order', () => {
+    const workPackage = {
+      id: '1',
+      customField16: [
+        { href: '/api/v3/custom_options/9' },
+        { href: '/api/v3/custom_options/11' },
+        { href: '/api/v3/custom_options/10' },
+      ],
+    } as unknown as WorkPackageResource;
+    const group = buildGroup({
+      0: { href: '/api/v3/custom_options/10' },
+      1: { href: '/api/v3/custom_options/9' },
+      2: { href: '/api/v3/custom_options/11' },
+    });
+    const row = buildTableRow(workPackage);
+    const pass = buildRenderPass([row], [group]);
+
+    pass.renderRows();
+
+    const rows = Array.from(pass.tableBody.children);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].getAttribute('data-test-selector')).toBe('group-header');
+    expect(rows[1].classList.contains(groupedRowClassName(group.index))).toBe(true);
+    pass.workPackageTable.ledger.commit(pass.draft);
+    expect(pass.workPackageTable.ledger.snapshot()).toEqual([
+      { classIdentifier: 'group-custom-field-16-options', workPackageId: null, hidden: false },
+      { classIdentifier: 'wp-row-1', workPackageId: '1', hidden: false },
+    ]);
+  });
+
+  it('leaves a work package ungrouped when the multi-value hrefs differ', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+    const workPackage = {
+      id: '1',
+      customField16: [
+        { href: '/api/v3/custom_options/9' },
+      ],
+    } as unknown as WorkPackageResource;
+    const group = buildGroup({
+      0: { href: '/api/v3/custom_options/10' },
+    });
+    const row = buildTableRow(workPackage);
+    const pass = buildRenderPass([row], [group]);
+
+    pass.renderRows();
+
+    const rows = Array.from(pass.tableBody.children);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].getAttribute('data-test-selector')).toBe('work-package-row');
+    expect(rows[0].classList.contains(groupedRowClassName(group.index))).toBe(false);
+    pass.workPackageTable.ledger.commit(pass.draft);
+    expect(pass.workPackageTable.ledger.snapshot()).toEqual([
+      { classIdentifier: 'wp-row-1', workPackageId: '1', hidden: false },
+    ]);
+  });
+});
+
+describe('GroupedRenderPass group matching', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const groupedBy = (property:string, overrides:Partial<GroupObject>):GroupObject => ({
+    ...buildGroup({}),
+    identifier: `${property}-group`,
+    _links: { valueLink: [], groupBy: { href: `/api/v3/queries/group_bys/${property}` } },
+    ...overrides,
+  });
+
+  const renderedUnder = (workPackage:WorkPackageResource, group:GroupObject):boolean => {
+    const pass = buildRenderPass([buildTableRow(workPackage)], [group]);
+    pass.renderRows();
+    const rows = Array.from(pass.tableBody.children);
+    return rows.length === 2 && rows[1].classList.contains(groupedRowClassName(group.index));
+  };
+
+  it('matches a linked value by its href', () => {
+    const group = groupedBy('status', { _links: { valueLink: [{ href: '/api/v3/statuses/1' }], groupBy: { href: '/api/v3/queries/group_bys/status' } } });
+
+    expect(renderedUnder({ id: '1', status: { href: '/api/v3/statuses/1' } } as unknown as WorkPackageResource, group)).toBe(true);
+  });
+
+  it('does not match a multi-value property with a different number of values', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const group = groupedBy('customField16', { href: [{ href: '/api/v3/custom_options/9' }] });
+    const workPackage = {
+      id: '1',
+      customField16: [{ href: '/api/v3/custom_options/9' }, { href: '/api/v3/custom_options/10' }],
+    } as unknown as WorkPackageResource;
+
+    expect(renderedUnder(workPackage, group)).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('should have a group'), expect.anything());
+  });
+
+  it('matches a progress value shown with a percent sign', () => {
+    const group = groupedBy('percentageDone', { value: '50%' });
+
+    expect(renderedUnder({ id: '1', percentageDone: 50 } as unknown as WorkPackageResource, group)).toBe(true);
+  });
+
+  it('matches a missing property to the empty group', () => {
+    const group = groupedBy('version', { value: '' });
+
+    expect(renderedUnder({ id: '1' } as unknown as WorkPackageResource, group)).toBe(true);
+  });
+});
+
+describe('GroupedRenderPass levels', () => {
+  let harness:TableHarness;
+
+  afterEach(() => harness.destroy());
+
+  it('highlights member rows but not the group header', async () => {
+    const status = { id: '11', href: '/api/v3/statuses/11' };
+    harness = buildTable({
+      workPackages: [{ id: '1', attributes: { status } }, { id: '2', attributes: { status } }],
+      groups: [{ value: 'New', href: status.href, count: 2 }],
+      highlightingMode: 'status',
+    });
+
+    await harness.render();
+
+    const highlighted = (row:Element) => Array.from(row.classList).some((name) => name.startsWith('__hl_'));
+    expect(highlighted(harness.row('1'))).toBe(true);
+    expect(highlighted(harness.row('2'))).toBe(true);
+    expect(highlighted(harness.groupHeader(0))).toBe(false);
+  });
+
+  it('assigns semantic levels to every occurrence', async () => {
+    const status = { href: '/api/v3/statuses/1' };
+    harness = buildTable({
+      workPackages: [{ id: '1', attributes: { status } }],
+      groups: [{ value: 'New', href: status.href, count: 1, sums: { storyPoints: 13 } }],
+    });
+
+    await harness.render();
+
+    const { ledger } = harness.table;
+    expect(ledger.byKey('group:0:header')!.level).toBe(1);
+    expect(ledger.byKey('wp:1')!.level).toBe(2);
+    expect(ledger.byKey('group:0:sums')!.level).toBe(2);
+  });
+});
+
+function buildRenderPass(rows:WorkPackageTableRow[], groups:GroupObject[]):TestGroupedRenderPass {
+  const pass = new TestGroupedRenderPass(
+    buildInjector(),
+    buildWorkPackageTable(rows),
+    groups,
+    buildHeaderBuilder(),
+    1,
+  );
+  pass.rowBuilder = buildRowBuilder();
+
+  return pass;
+}
+
+function buildWorkPackageTable(rows:WorkPackageTableRow[]):WorkPackageTable {
+  return {
+    originalRows: rows.map((row) => row.workPackageId),
+    originalRowIndex: Object.fromEntries(rows.map((row) => [row.workPackageId, row])),
+    configuration: {
+      dragAndDropEnabled: false,
+    },
+    ledger: new RenderedOccurrenceLedger(),
+  } as unknown as WorkPackageTable;
+}
+
+function buildInjector():Injector {
+  const services = new Map<unknown, unknown>([
+    [I18nService, { t: (key:string) => key }],
+    [WorkPackageViewColumnsService, { getColumns: () => [] }],
+    [WorkPackageViewBaselineService, { isActive: () => false }],
+  ]);
+
+  return {
+    get: (token:unknown, notFoundValue?:unknown) => services.get(token) ?? notFoundValue ?? null,
+  };
+}
+
+function buildTableRow(workPackage:WorkPackageResource):WorkPackageTableRow {
+  return {
+    object: workPackage,
+    workPackageId: workPackage.id!,
+    position: 0,
+  };
+}
+
+function buildGroup(href:Record<string, { href:string }>):GroupObject {
+  return {
+    value: 'Option set',
+    count: 1,
+    collapsed: false,
+    index: 0,
+    identifier: 'custom-field-16-options',
+    sums: null as unknown as GroupObject['sums'],
+    href: href as unknown as GroupObject['href'],
+    _links: {
+      valueLink: [],
+      groupBy: { href: '/api/v3/queries/group_bys/customField16' },
+    },
+  };
+}
+
+function buildHeaderBuilder():GroupHeaderBuilder {
+  return {
+    buildGroupRow: () => {
+      const row = document.createElement('tr');
+      row.setAttribute('data-test-selector', 'group-header');
+
+      return row;
+    },
+  } as unknown as GroupHeaderBuilder;
+}
+
+function buildRowBuilder():SingleRowBuilder {
+  return {
+    buildEmpty: (workPackage:WorkPackageResource) => {
+      const row = document.createElement('tr');
+      row.setAttribute('data-test-selector', 'work-package-row');
+      row.dataset.workPackageId = workPackage.id!;
+
+      return [row, false] as [HTMLTableRowElement, boolean];
+    },
+    classIdentifier: (workPackage:WorkPackageResource) => `wp-row-${workPackage.id}`,
+  } as unknown as SingleRowBuilder;
+}

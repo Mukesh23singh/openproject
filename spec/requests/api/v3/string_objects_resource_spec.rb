@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +22,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 String Objects resource' do
+RSpec.describe "API v3 String Objects resource" do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  describe 'string_objects' do
+  describe "string_objects" do
     subject(:response) { last_response }
 
-    let(:path) { api_v3_paths.string_object 'foo bar' }
+    let(:path) { api_v3_paths.string_object "foo bar" }
 
     before do
       get path
     end
 
-    it 'return 410 GONE' do
-      expect(subject.status).to eql(410)
+    context "when login_required", with_settings: { login_required: true } do
+      it_behaves_like "unauthenticated access"
     end
 
-    context 'nil string' do
-      let(:path) { '/api/v3/string_objects?value' }
+    context "when not login_required", with_settings: { login_required: false } do
+      it "return 410 GONE" do
+        expect(subject.status).to be(410)
+      end
 
-      it 'return 410 GONE' do
-        expect(subject.status).to eql(410)
+      context "nil string" do
+        let(:path) { "/api/v3/string_objects?value" }
+
+        it "return 410 GONE" do
+          expect(subject.status).to be(410)
+        end
       end
     end
   end

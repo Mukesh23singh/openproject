@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,31 +20,29 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { OPContextMenuService } from 'core-app/shared/components/op-context-menu/op-context-menu.service';
-import { Directive, ElementRef } from '@angular/core';
+import { Directive, inject } from '@angular/core';
 import { OpContextMenuTrigger } from 'core-app/shared/components/op-context-menu/handlers/op-context-menu-trigger.directive';
 import { HalResourceEditingService } from 'core-app/shared/components/fields/edit/services/hal-resource-editing.service';
 import { States } from 'core-app/core/states/states.service';
 import { FormResource } from 'core-app/features/hal/resources/form-resource';
 
 @Directive({
+  // eslint-disable-next-line @angular-eslint/directive-selector
   selector: '[wpCreateSettingsMenu]',
+  standalone: false,
 })
 export class WorkPackageCreateSettingsMenuDirective extends OpContextMenuTrigger {
-  constructor(readonly elementRef:ElementRef,
-    readonly opContextMenu:OPContextMenuService,
-    readonly states:States,
-    readonly halEditing:HalResourceEditingService) {
-    super(elementRef, opContextMenu);
-  }
+  readonly states = inject(States);
+  readonly halEditing = inject(HalResourceEditingService);
 
-  protected open(evt:JQuery.TriggeredEvent) {
+  override readonly placement = 'bottom-end';
+
+  protected open(evt:Event) {
     const wp = this.states.workPackages.get('new').value;
 
     if (wp) {
@@ -58,23 +56,6 @@ export class WorkPackageCreateSettingsMenuDirective extends OpContextMenuTrigger
     }
   }
 
-  /**
-   * Positioning args for jquery-ui position.
-   *
-   * @param {Event} openerEvent
-   */
-  public positionArgs(evt:JQuery.TriggeredEvent) {
-    const additionalPositionArgs = {
-      my: 'right top',
-      at: 'right bottom',
-    };
-
-    const position = super.positionArgs(evt);
-    _.assign(position, additionalPositionArgs);
-
-    return position;
-  }
-
   private buildItems(form:FormResource) {
     this.items = [];
     const configureFormLink = form.configureForm;
@@ -82,7 +63,7 @@ export class WorkPackageCreateSettingsMenuDirective extends OpContextMenuTrigger
 
     if (queryCustomFields) {
       this.items.push({
-        href: queryCustomFields.href,
+        href: queryCustomFields.href as string|undefined,
         icon: 'icon-custom-fields',
         linkText: queryCustomFields.name,
         onClick: () => false,
@@ -91,7 +72,7 @@ export class WorkPackageCreateSettingsMenuDirective extends OpContextMenuTrigger
 
     if (configureFormLink) {
       this.items.push({
-        href: configureFormLink.href,
+        href: configureFormLink.href as string|undefined,
         icon: 'icon-settings3',
         linkText: configureFormLink.name,
         onClick: () => false,

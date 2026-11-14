@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,20 +20,31 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module TimeEntries
   class DeleteContract < ::DeleteContract
+    include PastMonthRestriction
+
     delete_permission -> {
-      edit_all = user.allowed_to?(:edit_time_entries, model.project)
-      edit_own = user.allowed_to?(:edit_own_time_entries, model.project)
+      edit_all = user.allowed_in_project?(:edit_time_entries, model.project)
+      edit_own = if model.entity.is_a?(WorkPackage)
+                   user.allowed_in_work_package?(:edit_own_time_entries, model.entity)
+                 else
+                   user.allowed_in_project?(:edit_own_time_entries, model.project)
+                 end
+      edit_ongoing = if model.entity.is_a?(WorkPackage)
+                       model.ongoing && user.allowed_in_work_package?(:log_own_time, model.entity)
+                     else
+                       # TODO: Ongoing on meeting?
+                       false
+                     end
 
       if model.user == user
-        edit_own || edit_all
+        edit_own || edit_all || edit_ongoing
       else
         edit_all
       end

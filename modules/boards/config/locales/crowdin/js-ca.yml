@@ -1,87 +1,94 @@
-#English strings go here
+---
 ca:
+  ee:
+    upsell:
+      board_view:
+        description: T'agradaria automatitzar els teus processos de treball amb taulells? Els taulells avançats són una extensió de l'edició Enterprise. Si us plau, actualitza a un pla de pagament.
   js:
     boards:
-      label_unnamed_board: 'Taulell sense nom'
-      label_unnamed_list: 'Llista sense nom'
-      label_board_type: 'Tipus de taulell'
-      upsale:
-        teaser_text: 'Milloreu la vostra gestió de projectes àgils amb aquesta vista de taulells flexible. Creeu tants taulells com vulgueu per a qualsevol cosa que en vulgueu fer-ne seguiment.'
-        upgrade_to_ee_text: 'Els taulells són una característica Enterprise. Si us plau, actualitzeu a un pla de pagament.'
-        upgrade: 'Actualitzeu ara'
-        personal_demo: 'Contact us for a demo'
-      lists:
-        delete: 'Suprimeix la llista'
-      version:
-        is_locked: 'La versió és bloquejada. No es poden afegir elements en aquesta versió.'
-        is_closed: 'La versió és tancada. No es poden afegir elements en aquesta versió.'
-        close_version: 'Tanca la versió'
-        open_version: 'Obre la versió'
-        lock_version: 'Bloca la versió'
-        unlock_version: 'Desbloca la versió'
-        edit_version: 'Edita la versió'
-        show_version: 'Mostra la versió'
-        locked: 'Bloquejat'
-        closed: 'Tancat'
-      new_board: 'Nou taulell'
-      add_list: 'Add list to board'
-      add_card: 'Afegeix una targeta'
-      error_attribute_not_writable: "No es pot moure el paquet de treball, %{attribute} no és modificable."
-      error_loading_the_list: "Error carregant la llista: %{error_message}"
-      error_permission_missing: "No disposeu de permisos per crear consultes públiques"
-      error_cannot_move_into_self: "You can not move a work package into its own column."
-      text_hidden_list_warning: "Not all lists are displayed because you lack the permission. Contact your admin for more information."
-      click_to_remove_list: "Cliqueu per eliminar aquesta llista"
-      board_type:
-        text: 'Tipus de taulell'
-        free: 'basic'
-        select_board_type: 'Please choose the type of board you need.'
-        free_text: >
-          Start from scratch with a blank board. Manually add cards and columns to this board.
-        action: 'Taulell d''acció'
-        action_by_attribute: 'Panell d''acció (%{attribute})'
-        action_text: >
-          A board with filtered lists on %{attribute} attribute. Moving work packages to other lists will update their attribute.
-        action_text_subprojects: >
-          Board with automated columns for subprojects. Dragging work packages to other lists updates the (sub-)project accordingly.
-        action_text_subtasks: >
-          Board with automated columns for sub-elements. Dragging work packages to other lists updates the parent accordingly.
-        action_text_status: >
-          Basic kanban style board with columns for status such as To Do, In Progress, Done.
-        action_text_assignee: >
-          Board with automated columns based on assigned users. Ideal for dispatching work packages.
-        action_text_version: >
-          Board with automated columns based on the version attribute. Ideal for planning product development.
-        action_type:
-          assignee: assignee
-          status: status
-          version: version
-          subproject: subproject
-          subtasks: parent-child
-        board_type_title:
-          assignee: Assignat a
-          status: Estat
-          version: Versió
-          subproject: Subprojecte
-          subtasks: Parent-Child
-          basic: Basic
-        select_attribute: "Atribut d'acció"
+      add_card: Afegeix una targeta
+      add_list: Afegir llista a un taulell
       add_list_modal:
         labels:
-          assignee: Select user to add as a new assignee list
-          status: Select status to add as a new list
-          version: Select version to add as a new list
-          subproject: Select subproject to add as a new list
-          subtasks: Select work package to add as a new list
+          assignee: Selecciona un usuari per afegir-lo a la llista d'assignats
+          status: Selecciona un estat per afegir-lo a una nova llista
+          subproject: Selecciona un subprojecte per afegir-lo a una nova llista
+          subtasks: Selecciona un paquet de treball per afegir-lo a una nova llista
+          version: Selecciona una versió per afegir-lo a una nova llista
         warning:
+          add_members: <a href="%{link}">Afegeix un membre nou a aquest projecte </a> per seleccionar usuaris de nou.
+          assignee: No hi ha cap usuari que coincideixi amb el teu filtre. <br>
+          no_member: Aquest projecte actualment no té cap membre que es pugui afegir. <br>
           status: |
-            There is currently no status available. <br>
-            Either there are none or they have all already been added to the board.
-          assignee: There isn't any member matched with your filter value.  <br>
-          no_member: This project currently does not have any members that can be added.  <br>
-          add_members: <a href="%{link}">Add a new member to this project</a> to select users again.
+            No hi ha cap estat disponible. <br>
+            O bé no n'hi ha cap o ja han estat afegits a un taulell.
+      board_type:
+        action: Taulell d'acció
+        action_by_attribute: Panell d'acció (%{attribute})
+        action_text: 'Un taulell amb llistes filtrades per %{attribute} atribut. Movent els paquets de treball a altres llistes actualitzarà el seu atribut.
+
+          '
+        action_text_assignee: 'Taulell amb columnes automàtiques per usuaris assignats. Ideal per a la distribució de paquets de treball.
+
+          '
+        action_text_status: 'Taulell simple d''estil Kanban amb columnes automàtiques per estatus com Per Fer, En Procés o Fet.
+
+          '
+        action_text_subprojects: 'Taulell amb columnes automàtiques per subprojectes. Movent els paquets de treball a altres llistes actualitzarà el (sub-)projecte.
+
+          '
+        action_text_subtasks: 'Taulell amb columnes automàtiques per subelements. Movent els paquets de treball a altres llistes actualitzarà el  paquet pare.
+
+          '
+        action_text_version: 'Taulell amb columnes automàtiques per versió d''atribut. Ideal per al desenvolupament de planificació de productes.
+
+          '
+        action_type:
+          assignee: assignat a
+          status: estat
+          subproject: subprojecte
+          subtasks: pare-fill
+          version: versió
+        board_type_title:
+          assignee: Assignat a
+          basic: Bàsic
+          status: Estat
+          subproject: Subprojecte
+          subtasks: Pare-fill
+          version: Versió
+        free: bàsic
+        free_text: 'Comença de zero amb un taulell en blanc. Afegeix manualment targetes i columnes a aquest taulell.
+
+          '
+        select_attribute: Atribut d'acció
+        select_board_type: Si us plau, tria l'estil de taulell que necessites.
+        text: Tipus de taulell
+      click_to_remove_list: Cliqueu per eliminar aquesta llista
       configuration_modal:
-        title: 'Configureu aquest taulell'
         display_settings:
-          card_mode: "Mostreu-ho com a targetes"
-          table_mode: "Mostreu-ho com a taula"
+          card_mode: Mostreu-ho com a targetes
+          table_mode: Mostreu-ho com a taula
+        title: Configureu aquest taulell
+      create_new: Crea un tauler nou
+      error_attribute_not_writable: No es pot moure el paquet de treball, %{attribute} no és modificable.
+      error_cannot_move_into_self: No pots moure un paquet de treball a la seva pròpia columna.
+      error_loading_the_list: 'Error carregant la llista: %{error_message}'
+      error_permission_missing: No disposeu de permisos per crear consultes públiques
+      label_board_type: Tipus de taulell
+      label_unnamed_board: Taulell sense nom
+      label_unnamed_list: Llista sense nom
+      lists:
+        delete: Suprimeix la llista
+      new_board: Nou taulell
+      text_hidden_list_warning: No totes les llistes són visibles perquè et falten permisos. Contacta el teu administrador per més informació.
+      version:
+        close_version: Tanca la versió
+        closed: Tancat
+        edit_version: Edita la versió
+        is_closed: La versió és tancada. No es poden afegir elements en aquesta versió.
+        is_locked: La versió és bloquejada. No es poden afegir elements en aquesta versió.
+        lock_version: Bloca la versió
+        locked: Bloquejat
+        open_version: Obre la versió
+        show_version: Mostra la versió
+        unlock_version: Desbloca la versió

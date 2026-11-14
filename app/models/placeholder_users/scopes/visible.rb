@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,11 +39,12 @@ module PlaceholderUsers::Scopes
 
     class_methods do
       def visible(user = User.current)
-        if user.allowed_to_globally?(:manage_placeholder_user) ||
-           user.allowed_to_globally?(:manage_members)
+        if user.allowed_globally?(:manage_placeholder_user) ||
+           user.allowed_in_any_project?(:manage_members) ||
+           user.allowed_globally?(:view_all_principals)
           all
         else
-          in_visible_project(user)
+          in_visible_project_or_me_or_same_groups(user)
         end
       end
     end

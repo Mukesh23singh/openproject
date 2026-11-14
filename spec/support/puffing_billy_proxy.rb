@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -37,9 +36,9 @@
 # In order to use the proxied server, you need to use `driver: firefox_billy` in your examples
 #
 # See https://github.com/oesmith/puffing-billy for more information
-require 'billy/capybara/rspec'
+require "billy/capybara/rspec"
 
-require 'table_print' # Add this dependency to your gemfile
+require "table_print" # Add this dependency to your gemfile
 
 ##
 # Patch `puffing-billy`'s proxy so that it doesn't try to stop
@@ -47,13 +46,13 @@ require 'table_print' # Add this dependency to your gemfile
 # https://github.com/oesmith/puffing-billy/issues/253
 module BillyProxyPatch
   def stop
-    return unless EM.reactor_running?
+    nil unless EM.reactor_running?
   rescue Errno::ECONNRESET => e
     warn "Got error while shutting down Billy proxy"
   end
 end
 
-::Billy::Proxy.prepend(BillyProxyPatch)
+Billy::Proxy.prepend(BillyProxyPatch)
 
 ##
 # To debug stubbed and proxied connections

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,37 +30,37 @@
 module Components
   module BcfDetailsViewpoints
     def expect_viewpoint_count(number)
-      expect(page).to have_selector('.ngx-gallery-thumbnail', visible: :all, count: number, wait: 20)
+      expect(page).to have_css("a.ngx-gallery-thumbnail", visible: :all, count: number, wait: 20)
     end
 
     def expect_no_viewpoint_addable
-      expect(page).to have_no_selector('a.button', text: 'Viewpoint')
+      expect(page).to have_no_css("a.button", text: "Viewpoint")
     end
 
     def next_viewpoint
-      page.find('.icon-arrow-right2.ngx-gallery-icon-content').click
+      page.find(".icon-arrow-right2.ngx-gallery-icon-content").click
     end
 
     def previous_viewpoint
-      page.find('.icon-arrow-left2.ngx-gallery-icon-content').click
+      page.find(".icon-arrow-left2.ngx-gallery-icon-content").click
     end
 
     def show_current_viewpoint
-      page.find('.icon-view-model.ngx-gallery-icon-content').click
+      page.find(".icon-view-model.ngx-gallery-icon-content").click
     end
 
     def delete_current_viewpoint(confirm: true)
-      page.find('.icon-delete.ngx-gallery-icon-content').click
+      action = proc { page.find(".icon-delete.ngx-gallery-icon-content").click }
 
       if confirm
-        page.driver.browser.switch_to.alert.accept
+        page.accept_confirm(&action)
       else
-        page.driver.browser.switch_to.alert.dismiss
+        page.dismiss_confirm(&action)
       end
     end
 
     def add_viewpoint
-      page.find('a.button', text: 'Viewpoint').click
+      click_on accessible_name: "Viewpoint"
     end
   end
 end

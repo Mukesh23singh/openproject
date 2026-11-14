@@ -1,4 +1,10 @@
+---
 vi:
+  activerecord:
+    models:
+      grids/overview:
+        other: Overviews
   overviews:
-    label: 'Tổng quan'
-  permission_manage_overview: 'Manage overview page'
+    label_dashboard: Trang tổng quan
+    label_home: "%{workspace_type} nhà"
+    label_overview: tổng quan

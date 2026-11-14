@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,24 +35,24 @@ module OpenProject::TextFormatting::Matchers
       # Condition: Separator is r
       # Condition: Prefix is nil
       def applicable?
-        matcher.prefix.nil? && matcher.sep == 'r'
+        matcher.prefix.nil? && matcher.sep == "r"
       end
 
       #
       # Examples:
       #
       # r11, r13
-      def call
+      def call # rubocop:disable Metrics/AbcSize
         # don't handle link unless repository exists
-        return nil unless project && project.repository
+        return nil unless project&.repository
 
         changeset = project.repository.find_changeset_by_name(matcher.identifier)
 
         if changeset
           link_to(h("#{matcher.project_prefix}r#{matcher.identifier}"),
-                  { only_path: context[:only_path], controller: '/repositories', action: 'revision', project_id: project,
+                  { only_path: context[:only_path], controller: "/repositories", action: "revision", project_id: project,
                     rev: changeset.revision },
-                  class: 'changeset',
+                  class: "changeset",
                   title: truncate_single_line(changeset.comments, length: 100))
         end
       end

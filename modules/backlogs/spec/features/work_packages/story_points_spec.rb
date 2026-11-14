@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,53 +22,40 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Work packages having story points', type: :feature, js: true do
+RSpec.describe "Work packages having story points", :js do
   before do
-    allow(User).to receive(:current).and_return current_user
-    allow(Setting).to receive(:plugin_openproject_backlogs).and_return('points_burn_direction' => 'down',
-                                                                       'wiki_template' => '',
-                                                                       'card_spec' => 'Sattleford VM-5040',
-                                                                       'story_types' => [story_type.id.to_s],
-                                                                       'task_type' => task_type.id.to_s)
+    login_as current_user
   end
 
-  let(:current_user) { FactoryBot.create(:admin) }
+  let(:current_user) { create(:admin) }
   let(:project) do
-    FactoryBot.create(:project,
-                      enabled_module_names: %w(work_package_tracking backlogs))
+    create(:project,
+           enabled_module_names: %w(work_package_tracking backlogs))
   end
-  let(:status) { FactoryBot.create :default_status }
-  let(:story_type) { FactoryBot.create(:type_feature) }
-  let(:task_type) { FactoryBot.create(:type_feature) }
 
-  describe 'showing the story points on the work package show page' do
+  describe "showing the story points on the work package show page" do
     let(:story_points) { 42 }
-    let(:story_with_sp) do
-      FactoryBot.create(:story,
-                        type: story_type,
-                        author: current_user,
-                        project: project,
-                        status: status,
-                        story_points: story_points)
+    let(:work_package_with_story_points) do
+      create(:work_package,
+             author: current_user,
+             project:,
+             story_points:)
     end
 
-    it 'should be displayed' do
-      wp_page = Pages::FullWorkPackage.new(story_with_sp)
+    it "is displayed" do
+      wp_page = Pages::FullWorkPackage.new(work_package_with_story_points)
 
       wp_page.visit!
       wp_page.expect_subject
 
       wp_page.expect_attributes storyPoints: story_points
-
-      wp_page.ensure_page_loaded
     end
   end
 end

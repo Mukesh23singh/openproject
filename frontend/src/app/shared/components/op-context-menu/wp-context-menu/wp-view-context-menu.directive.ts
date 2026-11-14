@@ -1,41 +1,75 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injector } from '@angular/core';
 import {
   WorkPackageAction,
   WorkPackageContextMenuHelperService,
 } from 'core-app/features/work-packages/components/wp-table/context-menu-helper/wp-context-menu-helper.service';
 import { States } from 'core-app/core/states/states.service';
-import { WorkPackageRelationsHierarchyService } from 'core-app/features/work-packages/components/wp-relations/wp-relations-hierarchy/wp-relations-hierarchy.service';
-import { WorkPackageViewSelectionService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
+import {
+  WorkPackageViewSelectionService,
+} from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-selection.service';
 import { isClickedWithModifier } from 'core-app/shared/helpers/link-handling/link-handling';
 import { OpContextMenuHandler } from 'core-app/shared/components/op-context-menu/op-context-menu-handler';
 import { OPContextMenuService } from 'core-app/shared/components/op-context-menu/op-context-menu.service';
+import { OpContextMenuLocalsMap } from 'core-app/shared/components/op-context-menu/op-context-menu.types';
 import {
-  OpContextMenuItem,
-  OpContextMenuLocalsMap,
-} from 'core-app/shared/components/op-context-menu/op-context-menu.types';
-import { PERMITTED_CONTEXT_MENU_ACTIONS } from 'core-app/shared/components/op-context-menu/wp-context-menu/wp-static-context-menu-actions';
-import { OpModalService } from 'core-app/shared/components/modal/modal.service';
-import { StateService } from '@uirouter/core';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { TimeEntryCreateService } from 'core-app/shared/components/time_entries/create/create.service';
-import { splitViewRoute } from 'core-app/features/work-packages/routing/split-view-routes.helper';
-import { WpDestroyModalComponent } from 'core-app/shared/components/modals/wp-destroy-modal/wp-destroy.modal';
+  ContextMenuItemGroups,
+  copyIdActionLabel,
+  isCopyIdAction,
+  PERMITTED_CONTEXT_MENU_ACTIONS,
+} from 'core-app/shared/components/op-context-menu/wp-context-menu/wp-static-context-menu-actions';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { CopyToClipboardService } from 'core-app/shared/components/copy-to-clipboard/copy-to-clipboard.service';
 import isNewResource from 'core-app/features/hal/helpers/is-new-resource';
+import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { UrlParamsService } from 'core-app/core/navigation/url-params.service';
+import { TurboRequestsService } from 'core-app/core/turbo/turbo-requests.service';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+
+import { Placement } from '@floating-ui/dom';
+
+export interface PositionArgs { placement?:Placement, reference?:HTMLElement }
 
 export class WorkPackageViewContextMenu extends OpContextMenuHandler {
-  @InjectField() protected states!:States;
+  @LazyInject() protected states!:States;
 
-  @InjectField() protected wpRelationsHierarchyService:WorkPackageRelationsHierarchyService;
+  @LazyInject() protected wpTableSelection:WorkPackageViewSelectionService;
 
-  @InjectField() protected opModalService:OpModalService;
+  @LazyInject() protected WorkPackageContextMenuHelper!:WorkPackageContextMenuHelperService;
 
-  @InjectField() protected $state!:StateService;
+  @LazyInject() protected currentProject:CurrentProjectService;
 
-  @InjectField() protected wpTableSelection:WorkPackageViewSelectionService;
+  @LazyInject() protected pathHelper:PathHelperService;
 
-  @InjectField() protected WorkPackageContextMenuHelper!:WorkPackageContextMenuHelperService;
+  @LazyInject() protected urlParams:UrlParamsService;
 
-  @InjectField() protected timeEntryCreateService:TimeEntryCreateService;
+  @LazyInject() protected turboRequests:TurboRequestsService;
 
   protected workPackage = this.states.workPackages.get(this.workPackageId).value!;
 
@@ -47,34 +81,54 @@ export class WorkPackageViewContextMenu extends OpContextMenuHandler {
     this.allowSplitScreenActions,
   );
 
-  // Get the base route for the current route to ensure we always link correctly
-  protected baseRoute = this.$state.current.data.baseRoute || this.$state.current.name;
+  protected itemGroups = this.buildItemGroups();
 
-  protected items = this.buildItems();
+  protected items = this.itemGroups.items;
 
-  constructor(public injector:Injector,
+  private copyToClipboardService:CopyToClipboardService;
+
+  protected reference:HTMLElement;
+
+  constructor(
+    public injector:Injector,
     protected workPackageId:string,
-    protected $element:JQuery,
-    protected additionalPositionArgs:any = {},
-    protected allowSplitScreenActions:boolean = true) {
+    protected element:HTMLElement,
+    additionalPositionArgs:PositionArgs = {},
+    protected allowSplitScreenActions = true,
+  ) {
     super(injector.get(OPContextMenuService));
+    this.copyToClipboardService = injector.get(CopyToClipboardService);
+
+    if (typeof additionalPositionArgs.placement !== 'undefined') {
+      this.placement = additionalPositionArgs.placement;
+    }
+    if (typeof additionalPositionArgs.reference !== 'undefined') {
+      this.reference = additionalPositionArgs.reference;
+    }
   }
 
   public get locals():OpContextMenuLocalsMap {
-    return { contextMenuId: 'work-package-context-menu', items: this.items };
-  }
-
-  public positionArgs(evt:JQuery.TriggeredEvent) {
-    const position = super.positionArgs(evt);
-    _.assign(position, this.additionalPositionArgs);
-
-    return position;
+    return {
+      contextMenuId: 'work-package-context-menu',
+      label: I18n.t('js.label_work_package_context_menu'),
+      items: this.items,
+    };
   }
 
   public triggerContextMenuAction(action:WorkPackageAction) {
     const { link } = action;
+    const id = this.workPackage.id!;
+
+    if (action.turboRequest) {
+      void this.turboRequests.requestStream(link!);
+      return;
+    }
 
     switch (action.key) {
+      case 'copy_alphanumeric_id_to_clipboard':
+        this.copyToClipboardService.copy(this.workPackage.displayId);
+        break;
+
       case 'delete':
         this.deleteSelectedWorkPackages();
         break;
@@ -83,17 +137,31 @@ export class WorkPackageViewContextMenu extends OpContextMenuHandler {
         this.editSelectedWorkPackages(link!);
         break;
 
-      case 'copy':
+      case 'duplicate':
         this.copySelectedWorkPackages(link!);
         break;
 
-      case 'relation-new-child':
-        this.wpRelationsHierarchyService.addNewChildWp(this.baseRoute, this.workPackage);
+      case 'copy_link_to_clipboard': {
+        const url = new URL(String(link), window.location.origin);
+        this.copyToClipboardService.copy(url.toString());
+        break;
+      }
+      case 'copy_to_other_project':
+        window.location.href = `${this.pathHelper.staticBase}/work_packages/move/new?copy=true&ids[]=${id}`;
         break;
 
-      case 'log_time':
-        this.logTimeForSelectedWorkPackage();
+      case 'relation-new-child': {
+        const childParams = new URLSearchParams(window.location.search);
+        childParams.set('parent_id', id);
+        Turbo.visit(`${this.urlParams.splitCreatePath()}?${childParams.toString()}`, { frame: 'content-bodyRight', action: 'advance' });
         break;
+      }
+
+      case 'relations': {
+        const relationsPath = `${this.urlParams.basePathWithoutDetails()}/details/${this.workPackage.displayId}/relations${window.location.search}`;
+        Turbo.visit(relationsPath, { frame: 'content-bodyRight', action: 'advance' });
+        break;
+      }
 
       default:
         window.location.href = link!;
@@ -103,10 +171,12 @@ export class WorkPackageViewContextMenu extends OpContextMenuHandler {
 
   private deleteSelectedWorkPackages() {
     const selected = this.getSelectedWorkPackages();
-    this.opModalService.show(WpDestroyModalComponent, this.injector, { workPackages: selected });
+    const ids = selected.map((wp) => wp.id).filter((id) => id !== null);
+    const backUrl = this.urlParams.basePathWithoutDetails();
+    void this.turboRequests.request(this.pathHelper.workPackagesBulkDeleteDialogPath(ids, backUrl), { method: 'GET' });
   }
 
-  private editSelectedWorkPackages(link:any) {
+  private editSelectedWorkPackages(link:string) {
     const selected = this.getSelectedWorkPackages();
 
     if (selected.length > 1) {
@@ -114,7 +184,7 @@ export class WorkPackageViewContextMenu extends OpContextMenuHandler {
     }
   }
 
-  private copySelectedWorkPackages(link:any) {
+  private copySelectedWorkPackages(link:string) {
     const selected = this.getSelectedWorkPackages();
 
     if (selected.length > 1) {
@@ -122,97 +192,83 @@ export class WorkPackageViewContextMenu extends OpContextMenuHandler {
       return;
     }
 
-    const params = {
-      copiedFromWorkPackageId: selected[0].id,
-    };
-
-    this.$state.go(`${this.baseRoute}.copy`, params);
-  }
-
-  private logTimeForSelectedWorkPackage() {
-    this.timeEntryCreateService
-      .create(moment(new Date()), this.workPackage)
-      .catch(() => {
-        // do nothing, the user closed without changes
-      });
+    if (selected[0].id) {
+      window.location.href = this.pathHelper.workPackageCopyPath(selected[0].project.id, selected[0].id);
+    }
   }
 
   private getSelectedWorkPackages() {
-    const selectedWorkPackages = this.wpTableSelection.getSelectedWorkPackages();
-
-    if (selectedWorkPackages.length === 0) {
+    if (!this.wpTableSelection.isSelected(this.workPackageId)) {
       return [this.workPackage];
     }
 
-    if (selectedWorkPackages.indexOf(this.workPackage) === -1) {
-      selectedWorkPackages.push(this.workPackage);
-    }
-
-    return selectedWorkPackages;
+    return this.wpTableSelection.getSelectedWorkPackages();
   }
 
-  protected buildItems():OpContextMenuItem[] {
-    const items = this.permittedActions.map((action:WorkPackageAction) => ({
-      class: undefined as string|undefined,
-      disabled: false,
-      linkText: action.text,
-      href: action.href,
-      icon: action.icon != null ? action.icon : `icon-${action.key}`,
-      onClick: ($event:JQuery.TriggeredEvent) => {
-        if (action.href && isClickedWithModifier($event)) {
-          return false;
-        }
+  protected buildItemGroups():ContextMenuItemGroups {
+    const selected = this.getSelectedWorkPackages();
+    const groups = new ContextMenuItemGroups();
 
-        this.triggerContextMenuAction(action);
-        return true;
-      },
-    }));
-
-    if (!isNewResource(this.workPackage)) {
-      items.unshift({
+    this.permittedActions.forEach((action:WorkPackageAction) => {
+      groups.addAction(action.key, {
         disabled: false,
-        icon: 'icon-view-fullscreen',
-        class: 'openFullScreenView',
-        href: this.$state.href('work-packages.show', { workPackageId: this.workPackageId }),
-        linkText: I18n.t('js.button_open_fullscreen'),
-        onClick: ($event:JQuery.TriggeredEvent) => {
-          if (isClickedWithModifier($event)) {
+        linkText: isCopyIdAction(action.key) ? copyIdActionLabel() : action.text,
+        href: action.href,
+        icon: action.icon ?? `icon-${action.key}`,
+        onClick: (event:MouseEvent) => {
+          if (action.href && isClickedWithModifier(event)) {
             return false;
           }
 
-          this.$state.go(
-            'work-packages.show',
-            { workPackageId: this.workPackageId },
-          );
+          this.triggerContextMenuAction(action);
+          return true;
+        },
+      });
+    });
+
+
+    if (selected.length === 1 && !isNewResource(this.workPackage)) {
+      const projectIdentifier = this.currentProject.identifier;
+      const link = this.pathHelper.genericWorkPackagePath(projectIdentifier, this.workPackage.displayId) + window.location.search;
+
+      groups.prepend('open', {
+        disabled: false,
+        icon: 'icon-view-fullscreen',
+        class: 'openFullScreenView',
+        href: link,
+        linkText: I18n.t('js.button_open_fullscreen'),
+        onClick: (event) => {
+          if (isClickedWithModifier(event)) {
+            return false;
+          }
+
+          Turbo.visit(link, { action: 'advance' });
+
           return true;
         },
       });
 
-      if (this.allowSplitScreenActions) {
-        items.unshift({
+      if (selected.length === 1 && this.allowSplitScreenActions) {
+        const splitViewHref = `${this.urlParams.basePathWithoutDetails()}/details/${this.workPackage.displayId}${window.location.search}`;
+
+        groups.prepend('open', {
           disabled: false,
           icon: 'icon-view-split',
           class: 'detailsViewMenuItem',
-          href: this.$state.href(
-            `${splitViewRoute(this.$state)}.tabs`,
-            { workPackageId: this.workPackageId, tabIdentifier: 'overview' },
-          ),
+          href: splitViewHref,
           linkText: I18n.t('js.button_open_details'),
-          onClick: ($event:JQuery.TriggeredEvent) => {
-            if (isClickedWithModifier($event)) {
+          onClick: (event) => {
+            if (isClickedWithModifier(event)) {
               return false;
             }
 
-            this.$state.go(
-              `${splitViewRoute(this.$state)}.tabs`,
-              { workPackageId: this.workPackageId, tabIdentifier: 'overview' },
-            );
+            Turbo.visit(splitViewHref, { frame: 'content-bodyRight', action: 'advance' });
             return true;
           },
         });
       }
     }
 
-    return items;
+    return groups;
   }
 }

@@ -1,15 +1,56 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { sortBy } from 'lodash-es';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { TabComponent } from 'core-app/features/work-packages/components/wp-table/configuration-modal/tab-portal-outlet';
 import { WorkPackageViewGroupByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-group-by.service';
 import { WorkPackageViewHierarchiesService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-hierarchy.service';
 import { WorkPackageViewSumService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sum.service';
-import { Component, Injector } from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, Injector, OnInit, inject } from '@angular/core';
 import { QueryGroupByResource } from 'core-app/features/hal/resources/query-group-by-resource';
 
 @Component({
+  selector: 'op-wp-table-configuration-settings-tab',
   templateUrl: './display-settings-tab.component.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class WpTableConfigurationDisplaySettingsTabComponent implements TabComponent {
+export class WpTableConfigurationDisplaySettingsTabComponent implements TabComponent, OnInit {
+  readonly injector = inject(Injector);
+  readonly I18n = inject(I18nService);
+  readonly wpTableGroupBy = inject(WorkPackageViewGroupByService);
+  readonly wpTableHierarchies = inject(WorkPackageViewHierarchiesService);
+  readonly wpTableSums = inject(WorkPackageViewSumService);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   // Display mode
   public displayMode:'hierarchy'|'grouped'|'default' = 'default';
 
@@ -38,13 +79,6 @@ export class WpTableConfigurationDisplaySettingsTabComponent implements TabCompo
     },
   };
 
-  constructor(readonly injector:Injector,
-    readonly I18n:I18nService,
-    readonly wpTableGroupBy:WorkPackageViewGroupByService,
-    readonly wpTableHierarchies:WorkPackageViewHierarchiesService,
-    readonly wpTableSums:WorkPackageViewSumService) {
-  }
-
   public onSave() {
     // Update hierarchy state
     this.wpTableHierarchies.setEnabled(this.displayMode === 'hierarchy');
@@ -59,7 +93,7 @@ export class WpTableConfigurationDisplaySettingsTabComponent implements TabCompo
 
   public updateGroup(href:string) {
     this.displayMode = 'grouped';
-    this.currentGroup = _.find(this.availableGroups, (group) => group.href === href) || null;
+    this.currentGroup = this.availableGroups.find((group) => group.href === href) ?? null;
   }
 
   ngOnInit() {
@@ -71,11 +105,12 @@ export class WpTableConfigurationDisplaySettingsTabComponent implements TabCompo
 
     this.displaySums = this.wpTableSums.current;
 
-    this.wpTableGroupBy
+    void this.wpTableGroupBy
       .onReady()
       .then(() => {
-        this.availableGroups = _.sortBy(this.wpTableGroupBy.available, 'name');
-        this.currentGroup = this.wpTableGroupBy.current;
+        this.availableGroups = sortBy(this.wpTableGroupBy.available, 'name');
+        this.currentGroup = this.wpTableGroupBy.current || this.availableGroups[0];
+        this.cdRef.markForCheck();
       });
   }
 }

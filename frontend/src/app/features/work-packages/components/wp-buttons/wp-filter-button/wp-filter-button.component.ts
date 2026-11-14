@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,31 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { AbstractWorkPackageButtonComponent } from 'core-app/features/work-packages/components/wp-buttons/wp-buttons.module';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit,
-} from '@angular/core';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, OnInit, inject } from '@angular/core';
 import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { componentDestroyed } from '@w11k/ngx-componentdestroyed';
 import { WorkPackageFiltersService } from 'core-app/features/work-packages/components/filters/wp-filters/wp-filters.service';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-filter-button',
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './wp-filter-button.html',
+  standalone: false,
 })
 export class WorkPackageFilterButtonComponent extends AbstractWorkPackageButtonComponent implements OnInit {
+  readonly I18n:I18nService;
+  protected cdRef = inject(ChangeDetectorRef);
+  protected wpFiltersService = inject(WorkPackageFiltersService);
+  protected wpTableFilters = inject(WorkPackageViewFiltersService);
+
   public count:number;
 
   public initialized = false;
@@ -49,13 +53,12 @@ export class WorkPackageFilterButtonComponent extends AbstractWorkPackageButtonC
 
   public iconClass = 'icon-filter';
 
-  constructor(
-    readonly I18n:I18nService,
-    protected cdRef:ChangeDetectorRef,
-    protected wpFiltersService:WorkPackageFiltersService,
-    protected wpTableFilters:WorkPackageViewFiltersService,
-  ) {
+  constructor() {
+    const I18n = inject(I18nService);
+
     super(I18n);
+
+    this.I18n = I18n;
   }
 
   ngOnInit():void {
@@ -78,7 +81,7 @@ export class WorkPackageFilterButtonComponent extends AbstractWorkPackageButtonC
     return this.count;
   }
 
-  public performAction(event:Event) {
+  public performAction(_event:Event) {
     this.toggleVisibility();
   }
 

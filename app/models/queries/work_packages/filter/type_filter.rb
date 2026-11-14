@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,9 +30,7 @@
 class Queries::WorkPackages::Filter::TypeFilter <
   Queries::WorkPackages::Filter::WorkPackageFilter
   def allowed_values
-    @allowed_values ||= begin
-      types.map { |s| [s.name, s.id.to_s] }
-    end
+    @allowed_values ||= types.map { |s| [s.name, s.id.to_s] }
   end
 
   def available?
@@ -56,13 +53,12 @@ class Queries::WorkPackages::Filter::TypeFilter <
     available_types = types.index_by(&:id)
 
     values
-      .map { |type_id| available_types[type_id.to_i] }
-      .compact
+      .filter_map { |type_id| available_types[type_id.to_i] }
   end
 
   private
 
   def types
-    project.nil? ? ::Type.order(Arel.sql('position')) : project.rolled_up_types
+    project.nil? ? ::Type.order(Arel.sql("position")) : project.rolled_up_types
   end
 end

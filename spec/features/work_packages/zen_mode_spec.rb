@@ -1,30 +1,60 @@
-require 'spec_helper'
+# frozen_string_literal: true
 
-describe 'Zen mode', js: true do
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe "Zen mode", :js do
+  include_context "with axe on Cuprite"
+
   let(:dev_role) do
-    FactoryBot.create :role,
-                      permissions: %i[view_work_packages
-                                      edit_work_packages]
+    create(:project_role,
+           permissions: %i[view_work_packages
+                           edit_work_packages])
   end
   let(:dev) do
-    FactoryBot.create :user,
-                      firstname: 'Dev',
-                      lastname: 'Guy',
-                      member_in_project: project,
-                      member_through_role: dev_role
+    create(:user,
+           firstname: "Dev",
+           lastname: "Guy",
+           member_with_roles: { project => dev_role })
   end
 
-  let(:type) { FactoryBot.create :type }
-  let(:project) { FactoryBot.create(:project, types: [type]) }
+  let(:type) { create(:type) }
+  let(:project) { create(:project, types: [type]) }
 
   let(:work_package) do
-    FactoryBot.create :work_package, project: project, type: type
+    create(:work_package, project:, type:)
   end
 
   let(:wp_page) { Pages::FullWorkPackage.new(work_package) }
 
   let(:status_from) { work_package.status }
-  let(:status_intermediate) { FactoryBot.create :status }
+  let(:status_intermediate) { create(:status) }
 
   before do
     login_as(dev)
@@ -35,13 +65,12 @@ describe 'Zen mode', js: true do
     wp_page.ensure_page_loaded
   end
 
-  it 'hides menus' do
+  it "hides menus" do
     wp_page.expect_no_zen_mode
-    wp_page.page.find('#work-packages-zen-mode-toggle-button').click
+    click_on accessible_name: "Activate zen mode"
     wp_page.expect_zen_mode
-    wp_page.go_back
-    wp_page.expect_zen_mode
-    wp_page.page.find('#work-packages-zen-mode-toggle-button').click
+    click_on accessible_name: "Deactivate zen mode"
     wp_page.expect_no_zen_mode
+    expect(page).to be_axe_clean.within("#toolbar-items")
   end
 end

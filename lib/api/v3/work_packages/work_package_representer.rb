@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,26 +31,41 @@ module API
   module V3
     module WorkPackages
       class WorkPackageRepresenter < ::API::Decorators::Single
-        include API::Decorators::LinkedResource
+        include API::V3::Workspaces::LinkedResource
         include API::Decorators::DateProperty
         include API::Decorators::FormattableProperty
         include API::Caching::CachedRepresenter
         include ::API::V3::Attachments::AttachableRepresenterMixin
         extend ::API::V3::Utilities::CustomFieldInjector::RepresenterClass
+        include TimestampedRepresenter
+        include ::WorkPackageTypes::VariantRoutes
 
         cached_representer key_parts: %i(project),
-                           disabled: false
+                           disabled: false,
+                           dependencies: -> { historic_state? }
 
-        def initialize(model, current_user:, embed_links: false)
+        attr_accessor :timestamps, :query
+
+        def initialize(model, current_user:, embed_links: false, timestamps: nil, query: nil)
+          @query = query
+          @timestamps = timestamps || query.try(:timestamps) || []
+
           model = load_complete_model(model)
 
-          super
+          super(model, current_user:, embed_links:)
         end
 
-        self_link title_getter: ->(*) { represented.subject }
+        def self_v3_path(*)
+          api_v3_paths.work_package(represented.id, timestamps:)
+        end
+
+        self_link title_getter: ->(*) { represented.subject },
+                  uncacheable: true
 
         link :update,
              cache_if: -> { current_user_update_allowed? } do
+          next if historic_state?
+
           {
             href: api_v3_paths.work_package_form(represented.id),
             method: :post
@@ -66,6 +80,8 @@ module API
 
         link :updateImmediately,
              cache_if: -> { current_user_update_allowed? } do
+          next if historic_state?
+
           {
             href: api_v3_paths.work_package(represented.id),
             method: :patch
@@ -73,63 +89,86 @@ module API
         end
 
         link :delete,
-             cache_if: -> { current_user_allowed_to(:delete_work_packages, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:delete_work_packages, represented.project) } do
           {
             href: api_v3_paths.work_package(represented.id),
             method: :delete
           }
         end
 
-        link :logTime,
-             cache_if: -> { current_user_allowed_to(:log_time, context: represented.project) } do
-          next if represented.new_record?
-
-          {
-            href: api_v3_paths.time_entries,
-            title: "Log time on #{represented.subject}"
-          }
-        end
-
         link :move,
-             cache_if: -> { current_user_allowed_to(:move_work_packages, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:move_work_packages, represented.project) } do
           next if represented.new_record?
 
           {
             href: new_work_package_move_path(represented),
-            type: 'text/html',
-            title: "Move #{represented.subject}"
+            type: "text/html",
+            title: "Move work package '#{represented.subject}'"
           }
         end
 
         link :copy,
-             cache_if: -> { current_user_allowed_to(:add_work_packages, context: represented.project) } do
+             cache_if: -> { add_work_packages_allowed? } do
           next if represented.new_record?
 
           {
-            href: work_package_path(represented, 'copy'),
-            title: "Copy #{represented.subject}"
+            href: work_package_path(represented, "copy"),
+            type: "text/html",
+            title: "Copy work package '#{represented.subject}'"
           }
         end
 
         link :pdf,
-             cache_if: -> { current_user_allowed_to(:export_work_packages, context: represented.project) } do
+             cache_if: -> { export_work_packages_allowed? } do
           next if represented.new_record?
 
           {
             href: work_package_path(id: represented.id, format: :pdf),
-            type: 'application/pdf',
-            title: 'Export as PDF'
+            type: "application/pdf",
+            title: "Export as PDF"
+          }
+        end
+
+        link :exportPdf,
+             cache_if: -> { export_work_packages_allowed? } do
+          next if represented.new_record?
+
+          {
+            href: api_v3_paths.work_package_pdf(represented.id),
+            type: "application/pdf",
+            title: "Export as PDF"
+          }
+        end
+
+        link :generate_pdf,
+             cache_if: -> { export_work_packages_allowed? } do
+          next if represented.new_record?
+
+          {
+            href: generate_pdf_dialog_work_package_path(id: represented.id),
+            type: "text/vnd.turbo-stream.html",
+            title: "Generate PDF"
           }
         end
 
         link :atom,
-             cache_if: -> { current_user_allowed_to(:export_work_packages, context: represented.project) } do
+             cache_if: -> { export_work_packages_allowed? } do
           next if represented.new_record? || !Setting.feeds_enabled?
 
           {
             href: work_package_path(id: represented.id, format: :atom),
-            type: 'application/rss+xml',
-            title: 'Atom feed'
+            type: "application/rss+xml",
+            title: "Atom feed"
+          }
+        end
+
+        link :markdown do
+          next if represented.new_record?
+
+          {
+            href: work_package_path(id: represented.id, format: :md),
+            type: "text/markdown",
+            title: I18n.t(:label_markdown_version)
           }
         end
 
@@ -142,24 +181,14 @@ module API
           }
         end
 
-        link :customFields,
-             cache_if: -> { current_user_allowed_to(:select_custom_fields, context: represented.project) } do
-          next if represented.project.nil?
-
-          {
-            href: project_settings_custom_fields_path(represented.project.identifier),
-            type: 'text/html',
-            title: "Custom fields"
-          }
-        end
-
         link :configureForm,
-             cache_if: -> { current_user.admin? } do
-          next unless represented.type_id
+             cache_if: -> { configure_form_allowed? } do
+          variant = represented.type_variant
+          next unless variant
 
           {
-            href: edit_type_path(represented.type_id, tab: 'form_configuration'),
-            type: 'text/html',
+            href: edit_variant_form_configuration_path(variant.project, variant),
+            type: "text/html",
             title: "Configure form"
           }
         end
@@ -171,7 +200,7 @@ module API
         end
 
         link :availableWatchers,
-             cache_if: -> { current_user_allowed_to(:add_work_package_watchers, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:add_work_package_watchers, represented.project) } do
           {
             href: api_v3_paths.available_watchers(represented.id)
           }
@@ -183,7 +212,8 @@ module API
           }
         end
 
-        link :revisions do
+        link :revisions,
+             cache_if: -> { current_user.allowed_in_project?(:view_changesets, represented.project) } do
           {
             href: api_v3_paths.work_package_revisions(represented.id)
           }
@@ -211,53 +241,53 @@ module API
         end
 
         link :watchers,
-             cache_if: -> { current_user_allowed_to(:view_work_package_watchers, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:view_work_package_watchers, represented.project) } do
           {
             href: api_v3_paths.work_package_watchers(represented.id)
           }
         end
 
         link :addWatcher,
-             cache_if: -> { current_user_allowed_to(:add_work_package_watchers, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:add_work_package_watchers, represented.project) } do
           {
             href: api_v3_paths.work_package_watchers(represented.id),
             method: :post,
-            payload: { user: { href: api_v3_paths.user('{user_id}') } },
+            payload: { user: { href: api_v3_paths.user("{user_id}") } },
             templated: true
           }
         end
 
         link :removeWatcher,
-             cache_if: -> { current_user_allowed_to(:delete_work_package_watchers, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:delete_work_package_watchers, represented.project) } do
           {
-            href: api_v3_paths.watcher('{user_id}', represented.id),
+            href: api_v3_paths.watcher("{user_id}", represented.id),
             method: :delete,
             templated: true
           }
         end
 
         link :addRelation,
-             cache_if: -> { current_user_allowed_to(:manage_work_package_relations, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_work_package?(:manage_work_package_relations, represented) } do
           {
             href: api_v3_paths.work_package_relations(represented.id),
             method: :post,
-            title: 'Add relation'
+            title: "Add relation"
           }
         end
 
         link :addChild,
-             cache_if: -> { current_user_allowed_to(:add_work_packages, context: represented.project) } do
-          next if represented.milestone? || represented.new_record?
+             cache_if: -> { add_work_packages_allowed? } do
+          next if represented.milestone? || represented.new_record? || represented.project.nil?
 
           {
-            href: api_v3_paths.work_packages_by_project(represented.project.identifier),
+            href: api_v3_paths.work_packages_by_workspace(represented.project.identifier),
             method: :post,
             title: "Add child of #{represented.subject}"
           }
         end
 
         link :changeParent,
-             cache_if: -> { current_user_allowed_to(:manage_subtasks, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_project?(:manage_subtasks, represented.project) } do
           {
             href: api_v3_paths.work_package(represented.id),
             method: :patch,
@@ -266,11 +296,11 @@ module API
         end
 
         link :addComment,
-             cache_if: -> { current_user_allowed_to(:add_work_package_notes, context: represented.project) } do
+             cache_if: -> { current_user.allowed_in_work_package?(:add_work_package_comments, represented) } do
           {
             href: api_v3_paths.work_package_activities(represented.id),
             method: :post,
-            title: 'Add comment'
+            title: "Add comment"
           }
         end
 
@@ -281,18 +311,6 @@ module API
           }
         end
 
-        link :timeEntries,
-             cache_if: -> { view_time_entries_allowed? } do
-          next if represented.new_record?
-
-          filters = [{ work_package_id: { operator: "=", values: [represented.id.to_s] } }]
-
-          {
-            href: api_v3_paths.path_for(:time_entries, filters: filters),
-            title: 'Time entries'
-          }
-        end
-
         links :children,
               uncacheable: true do
           next if visible_children.empty?
@@ -300,7 +318,8 @@ module API
           visible_children.map do |child|
             {
               href: api_v3_paths.work_package(child.id),
-              title: child.subject
+              title: child.subject,
+              displayId: child.display_id.to_s
             }
           end
         end
@@ -310,13 +329,19 @@ module API
           represented.visible_ancestors(current_user).map do |ancestor|
             {
               href: api_v3_paths.work_package(ancestor.id),
-              title: ancestor.subject
+              title: ancestor.subject,
+              displayId: ancestor.display_id.to_s
             }
           end
         end
 
         property :id,
                  render_nil: true
+
+        property :display_id,
+                 as: :displayId,
+                 render_nil: true,
+                 getter: ->(*) { display_id&.to_s }
 
         property :lock_version,
                  render_nil: true,
@@ -350,13 +375,13 @@ module API
                         # handled in reader
                       },
                       reader: ->(decorator:, doc:, **) {
-                        next unless doc.key?('date')
+                        next unless doc.key?("date")
 
                         date = decorator
-                               .datetime_formatter
-                               .parse_date(doc['date'],
-                                           name.to_s.camelize(:lower),
-                                           allow_nil: true)
+                          .datetime_formatter
+                          .parse_date(doc["date"],
+                                      name.to_s.camelize(:lower),
+                                      allow_nil: true)
 
                         self.due_date = self.start_date = date
                       },
@@ -392,24 +417,65 @@ module API
                  end,
                  render_nil: true
 
-        property :spent_time,
+        property :remaining_time,
                  exec_context: :decorator,
                  getter: ->(*) do
-                   datetime_formatter.format_duration_from_hours(represented.spent_hours)
+                   datetime_formatter.format_duration_from_hours(represented.remaining_hours,
+                                                                 allow_nil: true)
                  end,
-                 if: ->(*) {
-                   view_time_entries_allowed?
-                 },
-                 uncacheable: true
+                 writable: ->(*) { !WorkPackage.status_based_mode? },
+                 render_nil: false
+
+        property :derived_remaining_time,
+                 exec_context: :decorator,
+                 getter: ->(*) do
+                   datetime_formatter.format_duration_from_hours(represented.derived_remaining_hours,
+                                                                 allow_nil: true)
+                 end,
+                 render_nil: true
+
+        property :duration,
+                 exec_context: :decorator,
+                 if: ->(represented:, **) { !represented.milestone? },
+                 getter: ->(*) do
+                   datetime_formatter.format_duration_from_hours(represented.duration_in_hours,
+                                                                 allow_nil: true)
+                 end,
+                 render_nil: true
+
+        property :ignore_non_working_days
 
         property :done_ratio,
                  as: :percentageDone,
-                 render_nil: true,
-                 if: ->(*) { Setting.work_package_done_ratio != 'disabled' }
+                 render_nil: true
+
+        property :derived_done_ratio,
+                 as: :derivedPercentageDone,
+                 render_nil: true
 
         date_time_property :created_at
 
         date_time_property :updated_at
+
+        property :origin_source,
+                 as: :originSource,
+                 render_nil: false,
+                 writable: false
+
+        property :origin_id,
+                 as: :originId,
+                 render_nil: false,
+                 writable: false
+
+        property :origin_host,
+                 as: :originHost,
+                 render_nil: false,
+                 writable: false
+
+        property :origin_url,
+                 as: :originUrl,
+                 render_nil: false,
+                 writable: false
 
         property :relations,
                  embedded: true,
@@ -417,13 +483,80 @@ module API
                  if: ->(*) { embed_links },
                  uncacheable: true
 
+        property :readonly,
+                 writable: false,
+                 render_nil: false,
+                 if: ->(*) { ::Status.can_readonly? },
+                 getter: ->(*) do
+                   status_id && status.is_readonly?
+                 end
+
+        property :has_project_attributes,
+                 as: :hasProjectAttributes,
+                 writable: false,
+                 uncacheable: true,
+                 getter: ->(*) do
+                   variant = type_variant
+
+                   (variant.present? && project&.available_custom_fields_for_variant(variant.id)&.any?) || false
+                 end
+
         associated_resource :category
 
         associated_resource :type
 
         associated_resource :priority
 
-        associated_resource :project
+        associated_project
+
+        resource :project_phase,
+                 link_cache_if: -> { any_phase_active_in_project? && view_project_phase_allowed? },
+                 link: ->(*) {
+                   if phase_set_and_active?
+                     {
+                       href: api_v3_paths.project_phase(project_phase.id),
+                       title: project_phase.name
+                     }
+                   else
+                     {
+                       href: nil
+                     }
+                   end
+                 },
+                 getter: ->(*) do
+                   if embed_links && phase_set_and_active? && view_project_phase_allowed?
+                     API::V3::ProjectPhases::ProjectPhaseRepresenter.create(
+                       project_phase, current_user:
+                     )
+                   end
+                 end,
+                 setter: ->(fragment:, **) do
+                   link = ::API::Decorators::LinkObject.new(represented,
+                                                            path: :project_phases,
+                                                            property_name: :project_phase,
+                                                            setter: :project_phase_id=)
+
+                   link.from_hash(fragment)
+
+                   represented.project_phase_definition_id = Project::Phase
+                                                               .where(id: represented.project_phase_id)
+                                                               .pick(:definition_id)
+                                                               .to_s
+                 end
+
+        link(:projectPhaseDefinition,
+             cache_if: -> { view_project_phase_allowed? }) do
+          if phase_set_and_active?
+            {
+              href: api_v3_paths.project_phase_definition(represented.project_phase_definition_id),
+              title: project_phase.name
+            }
+          else
+            {
+              href: nil
+            }
+          end
+        end
 
         associated_resource :status
 
@@ -433,21 +566,128 @@ module API
 
         associated_resource :responsible,
                             getter: ::API::V3::Principals::PrincipalRepresenterFactory
-                                      .create_getter_lambda(:responsible),
-                            setter: PrincipalSetter.lambda(:responsible),
+                              .create_getter_lambda(:responsible),
+                            setter: ::API::V3::Principals::PrincipalRepresenterFactory
+                              .create_setter_lambda(:responsible),
                             link: ::API::V3::Principals::PrincipalRepresenterFactory
-                                    .create_link_lambda(:responsible)
+                              .create_link_lambda(:responsible)
 
         associated_resource :assignee,
                             getter: ::API::V3::Principals::PrincipalRepresenterFactory
-                                      .create_getter_lambda(:assigned_to),
-                            setter: PrincipalSetter.lambda(:assigned_to, :assignee),
+                              .create_getter_lambda(:assigned_to),
+                            setter: ::API::V3::Principals::PrincipalRepresenterFactory
+                              .create_setter_lambda(:assigned_to, property_name: :assignee),
                             link: ::API::V3::Principals::PrincipalRepresenterFactory
-                                    .create_link_lambda(:assigned_to)
+                              .create_link_lambda(:assigned_to)
 
+        # Deprecated in favor of `targetVersions`
+        # Removed from the API if multiple_versions is enabled on the instance
         associated_resource :version,
                             v3_path: :version,
-                            representer: ::API::V3::Versions::VersionRepresenter
+                            representer: ::API::V3::Versions::VersionRepresenter,
+                            show_if: ->(*) { !Setting::WorkPackageMultipleVersions.active? },
+                            getter: ->(*) {
+                              next unless embed_link?(:version)
+
+                              version = represented.effective_target_versions.first
+                              next unless version
+
+                              ::API::V3::Versions::VersionRepresenter.create(version, current_user:)
+                            },
+                            link: ->(*) {
+                              next if Setting::WorkPackageMultipleVersions.active?
+
+                              version = represented.effective_target_versions.first
+                              next({ href: nil }) if version.nil?
+
+                              ::API::Decorators::LinkObject
+                                .new(version,
+                                     property_name: :itself,
+                                     path: :version,
+                                     getter: :id,
+                                     title_attribute: :name)
+                                .to_hash
+                            },
+                            setter: ->(fragment:, **) do
+                              represented.target_version_ids = parse_link_ids_from_fragment([fragment], :version).compact
+                            end
+
+        associated_resources :target_versions,
+                             v3_path: :version,
+                             representer: ::API::V3::Versions::VersionRepresenter,
+                             getter: ->(*) {
+                               next unless embed_link?(:target_versions)
+
+                               represented.effective_target_versions.map do |version|
+                                 ::API::V3::Versions::VersionRepresenter.create(version, current_user:)
+                               end
+                             },
+                             link: ->(*) {
+                               represented.effective_target_versions.map do |version|
+                                 ::API::Decorators::LinkObject
+                                   .new(version,
+                                        property_name: :itself,
+                                        path: :version,
+                                        getter: :id,
+                                        title_attribute: :name)
+                                   .to_hash
+                               end
+                             },
+                             setter: ->(fragment:, **) do
+                               represented.target_version_ids = parse_link_ids_from_fragment(fragment, :version).compact
+                             end
+
+        associated_resources :observed_in_versions,
+                             v3_path: :version,
+                             representer: ::API::V3::Versions::VersionRepresenter,
+                             getter: ->(*) {
+                               next unless embed_link?(:observed_in_versions)
+
+                               represented.effective_observed_in_versions.map do |version|
+                                 ::API::V3::Versions::VersionRepresenter.create(version, current_user:)
+                               end
+                             },
+                             link: ->(*) {
+                               represented.effective_observed_in_versions.map do |version|
+                                 ::API::Decorators::LinkObject
+                                   .new(version,
+                                        property_name: :itself,
+                                        path: :version,
+                                        getter: :id,
+                                        title_attribute: :name)
+                                   .to_hash
+                               end
+                             },
+                             setter: ->(fragment:, **) do
+                               represented.observed_in_version_ids = parse_link_ids_from_fragment(fragment, :version).compact
+                             end
+
+        associated_resources :labels,
+                             getter: ->(*) {
+                               next unless embed_link?(:labels)
+
+                               represented.effective_labels.reject(&:new_record?).map do |label|
+                                 ::API::V3::Labels::LabelRepresenter.create(label, current_user:)
+                               end
+                             },
+                             link: ->(*) {
+                               represented.effective_labels.map do |label|
+                                 ::API::Decorators::LinkObject
+                                   .new(label,
+                                        property_name: :itself,
+                                        path: :label,
+                                        getter: :id,
+                                        title_attribute: :name)
+                                   .to_hash
+                               end
+                             },
+                             setter: ->(fragment:, **) do
+                               with_href, without_href = fragment.partition { |link| link["href"].present? }
+                               represented.label_ids = parse_link_ids_from_fragment(with_href, :label)
+
+                               names = without_href.filter_map { |link| link["title"].presence if link["title"].is_a?(String) }
+                               represented.label_names = names if names.any?
+                             end
 
         associated_resource :parent,
                             v3_path: :work_package,
@@ -459,40 +699,34 @@ module API
                               if represented.parent&.visible?
                                 {
                                   href: api_v3_paths.work_package(represented.parent.id),
-                                  title: represented.parent.subject
+                                  title: represented.parent.subject,
+                                  displayId: represented.parent.display_id.to_s
                                 }
                               else
                                 {
-                                  href: nil,
-                                  title: nil
+                                  href: nil
                                 }
                               end
                             },
                             setter: ->(fragment:, **) do
                               next if fragment.empty?
 
-                              href = fragment['href']
+                              href = fragment["href"]
 
-                              new_parent = if href
-                                             id = ::API::Utilities::ResourceLinkParser
-                                                  .parse_id href,
-                                                            property: 'parent',
-                                                            expected_version: '3',
-                                                            expected_namespace: 'work_packages'
+                              new_parent =
+                                if href
+                                  id = ::API::Utilities::ResourceLinkParser
+                                    .parse_id href,
+                                              property: "parent",
+                                              expected_version: "3",
+                                              expected_namespace: "work_packages"
 
-                                             WorkPackage.find_by(id: id) ||
-                                               ::WorkPackage::InexistentWorkPackage.new(id: id)
-                                           end
+                                  WorkPackage.visible.find_by(id:) ||
+                                    ::WorkPackage::InexistentWorkPackage.new(id:)
+                                end
 
                               represented.parent = new_parent
                             end
-
-        associated_resource :budget,
-                            as: :budget,
-                            v3_path: :budget,
-                            link_title_attribute: :subject,
-                            representer: ::API::V3::Budgets::BudgetRepresenter,
-                            skip_render: ->(*) { !view_budgets_allowed? }
 
         resources :customActions,
                   uncacheable_link: true,
@@ -506,7 +740,7 @@ module API
                   },
                   getter: ->(*) {
                     ordered_custom_actions.map do |action|
-                      ::API::V3::CustomActions::CustomActionRepresenter.new(action, current_user: current_user)
+                      ::API::V3::CustomActions::CustomActionRepresenter.new(action, current_user:)
                     end
                   },
                   setter: ->(*) do
@@ -514,7 +748,7 @@ module API
                   end
 
         def _type
-          'WorkPackage'
+          "WorkPackage"
         end
 
         def to_hash(*args)
@@ -526,89 +760,143 @@ module API
           super
         end
 
+        delegate :hide_attachments?, to: :represented
+
+        # Permissions
         def current_user_watcher?
-          represented.watchers.any? { |w| w.user_id == current_user.id }
+          return @current_user_watcher if defined?(@current_user_watcher)
+
+          @current_user_watcher = represented.watchers.any? { |w| w.user_id == current_user.id }
+        end
+
+        def historic_state?
+          timestamps.last&.historic? || false
         end
 
         def current_user_update_allowed?
-          current_user_allowed_to(:edit_work_packages, context: represented.project) ||
-            current_user_allowed_to(:assign_versions, context: represented.project)
+          return @current_user_update_allowed if defined?(@current_user_update_allowed)
+
+          @current_user_update_allowed = ::WorkPackages::UpdateContract.update_allowed?(user: current_user,
+                                                                                        work_package: represented)
+        end
+
+        def view_project_phase_allowed?
+          return @view_project_phase_allowed if defined?(@view_project_phase_allowed)
+
+          @view_project_phase_allowed = current_user.allowed_in_project?(:view_project_phases, represented.project)
+        end
+
+        def export_work_packages_allowed?
+          return @export_work_packages_allowed if defined?(@export_work_packages_allowed)
+
+          @export_work_packages_allowed = current_user.allowed_in_work_package?(:export_work_packages, represented)
+        end
+
+        def add_work_packages_allowed?
+          return @add_work_packages_allowed if defined?(@add_work_packages_allowed)
+
+          @add_work_packages_allowed = current_user.allowed_in_project?(:add_work_packages, represented.project)
+        end
+
+        def configure_form_allowed?
+          return @configure_form_allowed if defined?(@configure_form_allowed)
+
+          @configure_form_allowed = !!represented.type_variant&.configurable_by?(current_user)
+        end
+
+        def project_phase
+          return @project_phase if defined?(@project_phase)
+
+          @project_phase = represented.project_phase
+        end
+
+        def phase_set_and_active?
+          project_phase&.active?
+        end
+
+        def any_phase_active_in_project?
+          represented.project&.phases&.any?(&:active?)
         end
 
         def relations
           self_path = api_v3_paths.work_package_relations(represented.id)
           visible_relations = represented
-                              .visible_relations(current_user)
-                              .direct
-                              .non_hierarchy
-                              .includes(::API::V3::Relations::RelationCollectionRepresenter.to_eager_load)
+            .relations
+            .visible(current_user)
+            .includes(::API::V3::Relations::RelationCollectionRepresenter.to_eager_load)
 
           ::API::V3::Relations::RelationCollectionRepresenter.new(visible_relations,
                                                                   self_link: self_path,
-                                                                  current_user: current_user)
+                                                                  current_user:)
         end
 
         def visible_children
           @visible_children ||= represented.children.select(&:visible?)
         end
 
-        def schedule_manually=(value)
-          represented.schedule_manually = value
-        end
+        delegate :schedule_manually=, to: :represented
 
         def estimated_time=(value)
-          represented.estimated_hours = datetime_formatter.parse_duration_to_hours(value,
-                                                                                   'estimatedTime',
-                                                                                   allow_nil: true)
+          represented.estimated_hours =
+            datetime_formatter.parse_duration_to_hours(value, "estimatedTime", allow_nil: true)
         end
 
         def derived_estimated_time=(value)
-          represented.derived_estimated_hours = datetime_formatter
-            .parse_duration_to_hours(value, 'derivedEstimatedTime', allow_nil: true)
+          represented.derived_estimated_hours =
+            datetime_formatter.parse_duration_to_hours(value, "derivedEstimatedTime", allow_nil: true)
         end
 
-        def spent_time=(value)
-          # noop
+        def remaining_time=(value)
+          represented.remaining_hours =
+            datetime_formatter.parse_duration_to_hours(value, "remainingTime", allow_nil: true)
+        end
+
+        def derived_remaining_time=(value)
+          represented.derived_remaining_hours =
+            datetime_formatter.parse_duration_to_hours(value, "derivedRemainingTime", allow_nil: true)
+        end
+
+        def duration=(value)
+          represented.duration = datetime_formatter.parse_duration_to_days(value,
+                                                                           "duration",
+                                                                           allow_nil: true)
         end
 
         def ordered_custom_actions
           # As the custom actions are sometimes set as an array
-          represented.custom_actions(current_user).to_a.sort_by(&:position)
+          @ordered_custom_actions ||= represented.custom_actions(current_user).to_a.sort_by(&:position)
         end
 
         # Attachments need to be eager loaded for the description
         self.to_eager_load = %i[parent
+                                priority
                                 type
                                 watchers
                                 attachments
-                                budget]
+                                target_versions
+                                observed_in_versions
+                                labels]
 
         # The dynamic class generation introduced because of the custom fields interferes with
         # the class naming as well as prevents calls to super
         def json_cache_key
-          ['API',
-           'V3',
-           'WorkPackages',
-           'WorkPackageRepresenter',
-           'json',
+          ["API",
+           "V3",
+           "WorkPackages",
+           "WorkPackageRepresenter",
+           "json",
            I18n.locale,
            json_key_representer_parts,
            represented.cache_checksum,
            Setting.work_package_done_ratio,
-           Setting.feeds_enabled?]
-        end
-
-        def view_time_entries_allowed?
-          current_user_allowed_to(:view_time_entries, context: represented.project) ||
-            current_user_allowed_to(:view_own_time_entries, context: represented.project)
-        end
-
-        def view_budgets_allowed?
-          current_user_allowed_to(:view_budgets, context: represented.project)
+           Setting.show_work_package_attachments,
+           Setting.feeds_enabled?,
+           Setting::WorkPackageIdentifier.semantic?,
+           Setting::WorkPackageMultipleVersions.active?]
         end
 
         def load_complete_model(model)
-          ::API::V3::WorkPackages::WorkPackageEagerLoadingWrapper.wrap_one(model, current_user)
+          ::API::V3::WorkPackages::WorkPackageEagerLoadingWrapper.wrap_one(model, current_user, timestamps:, query:)
         end
       end
     end

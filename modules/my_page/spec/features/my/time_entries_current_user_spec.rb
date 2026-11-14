@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,297 +22,158 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
+require_relative "../../support/pages/my/page"
 
-require_relative '../../support/pages/my/page'
+RSpec.describe "My page my spent time widget", :js, with_settings: { start_of_week: 1 } do
+  let(:monday) { Date.current.beginning_of_week(:monday) }
+  let(:wednesday) { monday + 2.days }
+  let(:thursday) { monday + 3.days }
+  let(:last_monday) { monday - 1.week }
 
-describe 'My page time entries current user widget spec', type: :feature, js: true, with_mail: false do
-  let!(:type) { FactoryBot.create :type }
-  let!(:project) { FactoryBot.create :project, types: [type] }
-  let!(:activity) { FactoryBot.create :time_entry_activity }
-  let!(:other_activity) { FactoryBot.create :time_entry_activity }
+  let!(:type) { create(:type) }
+  let!(:project) { create(:project, types: [type]) }
+  let!(:activity) { create(:time_entry_activity) }
   let!(:work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      author: user
+    create(:work_package, project:, type:, author: user, subject: "First work package")
   end
-  let!(:other_work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      author: user
+
+  let!(:monday_entry) do
+    create(:time_entry, entity: work_package, project:, activity:, user:, spent_on: monday, hours: 3)
   end
-  let!(:visible_time_entry) do
-    FactoryBot.create :time_entry,
-                      work_package: work_package,
-                      project: project,
-                      activity: activity,
-                      user: user,
-                      spent_on: Date.today.beginning_of_week(:sunday) + 1.day,
-                      hours: 3,
-                      comments: 'My comment'
+  let!(:wednesday_entry) do
+    create(:time_entry, entity: work_package, project:, activity:, user:, spent_on: wednesday, hours: 2)
   end
-  let!(:other_visible_time_entry) do
-    FactoryBot.create :time_entry,
-                      work_package: work_package,
-                      project: project,
-                      activity: activity,
-                      user: user,
-                      spent_on: Date.today.beginning_of_week(:sunday) + 4.days,
-                      hours: 2,
-                      comments: 'My other comment'
+  let!(:last_week_entry) do
+    create(:time_entry, entity: work_package, project:, activity:, user:, spent_on: last_monday, hours: 8)
   end
-  let!(:last_week_visible_time_entry) do
-    FactoryBot.create :time_entry,
-                      work_package: work_package,
-                      project: project,
-                      activity: activity,
-                      user: user,
-                      spent_on: Date.today - (Date.today.wday + 3).days,
-                      hours: 8,
-                      comments: 'My last week comment'
+  let!(:other_users_entry) do
+    create(:time_entry, entity: work_package, project:, activity:, user: other_user, hours: 4, spent_on: monday)
   end
-  let!(:invisible_time_entry) do
-    FactoryBot.create :time_entry,
-                      work_package: work_package,
-                      project: project,
-                      activity: activity,
-                      user: other_user,
-                      hours: 4
-  end
-  let!(:custom_field) do
-    FactoryBot.create :time_entry_custom_field, field_format: 'text'
-  end
-  let(:other_user) do
-    FactoryBot.create(:user)
-  end
+
+  let(:other_user) { create(:user) }
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_time_entries edit_time_entries view_work_packages log_time])
+    create(:user,
+           member_with_permissions: { project => %i[view_time_entries edit_time_entries view_work_packages log_own_time] })
   end
-  let(:my_page) do
-    Pages::My::Page.new
-  end
-  let(:cf_field) { ::TextEditorField.new(page, "customField#{custom_field.id}") }
-  let(:time_logging_modal) { ::Components::TimeLoggingModal.new }
+
+  let!(:my_page_grid) { create(:my_page, :empty, user:) }
+  let!(:week_days) { week_with_saturday_and_sunday_as_weekend }
+
+  let(:my_page) { Pages::My::Page.new }
+  let(:time_logging_modal) { Components::TimeLoggingModal.new }
 
   before do
     login_as user
-
     my_page.visit!
+
+    my_page.add_widget(1, 1, :within, "My spent time")
+    my_page.expect_and_dismiss_toaster message: I18n.t(:notice_successful_update)
   end
 
-  it 'adds the widget which then displays time entries and allows manipulating them' do
-    # within top-right area, add an additional widget
-    my_page.add_widget(1, 1, :within, 'My spent time')
+  it "shows the current user's entries for the week, with a total per day" do
+    expect(page).to have_css(".te-stack--time-entry", count: 2)
 
-    entries_area = Components::Grids::GridArea.new('.grid--area.-widgeted:nth-of-type(1)')
-
-    my_page.expect_and_dismiss_toaster message: I18n.t(:notice_successful_update)
-
-    entries_area.expect_to_span(1, 1, 2, 2)
-
-    expect(page)
-      .to have_content "Total: 5.00"
-
-    expect(page)
-      .to have_content visible_time_entry.spent_on.strftime('%-m/%-d')
-    expect(page)
-      .to have_selector('.fc-event .fc-event-title', text: "#{project.name} - ##{work_package.id}: #{work_package.subject}")
-
-    expect(page)
-      .to have_content(other_visible_time_entry.spent_on.strftime('%-m/%-d'))
-    expect(page)
-      .to have_selector('.fc-event .fc-event-title', text: "#{project.name} - ##{work_package.id}: #{work_package.subject}")
-
-    # go to last week
-    within entries_area.area do
-      find('.fc-toolbar .fc-prev-button').click
+    aggregate_failures("each entry is shown with its duration, work package and project") do
+      expect(page).to have_css(".te-entry-card", text: "3h")
+      expect(page).to have_css(".te-entry-card", text: "2h")
+      expect(page).to have_css(".te-entry-card", text: "#{work_package.formatted_id}: #{work_package.subject}")
+      expect(page).to have_css(".te-entry-card", text: project.name)
+      expect(page).to have_no_css(".te-entry-card a[href]")
     end
 
-    expect(page)
-      .to have_content "Total: 8.00"
-
-    expect(page)
-      .to have_content(last_week_visible_time_entry.spent_on.strftime('%-m/%-d'))
-    expect(page)
-      .to have_selector('.fc-event .fc-event-title', text: "#{project.name} - ##{work_package.id}: #{work_package.subject}")
-
-    # go to today again
-    within entries_area.area do
-      find('.fc-toolbar .fc-today-button').click
+    aggregate_failures("the footer totals the day, leaving out the other user's entry") do
+      expect(day_footer(monday)).to have_text("3h")
+      expect(day_footer(wednesday)).to have_text("2h")
+      expect(day_footer(thursday)).to have_text("0h")
     end
+  end
 
-    expect(page)
-      .to have_content "Total: 5.00"
+  it "steps through the weeks" do
+    step_to Date.current - 1.week
 
-    within entries_area.area do
-      find(".te-calendar--time-entry", match: :first).hover
-    end
+    expect(page).to have_css(".te-entry-card", text: "8h")
+    expect(page).to have_css(".te-stack--time-entry", count: 1)
 
-    expect(page)
-      .to have_selector('.ui-tooltip', text: "Project: #{project.name}")
+    step_to_today
 
-    # Adding a time entry
+    expect(page).to have_css(".te-stack--time-entry", count: 2)
+  end
 
-    # The add time entry event is invisible
-    within entries_area.area do
-      find("td.fc-timegrid-col:nth-of-type(5) .te-calendar--add-entry", visible: false).click
-    end
+  it "logs time on the day that was selected" do
+    select_day(thursday)
 
     time_logging_modal.is_visible true
+    time_logging_modal.has_field_with_value "spent_on", thursday.iso8601
 
-    time_logging_modal.work_package_is_missing true
+    time_logging_modal.update_field "entity_id", work_package.subject
+    time_logging_modal.update_field "activity_id", activity.name
+    time_logging_modal.submit
 
-    time_logging_modal.has_field_with_value 'spentOn', (Date.today.beginning_of_week(:sunday) + 3.days).strftime
-
-    expect(page)
-      .not_to have_selector('.ng-spinner-loader')
-
-    time_logging_modal.update_work_package_field other_work_package.subject
-
-    time_logging_modal.work_package_is_missing false
-
-    time_logging_modal.update_field 'comment', 'Comment for new entry'
-
-    time_logging_modal.update_field 'activity', activity.name
-
-    time_logging_modal.update_field 'hours', 4
-
-    sleep(0.1)
-
-    time_logging_modal.perform_action 'Create'
     time_logging_modal.is_visible false
 
-    my_page.expect_and_dismiss_toaster message: I18n.t(:notice_successful_create)
+    expect(page).to have_css(".te-stack--time-entry", count: 3)
+    expect(TimeEntry.where(user:, spent_on: thursday)).to exist
+  end
 
-    within entries_area.area do
-      expect(page)
-        .to have_selector("td.fc-timegrid-col:nth-of-type(5) .te-calendar--time-entry",
-                          text: other_work_package.subject)
-    end
-
-    expect(page)
-      .to have_content "Total: 9.00"
-
-    expect(TimeEntry.count)
-      .to eql 5
-
-    ## Editing an entry
-
-    within entries_area.area do
-      find("td.fc-timegrid-col:nth-of-type(3) .te-calendar--time-entry").click
-    end
+  it "opens an existing entry for editing through its menu" do
+    first(".te-stack--time-entry").click
+    click_link "Edit time entry"
 
     time_logging_modal.is_visible true
+    time_logging_modal.expect_work_package(work_package)
+    time_logging_modal.has_field_with_value "spent_on", monday.iso8601
+  end
 
-    time_logging_modal.update_field 'activity', other_activity.name
-
-    # As the other_work_package now has time logged, it is now considered to be a
-    # recent work package.
-    time_logging_modal.update_work_package_field other_work_package.subject, true
-
-    time_logging_modal.update_field 'hours', 6
-
-    time_logging_modal.update_field 'comment', 'Some comment'
-
-    cf_field.set_value('Cf text value')
-
-    time_logging_modal.perform_action 'Save'
-    time_logging_modal.is_visible false
-
-    sleep(0.1)
-    my_page.expect_and_dismiss_toaster message: I18n.t(:notice_successful_update)
-
-    within entries_area.area do
-      find("td.fc-timegrid-col:nth-of-type(3) .te-calendar--time-entry").hover
-    end
-
-    expect(page)
-      .to have_selector('.ui-tooltip', text: "Work package: ##{other_work_package.id}: #{other_work_package.subject}")
-
-    expect(page)
-      .to have_selector('.ui-tooltip', text: "Hours: 6 h")
-
-    expect(page)
-      .to have_selector('.ui-tooltip', text: "Activity: #{other_activity.name}")
-
-    expect(page)
-      .to have_selector('.ui-tooltip', text: "Comment: Some comment")
-
-    expect(page)
-      .to have_content "Total: 12.00"
-
-    ## Hiding weekdays
-    entries_area.click_menu_item I18n.t('js.grid.configure')
-
-    uncheck 'Monday' # the day visible_time_entry is logged for
-
-    click_button 'Apply'
-
-    within entries_area.area do
-      expect(page)
-        .not_to have_selector('.fc-day-header', text: 'Mon')
-      expect(page)
-        .not_to have_selector('.fc-duration', text: "6 h")
-    end
-
-    ## Removing the time entry
-
-    within entries_area.area do
-      # to place the tooltip at a different spot
-      find("td.fc-timegrid-col:nth-of-type(5) .te-calendar--time-entry").hover
-      find("td.fc-timegrid-col:nth-of-type(5) .te-calendar--time-entry").click
-    end
+  it "validates that a work package is set" do
+    select_day(thursday)
 
     time_logging_modal.is_visible true
-    time_logging_modal.perform_action 'Delete'
+    time_logging_modal.submit
 
-    page.driver.browser.switch_to.alert.accept
-    time_logging_modal.is_visible false
+    time_logging_modal.is_visible true
+    time_logging_modal.field_has_error "entity_id", "can't be blank."
+  end
 
-    within entries_area.area do
-      expect(page)
-       .not_to have_selector("td.fc-timegrid-col:nth-of-type(5) .te-calendar--time-entry")
-    end
+  def day_footer(date)
+    column = find("th.fc-col-header-cell[data-date='#{date.iso8601}']")
+    index = all("th.fc-col-header-cell").index { |cell| cell[:"data-date"] == column[:"data-date"] }
 
-    expect(TimeEntry.where(id: other_visible_time_entry.id))
-      .not_to be_exist
+    all("th.fc-col-footer-cell")[index]
+  end
 
-    ## Reloading keeps the configuration
-    visit root_path
-    my_page.visit!
+  # The navigation steps the widget rather than the page, so its links carry the date they
+  # lead to.
+  def step_to(date)
+    first("a[href*='date=#{date.iso8601}']").click
+  end
 
-    within entries_area.area do
-      expect(page)
-        .to have_content(/#{Regexp.escape(I18n.t('js.grid.widgets.time_entries_current_user.title'))}/i)
+  def step_to_today
+    first("a[href*='date=today']").click
+  end
 
-      expect(page)
-        .to have_selector(".te-calendar--time-entry", count: 1)
+  # The slot lanes lie over the day columns and are what a click actually lands on, so the
+  # day is picked by clicking a lane at that column's horizontal center, as a user does.
+  def select_day(date)
+    # The stack renders once its frame has loaded, so wait for the grid before measuring it.
+    find("td.fc-timegrid-col[data-date='#{date.iso8601}']")
 
-      expect(page)
-        .not_to have_selector('.fc-col-header-cell', text: 'Mon')
-    end
+    offset = page.evaluate_script(<<~JS)
+      (() => {
+        const column = document.querySelector("td.fc-timegrid-col[data-date='#{date.iso8601}']");
+        const lanes = document.querySelectorAll('td.fc-timegrid-slot-lane');
+        const lane = lanes[lanes.length - 1];
+        const c = column.getBoundingClientRect();
+        const l = lane.getBoundingClientRect();
+        return Math.round((c.left + (c.width / 2)) - (l.left + (l.width / 2)));
+      })()
+    JS
 
-    # Removing the widget
-
-    entries_area.remove
-
-    # as the last widget has been removed, the add button is always displayed
-    nucleus_area = Components::Grids::GridArea.of(2, 2)
-    nucleus_area.expect_to_exist
-
-    within nucleus_area.area do
-      expect(page)
-        .to have_selector(".grid--widget-add")
-    end
+    all("td.fc-timegrid-slot-lane").last.click(x: offset, y: 0)
   end
 end

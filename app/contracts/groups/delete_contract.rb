@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Groups
   class DeleteContract < ::DeleteContract
-    delete_permission -> { user.active? && user.admin? }
+    delete_permission(:admin)
+
+    validate :validate_not_ldap_managed
+
+    private
+
+    # Departments synchronized from LDAP cannot be deleted manually; they are removed only once
+    # their organizational unit disappears from LDAP and the sync drops the mapping.
+    def validate_not_ldap_managed
+      errors.add(:base, :ldap_managed) if model.ldap_managed?
+    end
   end
 end

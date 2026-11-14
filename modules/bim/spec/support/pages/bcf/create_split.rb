@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'support/pages/page'
-require 'support/pages/work_packages/abstract_work_package_create'
-require_relative '../../components/bcf_details_viewpoints'
+require "support/pages/page"
+require "support/pages/work_packages/abstract_work_package_create"
+require_relative "../../components/bcf_details_viewpoints"
 
 module Pages
   module BCF
@@ -37,23 +38,21 @@ module Pages
 
       attr_accessor :project,
                     :model_id,
-                    :type_id,
-                    :view_route
+                    :type_id
 
       def initialize(project:, model_id: nil, type_id: nil)
-        super(project: project)
+        super(project:)
         self.model_id = model_id
         self.type_id = type_id
-        self.view_route = :split
       end
 
       # Override delete viewpoint since we don't have confirm alert
       def delete_viewpoint_at_position(index)
-        page.all('.icon-delete.ngx-gallery-icon-content')[index].click
+        page.all(".icon-delete.ngx-gallery-icon-content")[index].click
       end
 
       def path
-        bcf_project_frontend_path(project, "#{view_route}/create_new")
+        bcf_project_new_split_path(project)
       end
 
       def expect_current_path

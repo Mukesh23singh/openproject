@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'open_project/plugins'
+require "open_project/plugins"
 
 module OpenProject::Webhooks
   class Engine < ::Rails::Engine
@@ -34,25 +33,30 @@ module OpenProject::Webhooks
 
     include OpenProject::Plugins::ActsAsOpEngine
 
-    register 'openproject-webhooks',
+    register "openproject-webhooks",
              bundled: true,
-             author_url: 'https://www.openproject.org' do
+             author_url: "https://www.openproject.org" do
       menu :admin_menu,
            :plugin_webhooks,
-           { controller: 'webhooks/outgoing/admin', action: :index },
+           { controller: "/webhooks/outgoing/admin", action: :index },
            if: Proc.new { User.current.admin? },
-           parent: :in_out,
-           caption: ->(*) { I18n.t('webhooks.plural') }
+           parent: :api_and_webhooks,
+           caption: :"webhooks.plural"
     end
 
-    config.before_configuration do |app|
-      # This is required for the routes to be loaded first as the routes should
-      # be prepended so they take precedence over the core.
-      app.config.paths['config/routes.rb'].unshift File.join(File.dirname(__FILE__), "..", "..", "..", "config", "routes.rb")
+    initializer "webhooks.subscribe_to_notifications" do |app|
+      app.config.after_initialize do
+        ::OpenProject::Webhooks::EventResources.subscribe!
+      end
     end
 
-    initializer 'webhooks.subscribe_to_notifications' do
-      ::OpenProject::Webhooks::EventResources.subscribe!
+    add_cron_jobs do
+      {
+        CleanupWebhookLogsJob: {
+          cron: "28 5 * * 7", # runs at 5:28 on Sunday
+          class: ::CleanupWebhookLogsJob.name
+        }
+      }
     end
   end
 end

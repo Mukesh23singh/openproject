@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -43,12 +42,13 @@ module OpenProject
     # https://community.openproject.com/wp/36304
     module I18nRejectEmptyString
       def load_yml(filename)
-        replace_empty_strings super
+        hash, frozen = super
+        [replace_empty_strings(hash), frozen]
       end
 
       def replace_empty_strings(hash)
         hash.deep_transform_values do |value|
-          if value == ''
+          if value == ""
             nil
           else
             value
@@ -59,6 +59,6 @@ module OpenProject
   end
 end
 
-OpenProject::Patches.patch_gem_version 'i18n', '1.8.11' do
+OpenProject::Patches.patch_gem_version "i18n", "1.15.2" do
   I18n.backend.singleton_class.prepend OpenProject::Patches::I18nRejectEmptyString
 end

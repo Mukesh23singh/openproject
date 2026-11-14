@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,25 +20,28 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, InjectFlags, OnInit } from '@angular/core';
-import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { SelectAutocompleterRegisterService } from 'core-app/shared/components/fields/edit/field-types/select-edit-field/select-autocompleter-register.service';
-import { from } from 'rxjs';
+import { ChangeDetectionStrategy, Component, OnInit, inject } from '@angular/core';
+import { from, Observable } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { CreateAutocompleterComponent } from 'core-app/shared/components/autocompleter/create-autocompleter/create-autocompleter.component';
-import { EditFormComponent } from 'core-app/shared/components/fields/edit/edit-form/edit-form.component';
-import { StateService } from '@uirouter/core';
+
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import {
+  SelectAutocompleterRegisterService,
+} from 'core-app/shared/components/fields/edit/field-types/select-edit-field/select-autocompleter-register.service';
+import {
+  CreateAutocompleterComponent,
+} from 'core-app/shared/components/autocompleter/create-autocompleter/create-autocompleter.component';
 import { CollectionResource } from 'core-app/features/hal/resources/collection-resource';
 import { HalResourceNotificationService } from 'core-app/features/hal/services/hal-resource-notification.service';
 import { HalResourceSortingService } from 'core-app/features/hal/services/hal-resource-sorting.service';
 import { EditFieldComponent } from '../../edit-field.component';
+import { CallableHalLink } from 'core-app/features/hal/hal-link/hal-link';
+import { EventHandler } from 'ng-dynamic-component';
 
 export interface ValueOption {
   name:string;
@@ -47,59 +50,49 @@ export interface ValueOption {
 
 @Component({
   templateUrl: './select-edit-field.component.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class SelectEditFieldComponent extends EditFieldComponent implements OnInit {
-  @InjectField() selectAutocompleterRegister:SelectAutocompleterRegisterService;
+  readonly selectAutocompleterRegister = inject(SelectAutocompleterRegisterService);
 
-  @InjectField() halNotification:HalResourceNotificationService;
+  readonly halNotification = inject(HalResourceNotificationService);
 
-  @InjectField() halSorting:HalResourceSortingService;
+  readonly halSorting = inject(HalResourceSortingService);
 
-  @InjectField() $state:StateService;
+  public availableOptions:HalResource[] = [];
 
-  @InjectField(EditFormComponent, null, InjectFlags.Optional) editFormComponent:EditFormComponent;
+  public text:Record<string, string>;
 
-  public availableOptions:any[];
+  public appendTo:string|null|undefined = null;
 
-  public text:{ [key:string]:string };
-
-  public appendTo:any = null;
-
-  public referenceOutputs:{ [key:string]:Function } = {
+  public referenceOutputs:Record<string, EventHandler> = {
     onCreate: (newElement:HalResource) => this.onCreate(newElement),
     onChange: (value:HalResource) => this.onChange(value),
-    onKeydown: (event:JQuery.TriggeredEvent) => this.handler.handleUserKeydown(event, true),
+    onAddNew: (value:HalResource) => this.onNewValueAdded(value),
+    onKeydown: (event:KeyboardEvent) => this.handler.handleUserKeydown(event, true),
     onOpen: () => this.onOpen(),
     onClose: () => this.onClose(),
-    onAfterViewInit: (component:CreateAutocompleterComponent) => this._autocompleterComponent = component,
+    onAfterViewInit: (component:CreateAutocompleterComponent) => { this._autocompleterComponent = component; },
   };
 
   public get selectedOption() {
-    const href = this.value ? this.value.href : null;
-    return _.find(this.availableOptions, (o) => o.href === href)!;
+    const value = this.value as HalResource|null|undefined;
+    const href = value ? value.href : null;
+    return (this.availableOptions as ValueOption[]).find((o) => o.href === href)!;
   }
 
   public set selectedOption(val:ValueOption|HalResource) {
-    // The InviteUserModal gives us a resource that is not in availableOptions yet,
-    // but we also don't want to wait for a refresh of the options every time we want to
-    // select an option, so if we get a HalResource we trust it exists
-    if (val instanceof HalResource) {
-      this.value = val;
-      return;
-    }
-
-    const option = _.find(this.availableOptions, (o) => o.href === val.href);
+    const option = (this.availableOptions as ValueOption[]).find((o) => o.href === val.href);
 
     // Special case 'null' value, which angular
     // only understands in ng-options as an empty string.
-    if (option && option.href === '') {
+    if (option?.href === '') {
       option.href = null;
     }
 
-    this.value = option;
+    this.value = option || val;
   }
-
-  public showAddNewButton:boolean;
 
   protected valuesLoaded = false;
 
@@ -122,12 +115,12 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
         this.untilDestroyed(),
       )
       .subscribe(() => {
-        this.valuesLoadingPromise.then(() => {
-          this._autocompleterComponent.openDirectly = true;
-        });
+        void this.valuesLoadingPromise
+          .then(() => {
+            this._autocompleterComponent.openDirectly = true;
+          });
       });
 
-    this._syncUrlParamsOnChangeIfNeeded(this.handler.fieldName, this.editFormComponent?.editMode);
   }
 
   protected initialize() {
@@ -136,13 +129,9 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
       placeholder: this.I18n.t('js.placeholders.default'),
     };
 
-    this.valuesLoadingPromise = this.change.getForm().then(() => this.initialValueLoading());
-
-    this.initializeShowAddButton();
-  }
-
-  initializeShowAddButton() {
-    this.showAddNewButton = this.schema.type === 'User';
+    this.valuesLoadingPromise = this.change.getForm()
+      .then(() => this.initialValueLoading())
+      .catch(() => console.error('Failed to load default form'));
   }
 
   protected initialValueLoading() {
@@ -156,15 +145,16 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
   }
 
   private setValues(availableValues:HalResource[]) {
-    this.availableOptions = this.sortValues(availableValues);
+    const sortedValues = this.sortValues(availableValues);
+    this.availableOptions = this.filterInvalidValues(sortedValues);
     this.addEmptyOption();
   }
 
-  protected loadValues(query?:string) {
+  protected loadValues(query?:string):Observable<HalResource[]> {
     const { allowedValues } = this.schema;
 
     if (Array.isArray(allowedValues)) {
-      this.setValues(allowedValues);
+      this.setValues(allowedValues as HalResource[]);
       this.valuesLoaded = true;
     } else if (allowedValues && !this.valuesLoaded) {
       return this.loadValuesFromBackend(query);
@@ -183,7 +173,7 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
         if (collection.count === undefined || collection.total === undefined || (!query && collection.total === collection.count) || !this.value) {
           return collection.elements;
         }
-        return collection.elements.concat([this.value]);
+        return collection.elements.concat([this.value as HalResource]);
       }),
       tap((elements) => this.setValues(elements)),
       map(() => this.availableOptions),
@@ -193,15 +183,23 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
   protected loadAllowedValues(query?:string):Promise<CollectionResource> {
     // Cache the search without any params
     if (!query) {
-      const cacheKey = this.schema.allowedValues.$link.href;
+      const cacheKey = (this.schema.allowedValues as CallableHalLink).$link.href!;
       return this.change.cacheValue(cacheKey, this.fetchAllowedValueQuery.bind(this));
     }
 
     return this.fetchAllowedValueQuery(query);
   }
 
-  protected fetchAllowedValueQuery(query?:string) {
-    return this.schema.allowedValues.$link.$fetch(this.allowedValuesFilter(query)) as Promise<CollectionResource>;
+  protected fetchAllowedValueQuery(query?:string):Promise<CollectionResource> {
+    const link = (this.schema.allowedValues as CallableHalLink|undefined)?.$link;
+
+    // Race condition: Field was under edit but is no longer editable / values not loadable
+    // which means the schema switched during the period it opened / updated after saved.
+    if (!link) {
+      return new Promise(() => {});
+    }
+
+    return link.$fetch(this.allowedValuesFilter(query));
   }
 
   private addValue(val:HalResource) {
@@ -210,7 +208,7 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
 
   public get currentValueInvalid():boolean {
     return !!(
-      (this.value && !_.some(this.availableOptions, (option:HalResource) => (option.href === this.value.href)))
+      (this.value && !this.availableOptions.some((option:HalResource) => (option.href === (this.value as HalResource).href)))
       || (!this.value && this.schema.required)
     );
   }
@@ -222,9 +220,9 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
   }
 
   public onOpen() {
-    jQuery(this.hiddenOverflowContainer).one('scroll', () => {
+    document.querySelector(this.hiddenOverflowContainer)!.addEventListener('scroll', () => {
       this._autocompleterComponent.closeSelect();
-    });
+    }, { once: true });
   }
 
   public onClose() {
@@ -246,6 +244,16 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
     }
   }
 
+  private async onNewValueAdded(value:HalResource|undefined|null) {
+    if (!value) {
+      return;
+    }
+
+    await this.change.getForm(true);
+
+    this.onChange(value);
+  }
+
   private addEmptyOption() {
     // Empty options are not available for required fields
     if (this.isRequired()) {
@@ -259,7 +267,7 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
       this.availableOptions.unshift({
         name: this.text.placeholder,
         href: '',
-      });
+      } as HalResource);
     }
   }
 
@@ -271,27 +279,17 @@ export class SelectEditFieldComponent extends EditFieldComponent implements OnIn
     return this.halSorting.sort(availableValues);
   }
 
+  private filterInvalidValues(availableValues:HalResource[]) {
+    return availableValues.filter((value) => !!value.name);
+  }
+
   // Subclasses shall be able to override the filters with which the
   // allowed values are reduced in the backend.
-  protected allowedValuesFilter(query?:string) {
+  protected allowedValuesFilter(_query?:string) {
     return {};
   }
 
-  private getEmptyOption():undefined {
-    return _.find(this.availableOptions, (el) => el.name === this.text.placeholder);
-  }
-
-  private _syncUrlParamsOnChangeIfNeeded(fieldName:string, editMode:boolean) {
-    // Work package type changes need to be synced with the type url param
-    // in order to keep the form changes (changeset) between route/state changes
-    if (fieldName === 'type' && editMode) {
-      this.handler.registerOnBeforeSubmit(() => {
-        const newType = this.value?.$source?.id;
-
-        if (newType) {
-          this.$state.go('.', { type: newType }, { notify: false });
-        }
-      });
-    }
+  private getEmptyOption():ValueOption|undefined {
+    return (this.availableOptions as ValueOption[]).find((el) => el.name === this.text.placeholder);
   }
 }

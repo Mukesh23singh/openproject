@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,115 +22,107 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'contracts/shared/model_contract_shared_context'
+require "spec_helper"
+require "contracts/shared/model_contract_shared_context"
 
-describe UserPreferences::UpdateContract do
-  include_context 'ModelContract shared context'
+RSpec.describe UserPreferences::UpdateContract do
+  include_context "ModelContract shared context"
 
-  let(:current_user) { FactoryBot.build_stubbed(:user) }
+  let(:current_user) { build_stubbed(:user) }
   let(:preference_user) { current_user }
   let(:user_preference) do
-    FactoryBot.build_stubbed(:user_preference,
-                             user: preference_user,
-                             settings: settings&.with_indifferent_access)
+    build_stubbed(:user_preference,
+                  user: preference_user,
+                  settings: settings&.with_indifferent_access)
   end
   let(:settings) do
     {
-      hide_mail: true,
       auto_hide_popups: true,
-      comments_sorting: 'desc',
+      comments_sorting: "desc",
       daily_reminders: {
         enabled: true,
         times: %w[08:00:00+00:00 12:00:00+00:00]
       },
-      time_zone: 'America/Sao_Paulo',
+      time_zone: "America/Sao_Paulo",
       warn_on_leaving_unsaved: true,
+      disable_keyboard_shortcuts: true,
+      require_double_click_for_inline_edit: true,
       workdays: [1, 2, 4, 6]
     }
   end
   let(:contract) { described_class.new(user_preference, current_user) }
 
-  describe 'validation' do
-    context 'when current_user is admin' do
-      let(:current_user) { FactoryBot.build_stubbed(:admin) }
-      let(:preference_user) { FactoryBot.build_stubbed(:user) }
+  describe "validation" do
+    context "when current_user is admin" do
+      let(:current_user) { build_stubbed(:admin) }
+      let(:preference_user) { build_stubbed(:user) }
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'when current_user has manage_user permission' do
-      let(:preference_user) { FactoryBot.build_stubbed(:user) }
+    context "when current_user has manage_user permission" do
+      let(:preference_user) { build_stubbed(:user) }
 
       before do
-        allow(current_user).to receive(:allowed_to_globally?).with(:manage_user).and_return true
+        mock_permissions_for(current_user) do |mock|
+          mock.allow_globally(:manage_user)
+        end
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'when current_user is the own user' do
-      it_behaves_like 'contract is valid'
+    context "when current_user is the own user" do
+      it_behaves_like "contract is valid"
     end
 
-    context 'when current_user is the own user but not active' do
+    context "when current_user is the own user but not active" do
       before do
         allow(current_user).to receive(:active?).and_return false
       end
 
-      it_behaves_like 'contract user is unauthorized'
+      it_behaves_like "contract user is unauthorized"
     end
 
-    context 'when current_user is anonymous' do
+    context "when current_user is anonymous" do
       let(:current_user) { User.anonymous }
 
-      it_behaves_like 'contract user is unauthorized'
+      it_behaves_like "contract user is unauthorized"
     end
 
-    context 'when current_user is a regular user' do
-      let(:preference_user) { FactoryBot.build_stubbed(:user) }
+    context "when current_user is a regular user" do
+      let(:preference_user) { build_stubbed(:user) }
 
-      it_behaves_like 'contract user is unauthorized'
+      it_behaves_like "contract user is unauthorized"
     end
 
-    context 'with empty settings' do
+    context "with empty settings" do
       let(:settings) do
         {}
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with a string for hide_mail' do
-      let(:settings) do
-        {
-          hide_mail: 'yes please'
-        }
-      end
-
-      it_behaves_like 'contract is invalid', hide_mail: :type_mismatch
-    end
-
-    context 'with a field within the daily_reminders having the wrong type' do
+    context "with a field within the daily_reminders having the wrong type" do
       let(:settings) do
         {
           daily_reminders: {
-            enabled: 'sure',
+            enabled: "sure",
             times: %w[08:00:00+00:00 12:00:00+00:00]
           }
         }
       end
 
-      it_behaves_like 'contract is invalid', daily_reminders: :type_mismatch_nested
+      it_behaves_like "contract is invalid", daily_reminders: :type_mismatch_nested
     end
 
-    context 'with a field within the daily_reminders missing' do
+    context "with a field within the daily_reminders missing" do
       let(:settings) do
         {
           daily_reminders: {
@@ -139,20 +131,20 @@ describe UserPreferences::UpdateContract do
         }
       end
 
-      it_behaves_like 'contract is invalid', daily_reminders: :blank_nested
+      it_behaves_like "contract is invalid", daily_reminders: :blank_nested
     end
 
-    context 'with an extra property' do
+    context "with an extra property" do
       let(:settings) do
         {
           foo: true
         }
       end
 
-      it_behaves_like 'contract is invalid', foo: :unknown_property
+      it_behaves_like "contract is invalid", foo: :unknown_property
     end
 
-    context 'with an extra property within the daily_reminders' do
+    context "with an extra property within the daily_reminders" do
       let(:settings) do
         {
           daily_reminders: {
@@ -163,10 +155,10 @@ describe UserPreferences::UpdateContract do
         }
       end
 
-      it_behaves_like 'contract is invalid', daily_reminders: :unknown_property_nested
+      it_behaves_like "contract is invalid", daily_reminders: :unknown_property_nested
     end
 
-    context 'with an invalid time for the daily_reminders' do
+    context "with an invalid time for the daily_reminders" do
       let(:settings) do
         {
           daily_reminders: {
@@ -176,10 +168,10 @@ describe UserPreferences::UpdateContract do
         }
       end
 
-      it_behaves_like 'contract is invalid', daily_reminders: %i[format_nested full_hour]
+      it_behaves_like "contract is invalid", daily_reminders: %i[format_nested full_hour]
     end
 
-    context 'with a sub hour time for the daily_reminders' do
+    context "with a sub hour time for the daily_reminders" do
       let(:settings) do
         {
           daily_reminders: {
@@ -189,25 +181,24 @@ describe UserPreferences::UpdateContract do
         }
       end
 
-      it_behaves_like 'contract is invalid', daily_reminders: :full_hour
+      it_behaves_like "contract is invalid", daily_reminders: :full_hour
     end
 
-    context 'with an invalid order for comments_sorting' do
+    context "with an invalid order for comments_sorting" do
       let(:settings) do
         {
-          comments_sorting: 'up'
+          comments_sorting: "up"
         }
       end
 
-      it_behaves_like 'contract is invalid', comments_sorting: :inclusion
+      it_behaves_like "contract is invalid", comments_sorting: :inclusion
     end
 
-    context 'without a time_zone' do
+    context "without a time_zone" do
       let(:settings) do
         {
-          hide_mail: true,
           auto_hide_popups: true,
-          comments_sorting: 'desc',
+          comments_sorting: "desc",
           daily_reminders: {
             enabled: true,
             times: %w[08:00:00+00:00 12:00:00+00:00]
@@ -216,163 +207,261 @@ describe UserPreferences::UpdateContract do
         }
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with a full time_zone' do
+    context "without a time_zone but an unassignable default", with_settings: { user_default_timezone: "Nowhere" } do
+      let(:settings) do
+        {}
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "with a full time_zone" do
       let(:settings) do
         {
-          time_zone: 'Europe/Paris'
+          time_zone: "Europe/Paris"
         }
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with a non ActiveSupport::Timezone timezone' do
+    context "with a non ActiveSupport::Timezone timezone" do
       let(:settings) do
         {
-          time_zone: 'America/Adak'
+          time_zone: "America/Adak"
         }
       end
 
-      it_behaves_like 'contract is invalid', time_zone: :inclusion
+      it_behaves_like "contract is invalid", time_zone: :inclusion
     end
 
-    context 'with a malformed time_zone' do
+    context "with a malformed time_zone" do
       let(:settings) do
         {
-          time_zone: '123Brasilia'
+          time_zone: "123Brasilia"
         }
       end
 
-      it_behaves_like 'contract is invalid', time_zone: :inclusion
+      it_behaves_like "contract is invalid", time_zone: :inclusion
     end
 
-    context 'with a non tzinfo time_zone' do
+    context "with a non tzinfo time_zone" do
       let(:settings) do
         {
-          time_zone: 'Brasilia'
+          time_zone: "Brasilia"
         }
       end
 
-      it_behaves_like 'contract is invalid', time_zone: :inclusion
+      it_behaves_like "contract is invalid", time_zone: :inclusion
     end
 
-    context 'with duplicate workday entries' do
+    context "with a valid avatar_color" do
+      let(:settings) do
+        {
+          avatar_color: "#AABBCC"
+        }
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "with an invalid avatar_color" do
+      let(:settings) do
+        {
+          avatar_color: "red"
+        }
+      end
+
+      it_behaves_like "contract is invalid", avatar_color: :invalid
+    end
+
+    context "with an allowed date_format" do
+      let(:settings) do
+        {
+          date_format: "%d.%m.%Y"
+        }
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "with an unallowed date_format" do
+      let(:settings) do
+        {
+          date_format: "%Y foo %m bar %d"
+        }
+      end
+
+      it_behaves_like "contract is invalid", date_format: :inclusion
+    end
+
+    context "with an allowed time_format" do
+      let(:settings) do
+        {
+          time_format: "%I:%M %p"
+        }
+      end
+
+      it_behaves_like "contract is valid"
+    end
+
+    context "with an unallowed time_format" do
+      let(:settings) do
+        {
+          time_format: "%H foo %M"
+        }
+      end
+
+      it_behaves_like "contract is invalid", time_format: :inclusion
+    end
+
+    [nil, "", "x", "OP", "山田", "本田", "Жя", "𐐀𐐁", "👩🏽‍💻", "👨‍👩‍👧‍👦", "🇯🇵", "🏳️‍🌈", "❤️", "👍🏽", "1️⃣",
+     "e\u0301x", "<&", "12", "1#", "🚀🚀", "A🚀", "👨‍👩‍👧‍👦🇯🇵", "🏴󠁧󠁢󠁥󠁮󠁧󠁿", "👩🏽‍❤️‍💋‍👨🏿", "क्षि"].each do |text|
+      context "with avatar_text #{text.inspect}" do
+        let(:settings) { { avatar_text: text } }
+
+        it_behaves_like "contract is valid"
+      end
+    end
+
+    ["ABC", "本田技", "🚀🚀🚀", "👨‍👩‍👧‍👦🇯🇵a"].each do |text|
+      context "with too much avatar text #{text.inspect}" do
+        let(:settings) { { avatar_text: text } }
+
+        it_behaves_like "contract is invalid", avatar_text: :too_long
+      end
+    end
+
+    ["\u0000", "\u0001", "\n", "\uFFFE", "\uFFFF", "\u200B\u200B", "A\u202E", "a#{"\u0301" * 5}", 123, ["x"]].each do |text|
+      context "with invalid avatar_text #{text.inspect}" do
+        let(:settings) { { avatar_text: text } }
+
+        it "rejects the text" do
+          expect(contract.validate).to be false
+          expect(contract.errors[:avatar_text]).to be_present
+        end
+      end
+    end
+
+    context "with duplicate workday entries" do
       let(:settings) do
         {
           workdays: [1, 1]
         }
       end
 
-      it_behaves_like 'contract is invalid', workdays: :no_duplicates
+      it_behaves_like "contract is invalid", workdays: :no_duplicates
     end
 
-    context 'with non-iso workday entries' do
+    context "with non-iso workday entries" do
       let(:settings) do
         {
-          workdays: [nil, 'foo', :bar, 21345, 2.0]
+          workdays: [nil, "foo", :bar, 21345, 2.0]
         }
       end
 
-      it_behaves_like 'contract is invalid', workdays: %i[invalid type_mismatch_nested
+      it_behaves_like "contract is invalid", workdays: %i[invalid type_mismatch_nested
                                                           type_mismatch_nested type_mismatch_nested]
     end
   end
 
-  describe '#assignable_time_zones' do
+  describe "#assignable_time_zones" do
     subject(:time_zones) { contract.assignable_time_zones }
 
-    it 'returns a list of AS::TimeZones' do
+    it "returns a list of AS::TimeZones" do
       expect(time_zones)
         .to(be_all { |tz| tz.is_a?(ActiveSupport::TimeZone) })
     end
 
-    it 'includes only the namesake zone if multiple AS::Timezone map to the same TZInfo' do
+    it "includes only the namesake zone if multiple AS::Timezone map to the same TZInfo" do
       # In this case 'Edinburgh' and 'Bern' are not included
       expect(time_zones.select { |tz| %w[Europe/London Europe/Zurich].include? tz.tzinfo.canonical_zone.name })
-        .to match_array([ActiveSupport::TimeZone['London'], ActiveSupport::TimeZone['Zurich']])
+        .to contain_exactly(ActiveSupport::TimeZone["London"], ActiveSupport::TimeZone["Zurich"])
     end
   end
 
-  describe 'pause_reminders' do
-    context 'with enabled false' do
+  describe "pause_reminders" do
+    context "with enabled false" do
       let(:settings) do
         {
           pause_reminders: { enabled: false }
         }
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with enabled true but and valid range' do
+    context "with enabled true but and valid range" do
       let(:settings) do
         {
           pause_reminders: {
             enabled: true,
-            first_day: '2021-10-05',
-            last_day: '2021-10-10'
+            first_day: "2021-10-05",
+            last_day: "2021-10-10"
           }
         }
       end
 
-      it_behaves_like 'contract is valid'
+      it_behaves_like "contract is valid"
     end
 
-    context 'with empty object' do
+    context "with empty object" do
       let(:settings) do
         {
           pause_reminders: {}
         }
       end
 
-      it_behaves_like 'contract is invalid', pause_reminders: :blank_nested
+      it_behaves_like "contract is invalid", pause_reminders: :blank_nested
     end
 
-    context 'with enabled true but no days' do
+    context "with enabled true but no days" do
       let(:settings) do
         {
           pause_reminders: { enabled: true }
         }
       end
 
-      it_behaves_like 'contract is invalid', pause_reminders: :blank
+      it_behaves_like "contract is invalid", pause_reminders: :blank
     end
 
-    context 'with enabled true but invalid dates' do
+    context "with enabled true but invalid dates" do
       let(:settings) do
         {
           pause_reminders: {
             enabled: true,
-            first_day: '2021-10-05T08:21:35Z',
-            last_day: '2021-10-05T08:21:35Z'
+            first_day: "2021-10-05T08:21:35Z",
+            last_day: "2021-10-05T08:21:35Z"
           }
         }
       end
 
-      it_behaves_like 'contract is invalid', pause_reminders: %i[format_nested format_nested]
+      it_behaves_like "contract is invalid", pause_reminders: %i[format_nested format_nested]
     end
 
-    context 'with enabled true but only first day' do
+    context "with enabled true but only first day" do
       let(:settings) do
         {
-          pause_reminders: { enabled: true, first_day: '2021-10-05' }
+          pause_reminders: { enabled: true, first_day: "2021-10-05" }
         }
       end
 
-      it_behaves_like 'contract is invalid', pause_reminders: :blank
+      it_behaves_like "contract is invalid", pause_reminders: :blank
     end
 
-    context 'with enabled true but only last day' do
+    context "with enabled true but only last day" do
       let(:settings) do
         {
-          pause_reminders: { enabled: true, last_day: '2021-10-05' }
+          pause_reminders: { enabled: true, last_day: "2021-10-05" }
         }
       end
 
-      it_behaves_like 'contract is invalid', pause_reminders: :blank
+      it_behaves_like "contract is invalid", pause_reminders: :blank
     end
   end
+
+  include_examples "contract reuses the model errors"
 end

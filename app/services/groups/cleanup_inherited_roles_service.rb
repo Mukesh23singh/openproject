@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,13 +36,13 @@
 
 module Groups
   class CleanupInheritedRolesService < ::BaseServices::BaseContracted
-    include Groups::Concerns::MembershipManipulation
+    include MembershipManipulation
 
     def initialize(group, current_user:, contract_class: AdminOnlyContract)
       self.model = group
 
-      super user: current_user,
-            contract_class: contract_class
+      super(user: current_user,
+            contract_class:)
     end
 
     private
@@ -65,7 +66,7 @@ module Groups
 
         ::OpenProject::SqlSanitization
           .sanitize sql_query,
-                    member_role_ids: member_role_ids
+                    member_role_ids:
       else
         <<~SQL
           DELETE FROM #{MemberRole.table_name}
@@ -89,7 +90,7 @@ module Groups
     def remove_members(members)
       members.each do |member|
         Members::DeleteService
-          .new(model: member, user: user, contract_class: EmptyContract)
+          .new(model: member, user:, contract_class: EmptyContract)
           .call
       end
     end

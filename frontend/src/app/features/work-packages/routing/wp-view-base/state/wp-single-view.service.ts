@@ -1,18 +1,47 @@
-import { Injectable } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, inject } from '@angular/core';
 import { WpSingleViewStore } from './wp-single-view.store';
-import { WpSingleViewQuery } from 'core-app/features/work-packages/routing/wp-view-base/state/wp-single-view.query';
 import {
   filter,
+  map,
   switchMap,
   take,
 } from 'rxjs/operators';
-import { selectCollectionAsHrefs$ } from 'core-app/core/state/collection-store';
 import { InAppNotificationsResourceService } from 'core-app/core/state/in-app-notifications/in-app-notifications.service';
-import { ApiV3ListFilter } from 'core-app/core/apiv3/paths/apiv3-list-resource.interface';
 import {
+  ApiV3ListFilter,
+  ApiV3ListParameters,
+} from 'core-app/core/apiv3/paths/apiv3-list-resource.interface';
+import {
+  centerUpdatedInPlace,
   markNotificationsAsRead,
   notificationsMarkedRead,
-  centerUpdatedInPlace,
 } from 'core-app/core/state/in-app-notifications/in-app-notifications.actions';
 import { ActionsService } from 'core-app/core/state/actions/actions.service';
 import {
@@ -20,21 +49,50 @@ import {
   EffectHandler,
 } from 'core-app/core/state/effects/effect-handler.decorator';
 import { CurrentUserService } from 'core-app/core/current-user/current-user.service';
+import { Query } from '@datorama/akita';
 
-@EffectHandler
 @Injectable()
+@EffectHandler
 export class WpSingleViewService {
+  readonly actions$ = inject(ActionsService);
+  readonly currentUser$ = inject(CurrentUserService);
+  private resourceService = inject(InAppNotificationsResourceService);
+
   id = 'WorkPackage Activity Store';
 
   protected store = new WpSingleViewStore();
 
-  readonly query = new WpSingleViewQuery(this.store, this.resourceService);
+  protected query = new Query(this.store);
 
-  constructor(
-    readonly actions$:ActionsService,
-    readonly currentUser$:CurrentUserService,
-    private resourceService:InAppNotificationsResourceService,
-  ) {
+  selectNotifications$ = this
+    .query
+    .select((state) => state.notifications.filters)
+    .pipe(
+      filter((filters) => filters.length > 0),
+      switchMap((filters) => this.resourceService.collection({ filters })),
+    );
+
+  selectNotificationsCount$ = this
+    .selectNotifications$
+    .pipe(
+      map((notifications) => notifications.length),
+    );
+
+  nonDateAlertNotificationsCount$ = this
+    .selectNotifications$
+    .pipe(
+      map((notifications) => notifications.filter((notification) => notification.reason !== 'dateAlert')),
+      map((notifications) => notifications.length),
+    );
+
+  hasNotifications$ = this
+    .selectNotificationsCount$
+    .pipe(
+      map((count) => count > 0),
+    );
+
+  get params():ApiV3ListParameters {
+    return { filters: this.query.getValue().notifications.filters };
   }
 
   setFilters(workPackageId:string):void {
@@ -57,25 +115,27 @@ export class WpSingleViewService {
   }
 
   markAllAsRead():void {
-    selectCollectionAsHrefs$(this.resourceService, { filters: this.store.getValue().notifications.filters })
+    this
+      .resourceService
+      .collection({ filters: this.store.getValue().notifications.filters })
       .pipe(
         take(1),
       )
       .subscribe((collection) => {
         this.actions$.dispatch(
-          markNotificationsAsRead({ origin: this.id, notifications: collection.ids }),
+          markNotificationsAsRead({ origin: this.id, notifications: collection.map((el) => el.id) }),
         );
       });
   }
 
-  private reload() {
+  reload() {
     this
       .currentUser$
       .isLoggedIn$
       .pipe(
         take(1),
         filter((loggedIn) => loggedIn),
-        switchMap(() => this.resourceService.fetchNotifications(this.query.params)),
+        switchMap(() => this.resourceService.fetchCollection(this.params)),
       )
       .subscribe();
   }

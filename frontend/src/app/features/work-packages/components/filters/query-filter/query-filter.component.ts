@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,44 +20,59 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Component, EventEmitter, Input, OnInit, Output,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, EventEmitter, HostBinding, Input, OnInit, Output, ViewEncapsulation, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
-import { halHref, compareByHref } from 'core-app/shared/helpers/angular/tracking-functions';
-import { BannersService } from 'core-app/core/enterprise/banners.service';
+import {
+  compareByHref,
+} from 'core-app/shared/helpers/angular/tracking-functions';
 import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
 import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
 import { QueryFilterInstanceResource } from 'core-app/features/hal/resources/query-filter-instance-resource';
-import { QueryFilterResource } from 'core-app/features/hal/resources/query-filter-resource';
+import { QueryOperatorResource } from 'core-app/features/hal/resources/query-operator-resource';
+import { WorkPackageViewBaselineService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-baseline.service';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: '[query-filter]',
+  styleUrls: ['./query-filter.component.sass'],
   templateUrl: './query-filter.component.html',
+  encapsulation: ViewEncapsulation.None,
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
 export class QueryFilterComponent implements OnInit {
+  readonly wpTableFilters = inject(WorkPackageViewFiltersService);
+  readonly wpTableBaseline = inject(WorkPackageViewBaselineService);
+  readonly schemaCache = inject(SchemaCacheService);
+  readonly I18n = inject(I18nService);
+  readonly currentProject = inject(CurrentProjectService);
+
+  @HostBinding('class.op-query-filter') className = true;
+
   @Input() public shouldFocus = false;
 
   @Input() public filter:QueryFilterInstanceResource;
 
-  @Output() public filterChanged = new EventEmitter<QueryFilterResource>();
+  @Output() public filterChanged = new EventEmitter<void>();
 
-  @Output() public deactivateFilter = new EventEmitter<QueryFilterResource>();
+  @Output() public deactivateFilter = new EventEmitter<QueryFilterInstanceResource>();
 
-  public availableOperators:any;
+  public availableOperators:QueryOperatorResource[];
 
   public showValuesInput = false;
 
   public eeShowBanners = false;
 
-  public trackByHref = halHref;
+  public baselineIncompatibleFilter = false;
 
   public compareByHref = compareByHref;
 
@@ -65,17 +80,11 @@ export class QueryFilterComponent implements OnInit {
     open_filter: this.I18n.t('js.filter.description.text_open_filter'),
     close_filter: this.I18n.t('js.filter.description.text_close_filter'),
     label_filter_add: this.I18n.t('js.work_packages.label_filter_add'),
-    upsale_for_more: this.I18n.t('js.filter.upsale_for_more'),
-    upsale_link: this.I18n.t('js.filter.upsale_link'),
+    upsell_for_more: this.I18n.t('js.filter.upsell_for_more'),
+    upsell_link: this.I18n.t('js.filter.upsell_link'),
     button_delete: this.I18n.t('js.button_delete'),
+    incompatible_filter: this.I18n.t('js.work_packages.filters.baseline_incompatible'),
   };
-
-  constructor(readonly wpTableFilters:WorkPackageViewFiltersService,
-    readonly schemaCache:SchemaCacheService,
-    readonly I18n:I18nService,
-    readonly currentProject:CurrentProjectService,
-    readonly bannerService:BannersService) {
-  }
 
   public onFilterUpdated(filter:QueryFilterInstanceResource) {
     this.filter = filter;
@@ -88,7 +97,7 @@ export class QueryFilterComponent implements OnInit {
   }
 
   public get valueType():string|undefined {
-    if (this.filter.currentSchema && this.filter.currentSchema.values) {
+    if (this.filter.currentSchema?.values) {
       return this.filter.currentSchema.values.type;
     }
 
@@ -96,9 +105,9 @@ export class QueryFilterComponent implements OnInit {
   }
 
   ngOnInit() {
-    this.eeShowBanners = this.bannerService.eeShowBanners;
-    this.availableOperators = this.schemaCache.of(this.filter).availableOperators;
+    this.availableOperators = this.schemaCache.of(this.filter).availableOperators as QueryOperatorResource[];
     this.showValuesInput = this.showValues();
+    this.baselineIncompatibleFilter = this.wpTableBaseline.isActive() && this.wpTableBaseline.isIncompatibleFilter(this.filter.id);
   }
 
   private showValues() {

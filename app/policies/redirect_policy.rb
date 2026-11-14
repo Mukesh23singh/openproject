@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'uri'
-require 'cgi'
+require "uri"
+require "cgi"
 
 # This capsulates the validation of a requested redirect URL.
 #
@@ -91,7 +92,7 @@ class RedirectPolicy
   # Postprocesses the validated URL
   def postprocess(redirect_url)
     # Remove basic auth credentials
-    redirect_url.userinfo = ''
+    redirect_url.userinfo = ""
 
     if @return_escaped
       redirect_url.to_s
@@ -103,7 +104,7 @@ class RedirectPolicy
   ##
   # Avoid paths with references to parent paths
   def no_upper_levels
-    !@requested_url.path.include? '../'
+    !@requested_url.path.include? "../"
   end
 
   ##
@@ -143,7 +144,7 @@ class RedirectPolicy
   ##
   # Requires the redirect URL to reside inside the relative root, when given.
   def matches_relative_root
-    relative_root = OpenProject::Configuration['rails_relative_url_root']
+    relative_root = OpenProject::Configuration["rails_relative_url_root"]
     relative_root.blank? || @requested_url.path.starts_with?(relative_root)
   end
 end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -36,12 +33,12 @@ module Redmine
       end
 
       def link_to(name, options = {})
-        return if Setting.table_exists? && !Setting.feeds_enabled? && name == 'Atom'
+        return if Setting.table_exists? && !Setting.feeds_enabled? && name == "Atom"
 
         url = { format: name.to_s.downcase }.merge(options.delete(:url) || {})
         caption = options.delete(:caption) || name
-        html_options = { class: "icon icon-#{name.to_s.downcase}", rel: 'nofollow' }.merge(options)
-        @view.content_tag('span', @view.link_to(caption, url, html_options))
+        html_options = { class: "icon icon-#{name.to_s.downcase}", rel: "nofollow" }.merge(options)
+        @view.content_tag("span", @view.link_to(caption, url, html_options))
       end
     end
   end

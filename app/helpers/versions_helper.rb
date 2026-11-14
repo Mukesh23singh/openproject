@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,25 +30,35 @@
 module VersionsHelper
   # Returns a set of options for a select field, grouped by project.
   def version_options_for_select(versions, selected = nil)
-    grouped = versions_by_project((versions + [selected]).compact)
+    selected_versions = Array(selected)
+    grouped = versions_by_project(versions + selected_versions)
+    selected_ids = selected_versions.map(&:id)
 
     if grouped.size > 1
-      grouped_options_for_select(grouped, selected&.id)
+      grouped_options_for_select(grouped, selected_ids)
     else
-      options_for_select((grouped.values.first || []), selected&.id)
+      options_for_select(grouped.values.first || [], selected_ids)
     end
   end
 
   def link_to_version(version, html_options = {}, options = {})
-    return '' unless version&.is_a?(Version)
+    return "" unless version.is_a?(Version)
 
     html_options = html_options.merge(id: link_to_version_id(version))
 
-    link_name = options[:before_text].to_s.html_safe + format_version_name(version, options[:project] || @project)
+    link_name = format_version_name(version, options[:project] || @project) # rubocop:disable Rails/HelperInstanceVariable
     link_to_if version.visible?,
                link_name,
-               { controller: '/versions', action: 'show', id: version },
+               { controller: "/versions", action: "show", id: version },
                html_options
+  end
+
+  def version_dates(version)
+    formatted_dates =
+      %i[start_date due_date]
+        .filter { |attr| version.send(attr) }
+        .map { |attr| "#{Version.human_attribute_name(attr)} #{format_date(version.send(attr))}" }
+    safe_join(formatted_dates, tag(:br))
   end
 
   def link_to_version_id(version)
@@ -58,17 +69,9 @@ module VersionsHelper
     h(version.to_s_for_project(project))
   end
 
-  def version_contract(version)
-    if version.new_record?
-      Versions::CreateContract.new(version, User.current)
-    else
-      Versions::UpdateContract.new(version, User.current)
-    end
-  end
-
   def format_version_sharing(sharing)
-    sharing = 'none' unless Version::VERSION_SHARINGS.include?(sharing)
-    t("label_version_sharing_#{sharing}")
+    sharing = "none" unless Version::VERSION_SHARINGS.include?(sharing)
+    I18n.t("label_version_sharing_#{sharing}")
   end
 
   def versions_by_project(versions)
@@ -76,5 +79,18 @@ module VersionsHelper
       hash[version.project.name] << [version.name, version.id]
       hash
     end
+  end
+
+  def version_wp_overview_graph_initial_filters(version)
+    filters = []
+    case version.sharing
+    when "hierarchy", "tree"
+      filters << { project: { operator: "=", values: version.projects.visible.ids } }
+    when "descendants"
+      filters << { subprojectId: { operator: "*", values: [] } }
+    end
+    filters << { version: { operator: "=", values: [version.id] } }
+
+    filters # return as an array, not JSON string
   end
 end

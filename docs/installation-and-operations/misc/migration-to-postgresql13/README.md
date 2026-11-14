@@ -4,29 +4,39 @@ OpenProject version 12+ will default to PostgreSQL 13. If you have an existing O
 
 ## Package-based installation
 
-<div class="alert alert-info" role="alert">
-Please follow this section only if you have installed OpenProject using [this procedure][package-based-installation].
-
-Before attempting the upgrade, please ensure you have performed a backup of your installation by following the [backup guide](../../operation/backing-up/).
-</div>
+> Please follow this section only if you have installed OpenProject using [this procedure](../../installation/packaged/).
+> Before attempting the upgrade, please ensure you have performed a backup of your installation by following the [backup guide](../../operation/backing-up/).
 
 Please first check whether this guide applies to you at all. Only PostgreSQL installations that were installed by the OpenProject package are applicable to this guide.
 
 To do that, please run the following command:
 
-```bash
+```shell
 sudo cat /etc/openproject/installer.dat | grep postgres/autoinstall
 ```
 
 And verify that it outputs: postgres/autoinstall **install**.
 
-If that is not the case, you are likely using a self-provisioned database or a remote database. In this case, please follow the instructions from your provider or use generic PostgreSQL upgrade guides. A guide we can recommend for Debian/Ubuntu based servers is this one: https://gorails.com/guides/upgrading-postgresql-version-on-ubuntu-server Please adapt that guide or the following steps to your distribution.
+If that is not the case, you are likely using a self-provisioned database or a remote database. In this case, please follow the instructions from your provider or use generic PostgreSQL upgrade guides. A guide we can recommend for Debian/Ubuntu based servers is [this one](https://gorails.com/guides/upgrading-postgresql-version-on-ubuntu-server). Please adapt that guide or the following steps to your distribution.
 
-In the following, we assume that you initially let OpenProject setup your PostgreSQL installation, using a local database. 
+In the following, we assume that you initially let OpenProject setup your PostgreSQL installation, using a local database.
+
+NOTE: RedHat and CentOS are slightly different, depending on which PostgreSQL package/repository will be used.
+For the documentation parts titled RedHat/CentOS RedHat Enterprise Linux 8 was used.
+
 1. First, connect to your server and make sure your local version is PostgreSQL v10:
 
-```bash
+For Debian/Ubuntu:
+
+```shell
 sudo cat /var/lib/postgresql/10/main/PG_VERSION
+10
+```
+
+For RedHat/CentOS:
+
+```shell
+sudo cat /var/lib/pgsql/10/data/PG_VERSION
 10
 ```
 
@@ -34,33 +44,39 @@ sudo cat /var/lib/postgresql/10/main/PG_VERSION
 
 For Debian/Ubuntu:
 
-```bash
+```shell
 sudo apt-get update
 sudo apt-get install postgresql-13
 ```
 
 For RedHat/CentOS:
 
-```bash
-sudo yum install postgresql-13
-```
-
-For SLES:
-
-```bash
-sudo zypper install postgresql-13
+```shell
+sudo yum install pgsql13
+sudo /usr/bin/postgresql-13-setup initdb
 ```
 
 3. Stop the PostgreSQL servers:
 
-```bash
+For Debian/Ubuntu:
+
+```shell
 sudo su - postgres -c "/usr/lib/postgresql/10/bin/pg_ctl stop --wait --pgdata=/var/lib/postgresql/10/main"
 sudo su - postgres -c "/usr/lib/postgresql/13/bin/pg_ctl stop --wait --pgdata=/var/lib/postgresql/13/main"
 ```
 
+For RedHat/CentOS:
+
+```shell
+sudo su - postgres -c "/usr/pgsql-10/bin/pg_ctl stop --wait --pgdata=/var/lib/pgsql/10/data"
+sudo su - postgres -c "/usr/pgsql-13/bin/pg_ctl stop --wait --pgdata=/var/lib/pgsql/13/data"
+```
+
 4. Migrate your data to PostgreSQL 13:
 
-```bash
+For Debian/Ubuntu:
+
+```shell
 sudo su - postgres <<CMD
 /usr/lib/postgresql/13/bin/pg_upgrade \
   --old-bindir=/usr/lib/postgresql/10/bin \
@@ -72,47 +88,89 @@ sudo su - postgres <<CMD
 CMD
 ```
 
+For RedHat/CentOS:
+
+```shell
+sudo su - postgres <<CMD
+/usr/pgsql-13/bin/pg_upgrade \
+  --old-bindir=/usr/pgsql-10/bin \
+  --new-bindir=/usr/pgsql-13/bin \
+  --old-datadir=/var/lib/pgsql/10/data \
+  --new-datadir=/var/lib/pgsql/13/data \
+  --old-options '-c config_file=/var/lib/pgsql/10/data/postgresql.conf' \
+  --new-options '-c config_file=/var/lib/pgsql/13/data/postgresql.conf'
+CMD
+```
+
 5. Make PostgreSQL v13 the new default server to run on port 45432:
 
-```bash
+For Debian/Ubuntu:
+
+```shell
 sudo su - postgres -c "cp /etc/postgresql/{10,13}/main/conf.d/custom.conf"
 sudo su - postgres -c "sed -i 's|45432|45433|' /etc/postgresql/10/main/conf.d/custom.conf"
 sudo su - postgres -c "/usr/lib/postgresql/13/bin/pg_ctl start --wait --pgdata=/var/lib/postgresql/13/main -o '-c config_file=/etc/postgresql/13/main/postgresql.conf'"
 ```
 
-6. Check your OpenProject installation. A version higher than `13` should be displayed for `PostgreSQL version` in the "Administration > Information" section.
+For RedHat/CentOS:
+
+```shell
+sudo su - postgres -c "mkdir -p /var/lib/pgsql/13/data/conf.d"
+
+sudo su - postgres -c "vi /var/lib/pgsql/13/data/postgresql.conf"
+# at the section CONFIG FILE INCLUDES, please add the include directory conf.d
+include_dir = 'conf.d'
+
+sudo su - postgres -c "cp -p /var/lib/pgsql/10/data/conf.d/custom.conf /var/lib/pgsql/13/data/conf.d/custom.conf"
+sudo su - postgres -c "sed -i 's|45432|45433|' /var/lib/pgsql/10/data/conf.d/custom.conf"
+sudo su - postgres -c "/usr/pgsql-13/bin/pg_ctl start --wait --pgdata=/var/lib/pgsql/13/data -o '-c config_file=/etc/postgresql/13/main/postgresql.conf'"
+
+# Getting the password for the PostgreSQL database from the configuration
+sudo openproject config:get DATABASE_URL
+postgres://openproject:[CRYPTICAL-PASSWORD-STRING]@127.0.0.1:45432/openproject
+
+# Alter the password for user openproject in pgsql13
+[root@openproject ~]# su - postgres
+[postgres@openproject ~]$ psql --port 45432
+psql (13.6)
+Type "help" for help.
+postgres=# ALTER USER openproject WITH PASSWORD '[CRYPTICAL-PASSWORD-STRING]';
+ALTER ROLE
+postgres=# \q
+[postgres@openproject ~]$ logout
+```
+
+6. Check your OpenProject installation on the GUI. A version higher than `13.0` should be displayed for `PostgreSQL version` in the "Administration > Information" section.
 
 7. If everything is fine, you can then remove your older PostgreSQL installation:
 
-```bash
-rm -rf /var/lib/postgresql/10/main
-# you can optionally go further and purge postgresql-10 from your system if you wish
-sudo apt-get purge postgresql-10 # debian/ubuntu
-sudo yum remove postgresql-10 # rhel/centos
-sudo zypper remove postgresql-10 # sles
+For Debian/Ubuntu:
+
+```shell
+sudo rm -rf /var/lib/postgresql/10/main
+sudo apt-get purge postgresql-10
 ```
 
-[pg_upgrade]: https://www.postgresql.org/docs/10/pgupgrade.html
+For RedHat/CentOS:
 
-[package-based-installation]: ../../installation/packaged/
+```shell
+sudo rm -rf /var/lib/pgsql/10/data
+sudo yum remove pgsql10
+```
 
 ## Compose-based docker installation
 
-<div class="alert alert-info" role="alert">
-Please follow this section only if you have installed OpenProject using [this procedure][compose-based-installation].
+> Please follow this section only if you have installed OpenProject using [this procedure](../../installation/docker/).
+> Before attempting the upgrade, please ensure you have performed a backup of your installation by following the [backup guide](../../operation/backing-up/).
 
-Before attempting the upgrade, please ensure you have performed a backup of your installation by following the [backup guide](../../operation/backing-up/).
-</div>
+You can find the upgrade instructions for your docker-compose setup in the [openproject-docker-compose](https://github.com/opf/openproject-docker-compose/blob/stable/18/control/README.md#upgrade) repository.
 
-[compose-based-installation]: ../../installation/docker/#one-container-per-process-recommended
+Remember that you need to have checked out that repository and work in the `compose` directory for the instructions to work.
 
 ## All-in-one docker installation
 
-<div class="alert alert-info" role="alert">
-Please follow this section only if you have installed OpenProject using [this procedure][all-in-one-docker-installation].
-
-Before attempting the upgrade, please ensure you have performed a backup of your installation by following the [backup guide](../../operation/backing-up/).
-</div>
+> Please follow this section only if you have installed OpenProject using [this procedure](../../installation/docker/#all-in-one-container).
+> Before attempting the upgrade, please ensure you have performed a backup of your installation by following the [backup guide](../../operation/backing-up/).
 
 The newer version of OpenProject includes an utility to automatically perform the upgrade for you. Assuming you followed the standard installation procedure, the folder (within the docker container) containing your PostgreSQL data will be located at `/var/openproject/pgdata`.
 
@@ -120,56 +178,58 @@ Then the goal is to take this folder, and apply `pg_upgrade` on it. This will ge
 
 First, ensure that you have stopped your container:
 
-```bash
+```shell
 docker stop openproject
 ```
 
 Once the docker has stopped, you are ready to run the upgrade command. In this case, we assume that your existing PostgreSQL data is stored on the host at `/var/lib/openproject/pgdata`. We will also map a local folder named `/var/lib/openproject/pgdata-next` to a special volume in the container, named `/var/openproject/pgdata-next`. This volume will contain the upgraded cluster:
 
-```bash
+```shell
 docker run --rm -it \
   -v /var/lib/openproject/pgdata:/var/openproject/pgdata \
   -v /var/lib/openproject/pgdata-next:/var/openproject/pgdata-next \
-  openproject/community:12 root ./docker/prod/postgres-db-upgrade
+  openproject/openproject:18 root ./docker/prod/postgres-db-upgrade
 ```
 
 If everything goes well, the process should end with a message as follows:
 
-```
-Upgrade Complete                                              
-----------------                                              
-Optimizer statistics are not transferred by pg_upgrade so,                  
+```text
+Upgrade Complete
+----------------
+Optimizer statistics are not transferred by pg_upgrade so,
 once you start the new server, consider running:
-    ./analyze_new_cluster.sh                                
-                                         
+    ./analyze_new_cluster.sh
+
 Running this script will delete the old cluster's data files:
-    ./delete_old_cluster.sh            
+    ./delete_old_cluster.sh
 ```
 
 You can then perform the following operation to switch the upgraded PostgreSQL with the older version:
 
-```bash
+```shell
 sudo mv /var/lib/openproject/pgdata /var/lib/openproject/pgdata-prev
 sudo mv /var/lib/openproject/pgdata-next /var/lib/openproject/pgdata
 ```
 
 Finally, you can restart OpenProject with the same command that you used before. For instance:
 
-docker run -d -p 8080:80 --name openproject -e SECRET_KEY_BASE=secret \
+```shell
+docker run -d -p 8080:80 --name openproject -e SECRET_KEY_BASE=<your-secret-key-base> \
   -v /var/lib/openproject/pgdata:/var/openproject/pgdata \
   -v /var/lib/openproject/assets:/var/openproject/assets \
   [...]
-  openproject/community:12
+  openproject/openproject:18
+```
 
 If your new installation looks fine, you can then choose to remove `/var/lib/openproject/pgdata-prev`:
 
-```bash
+```shell
 sudo rm -rf /var/lib/openproject/pgdata-prev
 ```
 
 If you encounter an issue, you can switch back to the previous PostgreSQL folder by reverting the folder switch:
 
-```bash
+```shell
 sudo mv /var/lib/openproject/pgdata /var/lib/openproject/pgdata-next
 sudo mv /var/lib/openproject/pgdata-prev /var/lib/openproject/pgdata
 ```
@@ -182,9 +242,9 @@ After an upgrade of PostgreSQL, we strongly recommend running the following SQL 
 
 For that, open a database console. On a packaged installation, this is the way to do it:
 
-```
+```shell
 psql $(openproject config:get DATABASE_URL)
-``` 
+```
 
 Please change the command appropriately for other installation methods. Once connected, run the following command
 
@@ -192,7 +252,12 @@ Please change the command appropriately for other installation methods. Once con
 ANALYZE VERBOSE;
 ```
 
+## Troubleshooting
 
-[all-in-one-docker-installation]: ../../installation/docker/#all-in-one-container
+> User "openproject" does not have a valid SCRAM secret - psql: error: FATAL: password authentication failed for user "openproject"
 
-[backup-guide]: ../../operation/backing-up/
+Check `/var/lib/pgsql/13/data/pg_hba.conf` for any appearance of `scram-sha-256` and replace with `md5`
+
+Check `/var/lib/pgsql/13/data/postgresql.conf` for any appearance of `scram-sha-256` and replace with `md5` (search for `encryption`)
+
+Reload Configuration of PostgreSQL server with `systemctl reload postgresql-13`

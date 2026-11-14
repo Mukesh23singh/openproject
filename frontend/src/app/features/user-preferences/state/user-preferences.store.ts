@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,22 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Injectable } from '@angular/core';
 import {
   Store,
   StoreConfig,
 } from '@datorama/akita';
-import { UserPreferencesModel } from 'core-app/features/user-preferences/state/user-preferences.model';
+import { IUserPreference } from 'core-app/features/user-preferences/state/user-preferences.model';
 
-function createInitialState():UserPreferencesModel {
+function createInitialState():IUserPreference {
   return {
     autoHidePopups: true,
     commentSortDescending: false,
-    hideMail: true,
+    disableKeyboardShortcuts: false,
     timeZone: null,
     warnOnLeavingUnsaved: true,
     notifications: [],
@@ -48,6 +46,7 @@ function createInitialState():UserPreferencesModel {
     workdays: [1, 2, 3, 4, 5],
     immediateReminders: {
       mentioned: false,
+      personalReminder: false,
     },
     pauseReminders: {
       enabled: false,
@@ -56,7 +55,7 @@ function createInitialState():UserPreferencesModel {
 }
 
 @StoreConfig({ name: 'notification-settings' })
-export class UserPreferencesStore extends Store<UserPreferencesModel> {
+export class UserPreferencesStore extends Store<IUserPreference> {
   constructor() {
     super(createInitialState());
   }

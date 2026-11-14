@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,9 +37,9 @@ module Users
     # @return True if the user deletion has been initiated, false otherwise.
     def destroy(user_object)
       # as destroying users is a lengthy process we handle it in the background
-      # and lock the account now so that no action can be performed with it
-      # don't use "locked!" handle as it will raise on invalid users
-      user_object.update_column(:status, User.statuses[:locked])
+      # and mark the account as deleted now so that no action can be performed with it
+      # don't use "deleted!" handle as it will raise on invalid users
+      user_object.update_column(:status, User.statuses[:deleted])
       ::Principals::DeleteJob.perform_later(user_object)
 
       logout! if self_delete?

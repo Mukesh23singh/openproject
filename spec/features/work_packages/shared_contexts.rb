@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 # Ensure the page is completely loaded before the spec is run.
 # The status filter is loaded very late in the page setup.
-shared_context 'ensure wp details pane update done' do
+RSpec.shared_context "ensure wp details pane update done" do
+  let(:activity_tab) { Components::WorkPackages::Activities.new(work_package) }
+  let(:abstract_work_package_page) { Pages::PrimerizedSplitWorkPackage.new(work_package) }
+
   after do
     unless update_user
       raise "Expect to have a let called 'update_user' defining which user \
@@ -37,7 +41,7 @@ shared_context 'ensure wp details pane update done' do
 
     # safeguard to ensure all backend queries
     # have been answered before starting a new spec
-    expect(page).to have_selector('.op-user-activity--user-name',
-                                  text: update_user.name)
+    abstract_work_package_page.switch_to_tab tab: :activity
+    activity_tab.expect_journal_details_header(text: update_user.name)
   end
 end

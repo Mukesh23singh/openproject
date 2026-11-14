@@ -1,7 +1,6 @@
 .op-option-list
   display: flex
   flex-direction: column
-  font-size: 1rem
 
   // TODO: remove the [type] selector once globally overwriting styles are removed
   &--input[type]
@@ -11,16 +10,16 @@
   &--item
     padding: 1rem 1rem 0.5rem 0.75rem
     display: flex
-    border: 1px solid #cbd5e0
-    background: #f7fafc
+    border: 1px solid var(--borderColor-muted)
+    background-color: var(--bgColor-muted)
     border-radius: 4px
 
     &:not(:last-child)
       margin-bottom: 0.5rem
 
     &_selected
-      border: 1px solid #90cdf4
-      background: #ebf8ff
+      border: 1px solid var(--borderColor-accent-muted)
+      background-color: var(--bgColor-accent-muted)
 
     &_disabled
       color: #959595
@@ -32,8 +31,8 @@
       line-height: 1.2
 
     &-title
-      font-weight: bold
-      font-size: 14px
-      
+      font-weight: var(--base-text-weight-bold)
+
     &-description
+      font-weight: normal
       font-size: 12px

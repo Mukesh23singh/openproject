@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,8 +31,6 @@ class Redmine::MenuManager::Mapper
     @menu = menu
     @menu_items = items[menu]
   end
-
-  @@last_items_count = Hash.new { |h, k| h[k] = 0 }
 
   # Adds an item at the end of the menu. Available options:
   # * param: the parameter name that is used for the project id (default is :project_id)
@@ -57,11 +52,7 @@ class Redmine::MenuManager::Mapper
 
     if options[:parent]
       subtree = find(options[:parent])
-      target_root = if subtree
-                      subtree
-                    else
-                      @menu_items.root
-                    end
+      target_root = subtree || @menu_items.root
 
     else
       target_root = @menu_items.root
@@ -120,18 +111,6 @@ class Redmine::MenuManager::Mapper
       if node.name == name
         return node.position
       end
-    end
-  end
-end
-
-class Redmine::MenuManager::MapDeferrer
-  def initialize(menu_builder_queue)
-    @menu_builder_queue = menu_builder_queue
-  end
-
-  %i[push delete exists? find position_of].each do |method|
-    define_method method do |*args|
-      defer(method, *args)
     end
   end
 end

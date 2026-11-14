@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -43,15 +42,15 @@
 #
 
 begin
-  require 'rspec/core/rake_task'
+  require "rspec/core/rake_task"
 
   namespace :spec do
-    desc 'Run core and plugin specs'
+    desc "Run core and plugin specs"
     RSpec::Core::RakeTask.new(all: [:environment]) do |t|
-      t.pattern = [Rails.root.join('spec').to_s] + Plugins::LoadPathHelper.spec_load_paths
+      t.pattern = [Rails.root.join("spec").to_s] + Plugins::LoadPathHelper.spec_load_paths
     end
 
-    desc 'Run plugin specs'
+    desc "Run plugin specs"
     RSpec::Core::RakeTask.new(plugins: [:environment]) do |t|
       t.pattern = Plugins::LoadPathHelper.spec_load_paths
 
@@ -59,7 +58,7 @@ begin
       # we exit with positive message
       if t.pattern.empty?
         puts
-        puts '##### There are no specs for OpenProject plugins to be run.'
+        puts "##### There are no specs for OpenProject plugins to be run."
         puts
         exit(0)
       end

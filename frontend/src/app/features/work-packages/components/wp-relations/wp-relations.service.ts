@@ -1,15 +1,45 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { keyBy } from 'lodash-es';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
-import { multiInput, MultiInputState, StatesGroup } from 'reactivestates';
-import { Injectable } from '@angular/core';
+import { multiInput, MultiInputState, StatesGroup } from '@openproject/reactivestates';
+import { Injectable, inject } from '@angular/core';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { StateCacheService } from 'core-app/core/apiv3/cache/state-cache.service';
-import { Observable } from 'rxjs';
-import { map, take } from 'rxjs/operators';
+import { firstValueFrom, Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { RelationResource } from 'core-app/features/hal/resources/relation-resource';
+import { TurboRequestsService } from 'core-app/core/turbo/turbo-requests.service';
+import { ApiV3Filter } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
 
-export type RelationsStateValue = { [relationId:string]:RelationResource };
+export type RelationsStateValue = Record<string, RelationResource>;
 
 export class RelationStateGroup extends StatesGroup {
   name = 'WP-Relations';
@@ -24,9 +54,12 @@ export class RelationStateGroup extends StatesGroup {
 
 @Injectable()
 export class WorkPackageRelationsService extends StateCacheService<RelationsStateValue> {
-  constructor(private PathHelper:PathHelperService,
-    private apiV3Service:APIV3Service,
-    private halResource:HalResourceService) {
+  private PathHelper = inject(PathHelperService);
+  private apiV3Service = inject(ApiV3Service);
+  private halResource = inject(HalResourceService);
+  readonly turboRequests = inject(TurboRequestsService);
+
+  constructor() {
     super(new RelationStateGroup().relations);
   }
 
@@ -40,12 +73,7 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
    * @param force Load the value anyway.
    */
   public require(id:string, force = false):Promise<RelationsStateValue> {
-    return this
-      .requireAndStream(id, force)
-      .pipe(
-        take(1),
-      )
-      .toPromise();
+    return firstValueFrom(this.requireAndStream(id, force));
   }
 
   /**
@@ -76,12 +104,13 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
   protected load(id:string):Observable<RelationsStateValue> {
     return this
       .apiV3Service
-      .work_packages
-      .id(id)
       .relations
-      .get()
+      .filtered(
+        ApiV3Filter('involved', '=', [id]),
+      )
+      .getPaginatedResults()
       .pipe(
-        map((collection) => this.relationsStateValue(id, collection.elements)),
+        map((elements:RelationResource[]) => this.relationsStateValue(id, elements)),
       );
   }
 
@@ -111,7 +140,7 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
       return;
     }
 
-    return _.find(relations, (relation:RelationResource) => {
+    return Object.values(relations).find((relation:RelationResource) => {
       const denormalized = relation.denormalized(from);
       // Check that
       // 1. the denormalized relation points at "to"
@@ -145,7 +174,7 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
     return this.updateRelation(relation, params);
   }
 
-  public updateRelation(relation:RelationResource, params:{ [key:string]:any }) {
+  public updateRelation(relation:RelationResource, params:Record<string, unknown>) {
     return relation.updateImmediately(params)
       .then((savedRelation:RelationResource) => {
         this.insertIntoStates(savedRelation);
@@ -174,12 +203,19 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
       });
   }
 
+  public updateCounter(workPackage:WorkPackageResource) {
+    if (workPackage.id) {
+      const url = this.PathHelper.workPackageUpdateCounterPath(workPackage.id, 'relations');
+      void this.turboRequests.request(url);
+    }
+  }
+
   /**
    * Merges a single relation
    * @param relation
    */
   private insertIntoStates(relation:RelationResource) {
-    _.values(relation.ids).forEach((wpId) => {
+    Object.values(relation.ids).forEach((wpId) => {
       this.multiState.get(wpId).doModify((value:RelationsStateValue) => {
         value[relation.id!] = relation;
         return value;
@@ -196,7 +232,7 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
    * @param relation
    */
   private removeFromStates(relation:RelationResource) {
-    _.values(relation.ids).forEach((wpId) => {
+    Object.values(relation.ids).forEach((wpId) => {
       this.multiState.get(wpId).doModify((value:RelationsStateValue) => {
         delete value[relation.id!];
         return value;
@@ -212,7 +248,7 @@ export class WorkPackageRelationsService extends StateCacheService<RelationsStat
    * @param relations The relation resource array.
    */
   private relationsStateValue(wpId:string, relations:RelationResource[]):RelationsStateValue {
-    return _.keyBy(relations, (r) => r.id!);
+    return keyBy(relations, (r) => r.id!);
   }
 
   /**

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Members::SetAttributesService, type: :model do
-  let(:user) { FactoryBot.build_stubbed(:user) }
+RSpec.describe Members::SetAttributesService, type: :model do
+  let(:user) { build_stubbed(:user) }
   let(:contract_class) do
-    contract = double('contract_class')
+    contract = double("contract_class")
 
     allow(contract)
       .to receive(:new)
@@ -43,24 +42,24 @@ describe Members::SetAttributesService, type: :model do
     contract
   end
   let(:contract_instance) do
-    double('contract_instance', validate: contract_valid, errors: contract_errors)
+    double("contract_instance", validate: contract_valid, errors: contract_errors)
   end
   let(:contract_valid) { true }
   let(:contract_errors) do
-    double('contract_errors')
+    double("contract_errors")
   end
   let(:member_valid) { true }
   let(:instance) do
-    described_class.new(user: user,
+    described_class.new(user:,
                         model: member,
-                        contract_class: contract_class)
+                        contract_class:)
   end
   let(:call_attributes) { {} }
   let(:member) do
-    FactoryBot.build_stubbed(:member)
+    build_stubbed(:member)
   end
 
-  describe 'call' do
+  describe "call" do
     let(:call_attributes) do
       {
         project_id: 5,
@@ -80,28 +79,28 @@ describe Members::SetAttributesService, type: :model do
 
     subject { instance.call(call_attributes) }
 
-    it 'is successful' do
+    it "is successful" do
       expect(subject.success?).to be_truthy
     end
 
-    it 'sets the attributes' do
+    it "sets the attributes" do
       subject
 
       expect(member.attributes.slice(*member.changed).symbolize_keys)
         .to eql call_attributes
     end
 
-    it 'does not persist the member' do
+    it "does not persist the member" do
       expect(member)
         .not_to receive(:save)
 
       subject
     end
 
-    context 'with changes to the roles do' do
-      let(:first_role) { FactoryBot.build_stubbed(:role) }
-      let(:second_role) { FactoryBot.build_stubbed(:role) }
-      let(:third_role) { FactoryBot.build_stubbed(:role) }
+    context "with changes to the roles do" do
+      let(:first_role) { build_stubbed(:project_role) }
+      let(:second_role) { build_stubbed(:project_role) }
+      let(:third_role) { build_stubbed(:project_role) }
 
       let(:call_attributes) do
         {
@@ -109,37 +108,35 @@ describe Members::SetAttributesService, type: :model do
         }
       end
 
-      context 'with a persisted record' do
+      context "with a persisted record" do
         let(:member) do
-          FactoryBot.build_stubbed(:member, roles: [first_role, second_role]).tap do |m|
-            allow(m)
-              .to receive(:touch)
-          end
+          build_stubbed(:member, roles: [first_role, second_role])
         end
 
-        it 'adds the new role' do
-          expect(subject.result.roles = [second_role, third_role])
+        it "adds the new role and marks the other for destruction" do
+          expect(subject.result.member_roles.map(&:role_id)).to contain_exactly(first_role.id, second_role.id, third_role.id)
+          expect(subject.result.member_roles.detect { it.role_id == first_role.id }).to be_marked_for_destruction
         end
       end
 
-      context 'with a new record' do
+      context "with a new record" do
         let(:member) do
           Member.new
         end
 
-        it 'adds the new role' do
-          expect(subject.result.roles = [second_role, third_role])
+        it "adds the new role" do
+          expect(subject.result.member_roles.map(&:role_id)).to contain_exactly(second_role.id, third_role.id)
         end
 
-        context 'with role_ids not all being present' do
+        context "with role_ids not all being present" do
           let(:call_attributes) do
             {
-              role_ids: [nil, '', second_role.id, third_role.id]
+              role_ids: [nil, "", second_role.id, third_role.id]
             }
           end
 
-          it 'ignores the empty values' do
-            expect(subject.result.roles = [second_role, third_role])
+          it "ignores the empty values" do
+            expect(subject.result.member_roles.map(&:role_id)).to contain_exactly(second_role.id, third_role.id)
           end
         end
       end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,56 +20,69 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { Injectable } from '@angular/core';
-import { RelationsStateValue, WorkPackageRelationsService } from 'core-app/features/work-packages/components/wp-relations/wp-relations.service';
-import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
+import { Injectable, inject } from '@angular/core';
+import {
+  RelationsStateValue,
+  WorkPackageRelationsService,
+} from 'core-app/features/work-packages/components/wp-relations/wp-relations.service';
+import {
+  WorkPackageNotificationService,
+} from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
 import { WorkPackageCollectionResource } from 'core-app/features/hal/resources/wp-collection-resource';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
 import { SchemaCacheService } from 'core-app/core/schemas/schema-cache.service';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { RelationResource } from 'core-app/features/hal/resources/relation-resource';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
+import { DEFAULT_TIMESTAMP } from './wp-view-baseline.service';
 import { WorkPackageViewHierarchiesService } from './wp-view-hierarchy.service';
 import { WorkPackageViewColumnsService } from './wp-view-columns.service';
+import { ApiV3FilterBuilder } from 'core-app/shared/helpers/api-v3/api-v3-filter-builder';
+import { ShareResource } from 'core-app/features/hal/resources/share-resource';
+import { map } from 'rxjs/operators';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class WorkPackageViewAdditionalElementsService {
-  constructor(readonly querySpace:IsolatedQuerySpace,
-    readonly wpTableHierarchies:WorkPackageViewHierarchiesService,
-    readonly wpTableColumns:WorkPackageViewColumnsService,
-    readonly notificationService:WorkPackageNotificationService,
-    readonly halResourceService:HalResourceService,
-    readonly apiV3Service:APIV3Service,
-    readonly schemaCache:SchemaCacheService,
-    readonly wpRelations:WorkPackageRelationsService) {
-  }
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly wpTableHierarchies = inject(WorkPackageViewHierarchiesService);
+  readonly wpTableColumns = inject(WorkPackageViewColumnsService);
+  readonly notificationService = inject(WorkPackageNotificationService);
+  readonly halResourceService = inject(HalResourceService);
+  readonly apiV3Service = inject(ApiV3Service);
+  readonly schemaCache = inject(SchemaCacheService);
+  readonly wpRelations = inject(WorkPackageRelationsService);
 
   public initialize(query:QueryResource, results:WorkPackageCollectionResource):void {
     const rows = results.elements;
+    const workPackageIds = rows.map((el) => el.id!);
 
     // Add relations to the stack
-    Promise.all([
-      this.requireInvolvedRelations(rows.map((el) => el.id!)),
+    void Promise.all([
+      this.requireInvolvedRelations(workPackageIds),
+      this.requireInvolvedChildren(rows),
       this.requireHierarchyElements(rows),
+      this.requireWorkPackageShares(workPackageIds),
       this.requireSumsSchema(results),
-    ]).then((results:string[][]) => {
-      this.loadAdditional(_.flatten(results));
+    ]).then((wpResults:string[][]) => {
+      const timestamps = query.timestamps;
+
+      this.loadAdditional(wpResults.flat(), timestamps[0] === DEFAULT_TIMESTAMP ? undefined : timestamps);
     });
   }
 
-  private loadAdditional(wpIds:string[]) {
+  private loadAdditional(wpIds:string[], timestamps?:string[]) {
     this
       .apiV3Service
       .work_packages
-      .requireAll(wpIds)
+      .requireAll(wpIds, timestamps)
       .then(() => {
         this.querySpace.additionalRequiredWorkPackages.putValue(null, 'All required work packages are loaded');
       })
@@ -91,8 +104,22 @@ export class WorkPackageViewAdditionalElementsService {
       .requireAll(rows)
       .then(() => {
         const ids = this.getInvolvedWorkPackages(rows.map((id) => this.wpRelations.state(id).value!));
-        return _.flatten(ids);
+        return ids.flat();
       });
+  }
+
+  /**
+   * Requires the work package children of the given work package ids
+   * if a child relation column is present
+   */
+  private requireInvolvedChildren(rows:WorkPackageResource[]):Promise<string[]> {
+    if (!this.wpTableColumns.hasChildRelationsColumn()) {
+      return Promise.resolve([]);
+    }
+
+    const ids = rows.map((el) => el.children?.map((child) => child.id!) || []).flat();
+
+    return Promise.resolve(ids);
   }
 
   /**
@@ -105,7 +132,10 @@ export class WorkPackageViewAdditionalElementsService {
       return Promise.resolve([]);
     }
 
-    const ids = _.flatten(rows.map((el) => el.ancestorIds));
+    const resultIds = rows.map((el:WorkPackageResource) => (el.id as string | number).toString());
+    const ids = rows.map((el) => el.ancestorIds).flat()
+      .filter((id) => !resultIds.includes(id));
+
     return Promise.resolve(ids);
   }
 
@@ -116,8 +146,8 @@ export class WorkPackageViewAdditionalElementsService {
    */
   private getInvolvedWorkPackages(states:RelationsStateValue[]) {
     const ids:string[] = [];
-    _.each(states, (relations:RelationsStateValue) => {
-      _.each(relations, (resource:RelationResource) => {
+    states.forEach((relations:RelationsStateValue) => {
+      Object.values(relations).forEach((resource:RelationResource) => {
         ids.push(resource.ids.from, resource.ids.to);
       });
     });
@@ -134,5 +164,39 @@ export class WorkPackageViewAdditionalElementsService {
     }
 
     return Promise.resolve([]);
+  }
+
+  private requireWorkPackageShares(wpIds:string[]):Promise<string[]> {
+    if (!this.wpTableColumns.hasShareColumn()) { return Promise.resolve([]); }
+    if (wpIds.length === 0) { return Promise.resolve([]); }
+
+    const filters = new ApiV3FilterBuilder()
+      .add('entityType', '=', ['WorkPackage'])
+      .add('entityId', '=', wpIds);
+
+    const workPackageShareRequest = this
+      .apiV3Service
+      .shares
+      .filtered(filters, { pageSize: '-1' })
+      .getPaginatedResults()
+      .pipe(
+        map((elements) => {
+          const shares = elements as ShareResource[];
+
+          const sharedWpIds = Array.from(new Set(shares.map((share) => share.entity.id!)));
+
+          sharedWpIds.forEach((wpId) => {
+            this
+              .querySpace
+              .workPackageSharesCache
+              .get(wpId)
+              .putValue(shares.filter((share) => share.entity.id === wpId));
+          });
+
+          return [];
+        }),
+      );
+
+      return firstValueFrom(workPackageShareRequest);
   }
 }

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,48 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'users 2fa devices', type: :routing do
-  it 'route to index' do
-    expect(get('/my/two_factor_devices')).to route_to('two_factor_authentication/my/two_factor_devices#index')
+RSpec.describe "users 2fa devices" do
+  it "route to new" do
+    expect(get("/my/two_factor_devices/new")).to route_to("two_factor_authentication/my/two_factor_devices#new")
   end
 
-  it 'route to new' do
-    expect(get('/my/two_factor_devices/new')).to route_to('two_factor_authentication/my/two_factor_devices#new')
+  it "route to register" do
+    expect(post("/my/two_factor_devices/register")).to route_to("two_factor_authentication/my/two_factor_devices#register")
   end
 
-  it 'route to register' do
-    expect(post('/my/two_factor_devices/register')).to route_to('two_factor_authentication/my/two_factor_devices#register')
+  it "route to confirm" do
+    expect(get("/my/two_factor_devices/1/confirm")).to route_to(controller: "two_factor_authentication/my/two_factor_devices",
+                                                                action: "confirm",
+                                                                device_id: "1")
   end
 
-  it 'route to confirm' do
-    expect(get('/my/two_factor_devices/1/confirm')).to route_to(controller: 'two_factor_authentication/my/two_factor_devices',
-                                                                action: 'confirm',
-                                                                device_id: '1')
+  it "route to POST confirm" do
+    expect(post("/my/two_factor_devices/1/confirm")).to route_to(controller: "two_factor_authentication/my/two_factor_devices",
+                                                                 action: "confirm",
+                                                                 device_id: "1")
   end
 
-  it 'route to POST confirm' do
-    expect(post('/my/two_factor_devices/1/confirm')).to route_to(controller: 'two_factor_authentication/my/two_factor_devices',
-                                                                 action: 'confirm',
-                                                                 device_id: '1')
+  it "route to POST make_default" do
+    expect(post("/my/two_factor_devices/1/make_default")).to route_to(controller: "two_factor_authentication/my/two_factor_devices",
+                                                                      action: "make_default",
+                                                                      device_id: "1")
   end
 
-  it 'route to POST make_default' do
-    expect(post('/my/two_factor_devices/1/make_default')).to route_to(controller: 'two_factor_authentication/my/two_factor_devices',
-                                                                      action: 'make_default',
-                                                                      device_id: '1')
-  end
-
-  it 'route to DELETE destroy' do
-    expect(delete('/my/two_factor_devices/1')).to route_to(controller: 'two_factor_authentication/my/two_factor_devices',
-                                                           action: 'destroy',
-                                                           device_id: '1')
+  it "route to DELETE destroy" do
+    expect(delete("/my/two_factor_devices/1")).to route_to(controller: "two_factor_authentication/my/two_factor_devices",
+                                                           action: "destroy",
+                                                           device_id: "1")
   end
 end

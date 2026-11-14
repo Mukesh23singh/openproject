@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,6 +35,8 @@ module API
 
         included do
           link :attachments do
+            next if hide_attachments?
+
             {
               href: attachments_by_resource
             }
@@ -50,7 +49,7 @@ module API
             next if represented.new_record?
 
             {
-              href: attachments_by_resource + '/prepare',
+              href: "#{attachments_by_resource}/prepare",
               method: :post
             }
           end
@@ -71,14 +70,18 @@ module API
                    if: ->(*) { embed_links },
                    uncacheable: true
 
+          def hide_attachments?
+            false
+          end
+
           def attachments
             ::API::V3::Attachments::AttachmentCollectionRepresenter.new(attachment_set,
                                                                         self_link: attachments_by_resource,
-                                                                        current_user: current_user)
+                                                                        current_user:)
           end
 
           def attachments_by_resource
-            path = "attachments_by_#{_type.singularize.underscore}"
+            path = "attachments_by_#{_type.gsub('::', '_').singularize.underscore}"
 
             api_v3_paths.send(path, represented.id)
           end

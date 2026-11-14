@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,21 +22,24 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class ProjectMailer < ApplicationMailer
-  def delete_project_completed(project, user:)
+  include Exports::PDF::Common::Macro
+
+  def delete_project_completed(project, user:, dependent_projects: [])
     open_project_headers Project: project.identifier,
                          Author: user.login
 
     message_id project, user
-    with_locale_for(user) do
-      @project = project
-      mail to: user.mail, subject: I18n.t('projects.delete.completed', name: project.name)
+    @project = project
+    @dependent_projects = dependent_projects
+
+    send_localized_mail(user) do
+      I18n.t("projects.delete.completed", name: project.name)
     end
   end
 
@@ -45,10 +48,10 @@ class ProjectMailer < ApplicationMailer
                          Author: user.login
 
     message_id project, user
-    with_locale_for(user) do
-      @project = project
+    @project = project
 
-      mail to: user.mail, subject: I18n.t('projects.delete.failed', name: project.name)
+    send_localized_mail(user) do
+      I18n.t("projects.delete.failed", name: project.name)
     end
   end
 
@@ -57,15 +60,13 @@ class ProjectMailer < ApplicationMailer
     @target_project_name = target_project_name
     @errors = errors
 
-    open_project_headers 'Source-Project' => source_project.identifier,
-                         'Author' => user.login
+    open_project_headers "Source-Project" => source_project.identifier,
+                         "Author" => user.login
 
     message_id source_project, user
 
-    with_locale_for(user) do
-      subject = I18n.t('copy_project.failed', source_project_name: source_project.name)
-
-      mail to: user.mail, subject: subject
+    send_localized_mail(user) do
+      I18n.t("copy_project.failed", source_project_name: source_project.name)
     end
   end
 
@@ -74,16 +75,30 @@ class ProjectMailer < ApplicationMailer
     @target_project = target_project
     @errors = errors
 
-    open_project_headers 'Source-Project' => source_project.identifier,
-                         'Target-Project' => target_project.identifier,
-                         'Author' => user.login
+    open_project_headers "Source-Project" => source_project.identifier,
+                         "Target-Project" => target_project.identifier,
+                         "Author" => user.login
 
     message_id target_project, user
 
-    with_locale_for(user) do
-      subject = I18n.t('copy_project.succeeded', target_project_name: target_project.name)
+    send_localized_mail(user) do
+      I18n.t("copy_project.succeeded", target_project_name: target_project.name)
+    end
+  end
 
-      mail to: user.mail, subject: subject
+  def project_created(project, user:)
+    open_project_headers Project: project.identifier,
+                         Author: user.login
+
+    message_id project, user
+    @project = project
+    @user = user
+    notification_text = Setting.new_project_notification_text.presence ||
+                        I18n.t("admin.settings.new_project.notification_text_default")
+    @notification_text = apply_markdown_field_macros(notification_text, { project:, user: })
+
+    send_localized_mail(user) do
+      I18n.t("projects.create.notification_email_subject", project_name: project.name)
     end
   end
 end

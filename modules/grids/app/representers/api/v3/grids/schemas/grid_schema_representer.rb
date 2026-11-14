@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,35 +31,32 @@ module API
       module Schemas
         class GridSchemaRepresenter < ::API::Decorators::SchemaRepresenter
           def initialize(represented, self_link: nil, current_user: nil, form_embedded: false)
-            super(represented,
-                  self_link: self_link,
-                  current_user: current_user,
-                  form_embedded: form_embedded)
+            super
           end
 
           schema :id,
-                 type: 'Integer'
+                 type: "Integer"
 
           schema :created_at,
-                 type: 'DateTime'
+                 type: "DateTime"
 
           schema :updated_at,
-                 type: 'DateTime'
+                 type: "DateTime"
 
           schema :row_count,
-                 type: 'Integer'
+                 type: "Integer"
 
           schema :column_count,
-                 type: 'Integer'
+                 type: "Integer"
 
           schema :name,
-                 type: 'String'
+                 type: "String"
 
           schema :options,
-                 type: 'JSON'
+                 type: "JSON"
 
           schema_with_allowed_collection :scope,
-                                         type: 'Href',
+                                         type: "Href",
                                          required: true,
                                          has_default: false,
                                          value_representer: false,
@@ -73,12 +67,12 @@ module API
                                          }
 
           schema_with_allowed_collection :widgets,
-                                         type: '[]GridWidget',
+                                         type: "[]GridWidget",
                                          required: true,
                                          has_default: false,
                                          values_callback: -> do
                                            represented.assignable_widgets.map do |identifier|
-                                             OpenStruct.new(identifier: identifier, grid: represented.model, options: {})
+                                             OpenStruct.new(identifier:, grid: represented.model, options: {})
                                            end
                                          end,
                                          value_representer: ::API::V3::Grids::Widgets::WidgetRepresenter,

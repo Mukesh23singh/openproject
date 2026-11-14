@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,16 +22,25 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Roles
   class SetAttributesService < ::BaseServices::SetAttributes
-    def set_default_attributes(*)
-      model.permissions = Role.non_member.permissions if model.permissions.nil? || model.permissions.empty?
+    def set_attributes(params)
+      super
+
+      if model.is_a?(ProjectRole)
+        model.permissions += OpenProject::AccessControl.public_permissions.map(&:name)
+      end
+    end
+
+    def set_default_attributes(params)
+      if model.permissions.blank? && model.is_a?(ProjectRole) && !params.key?(:permissions)
+        model.permissions = ProjectRole.non_member.permissions
+      end
     end
   end
 end

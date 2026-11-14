@@ -3,7 +3,6 @@ sidebar_navigation:
   title: News
   priority: 830
 description: Communicate project news to your team members
-robots: index, follow
 keywords: news
 ---
 
@@ -12,18 +11,20 @@ keywords: news
 On the news page, you can see the latest news in a project in reverse chronological order. News communicate general topics to all team members.
 
 <div class="glossary">
+
 **News** are defined as a module that allows the publication and use of news entries.
+
 </div>
 
 They can be displayed on the main project overview page.
 
 | Feature                                     | Documentation for                                 |
-| ------------------------------------------- | ------------------------------------------------- |
-| [Comment on news](#comment-on-news)         | How to comment news in a project?                 |
-| [Watch news](#watch-a-news-entry)           | How to add yourself as a watcher to a news entry? |
-| [Edit a news entry](#edit-a-news-entry)     | How to edit an existing news entry?               |
-| [Add a news entry](#add-a-news-entry)       | How to create a new news entry?                   |
-| [Delete a news entry](#delete-a-news-entry) | How to delete a news entry?                       |
+|---------------------------------------------|---------------------------------------------------|
+| [Comment on news](#comment-on-news)         | How to comment news in a project.                 |
+| [Watch news](#watch-a-news-entry)           | How to add yourself as a watcher to a news entry. |
+| [Edit a news entry](#edit-a-news-entry)     | How to edit an existing news entry.               |
+| [Add a news entry](#add-a-news-entry)       | How to create a new news entry.                   |
+| [Delete a news entry](#delete-a-news-entry) | How to delete a news entry.                       |
 
 ## Comment on news
 
@@ -74,11 +75,10 @@ Clicking on the title of a news will bring you to the news details in the corres
 
 ![news-widget-landing-page](news-widget-landing-page.png)
 
-## Latest news section on the project overview page
+## Latest news section on the project home page
 
-You can also include your latest news from a project on the Project overview page.
+You can also include your latest news from a project on the Project home page.
 
-Find out how to [configure your Project overview](../project-overview/#news-widget) page.
+Find out how to [configure your project home](../projects/project-home/project-widgets/#news-widget) page.
 
 ![latest-news-project-overview](latest-news-project-overview.png)
-

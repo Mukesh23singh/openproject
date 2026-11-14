@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,75 +22,74 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::Roles::Filters::UnitFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::Roles::Filters::UnitFilter do
+  it_behaves_like "basic query filter" do
     let(:class_key) { :unit }
     let(:type) { :list }
     let(:model) { Role }
   end
 
-  it_behaves_like 'list query filter', scope: false do
+  it_behaves_like "list query filter", scope: false do
     let(:attribute) { :type }
     let(:model) { Role }
-    let(:valid_values) { ['project'] }
+    let(:valid_values) { ["project"] }
 
-    describe '#scope' do
-      context 'for the system value' do
-        let(:values) { ['system'] }
+    describe "#apply_to" do
+      context "for the system value" do
+        let(:values) { ["system"] }
 
         context 'for "="' do
-          let(:operator) { '=' }
+          let(:operator) { "=" }
 
-          it 'is the same as handwriting the query' do
+          it "is the same as handwriting the query" do
             expected = model
-                       .where(["roles.type = ?", GlobalRole.name])
+                       .where(["roles.type = ?", GlobalRole.name]) # rubocop:disable Rails/WhereEquals
 
-            expect(instance.scope.to_sql).to eql expected.to_sql
+            expect(instance.apply_to(model).to_sql).to eql expected.to_sql
           end
         end
 
         context 'for "!"' do
-          let(:operator) { '!' }
+          let(:operator) { "!" }
 
-          it 'is the same as handwriting the query' do
+          it "is the same as handwriting the query" do
             expected = model
-                       .where(["roles.type != ?", GlobalRole.name])
+                       .where(["roles.type != ?", GlobalRole.name]) # rubocop:disable Rails/WhereNot
 
-            expect(instance.scope.to_sql).to eql expected.to_sql
+            expect(instance.apply_to(model).to_sql).to eql expected.to_sql
           end
         end
       end
 
-      context 'for the projet value' do
-        let(:values) { ['project'] }
+      context "for the project value" do
+        let(:values) { ["project"] }
 
         context 'for "="' do
-          let(:operator) { '=' }
+          let(:operator) { "=" }
 
-          it 'is the same as handwriting the query' do
+          it "is the same as handwriting the query" do
             expected = model
-                       .where(["roles.type = ? AND roles.builtin = ?", Role.name, Role::NON_BUILTIN])
+                       .where(["roles.type = ? AND roles.builtin = ?", ProjectRole.name, Role::NON_BUILTIN])
 
-            expect(instance.scope.to_sql).to eql expected.to_sql
+            expect(instance.apply_to(model).to_sql).to eql expected.to_sql
           end
         end
 
         context 'for "!"' do
-          let(:operator) { '!' }
+          let(:operator) { "!" }
 
-          it 'is the same as handwriting the query' do
+          it "is the same as handwriting the query" do
             expected = model
-                       .where(["roles.type != ?", Role.name])
+                       .where(["roles.type != ?", ProjectRole.name]) # rubocop:disable Rails/WhereNot
 
-            expect(instance.scope.to_sql).to eql expected.to_sql
+            expect(instance.apply_to(model).to_sql).to eql expected.to_sql
           end
         end
       end

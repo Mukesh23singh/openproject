@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +20,18 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef,
-  Directive,
-  ElementRef,
-  Inject,
-  InjectionToken,
-  Injector,
-  OnDestroy,
-  OnInit,
-} from '@angular/core';
+import { ChangeDetectorRef, Directive, ElementRef, InjectionToken, Injector, OnDestroy, OnInit, inject } from '@angular/core';
 import { EditFieldHandler } from 'core-app/shared/components/fields/edit/editing-portal/edit-field-handler';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { Field, IFieldSchema } from 'core-app/shared/components/fields/field.base';
 import { ResourceChangeset } from 'core-app/shared/components/fields/changeset/resource-changeset';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
+import { HalResourceEditFieldHandler } from 'core-app/shared/components/fields/edit/field-handler/hal-resource-edit-field-handler';
 
 export const OpEditingPortalSchemaToken = new InjectionToken('editing-portal--schema');
 export const OpEditingPortalHandlerToken = new InjectionToken('editing-portal--handler');
@@ -53,22 +44,36 @@ export const editModeClassName = '-editing';
 
 @Directive()
 export abstract class EditFieldComponent extends Field implements OnInit, OnDestroy {
+  readonly I18n = inject(I18nService);
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  protected change = inject<ResourceChangeset<HalResource>>(OpEditingPortalChangesetToken);
+  schema = inject<IFieldSchema>(OpEditingPortalSchemaToken);
+  readonly handler = inject<EditFieldHandler>(OpEditingPortalHandlerToken);
+  readonly cdRef = inject(ChangeDetectorRef);
+  readonly injector = inject(Injector);
+
   /** Self reference */
   public self = this;
 
-  /** JQuery accessor to element ref */
-  protected $element:JQuery;
+  protected element:HTMLElement;
 
-  constructor(readonly I18n:I18nService,
-    readonly elementRef:ElementRef,
-    @Inject(OpEditingPortalChangesetToken) protected change:ResourceChangeset<HalResource>,
-    @Inject(OpEditingPortalSchemaToken) public schema:IFieldSchema,
-    @Inject(OpEditingPortalHandlerToken) readonly handler:EditFieldHandler,
-    readonly cdRef:ChangeDetectorRef,
-    readonly injector:Injector) {
+  constructor() {
     super();
+    const change = this.change;
+
 
     this.updateFromChangeset(change);
+  }
+
+  ngOnInit():void {
+    this.element = this.elementRef.nativeElement;
+    this.initialize();
+
+    if (this.handler instanceof HalResourceEditFieldHandler) {
+      this.handler.stateChanged$
+        .pipe(this.untilDestroyed())
+        .subscribe(() => this.cdRef.markForCheck());
+    }
 
     if (this.change.state) {
       this.change.state
@@ -80,7 +85,7 @@ export abstract class EditFieldComponent extends Field implements OnInit, OnDest
           const fieldSchema = change.schema.ofProperty(this.name);
 
           if (!fieldSchema) {
-            return handler.deactivate(false);
+            return this.handler.deactivate(false);
           }
 
           this.updateFromChangeset(change);
@@ -90,29 +95,21 @@ export abstract class EditFieldComponent extends Field implements OnInit, OnDest
     }
   }
 
-  ngOnInit():void {
-    this.$element = jQuery(this.elementRef.nativeElement);
-    this.initialize();
-  }
-
   public get overflowingSelector() {
-    if (this.$element) {
-      return this.$element
-        .closest(overflowingContainerSelector)
-        .data(overflowingContainerAttribute);
-    }
-    return null;
+    return this.element
+      ?.closest<HTMLElement>(overflowingContainerSelector)
+      ?.dataset[overflowingContainerAttribute];
   }
 
   public get inFlight() {
     return this.handler.inFlight;
   }
 
-  public get value() {
+  public get value():unknown {
     return this.resource[this.name];
   }
 
-  public set value(value:any) {
+  public set value(value:unknown) {
     this.resource[this.name] = this.parseValue(value);
   }
 
@@ -146,7 +143,7 @@ export abstract class EditFieldComponent extends Field implements OnInit, OnDest
   /**
    * Parse the value from the model for setting
    */
-  protected parseValue(val:any) {
+  protected parseValue(val:unknown):unknown {
     return val;
   }
 }

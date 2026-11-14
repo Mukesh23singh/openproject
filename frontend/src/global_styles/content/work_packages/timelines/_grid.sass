@@ -1,12 +1,12 @@
-.wp-timeline--grid-element
-  position: absolute
-  top: 0
-  padding-top: 5px
-  height: 100%
-  border-right: 1px solid var(--timeline--grid-color)
+.wp-timeline
+  &--grid-element
+    position: absolute
+    top: 0
+    padding-top: 5px
+    height: 100%
+    border-right: 1px solid var(--borderColor-default)
+    &_highlight
+      border-right: 1px solid var(--borderColor-emphasis)
 
-  &.-grid-highlight
-    border-right: 1px solid var(--timeline--header-border-color)
-
-  &.grid-weekend
-    background-color: #f5f5f5
+  &--non-working-day
+    background-color: var(--bgColor-disabled)

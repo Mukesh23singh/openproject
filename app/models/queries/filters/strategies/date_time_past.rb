@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,20 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module Queries::Filters::Strategies
   class DateTimePast < Queries::Filters::Strategies::Integer
-    self.supported_operators = ['>t-', '<t-', 't-', 't', 'w', '=d', '<>d']
-    self.default_operator = '>t-'
+    self.supported_operators = [">t-", "<t-", "t-", "t", "w", "=d", "<>d", ">d", "<d"]
+    self.default_operator = ">t-"
 
     def validate
-      if operator == Queries::Operators::OnDateTime ||
-         operator == Queries::Operators::BetweenDateTime
+      if [Queries::Operators::OnDateTime,
+          Queries::Operators::BetweenDateTime,
+          Queries::Operators::GreaterOrEqualDateTime,
+          Queries::Operators::LessOrEqualDateTime].include?(operator)
         validate_values_all_datetime
       else
         super
@@ -46,15 +47,17 @@ module Queries::Filters::Strategies
 
     def operator_map
       super_value = super.dup
-      super_value['=d'] = Queries::Operators::OnDateTime
-      super_value['<>d'] = Queries::Operators::BetweenDateTime
+      super_value["=d"] = Queries::Operators::OnDateTime
+      super_value["<>d"] = Queries::Operators::BetweenDateTime
+      super_value[">d"] = Queries::Operators::GreaterOrEqualDateTime
+      super_value["<d"] = Queries::Operators::LessOrEqualDateTime
 
       super_value
     end
 
     def validate_values_all_datetime
       unless values.all? { |value| value.blank? || datetime?(value) }
-        errors.add(:values, I18n.t('activerecord.errors.messages.not_a_datetime'))
+        errors.add(:values, I18n.t("activerecord.errors.messages.not_a_datetime"))
       end
     end
 

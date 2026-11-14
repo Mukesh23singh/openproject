@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,18 +31,18 @@ module OpenProject
   module Activity
     class << self
       def available_event_types
-        @available_event_types ||= []
+        @available_event_types ||= Set.new
       end
 
       def default_event_types
-        @default_event_types ||= []
+        @default_event_types ||= Set.new
       end
 
       def providers
-        @providers ||= Hash.new { |h, k| h[k] = [] }
+        @providers ||= Hash.new { |h, k| h[k] = Set.new }
       end
 
-      def map(&_block)
+      def map(&)
         yield self
       end
 
@@ -52,12 +51,11 @@ module OpenProject
         options.assert_valid_keys(:class_name, :default)
 
         event_type = event_type.to_s
-        providers = options[:class_name] || event_type.classify
-        providers = ([] << providers) unless providers.is_a?(Array)
+        available_event_types << event_type
+        default_event_types << event_type unless options[:default] == false
 
-        available_event_types << event_type unless available_event_types.include?(event_type)
-        default_event_types << event_type unless default_event_types.include?(event_type) || options[:default] == false
-        self.providers[event_type] += providers
+        providers = options[:class_name] || event_type.classify
+        self.providers[event_type] += Array(providers)
       end
     end
   end

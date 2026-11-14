@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,58 +20,67 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output,
-} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ChangeDetectionStrategy, ChangeDetectorRef, Component, EventEmitter, Input, Output, OnInit, DestroyRef, inject } from '@angular/core';
 import { WorkPackageViewHighlightingService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-highlighting.service';
 import { CardViewOrientation } from 'core-app/features/work-packages/components/wp-card-view/wp-card-view.component';
 import { WorkPackageViewSortByService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-sort-by.service';
-import { distinctUntilChanged, takeUntil } from 'rxjs/operators';
+import { distinctUntilChanged } from 'rxjs/operators';
 import { HighlightingMode } from 'core-app/features/work-packages/components/wp-fast-table/builders/highlighting/highlighting-mode.const';
 import { IsolatedQuerySpace } from 'core-app/features/work-packages/directives/query-space/isolated-query-space';
-import { DragAndDropService } from 'core-app/shared/helpers/drag-and-drop/drag-and-drop.service';
 import { WorkPackageCardDragAndDropService } from 'core-app/features/work-packages/components/wp-card-view/services/wp-card-drag-and-drop.service';
 import { WorkPackagesListService } from 'core-app/features/work-packages/components/wp-list/wp-list.service';
 import { WorkPackageTableConfiguration } from 'core-app/features/work-packages/components/wp-table/wp-table-configuration';
-import { WorkPackageViewOutputs } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/event-handler-registry';
+import { WorkPackageStateLinkEvent, WorkPackageViewOutputs } from 'core-app/features/work-packages/routing/wp-view-base/event-handling/event-handler-registry';
 
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'wp-grid',
   template: `
-    <wp-card-view [dragOutOfHandler]="canDragOutOf"
-                  [dragInto]="dragInto"
-                  [cardsRemovable]="false"
-                  [highlightingMode]="highlightingMode"
-                  [showStatusButton]="true"
-                  [orientation]="gridOrientation"
-                  (onMoved)="switchToManualSorting()"
-                  (selectionChanged)="selectionChanged.emit($event)"
-                  (itemClicked)="itemClicked.emit($event)"
-                  (stateLinkClicked)="stateLinkClicked.emit($event)"
-                  [showEmptyResultsBox]="true"
-                  [showInfoButton]="true"
-                  [shrinkOnMobile]="true">
-    </wp-card-view>
+    <wp-card-view opSortableLists
+      [opSortableListsAxis]="'horizontal'"
+      [opSortableListsAutoScrollAxis]="'all'"
+      [dragOutOfHandler]="canDragOutOf"
+      [dragInto]="dragInto"
+      [cardsRemovable]="false"
+      [highlightingMode]="highlightingMode"
+      [showStatusButton]="true"
+      [orientation]="gridOrientation"
+      (onMoved)="switchToManualSorting()"
+      (itemClicked)="itemClicked.emit($event)"
+      (stateLinkClicked)="stateLinkClicked.emit($event)"
+      [showEmptyResultsBox]="true"
+      [showInfoButton]="true"
+      [shrinkOnMobile]="true" />
 
-    <div *ngIf="showResizer"
-         class="hidden-for-mobile hide-when-print">
-      <wp-resizer [elementClass]="resizerClass"
-                  [localStorageKey]="resizerStorageKey"></wp-resizer>
-    </div>
-  `,
+    @if (showResizer) {
+      <div
+        class="hidden-for-mobile hide-when-print">
+        <wp-resizer [elementClass]="resizerClass"
+        [localStorageKey]="resizerStorageKey" />
+      </div>
+    }
+    `,
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
-    DragAndDropService,
     WorkPackageCardDragAndDropService,
   ],
+  standalone: false,
 })
-export class WorkPackagesGridComponent implements WorkPackageViewOutputs {
+export class WorkPackagesGridComponent implements WorkPackageViewOutputs, OnInit {
+  private readonly destroyRef = inject(DestroyRef);
+
+  readonly wpTableHighlight = inject(WorkPackageViewHighlightingService);
+  readonly wpTableSortBy = inject(WorkPackageViewSortByService);
+  readonly wpList = inject(WorkPackagesListService);
+  readonly querySpace = inject(IsolatedQuerySpace);
+  readonly cdRef = inject(ChangeDetectorRef);
+
   @Input() public configuration:WorkPackageTableConfiguration;
 
   @Input() public showResizer = false;
@@ -80,11 +89,9 @@ export class WorkPackagesGridComponent implements WorkPackageViewOutputs {
 
   @Input() public resizerStorageKey = '';
 
-  @Output() selectionChanged = new EventEmitter<string[]>();
-
   @Output() itemClicked = new EventEmitter<{ workPackageId:string, double:boolean }>();
 
-  @Output() stateLinkClicked = new EventEmitter<{ workPackageId:string, requestedState:string }>();
+  @Output() stateLinkClicked = new EventEmitter<WorkPackageStateLinkEvent>();
 
   public canDragOutOf:() => boolean;
 
@@ -94,33 +101,32 @@ export class WorkPackagesGridComponent implements WorkPackageViewOutputs {
 
   public highlightingMode:HighlightingMode = 'none';
 
-  constructor(readonly wpTableHighlight:WorkPackageViewHighlightingService,
-    readonly wpTableSortBy:WorkPackageViewSortByService,
-    readonly wpList:WorkPackagesListService,
-    readonly querySpace:IsolatedQuerySpace,
-    readonly cdRef:ChangeDetectorRef) {
-  }
-
   ngOnInit() {
     this.dragInto = this.configuration.dragAndDropEnabled;
     this.canDragOutOf = () => this.configuration.dragAndDropEnabled;
 
+    void this.wpTableHighlight.onReady().then(() => {
+      if (!this.destroyRef.destroyed) this.highlightingModeChanged();
+    });
+
     this.wpTableHighlight
       .updates$()
       .pipe(
-        takeUntil(this.querySpace.stopAllSubscriptions),
+        takeUntilDestroyed(this.destroyRef),
         distinctUntilChanged(),
       )
-      .subscribe(() => {
-        this.highlightingMode = this.wpTableHighlight.current.mode;
-        this.cdRef.detectChanges();
-      });
+      .subscribe(() => this.highlightingModeChanged());
   }
 
   public switchToManualSorting() {
     const query = this.querySpace.query.value;
     if (query && this.wpTableSortBy.switchToManualSorting(query)) {
-      this.wpList.save(query);
+      void this.wpList.createOrSave(query);
     }
+  }
+
+  private highlightingModeChanged():void {
+    this.highlightingMode = this.wpTableHighlight.current.mode;
+    this.cdRef.detectChanges();
   }
 }

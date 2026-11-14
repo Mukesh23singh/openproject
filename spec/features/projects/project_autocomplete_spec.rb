@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,37 +22,48 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Projects autocomplete page', type: :feature, js: true do
-  let!(:user) { FactoryBot.create :user }
+RSpec.describe "Projects autocomplete page", :js do
+  shared_let(:user) { create(:user) }
+  # we only need the public permissions: view_project, :view_news
+  shared_let(:role) { create(:project_role, permissions: []) }
 
-  let!(:project) do
-    FactoryBot.create(:project,
-                      name: 'Plain project',
-                      identifier: 'plain-project')
+  shared_let(:portfolio) do
+    create(:portfolio, name: "Test Portfolio", members: { user => role })
   end
-
-  let!(:project2) do
-    FactoryBot.create(:project,
-                      name: '<strong>foobar</strong>',
-                      identifier: 'foobar')
+  shared_let(:program) do
+    create(:program, name: "Test Program", members: { user => role })
   end
-
-  let!(:project3) do
-    FactoryBot.create(:project,
-                      name: 'Plain other project',
-                      parent: project2,
-                      identifier: 'plain-project-2')
+  shared_let(:project) do
+    create(:project, name: "Plain project", identifier: "plain-project", members: { user => role })
   end
-
-  let!(:other_projects) do
+  shared_let(:project2) do
+    create(:project,
+           name: "<strong>foobar</strong>",
+           identifier: "foobar",
+           members: { user => role })
+  end
+  shared_let(:project3) do
+    create(:project,
+           name: "Plain other project",
+           parent: project2,
+           identifier: "plain-project-2",
+           members: { user => role })
+  end
+  shared_let(:project4) do
+    create(:project,
+           name: "Project with different name and identifier",
+           parent: project2,
+           identifier: "plain-project-4",
+           members: { user => role })
+  end
+  shared_let(:other_projects) do
     names = [
       "Very long project name with term at the END",
       "INK14 - Foo",
@@ -59,110 +72,180 @@ describe 'Projects autocomplete page', type: :feature, js: true do
     ]
 
     names.map do |name|
-      identifier = name.gsub(/[ \-]+/, "-").downcase
+      identifier = name.gsub(/[ -]+/, "-").downcase
 
-      FactoryBot.create :project, name: name, identifier: identifier
+      create(:project, name:, identifier:, members: { user => role })
     end
   end
-  let!(:non_member_project) do
-    FactoryBot.create :project
-  end
-  let!(:public_project) do
-    FactoryBot.create :public_project
-  end
-  # necessary to be able to see public projects
-  let!(:non_member_role) { FactoryBot.create :non_member }
-  # we only need the public permissions: view_project, :view_news
-  let(:role) { FactoryBot.create(:role, permissions: []) }
+  shared_let(:non_member_project) { create(:project) }
+  shared_let(:public_project) { create(:public_project) }
 
-  include BecomeMember
-
-  let(:top_menu) { ::Components::Projects::TopMenu.new }
+  let(:top_menu) { Components::Projects::TopMenu.new }
 
   before do
-    ([project, project2, project3] + other_projects).each do |p|
-      add_user_to_project! user: user, project: p, role: role
-    end
     login_as user
     visit root_path
   end
 
-  it 'allows to filter and select projects' do
-    top_menu.toggle
-    top_menu.expect_open
+  describe "allows to filter and select projects" do
+    before do
+      retry_block do
+        top_menu.toggle unless top_menu.open?
+        top_menu.expect_open
 
-    # projects are displayed initially
-    within(top_menu.search_results) do
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: project.name)
+        # Wait until the component is fully loaded and ready
+        top_menu.expect_result project.name
+      end
+    end
+
+    it "displays the projects the user is allowed to see" do
+      # projects are displayed initially
+      top_menu.expect_result project.name
       # public project is displayed as it is public
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: public_project.name)
+      top_menu.expect_result public_project.name
       # only projects the user is member in are displayed
-      expect(page).to have_no_selector('.ui-menu-item-wrapper', text: non_member_project.name)
+      top_menu.expect_no_result non_member_project.name
+    end
+
+    it "escapes HTML in the project name instead of rendering it" do
+      # Filter for projects
+      top_menu.search "<strong"
+
+      # Only the matching project is left, i.e. the filter has been applied.
+      top_menu.expect_no_result "Plain project"
+
+      # Expect result is shown and HTML in the project name is escaped, not rendered
+      within(top_menu.search_results) do
+        expect(page).to have_no_css("strong")
+      end
+    end
+
+    it "expects fuzzy matches for multiple substrings" do
+      top_menu.search "Plain pr"
+      top_menu.expect_result "Plain project"
+      top_menu.expect_result "Plain other project"
+    end
+
+    it "expects every term to match, not just one of them" do
+      top_menu.search "Plain other"
+      top_menu.expect_result "Plain other project"
+      top_menu.expect_no_result "Plain project"
+    end
+
+    it "expects search to match the identifier as well as the name" do
+      top_menu.search "plain"
+      top_menu.expect_result "Plain project"
+      top_menu.expect_result "Plain other project"
+      top_menu.expect_result "Project with different name and identifier"
+    end
+
+    it "expects hierarchy" do
+      # Filtering expands the tree, so filter first to be able to tell the
+      # collapsed tree apart from the filtered one.
+      top_menu.search "plain"
+      top_menu.expect_result "Plain other project"
+
+      top_menu.clear_search
+
+      # The unfiltered tree collapses back to its initial state, so the child is
+      # hidden until its ancestor is expanded.
+      top_menu.expect_no_result "Plain other project"
+
+      top_menu.expect_result "Plain project"
+      # Nothing is filtered out without a query, so the ancestor is selectable.
+      top_menu.expect_result "<strong>foobar</strong>"
+
+      top_menu.expand_node_for "<strong>foobar</strong>"
+      top_menu.expect_item_with_hierarchy_level hierarchy_level: 2,
+                                                item_name: "Plain other project"
+    end
+
+    it "shows hierarchy of project" do
+      top_menu.search "Plain other project"
+
+      top_menu.expect_result "<strong>foobar</strong>", disabled: true
+      top_menu.expect_item_with_hierarchy_level hierarchy_level: 2,
+                                                item_name: "Plain other project"
+    end
+
+    it "finds terms at the end of project names" do
+      top_menu.search "END"
+      top_menu.expect_result "Very long project name with term at the END"
+    end
+
+    it "finds literal matches exclusively if present" do
+      top_menu.search "INK15"
+      top_menu.expect_result "INK15 - Bar"
+      top_menu.expect_no_result "INK14 - Foo"
+      top_menu.expect_no_result "INK16 - Baz"
+    end
+
+    it "visits a project" do
+      top_menu.search_and_select "<strong"
+      top_menu.expect_current_project project2.name
+    end
+
+    it "keeps the current module" do
+      visit project_news_index_path(project2)
+      expect(page).to have_css(".news-menu-item.selected")
+
+      retry_block do
+        top_menu.toggle
+        top_menu.expect_open
+        top_menu.search_and_select "Plain project"
+      end
+
+      expect(page).to have_current_path(project_news_index_path(project),
+                                        ignore_query: true)
+      expect(page).to have_css(".news-menu-item.selected")
+    end
+  end
+
+  it "navigates to the first project upon hitting enter in the search bar" do
+    retry_block do
+      top_menu.toggle unless top_menu.open?
+      top_menu.expect_open
+
+      # projects are displayed initially
+      top_menu.expect_result project.name
     end
 
     # Filter for projects
-    top_menu.search '<strong'
+    top_menu.search_and_select "<strong"
 
-    # Expect highlights
-    within(top_menu.search_results) do
-      expect(page).to have_selector('mark', text: '<strong')
-      expect(page).to have_no_selector('strong')
-    end
-
-    # Expect fuzzy matches for plain
-    top_menu.search 'Plain pr'
-    within(top_menu.search_results) do
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: 'Plain project')
-      expect(page).to have_no_selector('.ui-menu-item-wrapper', text: 'Plain other project')
-    end
-
-    # Expect hierarchy
-    top_menu.clear_search
-
-    within(top_menu.search_results) do
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: 'Plain project')
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: '<strong>foobar</strong>')
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: '» Plain other project')
-    end
-
-    # Show hierarchy of project
-    top_menu.search 'Plain other project'
-
-    within(top_menu.search_results) do
-      expect(page).to have_selector('.ui-state-disabled .ui-menu-item-wrapper', text: '<strong>foobar</strong>')
-      expect(page).to have_selector('.ui-menu-item-wrapper.ui-state-active', text: '» Plain other project')
-    end
-
-    # find terms at the end of project names
-    top_menu.search 'END'
-    within(top_menu.search_results) do
-      expect(page).to have_selector(
-        '.ui-menu-item-wrapper',
-        text: 'Very long project name with term at the END'
-      )
-    end
-
-    # Find literal matches exclusively if present
-    top_menu.search 'INK15'
-    within(top_menu.search_results) do
-      expect(page).to have_selector('.ui-menu-item-wrapper', text: 'INK15 - Bar')
-      expect(page).to have_no_selector('.ui-menu-item-wrapper', text: 'INK14 - Foo')
-      expect(page).to have_no_selector('.ui-menu-item-wrapper', text: 'INK16 - Baz')
-    end
-
-    # Visit a project
-    top_menu.search_and_select '<strong'
     top_menu.expect_current_project project2.name
+  end
 
-    # Keeps the current module
-    visit project_news_index_path(project2)
-    expect(page).to have_selector('.news-menu-item.selected')
+  it "nests projects below their nearest visible ancestor" do
+    visible_grandparent = create(:project, name: "Visible Grandparent", members: { user => role })
+    invisible_parent = create(:private_project, name: "Invisible Parent", parent: visible_grandparent)
+    visible_grandchild = create(:project,
+                                name: "Visible Grandchild",
+                                parent: invisible_parent,
+                                members: { user => role })
 
-    top_menu.toggle
-    top_menu.expect_open
-    top_menu.search_and_select 'Plain project'
+    retry_block do
+      top_menu.toggle unless top_menu.open?
+      top_menu.expect_open
 
-    expect(current_path).to eq(project_news_index_path(project))
-    expect(page).to have_selector('.news-menu-item.selected')
+      top_menu.expect_result visible_grandparent.name
+      top_menu.expect_no_result invisible_parent.name
+    end
+
+    top_menu.expand_node_for visible_grandparent.name
+    top_menu.expect_no_result invisible_parent.name
+    top_menu.expect_item_with_hierarchy_level hierarchy_level: 2,
+                                              item_name: visible_grandchild.name
+  end
+
+  it "displays workspace type badges for portfolios and programs" do
+    retry_block do
+      top_menu.toggle unless top_menu.open?
+      top_menu.expect_open
+
+      top_menu.expect_result portfolio.name, workspace_badge: "Portfolio"
+      top_menu.expect_result program.name, workspace_badge: "Program"
+      top_menu.expect_result project.name, workspace_badge: false
+    end
   end
 end

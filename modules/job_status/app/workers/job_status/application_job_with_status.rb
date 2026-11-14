@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,15 +20,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module JobStatus
   module ApplicationJobWithStatus
-    # Delayed jobs can have a status:
-    # Delayed::Job::Status
+    # Background jobs can have a status JobStatus::Status
     # which is related to the job via a reference which is an AR model instance.
     def status_reference
       nil
@@ -56,16 +53,13 @@ module JobStatus
     ##
     # Get the current status object, if any
     def job_status
-      ::JobStatus::Status
-        .find_by(job_id: job_id)
+      ::JobStatus::Status.find_by(job_id:)
     end
 
     ##
     # Update the status code for a given job
     def upsert_status(status:, **args)
-      # Can't use upsert, as we only want to insert the user_id once
-      # and not update it repeatedly
-      resource = ::JobStatus::Status.find_or_initialize_by(job_id: job_id)
+      resource = ::JobStatus::Status.find_or_initialize_by(job_id:)
 
       if resource.new_record?
         resource.user = User.current # needed so `resource.user` works below
@@ -76,10 +70,19 @@ module JobStatus
       # Update properties with the language of the user
       # to ensure things like the title are correct
       OpenProject::LocaleHelper.with_locale_for(resource.user) do
-        resource.attributes = build_status_attributes(args.merge(status: status))
+        resource.attributes = build_status_attributes(args.merge(status:))
       end
 
+      # There is a possible race condition because of unique job_statuses.job_id
+      # Can't use upsert easily, because before updating we need to know user_id
+      # to set proper locale. Probably, it is possible to get it from
+      # a job's payload, then it would be possible to correctly prepare attributes before using upsert.
+      # Therefore, it is up to possible optimization in future. Now the race condition is handled with
+      # handling ActiveRecord::RecordNotUnique and trying again.
       resource.save!
+    rescue ActiveRecord::RecordNotUnique
+      OpenProject.logger.info("Retrying ApplicationJobWithStatus#upsert_status.")
+      retry
     end
 
     protected
@@ -109,8 +112,8 @@ module JobStatus
 
     ##
     # Crafts a payload for a download result
-    def download_payload(path)
-      { download: path }
+    def download_payload(path, mime_type)
+      { download: path, mime_type: }
     end
   end
 end

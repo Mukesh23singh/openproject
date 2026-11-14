@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,49 +20,45 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
 import { Highlighting } from 'core-app/features/work-packages/components/wp-fast-table/builders/highlighting/highlighting.functions';
 import { HighlightableDisplayField } from 'core-app/shared/components/fields/display/field-types/highlightable-display-field.module';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { TimezoneService } from 'core-app/core/datetime/timezone.service';
+import {
+  toDOMString,
+  opAutoDateIconData,
+} from '@openproject/octicons-angular';
+import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 
 export class DateDisplayField extends HighlightableDisplayField {
-  @InjectField() timezoneService:TimezoneService;
+  @LazyInject() timezoneService:TimezoneService;
 
-  @InjectField() apiV3Service:APIV3Service;
+  @LazyInject() apiV3Service:ApiV3Service;
 
   public render(element:HTMLElement, displayText:string):void {
     super.render(element, displayText);
 
     // Show scheduling mode in front of the start date field
     if (this.showSchedulingMode()) {
-      const schedulingIcon = document.createElement('span');
-      schedulingIcon.classList.add('icon-context');
-
-      if (this.resource.scheduleManually) {
-        schedulingIcon.classList.add('icon-pin');
-      }
-
-      element.prepend(schedulingIcon);
+      element.prepend(this.schedulingIcon());
     }
 
     // Highlight overdue tasks
-    if (this.shouldHighlight && this.canOverdue) {
-      const diff = this.timezoneService.daysFromToday(this.value);
+    if (this.shouldHighlight && this.canOverdue && !!this.resource.status) {
+      const diff = this.timezoneService.daysFromToday(this.value as string);
 
       this
         .apiV3Service
         .statuses
-        .id(this.resource.status.id)
+        .id((this.resource.status as HalResource).id!)
         .get()
-        .toPromise()
-        .then((status) => {
+        .subscribe((status) => {
           if (!status.isClosed) {
             element.classList.add(Highlighting.overdueDate(diff));
           }
@@ -71,17 +67,30 @@ export class DateDisplayField extends HighlightableDisplayField {
   }
 
   public get canOverdue():boolean {
-    return ['dueDate', 'date'].indexOf(this.name) !== -1;
+    return ['dueDate', 'date'].includes(this.name);
   }
 
   public get valueString() {
     if (this.value) {
-      return this.timezoneService.formattedDate(this.value);
+      return this.timezoneService.formattedDate(this.value as string, this.context.options.dateFormat);
     }
     return '';
   }
 
+  protected schedulingIcon():HTMLElement {
+    const schedulingIcon = document.createElement('span');
+
+    const autoDateIconString:string = toDOMString(
+      opAutoDateIconData,
+      'xsmall',
+      { 'aria-hidden': 'true', class: 'display-field--scheduling-icon' },
+    );
+
+    schedulingIcon.innerHTML = autoDateIconString;
+    return schedulingIcon;
+  }
+
   private showSchedulingMode():boolean {
-    return this.name === 'startDate' || this.name === 'date';
+    return !this.resource.scheduleManually && (this.name === 'startDate' || this.name === 'date');
   }
 }

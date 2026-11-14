@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -39,14 +36,12 @@ module API
           end
 
           def href_callback
-            order = "sortBy=#{to_query [%i(semver_name asc)]}"
+            query_params = "sortBy=#{to_query [%i(name asc)]}&pageSize=-1"
 
             if filter.project.nil?
-              filter_params = [{ sharing: { operator: '=', values: ['system'] } }]
-
-              "#{api_v3_paths.versions}?filters=#{to_query filter_params}&#{order}"
+              "#{api_v3_paths.versions}?#{query_params}"
             else
-              "#{api_v3_paths.versions_by_project(filter.project.id)}?#{order}"
+              "#{api_v3_paths.versions_by_workspace(filter.project.id)}?#{query_params}"
             end
           end
 

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +22,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Meeting search', type: :feature, js: true do
-  include ::Components::NgSelectAutocompleteHelpers
-  let(:project) { FactoryBot.create :project }
-  let(:user) { FactoryBot.create(:user, member_in_project: project, member_through_role: role) }
-  let(:role) { FactoryBot.create :role, permissions: %i(view_meetings view_work_packages) }
+RSpec.describe "Meeting search", :js do
+  include Components::Autocompleter::NgSelectAutocompleteHelpers
 
-  let!(:meeting) { FactoryBot.create(:meeting, project: project) }
+  let(:project) { create(:project) }
+  let(:role) { create(:project_role, permissions: %i(view_meetings view_work_packages)) }
+  let(:user) { create(:user, member_with_roles: { project => role }) }
+
+  let!(:meeting) { create(:meeting, project:) }
+  let!(:agenda_item) { create(:meeting_agenda_item, meeting:) }
+  let(:global_search) { Components::GlobalSearch.new }
 
   before do
     login_as user
@@ -42,14 +46,64 @@ describe 'Meeting search', type: :feature, js: true do
     visit project_path(project)
   end
 
-  context 'global search' do
-    it 'works' do
-      select_autocomplete(page.find('.top-menu-search--input'),
+  context "global search" do
+    it "works with a title" do
+      select_autocomplete(page.find(".top-menu-search--input"),
                           query: "Meeting",
-                          select_text: "In this project ↵")
+                          select_text: "In this project ↵",
+                          wait_dropdown_open: true)
 
-      page.find('[data-qa-tab-id="meetings"]').click
-      expect(page.find('#search-results')).to have_text(meeting.title)
+      global_search.open_tab :meetings
+      expect(page.find_by_id("search-results")).to have_text(meeting.title)
+    end
+
+    it "works with an agenda item title" do
+      select_autocomplete(page.find(".top-menu-search--input"),
+                          query: agenda_item.title,
+                          select_text: "In this project ↵",
+                          wait_dropdown_open: true)
+
+      global_search.open_tab :meetings
+      expect(page.find_by_id("search-results")).to have_text(meeting.title)
+    end
+
+    it "works with an agenda item notes" do
+      select_autocomplete(page.find(".top-menu-search--input"),
+                          query: agenda_item.notes,
+                          select_text: "In this project ↵",
+                          wait_dropdown_open: true)
+
+      global_search.open_tab :meetings
+      expect(page.find_by_id("search-results")).to have_text(meeting.title)
+    end
+  end
+
+  context "when searching from a different project context" do
+    let(:parent_project) { create(:project) }
+    let(:child_project) { create(:project, parent: parent_project) }
+    let(:role) { create(:project_role, permissions: %i(view_meetings view_work_packages)) }
+    let(:user) do
+      create(:user, member_with_roles: { parent_project => role, child_project => role })
+    end
+
+    let!(:meeting) { create(:meeting, project: child_project) }
+    let!(:agenda_item) { create(:meeting_agenda_item, meeting:) }
+
+    before do
+      visit project_path(parent_project)
+    end
+
+    it "opens the meeting in its own project" do
+      select_autocomplete(page.find(".top-menu-search--input"),
+                          query: agenda_item.notes,
+                          select_text: I18n.t("js.global_search.current_project_and_all_descendants"),
+                          wait_dropdown_open: true)
+
+      global_search.open_tab :meetings
+      page.find_by_id("search-results").click_link(meeting.title)
+
+      expect(page).to have_current_path(project_meeting_path(child_project, meeting))
+      expect(page).to have_text(meeting.title)
     end
   end
 end

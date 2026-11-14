@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,74 +22,93 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::RoleFilter, type: :model do
-  let(:role) { FactoryBot.build_stubbed(:role) }
+RSpec.describe Queries::WorkPackages::Filter::RoleFilter do
+  let(:role) { build_stubbed(:project_role) }
+  let(:all_roles_relation) { [role] }
 
-  it_behaves_like 'basic query filter' do
+  def mock_roles_query_chain(return_value)
+    scope = instance_double(ActiveRecord::Relation)
+
+    allow(Role)
+      .to receive(:includes)
+            .and_return(scope)
+
+    allow(scope)
+      .to receive(:where)
+            .and_return(return_value)
+
+    return_value
+  end
+
+  it_behaves_like "basic query filter" do
     let(:type) { :list_optional }
     let(:class_key) { :assigned_to_role }
-    let(:name) { I18n.t('query_fields.assigned_to_role') }
+    let(:name) { I18n.t("query_fields.assigned_to_role") }
 
-    describe '#available?' do
-      it 'is true if any givable role exists' do
-        allow(Role)
-          .to receive_message_chain(:givable, :exists?)
-          .and_return true
+    describe "#available?" do
+      context "when a role with the 'work_package_assigned' permission exists" do
+        before do
+          givable_roles_relation = instance_double(ActiveRecord::Relation)
+          allow(givable_roles_relation)
+            .to receive(:exists?)
+                  .and_return(true)
 
-        expect(instance).to be_available
+          mock_roles_query_chain(givable_roles_relation)
+        end
+
+        it { expect(instance).to be_available }
       end
 
-      it 'is false if no givable role exists' do
-        allow(Group)
-          .to receive_message_chain(:givable, :exists?)
-          .and_return false
+      context "when no role with the 'work_package_assigned' permission exists" do
+        before do
+          givable_roles_relation = instance_double(ActiveRecord::Relation)
+          allow(givable_roles_relation)
+            .to receive(:exists?)
+                  .and_return(false)
 
-        expect(instance).to_not be_available
+          mock_roles_query_chain(givable_roles_relation)
+        end
+
+        it { expect(instance).not_to be_available }
       end
     end
 
-    describe '#allowed_values' do
+    describe "#allowed_values" do
       before do
-        allow(Role)
-          .to receive(:givable)
-          .and_return [role]
+        mock_roles_query_chain([role])
       end
 
-      it 'is an array of role values' do
+      it "is an array of role values" do
         expect(instance.allowed_values)
-          .to match_array [[role.name, role.id.to_s]]
+          .to contain_exactly [role.name, role.id.to_s]
       end
     end
 
-    describe '#ar_object_filter?' do
-      it 'is true' do
+    describe "#ar_object_filter?" do
+      it "is true" do
         expect(instance)
           .to be_ar_object_filter
       end
     end
 
-    describe '#value_objects' do
-      let(:role2) { FactoryBot.build_stubbed(:role) }
+    describe "#value_objects" do
+      let(:other_role) { build_stubbed(:project_role) }
 
       before do
-        allow(Role)
-          .to receive(:givable)
-          .and_return([role, role2])
-
-        instance.values = [role.id.to_s, role2.id.to_s]
+        mock_roles_query_chain([role, other_role])
+        instance.values = [role.id.to_s, other_role.id.to_s]
       end
 
-      it 'returns an array of projects' do
+      it "returns an array of projects" do
         expect(instance.value_objects)
-          .to match_array([role, role2])
+          .to contain_exactly(role, other_role)
       end
     end
   end

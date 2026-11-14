@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,17 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'tempfile'
-require 'zip'
+require "tempfile"
+require "zip"
 
-class BackupJob < ::ApplicationJob
-  queue_with_priority :low
+class BackupJob < ApplicationJob
+  include OpenProject::PostgresEnvironment
+
+  queue_with_priority :above_normal
 
   attr_reader :backup, :user
 
@@ -53,15 +54,7 @@ class BackupJob < ::ApplicationJob
 
     raise e
   ensure
-    remove_files! db_dump_file_name, archive_file_name
-
-    backup.attachments.each(&:destroy) unless success?
-
-    Rails.logger.info(
-      "BackupJob(include_attachments: #{include_attachments}) finished " \
-      "with status #{job_status.status} " \
-      "(dumped: #{dumped?}, archived: #{archived?})"
-    )
+    after_backup
   end
 
   def run_backup!
@@ -71,13 +64,31 @@ class BackupJob < ::ApplicationJob
 
     file_name = create_backup_archive!(
       file_name: archive_file_name,
-      db_dump_file_name: db_dump_file_name
+      db_dump_file_name:
     )
 
-    store_backup file_name, backup: backup, user: user
+    store_backup(file_name, backup:, user:)
     cleanup_previous_backups!
 
-    UserMailer.backup_ready(user).deliver_later
+    notify_backup_ready!
+  end
+
+  def after_backup
+    # Always try to remove the archive path. After a successful fog upload the
+    # file has already been moved into CarrierWave's cache (no-op here). After a
+    # local copy, or if storing the backup failed, this prevents a leftover large tmpfile
+    remove_files! db_dump_file_name, archive_file_name
+    remove_backup_attachment! unless success?
+
+    Rails.logger.info(
+      "BackupJob(include_attachments: #{include_attachments?}) finished " \
+      "with status #{status} " \
+      "(dumped: #{dumped?}, archived: #{archived?})"
+    )
+  end
+
+  def notify_backup_ready!
+    UserMailer.backup_ready(user, missing_attachments_count: missing_attachments.size).deliver_later
   end
 
   def dumped?
@@ -87,6 +98,8 @@ class BackupJob < ::ApplicationJob
   def archived?
     @archived
   end
+
+  delegate :status, to: :job_status
 
   def db_dump_file_name
     @db_dump_file_name ||= tmp_file_name "openproject", ".sql"
@@ -114,51 +127,153 @@ class BackupJob < ::ApplicationJob
 
   def remove_files!(*files)
     Array(files).each do |file|
-      FileUtils.rm file if File.exists? file
+      FileUtils.rm_rf file
     end
+  end
+
+  def remove_backup_attachment!
+    backup.attachments.each(&:destroy)
   end
 
   def store_backup(file_name, backup:, user:)
     File.open(file_name) do |file|
+      file.extend FogFileUploader::MovableSource
+
       call = Attachments::CreateService
-        .bypass_whitelist(user: user)
-        .call(container: backup, filename: file_name, file: file, description: 'OpenProject backup')
+        .bypass_allowlist(user:)
+        .call(container: backup, filename: file_name, file:, description: "OpenProject backup")
 
-      call.on_success do
-        download_url = ::API::V3::Utilities::PathHelper::ApiV3Path.attachment_content(call.result.id)
-
-        upsert_status(
-          status: :success,
-          message: I18n.t('export.succeeded'),
-          payload: download_payload(download_url)
-        )
-      end
+      call.on_success { upsert_success_status! call.result }
 
       call.on_failure do
         upsert_status status: :failure,
-                      message: I18n.t('export.failed', message: call.message)
+                      message: I18n.t("export.failed", message: call.message)
       end
     end
   end
 
+  def upsert_success_status!(result)
+    download_url = ::API::V3::Utilities::PathHelper::ApiV3Path.attachment_content(result.id)
+
+    upsert_status(
+      status: :success,
+      message: I18n.t("export.succeeded"),
+      payload: success_status_payload(download_url)
+    )
+  end
+
+  def success_status_payload(download_url)
+    payload = download_payload(download_url, "application/zip")
+    payload = payload.merge(html: missing_attachments_html) if missing_attachments.any?
+
+    payload
+  end
+
   def create_backup_archive!(file_name:, db_dump_file_name:, attachments: attachments_to_include)
-    Zip::File.open(file_name, Zip::File::CREATE) do |zipfile|
+    Zip::OutputStream.open(file_name) do |zos|
       attachments.each do |attachment|
-        # If an attachment is destroyed on disk, skip i
-        diskfile = attachment.diskfile
-        next unless diskfile
-
-        path = diskfile.path
-
-        zipfile.add "attachment/file/#{attachment.id}/#{attachment[:file]}", path
+        archive_attachment! zos, attachment
       end
 
-      zipfile.get_output_stream("openproject.sql") { |f| f.write File.read(db_dump_file_name) }
+      write_missing_attachments! zos
+      write_to_archive! zos, "openproject.sql", db_dump_file_name
     end
 
     @archived = true
 
-    file_name
+    finalize_archive_file_name! file_name
+  end
+
+  def finalize_archive_file_name!(file_name)
+    return file_name if missing_attachments.empty?
+
+    incomplete_file_name = file_name.sub(/\.zip\z/, "-incomplete.zip")
+    File.rename(file_name, incomplete_file_name)
+
+    @archive_file_name = incomplete_file_name
+  end
+
+  ##
+  # Adds a local file to the given ZIP archive.
+  #
+  # @param zos [Zip::OutputStream] Stream to ZIP archive
+  # @param entry_name [String] Name of the zip entry / file
+  # @param path [String] Path to local file to be written to stream
+  def write_to_archive!(zos, entry_name, path)
+    zos.put_next_entry entry_name
+
+    File.open(path, "rb") do |file|
+      ::Zip::IOExtras.copy_stream zos, file # copies file to zos
+    end
+  end
+
+  ##
+  # Adds an attachment to the archive. The content is fully received into a
+  # tempfile first so a failed download cannot leave a truncated zip entry
+  # (Zip::OutputStream cannot unwrite an already-opened member).
+  #
+  # Peak extra disk is one attachment at a time; the tempfile is unlinked when
+  # this method returns.
+  #
+  # @param zos [Zip::OutputStream] Stream to archive
+  # @param attachment [Attachment] Attachment
+  def archive_attachment!(zos, attachment)
+    # If an attachment is destroyed/missing, skip it
+    return missing_attachments << attachment unless attachment.file.readable?
+
+    archive_readable_attachment!(zos, attachment)
+  rescue StandardError => e
+    log_attachment_error!(attachment, e)
+
+    missing_attachments << attachment
+  end
+
+  def archive_readable_attachment!(zos, attachment)
+    Tempfile.create(["backup-attachment-#{attachment.id}", ".bin"]) do |tmp|
+      tmp.binmode
+      attachment.file.stream_to(tmp)
+      tmp.flush
+
+      write_to_archive! zos, backup_attachment_entry_name(attachment), tmp.path
+    end
+  end
+
+  def backup_attachment_entry_name(attachment)
+    "attachment/file/#{attachment.id}/#{attachment[:file]}"
+  end
+
+  def log_attachment_error!(attachment, error)
+    Rails.logger.error do
+      "Failed to access attachment #{attachment.id} #{attachment.file&.path} for backup: #{error.message}"
+    end
+  end
+
+  def missing_attachments
+    @missing_attachments ||= []
+  end
+
+  def write_missing_attachments!(zos)
+    return if missing_attachments.empty?
+
+    zos.put_next_entry "MISSING_ATTACHMENTS.txt"
+    zos.write missing_attachments_content
+  end
+
+  def missing_attachments_html
+    I18n.t(
+      "backup.missing_attachments_notice_html",
+      file_count: I18n.t(:label_x_files, count: missing_attachments.size)
+    )
+  end
+
+  def missing_attachments_content
+    lines = missing_attachments.map { |attachment| "#{attachment.id}\t#{attachment[:file]}" }
+
+    <<~TEXT
+      The following attachments could not be read and were not included in this backup:
+
+      #{lines.join("\n")}
+    TEXT
   end
 
   def attachments_to_include
@@ -204,47 +319,12 @@ class BackupJob < ::ApplicationJob
     "pg_dump -x -O -f '#{output_file_path}'"
   end
 
-  def success!
-    payload = download_payload(url_helpers.backups_path(target_project))
-
-    if errors.any?
-      payload[:errors] = errors
-    end
-
-    upsert_status status: :success,
-                  message: I18n.t('copy_project.succeeded', target_project_name: target_project.name),
-                  payload: payload
-  end
-
   def failure!(error: nil)
-    msg = I18n.t 'backup.failed'
+    msg = I18n.t "backup.failed"
 
     upsert_status(
       status: :failure,
       message: error.present? ? "#{msg}: #{error}" : msg
     )
-  end
-
-  def pg_env
-    config = ActiveRecord::Base.connection_db_config.configuration_hash
-    entries = pg_env_to_connection_config.map do |key, config_key|
-      value = config[config_key].to_s
-
-      [key.to_s, value] if value.present?
-    end
-
-    entries.compact.to_h
-  end
-
-  ##
-  # Maps the PG env variable name to the key in the AR connection config.
-  def pg_env_to_connection_config
-    {
-      PGHOST: :host,
-      PGPORT: :port,
-      PGUSER: :username,
-      PGPASSWORD: :password,
-      PGDATABASE: :database
-    }
   end
 end

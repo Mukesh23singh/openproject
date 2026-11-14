@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +20,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Grids::Query, type: :model do
-  let(:user) { FactoryBot.create(:user) }
-  let(:other_user) { FactoryBot.create(:user) }
+RSpec.describe Grids::Query, type: :model do
+  let(:user) { create(:user) }
+  let(:other_user) { create(:user) }
   let!(:my_page_grid) do
-    FactoryBot.create(:my_page, user: user)
+    create(:my_page, user:)
   end
   let!(:other_my_page_grid) do
-    FactoryBot.create(:my_page, user: other_user)
+    create(:my_page, user: other_user)
   end
   let(:instance) { described_class.new }
 
@@ -43,32 +42,32 @@ describe Grids::Query, type: :model do
     login_as(user)
   end
 
-  context 'without a filter' do
-    describe '#results' do
-      it 'is the same as getting all the grids visible to the user' do
-        expect(instance.results).to match_array [my_page_grid]
+  context "without a filter" do
+    describe "#results" do
+      it "is the same as getting all the grids visible to the user" do
+        expect(instance.results).to contain_exactly(my_page_grid)
       end
     end
   end
 
-  context 'with a scope filter' do
+  context "with a scope filter" do
     before do
-      instance.where('scope', '=', ['/my/page'])
+      instance.where("scope", "=", ["/my/page"])
     end
 
-    describe '#results' do
-      it 'is the same as handwriting the query' do
-        expect(instance.results).to match_array [my_page_grid]
+    describe "#results" do
+      it "is the same as handwriting the query" do
+        expect(instance.results).to contain_exactly(my_page_grid)
       end
     end
 
-    describe '#valid?' do
-      it 'is true' do
+    describe "#valid?" do
+      it "is true" do
         expect(instance).to be_valid
       end
 
-      it 'is invalid if the filter is invalid' do
-        instance.where('scope', '!', ['/some/other/page'])
+      it "is invalid if the filter is invalid" do
+        instance.where("scope", "!", ["/some/other/page"])
         expect(instance).to be_invalid
       end
     end

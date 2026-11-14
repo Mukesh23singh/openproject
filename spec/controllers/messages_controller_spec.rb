@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,45 +22,35 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe MessagesController, type: :controller, with_settings: { journal_aggregation_time_minutes: 0 } do
-  let(:user) { FactoryBot.create(:user) }
-  let(:project) { FactoryBot.create(:project) }
-  let(:role) { FactoryBot.create(:role) }
-  let!(:member) do
-    FactoryBot.create(:member,
-                      project: project,
-                      principal: user,
-                      roles: [role])
-  end
-  let!(:forum) do
-    FactoryBot.create(:forum,
-                      project: project)
+RSpec.describe MessagesController, with_settings: { journal_aggregation_time_minutes: 0 } do
+  let(:user) { create(:user) }
+  let(:permissions) { [] }
+  let(:project) { create(:project, member_with_permissions: { user => permissions }) }
+  let!(:forum) { create(:forum, project:) }
+
+  let(:filename) { "testfile.txt" }
+  let(:file) { Rails.root.join("spec/fixtures/files", filename).open }
+
+  before do
+    login_as(user)
   end
 
-  let(:filename) { 'testfile.txt' }
-  let(:file) { File.open(Rails.root.join('spec/fixtures/files', filename)) }
+  describe "#show" do
+    context "when the user is allowed to view messages" do
+      let(:permissions) { %i[view_messages] }
+      let!(:message) { create(:message, forum:) }
 
-  before { allow(User).to receive(:current).and_return user }
+      it "renders the show template" do
+        get :show, params: { project_id: project.id, forum_id: forum.id, id: message.id }
 
-  describe '#show' do
-    context 'public project' do
-      let(:user) { User.anonymous }
-      let(:project) { FactoryBot.create(:public_project) }
-      let!(:message) { FactoryBot.create :message, forum: forum }
-
-      it 'renders the show template' do
-        get :show, params: { project_id: project.id, id: message.id }
-
-        expect(response).to be_successful
-        expect(response).to render_template 'messages/show'
+        expect(response).to render_template "messages/show"
         expect(assigns(:topic)).to be_present
         expect(assigns(:forum)).to be_present
         expect(assigns(:project)).to be_present
@@ -66,110 +58,120 @@ describe MessagesController, type: :controller, with_settings: { journal_aggrega
     end
   end
 
-  describe '#update' do
-    let(:message) { FactoryBot.create :message, forum: forum }
-    let(:other_forum) { FactoryBot.create :forum, project: project }
+  describe "#update" do
+    let(:message) { create(:message, forum:) }
+    let(:other_forum) { create(:forum, project:) }
+    let(:permissions) { %i[edit_messages] }
 
-    before do
-      role.add_permission!(:edit_messages) and user.reload
-      put :update, params: { id: message,
-                             message: { forum_id: other_forum } }
-    end
-
-    it 'allows for changing the board' do
-      expect(message.reload.forum).to eq(other_forum)
-    end
-
-    context 'attachment upload' do
-      let!(:message) { FactoryBot.create(:message) }
-      let(:attachment_id) { "attachments_#{message.attachments.first.id}" }
-      # Attachment is already uploaded
-      let(:attachment) { FactoryBot.create(:attachment, container: nil, author: user) }
-      let(:params) do
-        { id: message.id,
-          attachments: { '0' => { 'id' => attachment.id } } }
+    context "when moving it to another forum" do
+      before do
+        put :update, params: { project_id: project.id,
+                               forum_id: forum.id,
+                               id: message,
+                               message: { forum_id: other_forum } }
       end
 
-      describe 'add' do
-        before do
-          allow_any_instance_of(Message).to receive(:editable_by?).and_return(true)
-        end
+      it "allows for changing the board" do
+        expect(message.reload.forum).to eq(other_forum)
+      end
+    end
 
-        context 'journal' do
+    context "when uploading an attachment" do
+      let!(:message) { create(:message, forum: forum) }
+      let(:uncontainered) { create(:attachment, container: nil, author: user) }
+      let(:attachment_id) { "attachments_#{uncontainered.id}" }
+
+      let(:params) do
+        {
+          project_id: project.id,
+          forum_id: forum.id,
+          id: message.id,
+          attachments: { "1" => { id: uncontainered.id } }
+        }
+      end
+
+      describe "when adding an attachment" do
+        let(:permissions) { %i[edit_messages] }
+
+        context "with journaling" do
           before do
-            put :update, params: params
+            put(:update, params:)
 
             message.reload
           end
 
-          describe '#key' do
-            subject { message.journals.last.details }
-
-            it { is_expected.to have_key attachment_id }
+          it "stores attachment details in the journal entry" do
+            expect(message.journals.last.details).to have_key attachment_id
+            expect(message.journals.last.details[attachment_id].last).to eq(uncontainered.filename)
           end
-
-          describe '#value' do
-            subject { message.journals.last.details[attachment_id].last }
-
-            it { is_expected.to eq(attachment.filename) }
-          end
-        end
-      end
-    end
-
-    describe '#remove' do
-      let!(:attachment) do
-        FactoryBot.create(:attachment,
-                          container: message,
-                          author: user,
-                          filename: filename)
-      end
-      let!(:attachable_journal) do
-        FactoryBot.create(:journal_attachable_journal,
-                          journal: message.journals.last,
-                          attachment: attachment,
-                          filename: filename)
-      end
-
-      before do
-        message.reload
-        message.attachments.delete(attachment)
-        message.reload
-      end
-
-      context 'journal' do
-        let(:attachment_id) { "attachments_#{attachment.id}" }
-
-        describe '#key' do
-          subject { message.journals.last.details }
-
-          it { is_expected.to have_key attachment_id }
-        end
-
-        describe '#value' do
-          subject { message.journals.last.details[attachment_id].first }
-
-          it { is_expected.to eq(filename) }
         end
       end
     end
   end
 
-  describe 'quote' do
-    let(:message) { FactoryBot.create :message, content: 'foo', subject: 'subject', forum: forum }
+  describe "quote" do
+    let(:message) { create(:message, content: "foo", subject: "subject", forum:) }
 
-    context 'when allowed' do
-      let(:user) { FactoryBot.create(:admin) }
+    context "when allowed" do
+      let(:user) { create(:admin) }
 
-      before do
-        login_as user
-      end
-
-      it 'renders the content as json' do
-        get :quote, params: { forum_id: forum.id, id: message.id }, format: :json
+      it "renders the content as json" do
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :json
 
         expect(response).to be_successful
-        expect(response.body).to eq '{"subject":"RE: subject","content":" wrote:\n\u003e foo\n\n"}'
+        expect(response.body).to eq '{"content":" wrote:\n\u003e foo\n\n"}'
+      end
+
+      it "escapes HTML in quoted message author" do
+        user.firstname = "Hello"
+        user.lastname = "<b>world</b>"
+        user.save! validate: false
+
+        message.update!(author: user)
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :json
+
+        expect(response).to be_successful
+        expect(response.parsed_body["content"]).to eq "Hello &lt;b&gt;world&lt;/b&gt; wrote:\n> foo\n\n"
+      end
+
+      it "prefixes each line with > for multiline content" do
+        message.update!(content: "line one\nline two\nline three")
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :json
+
+        body = response.parsed_body
+        expect(body["content"]).to include("> line one\n> line two\n> line three")
+      end
+
+      it "replaces <pre> blocks with [...]" do
+        message.update!(content: "before\n<pre>some code\nblock</pre>\nafter")
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :json
+
+        body = response.parsed_body
+        expect(body["content"]).to include("[...]")
+        expect(body["content"]).not_to include("<pre>")
+        expect(body["content"]).not_to include("some code")
+      end
+
+      it "preserves double quotes in content" do
+        message.update!(content: 'she said "hello" to him')
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :json
+
+        expect(response).to be_successful
+        expect(response.parsed_body["content"]).to include('she said "hello" to him')
+      end
+
+      it "handles nil content gracefully" do
+        message.update_columns(content: nil)
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :json
+
+        expect(response).to be_successful
+        expect(response.parsed_body["content"]).to include("> \n\n")
+      end
+
+      it "returns not acceptable for non-JSON requests" do
+        get :quote, params: { project_id: project.id, forum_id: forum.id, id: message.id }, format: :html
+
+        expect(response).to have_http_status(:not_acceptable)
       end
     end
   end

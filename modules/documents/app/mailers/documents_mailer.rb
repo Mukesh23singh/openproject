@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,12 +31,11 @@ class DocumentsMailer < UserMailer
   def document_added(user, document)
     @document = document
 
-    open_project_headers 'Project' => @document.project.identifier,
-                         'Type' => 'Document'
+    open_project_headers "Project" => @document.project.identifier,
+                         "Type" => "Document"
 
-    with_locale_for(user) do
-      subject = "[#{@document.project.name}] #{t(:label_document_new)}: #{@document.title}"
-      mail to: user.mail, subject: subject
+    send_localized_mail(user) do
+      "[#{@document.project.name}] #{t(:label_document_new)}: #{@document.title}"
     end
   end
 
@@ -43,7 +43,7 @@ class DocumentsMailer < UserMailer
     container = attachments.first.container
 
     @added_to     = "#{Document.model_name.human}: #{container.title}"
-    @added_to_url = url_for(controller: '/documents', action: 'show', id: container.id)
+    @added_to_url = url_for(controller: "/documents", action: "show", id: container.id)
 
     super
   end

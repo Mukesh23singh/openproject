@@ -1,0 +1,73 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module PlaceholderUsers
+  class RowComponent < ::OpPrimer::BorderBoxRowComponent
+    def placeholder_user
+      model
+    end
+
+    def name
+      render(Primer::Beta::Link.new(href: edit_placeholder_user_path(placeholder_user), font_weight: :bold)) { h(placeholder_user.name) }
+    end
+
+    def criteria
+      ::Queries::FilterSummary.new(placeholder_user.user_filter).to_s
+    end
+
+    def created_at
+      helpers.format_time placeholder_user.created_at
+    end
+
+    def button_links
+      [delete_link].compact
+    end
+
+    def delete_link
+      if helpers.can_delete_placeholder_user?(placeholder_user, User.current)
+        render(Primer::Beta::IconButton.new(
+                 icon: :trash,
+                 scheme: :danger,
+                 size: :small,
+                 tag: :a,
+                 href: deletion_info_placeholder_user_path(placeholder_user),
+                 "aria-label": I18n.t("placeholder_users.delete_tooltip"),
+                 tooltip_direction: :w,
+                 data: { controller: "async-dialog" }
+               ))
+      else
+        helpers.tooltip_tag I18n.t("placeholder_users.right_to_manage_members_missing"), icon: "icon-help2"
+      end
+    end
+
+    def row_css_class
+      "placeholder_user"
+    end
+  end
+end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,6 +30,7 @@
 class WikiPages::CopyService
   include ::Shared::ServiceContext
   include Contracted
+  include ::Copy::Concerns::CopyAttachments
 
   attr_accessor :user,
                 :model,
@@ -42,24 +42,27 @@ class WikiPages::CopyService
     self.contract_class = contract_class
   end
 
-  def call(send_notifications: true, **attributes)
-    in_context(model, send_notifications) do
-      copy(attributes)
+  def call(send_notifications: nil, copy_attachments: true, **attributes)
+    in_context(model, send_notifications:) do
+      copy(attributes, copy_attachments)
     end
   end
 
   protected
 
-  def copy(attribute_override)
+  def copy(attribute_override, copy_attachments)
     attributes = copied_attributes(attribute_override)
 
     create(attributes)
+      .on_success do |call|
+      copy_wiki_page_attachments(call.result) if copy_attachments
+    end
   end
 
   def create(attributes)
     WikiPages::CreateService
-      .new(user: user,
-           contract_class: contract_class)
+      .new(user:,
+           contract_class:)
       .call(attributes.symbolize_keys)
   end
 
@@ -67,7 +70,6 @@ class WikiPages::CopyService
   def copied_attributes(override)
     model
       .attributes
-      .merge(model.content.attributes)
       .slice(*writable_attributes)
       .merge(override)
   end
@@ -75,5 +77,14 @@ class WikiPages::CopyService
   def writable_attributes
     instantiate_contract(model, user)
       .writable_attributes
+  end
+
+  def copy_wiki_page_attachments(copy)
+    copy_attachments(
+      "WikiPage",
+      from: model,
+      to: copy,
+      references: %i[text]
+    )
   end
 end

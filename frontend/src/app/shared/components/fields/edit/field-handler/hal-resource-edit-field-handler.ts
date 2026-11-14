@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,34 +20,33 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { KeyCodes } from 'core-app/shared/helpers/keyCodes.enum';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { ConfigurationService } from 'core-app/core/config/configuration.service';
-import { Injector } from '@angular/core';
+import { DestroyRef, Injector } from '@angular/core';
+import { runCleanup } from 'core-app/shared/helpers/angular/owned-ui-cleanup';
 import { FocusHelperService } from 'core-app/shared/directives/focus/focus-helper';
 import { EditFieldHandler } from 'core-app/shared/components/fields/edit/editing-portal/edit-field-handler';
 import { setPosition } from 'core-app/shared/helpers/set-click-position/set-click-position';
 import { debugLog } from 'core-app/shared/helpers/debug_output';
 import { IFieldSchema } from 'core-app/shared/components/fields/field.base';
-import { Subject } from 'rxjs';
+import { Subject, Observable } from 'rxjs';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { EditForm } from 'core-app/shared/components/fields/edit/edit-form/edit-form';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 
 export class HalResourceEditFieldHandler extends EditFieldHandler {
   // Injections
-  @InjectField() FocusHelper:FocusHelperService;
+  @LazyInject() FocusHelper:FocusHelperService;
 
-  @InjectField() ConfigurationService:ConfigurationService;
+  @LazyInject() ConfigurationService:ConfigurationService;
 
-  @InjectField() I18n!:I18nService;
+  @LazyInject() I18n!:I18nService;
 
   // Subject to fire when user demanded activation
   public $onUserActivate = new Subject<void>();
@@ -55,13 +54,26 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
   // Current errors of the field
   public errors:string[];
 
-  constructor(public injector:Injector,
+  private deactivated = false;
+
+  // Fires when errors are updated, so portals can trigger their own CD
+  private readonly _errorsChanged$ = new Subject<void>();
+  public readonly errorsChanged$:Observable<void> = this._errorsChanged$.asObservable();
+
+  // Fires when handler-derived state such as inFlight changes.
+  private readonly _stateChanged$ = new Subject<void>();
+  public readonly stateChanged$:Observable<void> = this._stateChanged$.asObservable();
+
+  constructor(
+    public injector:Injector,
     public form:EditForm,
     public fieldName:string,
     public schema:IFieldSchema,
     public element:HTMLElement,
     protected pathHelper:PathHelperService,
-    protected withErrors?:string[]) {
+    protected withErrors?:string[],
+    private readonly ownerDestroyRef?:DestroyRef,
+  ) {
     super();
 
     if (withErrors !== undefined) {
@@ -75,9 +87,13 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
   /**
    * Stop this event from propagating out of the edit field context.
    */
-  public stopPropagation(evt:JQuery.TriggeredEvent) {
+  public stopPropagation(evt:Event) {
     evt.stopPropagation();
     return false;
+  }
+
+  public override allowsAutofocus():boolean {
+    return this.form.allowsFieldAutofocus(this.fieldName);
   }
 
   public get inEditMode() {
@@ -89,14 +105,14 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
   }
 
   public focus(setClickOffset?:number) {
-    const target = this.element.querySelector('.inline-edit--field') as HTMLElement;
+    const target = this.element.querySelector<HTMLElement>('.inline-edit--field');
 
     if (!target) {
       debugLog(`Tried to focus on ${this.fieldName}, but element does not (yet) exist.`);
       return;
     }
 
-    // Focus the input
+    this.syncErrorState();
     target.focus();
 
     // Set selection state if input element
@@ -105,23 +121,32 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
     }
   }
 
-  public onFocusOut() {
-    // In case of inline create or erroneous forms: do not save on focus loss
-    // const specialField = this.resource.shouldCloseOnFocusOut(this.fieldName);
-    if (this.resource.subject && this.withErrors && this.withErrors.length === 0) {
-      this.handleUserSubmit();
-    }
-  }
-
   public setErrors(newErrors:string[]) {
     this.errors = newErrors;
-    this.element.classList.toggle('-error', this.isErrorenous);
+    this.syncErrorState();
+  }
+
+  public syncErrorState():void {
+    const erroneous = this.isErrorenous;
+    this.element.classList.toggle('-error', erroneous);
+    this.element.querySelectorAll<HTMLElement>('.inline-edit--field').forEach((field) => {
+      if (erroneous) {
+        field.setAttribute('aria-invalid', 'true');
+      } else {
+        field.removeAttribute('aria-invalid');
+      }
+    });
+    this._errorsChanged$.next();
+  }
+
+  public notifyStateChanged() {
+    this._stateChanged$.next();
   }
 
   /**
    * Handle a user submitting the field (e.g, ng-change)
    */
-  public handleUserSubmit():Promise<any> {
+  public handleUserSubmit():Promise<unknown> {
     this.onBeforeSubmit();
 
     if (this.inFlight || this.form.editMode) {
@@ -130,27 +155,31 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
 
     return this
       .onSubmit()
-      .then(() => this.form.submit());
+      .then(() => this.form.submit(this.fieldName))
+      .then(() => {
+        this.blurActiveField();
+        this.form.onSubmitComplete();
+      });
   }
 
   /**
    * Handle users pressing enter inside an edit mode.
    * Outside an edit mode, the regular save event is captured by handleUserSubmit (submit event).
-   * In an edit mode, we can't derive from a submit event wheteher the user pressed enter
+   * In an edit mode, we can't derive from a submit event whether the user pressed enter
    * (and on what field he did that).
    */
-  public handleUserKeydown(event:JQuery.TriggeredEvent, onlyCancel = false) {
+  public async handleUserKeydown(event:KeyboardEvent, onlyCancel = false) {
     // Only handle submission in edit mode
     if (this.inEditMode && !onlyCancel) {
-      if (event.which === KeyCodes.ENTER) {
-        this.form.submit();
+      if (event.key === 'Enter') {
+        await this.form.submit(this.fieldName);
         return false;
       }
       return true;
     }
 
     // Escape editing when not in edit mode
-    if (event.which === KeyCodes.ESCAPE) {
+    if (event.key === 'Escape' && !event.defaultPrevented) {
       this.handleUserCancel();
       return false;
     }
@@ -172,17 +201,43 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
    */
   public reset() {
     this.form.change.reset(this.fieldName);
-    this.deactivate(true);
+    if (!this.inEditMode) {
+      this.deactivate(true);
+    }
   }
 
   /**
    * Close the field, resetting it with its display value.
    */
-  public deactivate(focus = false) {
+  public deactivate(focus = false, userEnded = false) {
+    if (this.deactivated) return;
+    this.deactivated = true;
+
+    if (this.ownerDestroyRef?.destroyed) {
+      runCleanup(() => this.blurActiveField());
+      runCleanup(() => { delete this.form.activeFields[this.fieldName]; });
+      runCleanup(() => this.onDestroy.next());
+      runCleanup(() => this.onDestroy.complete());
+      runCleanup(() => this.form.reset(this.fieldName, focus, userEnded, this));
+      return;
+    }
+    this.blurActiveField();
     delete this.form.activeFields[this.fieldName];
     this.onDestroy.next();
     this.onDestroy.complete();
-    this.form.reset(this.fieldName, focus);
+    this.form.reset(this.fieldName, focus, userEnded, this);
+  }
+
+  /**
+   * Safari scrolls around like crazy if you have a focused
+   * field that is about to be destroyed. So we blur it beforehand.
+   * @private
+   */
+  public blurActiveField() {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && this.owns(active)) {
+      active.blur();
+    }
   }
 
   /**
@@ -217,8 +272,10 @@ export class HalResourceEditFieldHandler extends EditFieldHandler {
     if (!this.isErrorenous) {
       return '';
     }
-    return this.I18n.t('js.inplace.errors.messages_on_field',
-      { messages: this.errors.join(' ') });
+    return this.I18n.t(
+      'js.inplace.errors.messages_on_field',
+      { messages: this.errors.join(' ') },
+    );
   }
 
   public previewContext(resource:HalResource) {

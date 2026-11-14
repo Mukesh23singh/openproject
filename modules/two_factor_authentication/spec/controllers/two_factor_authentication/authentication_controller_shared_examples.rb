@@ -1,112 +1,137 @@
-require_relative '../../spec_helper'
+# frozen_string_literal: true
 
-shared_examples 'immediate success login' do
-  context 'with valid credentials' do
-    it "should not yet log in user" do
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require_relative "../../spec_helper"
+
+RSpec.shared_examples "immediate success login" do
+  context "with valid credentials" do
+    it "does not yet log in user" do
       expect(User.current).not_to eq(user)
     end
 
-    it "should not render flash error message" do
+    it "does not render flash error message" do
       expect(flash[:error]).not_to be_present
     end
 
-    it "should render redirect" do
-      expect(response).to redirect_to stage_success_path(stage: :two_factor_authentication, secret: 'asdf')
+    it "renders redirect" do
+      expect(response).to redirect_to stage_success_path(stage: :two_factor_authentication, secret: "asdf")
     end
   end
 end
 
-shared_examples '2FA forced registry' do
-  it "should not log in user" do
+RSpec.shared_examples "2FA forced registry" do
+  it "does not log in user" do
     expect(User.current).not_to eq(user)
   end
 
-  it "should set authenticated user" do
+  it "sets authenticated user" do
     expect(session[:authenticated_user_force_2fa]).to be_truthy
     expect(session[:authenticated_user_id]).to eq user.id
   end
 
-  it "should flash info message" do
-    expect(flash[:info]).not_to be_empty
-  end
-
-  it "should render the login_otp" do
+  it "renders the login_otp" do
     expect(response).to redirect_to new_forced_2fa_device_path
   end
 end
 
-shared_examples '2FA response failure' do |expected_error|
-  it "should not log in user" do
+RSpec.shared_examples "2FA response failure" do |expected_error|
+  it "does not log in user" do
     expect(User.current).not_to eq(user)
   end
 
-  it "should flash error message" do
+  it "flashes error message" do
     expect(flash[:error]).not_to be_empty
     expect(flash[:error]).to include expected_error
   end
 
-  it "should render the login_otp" do
+  it "renders the login_otp" do
     expect(response).to redirect_to stage_failure_path(stage: :two_factor_authentication)
   end
 end
 
-shared_examples '2FA login request failure' do |expected_error|
+RSpec.shared_examples "2FA login request failure" do |expected_error|
   before do
     session[:authenticated_user_id] = user.id
     get :request_otp
   end
 
-  it_behaves_like '2FA response failure', expected_error
+  it_behaves_like "2FA response failure", expected_error
 end
 
-shared_examples '2FA credentials authentication success' do
-  describe 'requesting the token' do
+RSpec.shared_examples "2FA credentials authentication success" do
+  describe "requesting the token" do
     before do
       session[:authenticated_user_id] = user.id
       get :request_otp
     end
 
-    it "should not log in user" do
+    it "does not log in user" do
       expect(User.current).not_to eq(user)
     end
 
-    it "should print the success message" do
+    it "prints the success message" do
       expect(flash[:error]).not_to be_present
     end
 
-    it "should render the login_otp" do
-      expect(response).to render_template 'request_otp'
+    it "renders the login_otp" do
+      expect(response).to render_template "request_otp"
     end
   end
 end
 
-shared_examples '2FA login_otp fails without authenticated user' do
-  describe 'follow-up post of the login token without authenticated user' do
+RSpec.shared_examples "2FA login_otp fails without authenticated user" do
+  describe "follow-up post of the login token without authenticated user" do
     before do
       # Assume the user is NOT pending
       session[:authenticated_user_id] = nil
-      post :confirm_otp, params: { otp: 'does not matter' }
+      post :confirm_otp, params: { otp: "does not matter" }
     end
 
-    it "should redirect to login page" do
+    it "redirects to login page" do
       expect(response).to redirect_to stage_failure_path(stage: :two_factor_authentication)
     end
 
-    it "should not log in user" do
+    it "does not log in user" do
       expect(User.current).not_to eq(user)
     end
   end
 end
 
-shared_examples '2FA TOTP request success' do
+RSpec.shared_examples "2FA TOTP request success" do
   # 1FA redirects to login_otp
-  it_behaves_like '2FA credentials authentication success'
+  it_behaves_like "2FA credentials authentication success"
 
   # Cannot post to login_otp without authenticated user session
-  it_behaves_like '2FA login_otp fails without authenticated user'
+  it_behaves_like "2FA login_otp fails without authenticated user"
 
   # Can post to login_otp with pending and token
-  describe 'follow-up post of a login token' do
+  describe "follow-up post of a login token" do
     before do
       # Assume the user is pending
       session[:authenticated_user_id] = user.id
@@ -114,37 +139,39 @@ shared_examples '2FA TOTP request success' do
       post :confirm_otp, params: { otp: token }
     end
 
-    context 'with a valid token' do
+    context "with a valid token" do
       let(:token) { device.totp.now }
-      it_behaves_like 'immediate success login'
+
+      it_behaves_like "immediate success login"
     end
 
-    context 'with an invalid token' do
-      let(:token) { 'bogus' }
-      it_behaves_like '2FA response failure', I18n.t(:notice_account_otp_invalid)
+    context "with an invalid token" do
+      let(:token) { "bogus" }
+
+      it_behaves_like "2FA response failure", I18n.t(:notice_account_otp_invalid)
     end
   end
 end
 
-shared_examples '2FA SMS request success' do
+RSpec.shared_examples "2FA SMS request success" do
   # 1FA redirects to login_otp
-  it_behaves_like '2FA credentials authentication success'
+  it_behaves_like "2FA credentials authentication success"
 
   # Cannot post to login_otp without pending user session
-  it_behaves_like '2FA login_otp fails without authenticated user'
+  it_behaves_like "2FA login_otp fails without authenticated user"
 
-  describe 'follow-up post of a login token' do
-    let(:valid_token) { instance_double(::TwoFactorAuthentication::LoginToken, value: '123456') }
+  describe "follow-up post of a login token" do
+    let(:valid_token) { instance_double(TwoFactorAuthentication::LoginToken, value: "123456") }
 
     before do
       # Assume the user is pending
       session[:authenticated_user_id] = user.id
     end
 
-    context 'with a valid token' do
+    context "with a valid token" do
       before do
         # Return the value upon find
-        expect(::TwoFactorAuthentication::LoginToken)
+        expect(TwoFactorAuthentication::LoginToken)
           .to receive(:find_by_plaintext_value)
           .with(valid_token.value)
           .and_return(valid_token)
@@ -153,29 +180,31 @@ shared_examples '2FA SMS request success' do
         post :confirm_otp, params: { otp: valid_token.value }
       end
 
-      context 'when not expired' do
+      context "when not expired" do
         let(:expired) { false }
-        it_behaves_like 'immediate success login'
+
+        it_behaves_like "immediate success login"
       end
 
-      context 'when expired' do
+      context "when expired" do
         let(:expired) { true }
-        it_behaves_like '2FA response failure', I18n.t(:notice_account_otp_invalid)
+
+        it_behaves_like "2FA response failure", I18n.t(:notice_account_otp_invalid)
       end
     end
 
-    context 'with an invalid token' do
+    context "with an invalid token" do
       before do
         # Return the value upon find
-        expect(::TwoFactorAuthentication::LoginToken)
+        expect(TwoFactorAuthentication::LoginToken)
           .to receive(:find_by_plaintext_value)
-          .with('bogus')
+          .with("bogus")
           .and_return(nil)
 
-        post :confirm_otp, params: { otp: 'bogus' }
+        post :confirm_otp, params: { otp: "bogus" }
       end
 
-      it_behaves_like '2FA response failure', I18n.t(:notice_account_otp_invalid)
+      it_behaves_like "2FA response failure", I18n.t(:notice_account_otp_invalid)
     end
   end
 end

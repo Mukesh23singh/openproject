@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,34 +32,92 @@ module OpenProject
                   :controller_actions,
                   :contract_actions,
                   :project_module,
-                  :dependencies
+                  :dependencies,
+                  :permissible_on
 
-      def initialize(name, hash, options)
+      # @param public [Boolean] when true, the permission is granted to anybody
+      # having at least one role in a project, regardless of the role's
+      # permissions.
+      # @param visible [true, false, Proc] When true, the permission is visible
+      # in the UI. When false, the permission is hidden. It can be dynamic by
+      # using a Proc.
+      def initialize(name,
+                     hash,
+                     permissible_on:,
+                     public: false,
+                     require: nil,
+                     visible: true,
+                     project_module: nil,
+                     contract_actions: [],
+                     grant_to_admin: true,
+                     dependencies: nil)
         @name = name
-        @controller_actions = []
-        @public = options[:public] || false
-        @require = options[:require]
-        @global = options[:global] || false
-        @enabled = options.include?(:enabled) ? options[:enabled] : true
-        @dependencies = Array(options[:dependencies]) || []
-        @project_module = options[:project_module]
-        @contract_actions = options[:contract_actions] || []
-        hash.each do |controller, actions|
-          @controller_actions << if actions.is_a? Array
-                                   actions.map { |action| "#{controller}/#{action}" }
-                                 else
-                                   "#{controller}/#{actions}"
-                                 end
-        end
-        @controller_actions.flatten!
+        @public = public
+        @require = require
+        @permissible_on = Array(permissible_on)
+        @enabled = true
+        @visible = visible
+        @project_module = project_module
+        @contract_actions = contract_actions
+        @grant_to_admin = grant_to_admin
+        @dependencies = Array(dependencies)
+
+        @controller_actions = hash.map do |controller, actions|
+          if actions.is_a? Array
+            actions.map { |action| "#{controller}/#{action}" }
+          else
+            "#{controller}/#{actions}"
+          end
+        end.flatten
       end
 
       def public?
         @public
       end
 
+      def work_package?
+        permissible_on? :work_package
+      end
+
+      def project?
+        permissible_on? :project
+      end
+
       def global?
-        @global
+        permissible_on? :global
+      end
+
+      def project_query?
+        permissible_on? :project_query
+      end
+
+      def permissible_on?(context_type)
+        # Sometimes the context_type passed in is a decorated object.
+        # Most of the times, this would then be an 'EagerLoadingWrapper' instance.
+        # We need to unwrap the object to get the actual object.
+        # Checking for `context_type.is_a?(SimpleDelegator)` fails for unknown reasons.
+        context_type = context_type.__getobj__ if context_type.class.ancestors.include?(SimpleDelegator)
+
+        context_symbol = case context_type
+                         when WorkPackage
+                           :work_package
+                         when Project
+                           :project
+                         when ::ProjectQuery
+                           :project_query
+                         when Symbol
+                           context_type
+                         when nil
+                           :global
+                         else
+                           raise "Unknown context: #{context_type}"
+                         end
+
+        @permissible_on.include?(context_symbol)
+      end
+
+      def grant_to_admin?
+        @grant_to_admin
       end
 
       def require_member?
@@ -74,11 +129,27 @@ module OpenProject
       end
 
       def enabled?
-        if @enabled.respond_to?(:call)
-          @enabled.call
+        @enabled
+      end
+
+      def visible?
+        if @visible.respond_to?(:call)
+          @visible.call
         else
-          @enabled
+          @visible
         end
+      end
+
+      def hidden?
+        !visible?
+      end
+
+      def disable!
+        @enabled = false
+      end
+
+      def enable!
+        @enabled = true
       end
     end
   end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,43 +31,91 @@ module Components
   module WorkPackages
     class DestroyModal
       include Capybara::DSL
+      include Capybara::RSpecMatchers
       include RSpec::Matchers
+      include WaitHelpers
 
-      def container
-        '#wp_destroy_modal'
+      def initialize(bulk_mode: false, dialog_id: "wp-delete-dialog")
+        @bulk_mode = bulk_mode
+        @dialog_id = dialog_id
       end
 
-      def expect_listed(*wps)
-        page.within(container) do
-          if wps.length == 1
-            wp = wps.first
-            expect(page).to have_selector('strong', text: "#{wp.type.name} ##{wp.id} #{wp.subject}")
-          else
-            expect(page).to have_selector('.danger-zone--warning',
-                                          text: 'Are you sure you want to delete the following work packages ?')
-            wps.each do |wp|
-              expect(page).to have_selector('li', text: "##{wp.id} #{wp.subject}")
-            end
+      attr_reader :dialog_id
+
+      def dialog_css_selector
+        "dialog##{dialog_id}"
+      end
+
+      def within_dialog(&)
+        dialog = find(dialog_css_selector)
+        wait_for_size_animation_completion(dialog)
+        within(dialog, &)
+      end
+
+      def expect_open
+        expect(page).to have_css(dialog_css_selector)
+      end
+
+      def expect_listed(*work_packages)
+        within_dialog do
+          work_packages.each do |work_package|
+            expect(page).to have_text(work_package.subject)
           end
         end
       end
 
-      def confirm_children_deletion
-        page.within(container) do
-          check 'confirm-children-deletion'
-        end
-      end
-
       def confirm_deletion
-        page.within(container) do
-          click_button 'Confirm'
+        within_dialog do
+          check "#{dialog_id}-check_box", allow_label_click: true
+          expect(page).to have_checked_field("#{dialog_id}-check_box")
         end
+
+        expect(page).to have_button "Delete permanently", disabled: false
+        click_button "Delete permanently"
       end
 
       def cancel_deletion
-        page.within(container) do
-          click_button 'Cancel'
+        within_dialog do
+          click_button "Cancel"
         end
+      end
+
+      def expect_descendants_choice
+        within_dialog do
+          expect(page).to have_text "Delete all descendants too?"
+        end
+      end
+
+      def expect_cross_project_warning(*projects)
+        within_dialog do
+          projects.each { |project| expect(page).to have_link project.name }
+        end
+      end
+
+      # "Delete this work package and descendants" is preselected, so submitting opens the danger
+      # dialog that previews and confirms the cascade.
+      def confirm_descendants_deletion
+        within_dialog { click_button "Delete" }
+        descendants_dialog.confirm_deletion
+      end
+
+      def confirm_roots_only_deletion
+        within_dialog do
+          choose choice_label("self_only_label"), allow_label_click: true
+          expect(page).to have_checked_field(choice_label("self_only_label"), visible: :all)
+          click_button "Delete"
+        end
+      end
+
+      private
+
+      def descendants_dialog
+        self.class.new(bulk_mode: @bulk_mode, dialog_id: "wp-delete-descendants-dialog")
+      end
+
+      def choice_label(key)
+        scope = @bulk_mode ? "bulk_delete_dialog" : "delete_dialog"
+        I18n.t("work_packages.#{scope}.descendants_choice.#{key}")
       end
     end
   end

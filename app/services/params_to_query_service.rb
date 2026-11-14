@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -46,7 +47,7 @@ class ParamsToQueryService
   private
 
   def new_query
-    query_class.new(user: user)
+    query_class.new(user:)
   end
 
   def apply_filters(query, params)
@@ -54,10 +55,10 @@ class ParamsToQueryService
 
     filters = parse_filters_from_json(params[:filters])
 
-    filters[:attributes].each do |filter_name|
-      query = query.where(filter_name,
-                          filters[:operators][filter_name],
-                          filters[:values][filter_name])
+    filters.each do |filter|
+      query = query.where(filter[:attribute],
+                          filter[:operator],
+                          filter[:values])
     end
 
     query
@@ -94,27 +95,28 @@ class ParamsToQueryService
   #   { /* more filters if needed */}
   # ]
   def parse_filters_from_json(json)
-    filters = JSON.parse(json)
-    operators = {}
-    values = {}
-    filters.each do |filter|
-      attribute = filter.keys.first # there should only be one attribute per filter
-      ar_attribute = convert_attribute attribute, append_id: true
-      operators[ar_attribute] = filter[attribute]['operator']
-      values[ar_attribute] = filter[attribute]['values']
-    end
+    filters = Queries::ParamsParser::APIV3FiltersParser.parse(json)
 
-    {
-      attributes: values.keys,
-      operators: operators,
-      values: values
-    }
+    filters.each do |filter|
+      filter[:attribute] = convert_attribute(filter[:attribute], append_id: true)
+    end
   end
 
   def parse_sorting_from_json(json)
-    JSON.parse(json).map do |(attribute, order)|
+    sorting = JSON.parse(json)
+    raise Queries::ParamsParser::MalformedParameterError.new("sortBy") unless valid_sorting?(sorting)
+
+    sorting.map do |(attribute, order)|
       [convert_attribute(attribute), order]
     end
+  rescue JSON::ParserError, TypeError
+    raise Queries::ParamsParser::MalformedParameterError.new("sortBy")
+  end
+
+  def valid_sorting?(sorting)
+    pairs = sorting.is_a?(Hash) ? sorting.to_a : sorting
+
+    pairs.is_a?(Array) && pairs.all? { it in [String, String] }
   end
 
   def convert_attribute(attribute, append_id: false)
@@ -133,7 +135,9 @@ class ParamsToQueryService
                        else
                          model_name = model.name
 
-                         "::Queries::#{model_name.pluralize}::#{model_name}Query".constantize
+                         # Some queries exist as Queries::Models::ModelQuery others as ModelQuery
+                         "::Queries::#{model_name.pluralize}::#{model_name.demodulize}Query".safe_constantize ||
+                          "::#{model_name.demodulize}Query".constantize
                        end
   end
 end

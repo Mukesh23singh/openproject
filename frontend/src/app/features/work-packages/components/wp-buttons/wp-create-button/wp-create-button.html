@@ -1,15 +1,21 @@
 <div class="wp-create-button">
-  <button class="button -alt-highlight add-work-package"
-          [disabled]="disabled"
-          [attr.aria-label]="text.explanation"
-          opTypesCreateDropdown
-          [projectIdentifier]="projectIdentifier"
-          [stateName]="stateName$ | async"
-          [dropdownActive]="allowed">
-    <op-icon icon-classes="button--icon icon-add"></op-icon>
+  <button
+    class="button -primary add-work-package"
+    type="button"
+    [disabled]="createPaneOpen"
+    [attr.aria-disabled]="allowed === false || null"
+    opTooltip
+    [label]="text.explanation"
+    tooltipWhenTruncated=".button--text"
+    opTypesCreateDropdown
+    [projectIdentifier]="projectIdentifier"
+    [dropdownActive]="allowed"
+    [fullView]="fullView"
+  >
+    <svg plus-icon size="small"/>
     <span class="button--text"
           [textContent]="text.createWithDropdown"
           aria-hidden="true"></span>
-    <op-icon icon-classes="button--icon icon-small icon-pulldown hidden-for-mobile"></op-icon>
+    <svg triangle-down-icon size="small"/>
   </button>
 </div>

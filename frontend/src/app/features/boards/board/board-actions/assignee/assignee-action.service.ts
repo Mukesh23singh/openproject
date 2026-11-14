@@ -1,5 +1,34 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import { Injectable } from '@angular/core';
-import { AssigneeBoardHeaderComponent } from 'core-app/features/boards/board/board-actions/assignee/assignee-board-header.component';
+import {
+  AssigneeBoardHeaderComponent,
+} from 'core-app/features/boards/board/board-actions/assignee/assignee-board-header.component';
 import { CachedBoardActionService } from 'core-app/features/boards/board/board-actions/cached-board-action.service';
 import { Board } from 'core-app/features/boards/board/board';
 import { imagePath } from 'core-app/shared/helpers/images/path-helper';
@@ -10,10 +39,14 @@ import { UserResource } from 'core-app/features/hal/resources/user-resource';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import idFromLink from 'core-app/features/hal/helpers/id-from-link';
 import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
 
 @Injectable()
 export class BoardAssigneeActionService extends CachedBoardActionService {
   filterName = 'assignee';
+
+  resourceName = 'assignee' as const;
 
   text = this.I18n.t('js.boards.board_type.board_type_title.assignee');
 
@@ -25,17 +58,17 @@ export class BoardAssigneeActionService extends CachedBoardActionService {
 
   image = imagePath('board_creation_modal/assignees.svg');
 
-  readonly unassignedUser:any = {
+  readonly unassignedUser = {
     id: null,
     href: null,
     name: this.I18n.t('js.filter.noneElement'),
-  };
+  } as unknown as HalResource;
 
   /**
    * Add a single action query
    */
   addColumnWithActionAttribute(board:Board, value:HalResource):Promise<Board> {
-    const params:any = {
+    const params = {
       name: value.name,
     };
 
@@ -63,17 +96,17 @@ export class BoardAssigneeActionService extends CachedBoardActionService {
   /**
    * Returns the current filter value if any
    * @param query
-   * @returns The loaded action reosurce
+   * @returns The loaded action resource
    */
   getLoadedActionValue(query:QueryResource):Promise<HalResource|undefined> {
     const filter = this.getActionFilter(query);
 
     // Return the special unassigned user
-    if (filter && filter.operator.id === '!*') {
+    if (filter?.operator.id === '!*') {
       return Promise.resolve(this.unassignedUser);
     }
 
-    return super.getLoadedActionValue(query);
+    return Promise.resolve(filter?.values[0] as HalResource);
   }
 
   localizedName = this.I18n.t('js.work_packages.properties.assignee');
@@ -106,16 +139,15 @@ export class BoardAssigneeActionService extends CachedBoardActionService {
       });
   }
 
-  protected loadUncached():Promise<HalResource[]> {
+  protected loadUncached():Observable<HalResource[]> {
     return this
       .apiV3Service
       .projects
       .id(this.currentProject.identifier!)
       .available_assignees
       .get()
-      .toPromise()
-      .then(
-        (collection:CollectionResource<UserResource>) => [this.unassignedUser].concat(collection.elements),
+      .pipe(
+        map((collection:CollectionResource<UserResource>) => [this.unassignedUser].concat(collection.elements)),
       );
   }
 }

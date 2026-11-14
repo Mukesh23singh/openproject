@@ -1,9 +1,8 @@
-require 'rest-client'
+# frozen_string_literal: true
 
-#-- encoding: UTF-8
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -23,92 +22,80 @@ require 'rest-client'
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class RepresentedWebhookJob < WebhookJob
-  include ::OpenProjectErrorHelper
+  attr_reader :resource, :actor
 
-  attr_reader :resource
-
-  def perform(webhook_id, resource, event_name)
+  def perform(webhook_id, resource, event_name, actor: nil)
     @resource = resource
+    @actor = actor
     super(webhook_id, event_name)
 
     return unless accepted_in_project?
 
     body = request_body
     headers = request_headers
-    exception = nil
-    response = nil
 
-    if signature = request_signature(body)
-      headers['X-OP-Signature'] = signature
+    if (signature = request_signature(body))
+      headers["X-OP-Signature"] = signature
     end
 
-    begin
-      response = RestClient.post webhook.url, request_body, headers
-    rescue RestClient::RequestTimeout => e
-      response = e.response
-      exception = e
-    rescue RestClient::Exception => e
-      response = e.response
-      exception = e
-    rescue StandardError => e
-      op_handle_error(e.message, reference: :webhook_job)
-      exception = e
-    end
-
-    ::Webhooks::Log.create(
-      webhook: webhook,
-      event_name: event_name,
-      url: webhook.url,
-      request_headers: headers,
-      request_body: body,
-      response_code: response.try(:code).to_i,
-      response_headers: response.try(:headers),
-      response_body: response.try(:to_s) || exception.try(:message)
-    )
-
-    # We want to re-raise timeout exceptions
-    # but log the request beforehand
-    if exception&.is_a?(RestClient::RequestTimeout)
-      raise exception
-    end
+    ::Webhooks::Outgoing::RequestWebhookService
+      .new(webhook, event_name:, current_user: User.system)
+      .call!(body:, headers:)
   end
 
   def accepted_in_project?
-    webhook.enabled_for_project?(resource.project_id)
+    webhook.enabled_for_project?(project_id)
   end
 
   def request_signature(request_body)
-    if secret = webhook.secret.presence
-      'sha1=' + OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new('sha1'), secret, request_body)
+    if (secret = webhook.secret.presence)
+      "sha1=#{OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new('sha1'), secret, request_body)}"
     end
   end
 
   def request_headers
     {
-      content_type: "application/json",
-      accept: "application/json"
+      "Content-Type": "application/json",
+      Accept: "application/json"
     }
   end
 
-  def payload_key
-    raise NotImplementedError
+  def represented_payload
+    payload_representer_class
+      .create(resource, current_user: User.current, embed_links: true)
   end
 
-  def payload_representer
-    raise NotImplementedError
+  def payload_key
+    raise SubclassResponsibilityError
+  end
+
+  def payload_representer_class
+    raise SubclassResponsibilityError
+  end
+
+  def project_id # rubocop:disable Rails/Delegate
+    resource.project_id
   end
 
   def request_body
-    {
-      :action => event_name,
-      payload_key => payload_representer
-    }.to_json
+    # to_json needs to be called within the system user block in order to
+    # have all the custom field visibility permissions set up correctly.
+    User.system.run_given do
+      payload = { action: event_name, payload_key => represented_payload }
+      payload[:actor] = actor_payload if actor
+      payload.to_json
+    end
+  end
+
+  def actor_payload
+    return nil unless actor
+
+    ::API::V3::Users::UserRepresenter.create(actor, current_user: User.current)
   end
 end

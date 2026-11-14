@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,13 +33,20 @@ module Type::Attributes
   EXCLUDED = %w[_type
                 _dependencies
                 attribute_groups
-                links parent_id
-                parent
-                description
-                schedule_manually
                 derived_start_date
                 derived_due_date
-                derived_estimated_time].freeze
+                derived_estimated_time
+                derived_remaining_time
+                derived_percentage_done
+                ignore_non_working_days
+                duration
+                description
+                links
+                parent_id
+                parent
+                readonly
+                schedule_manually
+                version].freeze
 
   included do
     # Allow plugins to define constraints
@@ -68,23 +74,24 @@ module Type::Attributes
     #
     # E.g.
     #
-    #   ::Type.work_package_form_attributes['author'][:required] # => true
+    #   ::TypeVariant.work_package_form_attributes['author'][:required] # => true
     #
     # @return [Hash{String => Hash}] Map from attribute names to options.
     def all_work_package_form_attributes(merge_date: false)
       wp_cf_cache_parts = RequestStore.fetch(:wp_cf_max_updated_at_and_count) do
-        WorkPackageCustomField.pluck(Arel.sql('max(updated_at), count(id)')).flatten
+        WorkPackageCustomField.pluck(Arel.sql("max(updated_at), count(id)")).flatten
       end
 
-      OpenProject::Cache.fetch('all_work_package_form_attributes',
-                               *wp_cf_cache_parts,
-                               merge_date) do
+      OpenProject::Cache.fetch_request_cached("all_work_package_form_attributes",
+                                              *wp_cf_cache_parts,
+                                              EXCLUDED.length,
+                                              merge_date) do
         calculate_all_work_package_form_attributes(merge_date)
       end
     end
 
     def translated_work_package_form_attributes(merge_date: false)
-      all_work_package_form_attributes(merge_date: merge_date)
+      all_work_package_form_attributes(merge_date:)
         .each_with_object({}) do |(k, v), hash|
         hash[k] = translated_attribute_name(k, v)
       end
@@ -124,47 +131,48 @@ module Type::Attributes
 
       definitions.keys
                  .reject { |key| skipped_attribute?(key, definitions[key]) }
-                 .map { |key| [key, JSON::parse(definitions[key].to_json)] }.to_h
+                 .index_with { |key| JSON::parse(definitions[key].to_json) }
     end
 
     def skipped_attribute?(key, definition)
       # We always want to include the priority even if its required
-      return false if key == 'priority'
+      return false if key == "priority"
 
       EXCLUDED.include?(key) || definition[:required]
     end
 
     def merge_date_for_form_attributes(attributes)
-      attributes['date'] = { required: false, has_default: false }
-      attributes.delete 'due_date'
-      attributes.delete 'start_date'
+      attributes["date"] = { required: false, has_default: false }
+      attributes.delete "due_date"
+      attributes.delete "start_date"
     end
 
     def add_custom_fields_to_form_attributes(attributes)
-      WorkPackageCustomField.includes(:custom_options).all.each do |field|
-        attributes["custom_field_#{field.id}"] = {
+      WorkPackageCustomField.includes(:custom_options).find_each do |field|
+        attributes[field.attribute_name] = {
           required: field.is_required,
           has_default: field.default_value.present?,
           is_cf: true,
-          display_name: field.name
+          display_name: field.name,
+          field_format: field.field_format
         }
       end
     end
 
     def attr_i18n_key(name)
-      if name == 'percentage_done'
-        'done_ratio'
+      if name == "percentage_done"
+        "done_ratio"
       else
         name
       end
     end
 
     def attr_translate(name)
-      if name == 'date'
-        I18n.t('label_date')
+      if name == "date"
+        I18n.t("label_date")
       else
         key = attr_i18n_key(name)
-        I18n.t("activerecord.attributes.work_package.#{key}", fallback: false, default: '')
+        I18n.t("activerecord.attributes.work_package.#{key}", fallback: false, default: "")
           .presence || I18n.t("attributes.#{key}")
       end
     end
@@ -173,7 +181,7 @@ module Type::Attributes
   ##
   # Get all applicable work package attributes
   def work_package_attributes(merge_date: true)
-    all_attributes = self.class.all_work_package_form_attributes(merge_date: merge_date)
+    all_attributes = self.class.all_work_package_form_attributes(merge_date:)
 
     # Reject those attributes that are not available for this type.
     all_attributes.select { |key, _| passes_attribute_constraint? key }
@@ -185,14 +193,9 @@ module Type::Attributes
   # If a project context is given, that context is passed
   # to the constraint validator.
   def passes_attribute_constraint?(attribute, project: nil)
-    # Check custom field constraints
-    if CustomField.custom_field_attribute?(attribute) && !project.nil?
-      return custom_field_in_project?(attribute, project)
-    end
-
     # Check other constraints (none in the core, but costs/backlogs adds constraints)
     constraint = attribute_constraints[attribute.to_sym]
-    constraint.nil? || constraint.call(self, project: project)
+    constraint.nil? || constraint.call(self, project:)
   end
 
   ##
@@ -204,9 +207,14 @@ module Type::Attributes
   ##
   # Returns whether the custom field is active in the given project.
   def custom_field_in_project?(attribute, project)
-    project
-      .all_work_package_custom_fields.pluck(:id)
-      .map { |id| "custom_field_#{id}" }
+    custom_fields_in_project = RequestStore.fetch(:"custom_field_in_project_#{project.id}") do
+      project
+        .all_work_package_custom_fields
+        .pluck(:id)
+        .map { |id| "custom_field_#{id}" }
+    end
+
+    custom_fields_in_project
       .include? attribute
   end
 end

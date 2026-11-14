@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -47,6 +44,17 @@ module API
     # sense in different contexts.
     class PropertyNameConverter
       class << self
+        def from_ar_name_with_aliases(attribute, ar_name_aliases = {})
+          normalized_attribute = attribute.to_s
+          normalized_aliases = ar_name_aliases.transform_keys(&:to_s)
+
+          if normalized_aliases.key?(normalized_attribute)
+            normalized_attribute = normalized_aliases[normalized_attribute]
+          end
+
+          from_ar_name(normalized_attribute)
+        end
+
         # Converts the attribute name as referred to by ActiveRecord to a corresponding API-conform
         # attribute name:
         #  * camelCasing the attribute name
@@ -66,9 +74,9 @@ module API
         # Converts the attribute name as referred to by the APIv3 to the source name of the attribute
         # in ActiveRecord. For that to work properly, an instance of the correct AR-class needs
         # to be passed as context.
-        def to_ar_name(attribute, context:, refer_to_ids: false)
+        def to_ar_name(attribute, context:, refer_to_ids: false, collapse_cf_name: true)
           attribute = underscore_attribute attribute.to_s.underscore
-          attribute = collapse_custom_field_name(attribute)
+          attribute = collapse_custom_field_name(attribute) if collapse_cf_name
 
           special_conversion = Constants::ARToAPIConversions.api_to_ar_conversions[attribute]
 
@@ -124,10 +132,10 @@ module API
         # expands short custom field column names to be represented in their long form
         # (e.g. cf_1 -> custom_field_1)
         def expand_custom_field_name(attribute)
-          match = attribute.match /\Acf_(?<id>\d+)\z/
+          custom_field_id = CustomField.id_from_column_name(attribute)
 
-          if match
-            "custom_field_#{match[:id]}"
+          if custom_field_id
+            "custom_field_#{custom_field_id}"
           else
             attribute
           end
@@ -136,10 +144,10 @@ module API
         # collapses long custom field column names to be represented in their short form
         # (e.g. custom_field_1 -> cf_1)
         def collapse_custom_field_name(attribute)
-          match = attribute.match /\Acustom_field_(?<id>\d+)\z/
+          custom_field_id = CustomField.id_from_attribute_name(attribute)
 
-          if match
-            "cf_#{match[:id]}"
+          if custom_field_id
+            "cf_#{custom_field_id}"
           else
             attribute
           end

@@ -1,10 +1,18 @@
-@import "src/assets/sass/helpers"
+@import "helpers"
 
 .global-search
   flex-grow: 1
 
-  @media screen and (max-width: 679px)
+  @media screen and (max-width: $breakpoint-md)
     display: none
+
+  &--input[type="text"]
+    // Uppercase letters with accents like Ü and Â would get cut off
+    line-height: 20px
+    padding-left: 25px !important
+
+    @media screen and (max-width: $breakpoint-md)
+      padding-left: 0 !important
 
   &--option,
   &--option:hover
@@ -16,11 +24,10 @@
     text-decoration: none
     display: flex
 
-  &--option-meta
-    display: flex
-    flex-direction: column
-    flex-grow: 1
-    overflow: hidden
+    .op-autocompleter--wp-wrapper
+      flex-grow: 1
+      overflow: hidden
+      padding: 0
 
   &--search-term
     flex-grow: 1
@@ -28,8 +35,8 @@
   &--project-scope
     flex-grow: 0
     flex-shrink: 1
-    border: 1px solid var(--button--border-color)
-    font-size: 13px
+    border: 1px solid var(--button-default-borderColor-rest)
+    font-size: var(--text-body-size-small)
     background: var(--button--background-color)
     border-radius: 2px
     padding: 0 4px
@@ -39,34 +46,3 @@
     margin-right: 5px
     // Principal has a rounded avatar, it feels better aligned if moved a little over the line
     margin-left: -5px
-
-  &--wp-content
-    display: grid
-    grid-template-columns: 50% 1fr auto
-    grid-template-areas: "project idlink status"
-    font-size: 0.8rem
-    padding: 5px 0 5px 0px
-
-  &--wp-project
-    grid-area: project
-    @include text-shortener
-
-  &--wp-id
-    grid-area: idlink
-    place-self: right
-    font-style: italic
-    color: var(--gray-dark)
-    font-size: 13px
-    white-space: nowrap
-
-  &--wp-status
-    grid-area: status
-    overflow: hidden
-    font-style: italic
-
-  &--wp-subject
-    font-weight: bold
-    display: inline-block
-    overflow: hidden
-    white-space: nowrap
-    text-overflow: ellipsis

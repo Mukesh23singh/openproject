@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,30 +33,86 @@ class Queries::WorkPackages::Filter::TypeaheadFilter <
     :search
   end
 
+  def joins
+    %i[type status]
+  end
+
   def where
     parts = values.map(&:split).flatten
 
-    parts.map do |part|
-      conditions = [subject_condition(part),
-                    project_name_condition(part)]
+    parts.map { |part| "(#{conditions_for(part).join(' OR ')})" }.join(" AND ")
+  end
 
-      if (match = part.match(/^#?(\d+)$/))
-        conditions << id_condition(match[1])
-      end
+  def conditions_for(part) # rubocop:disable Metrics/AbcSize
+    conditions = [subject_condition(part),
+                  project_name_condition(part),
+                  type_name_condition(part),
+                  status_condition(part)]
 
-      "(#{conditions.join(' OR ')})"
-    end.join(' AND ')
+    if (match = part.match(/\A(#)?(#{Projects::Identifier::SEMANTIC_FORMAT.source}-?\d*)\z/i))
+      conditions << work_package_identifier_condition(hash_prefixed: match[1].present?, search_term: match[2])
+    end
+
+    if (match = part.match(/\A(#)?(\d+)\z/))
+      conditions << id_or_sequence_number_condition(hash_prefixed: match[1].present?, search_term: match[2])
+    end
+
+    conditions.compact
   end
 
   def subject_condition(string)
-    Queries::Operators::Contains.sql_for_field([string], WorkPackage.table_name, 'subject')
+    "#{WorkPackage.table_name}.id IN (SELECT id FROM #{WorkPackage.table_name} " \
+      "WHERE #{Queries::Operators::Contains.sql_for_field([string], WorkPackage.table_name, 'subject')})"
   end
 
   def project_name_condition(string)
-    Queries::Operators::Contains.sql_for_field([string], Project.table_name, 'name')
+    Queries::Operators::Contains.sql_for_field([string], Project.table_name, "name")
+  end
+
+  def type_name_condition(string)
+    Queries::Operators::Contains.sql_for_field([string], Type.table_name, "name")
+  end
+
+  def status_condition(string)
+    search_term = string.downcase
+
+    # Check if the search string matches translated meta statuses
+    if Status.human_attribute_name("category.to_do").downcase.match(search_term)
+      "#{Status.table_name}.category = 'to_do'"
+    elsif Status.human_attribute_name("category.in_progress").downcase.match(search_term)
+      "#{Status.table_name}.category = 'in_progress'"
+    elsif Status.human_attribute_name("category.closed").downcase.match(search_term)
+      "#{Status.table_name}.category = 'closed'"
+    else
+      # Match statuses by name
+      Queries::Operators::Contains.sql_for_field([string], Status.table_name, "name")
+    end
+  end
+
+  def work_package_identifier_condition(hash_prefixed:, search_term:)
+    return unless Setting::WorkPackageIdentifier.semantic? || hash_prefixed
+
+    alias_condition = Queries::Operators::StartsWith.sql_for_field(
+      [search_term], WorkPackageSemanticAlias.table_name, "identifier"
+    )
+    "#{WorkPackage.table_name}.id IN " \
+      "(SELECT work_package_id FROM #{WorkPackageSemanticAlias.table_name} WHERE #{alias_condition})"
+  end
+
+  def id_or_sequence_number_condition(hash_prefixed:, search_term:)
+    if Setting::WorkPackageIdentifier.classic? || hash_prefixed
+      id_condition(search_term)
+    else
+      sequence_number_condition(search_term)
+    end
   end
 
   def id_condition(string)
     "#{WorkPackage.table_name}.id::varchar(20) LIKE '%#{string}%'"
+  end
+
+  def sequence_number_condition(string)
+    "#{WorkPackage.table_name}.id IN " \
+      "(SELECT id FROM #{WorkPackage.table_name} WHERE sequence_number = #{string})"
   end
 end

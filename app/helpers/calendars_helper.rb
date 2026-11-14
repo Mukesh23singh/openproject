@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -37,7 +36,7 @@ module CalendarsHelper
   # @return [String] link to the calendar
   def link_to_previous_month(year, month, options = {})
     target_date = Date.new(year, month, 1) - 1.month
-    link_to_month(target_date, options.merge(class: 'navigate-left',
+    link_to_month(target_date, options.merge(class: "navigate-left",
                                              display_year: target_date.year != year))
   end
 
@@ -48,7 +47,7 @@ module CalendarsHelper
   # @return [String] link to the calendar
   def link_to_next_month(year, month, options = {})
     target_date = Date.new(year, month, 1) + 1.month
-    link_to_month(target_date, options.merge(class: 'navigate-right',
+    link_to_month(target_date, options.merge(class: "navigate-right",
                                              display_year: target_date.year != year))
   end
 
@@ -59,7 +58,7 @@ module CalendarsHelper
   # @return [String] link to the calendar
   def link_to_month(date_to_show, options = {})
     date = date_to_show.to_date
-    name = ::I18n.l date, format: options.delete(:display_year) ? '%B %Y' : '%B'
+    name = ::I18n.l date, format: options.delete(:display_year) ? "%B %Y" : "%B"
 
     merged_params = permitted_params
                     .calendar_filter

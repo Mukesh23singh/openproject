@@ -1,0 +1,527 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+module Import
+  class JiraClient
+    class Error < StandardError
+      def retryable? = false
+    end
+
+    class ConnectionError < Error; end
+
+    class UnreachableError < ConnectionError
+      def retryable? = true
+    end
+
+    class SsrfError < ConnectionError; end
+
+    class ParseError < Error; end
+
+    class ApiError < Error
+      attr_reader :status, :response_body, :response_headers
+
+      SAFE_RESPONSE_HEADERS = %w[
+        content-type
+        content-length
+        content-encoding
+        content-language
+        content-disposition
+        date
+        last-modified
+        etag
+        cache-control
+        expires
+        location
+        retry-after
+        server
+        x-request-id
+        x-runtime
+        x-ratelimit-limit
+        x-ratelimit-remaining
+        x-ratelimit-reset
+      ].freeze
+
+      def initialize(message, status:, response_body:, response_headers:)
+        super(message)
+        @status = status
+        # Net::HTTP returns bodies as BINARY, whatever charset the response declares.
+        @response_body = response_body.to_s.dup.force_encoding(Encoding::UTF_8).scrub
+        @response_headers = response_headers.slice(*SAFE_RESPONSE_HEADERS)
+      end
+
+      def to_s
+        "#{super}. STATUS: #{@status} RESPONSE_BODY: #{@response_body} RESPONSE_HEADERS: #{@response_headers}"
+      end
+
+      def retryable?
+        status == 401 || status == 429 || status >= 500
+      end
+    end
+
+    # Raised when this Jira version does not provide the requested REST path at all, so we
+    # can fall back to another route instead of failing the import.
+    class UnsupportedEndpointError < Error; end
+
+    CONNECTION_ERRORS = [SsrfFilter::Error, SocketError, Errno::ECONNREFUSED, Errno::EHOSTUNREACH,
+                         OpenSSL::SSL::SSLError, Timeout::Error].freeze
+
+    HTTP_OPTIONS = {
+      open_timeout: 30,
+      read_timeout: 30
+    }.freeze
+
+    UNSUPPORTED_ENDPOINT_STATUSES = [404, 405].freeze
+    # Jira answers every Agile route with 403 when the Jira Software license is missing or expired.
+    AGILE_UNSUPPORTED_ENDPOINT_STATUSES = [403, 404, 405].freeze
+
+    # Jira caps every Agile API page at 50 values, whatever maxResults asks for.
+    AGILE_PAGE_SIZE = 50
+    AGILE_PAGE_LIMIT = 1_000
+
+    CUSTOM_FIELD_OPTIONS_PAGE_SIZE = 10_000
+    CUSTOM_FIELD_OPTIONS_PAGE_LIMIT = 100
+
+    # rubocop:disable-next Metrics/AbcSize
+    def initialize(url:,
+                   auth_method: "bearer",
+                   personal_access_token: nil,
+                   basic_auth_username: nil,
+                   basic_auth_password: nil)
+      auth_header = case auth_method
+                    when "bearer"
+                      raise Error.new(I18n.t(:"admin.jira.test.personal_access_token_invalid")) if personal_access_token.blank?
+
+                      "Bearer #{personal_access_token}"
+                    when "basic"
+                      raise Error.new(I18n.t(:"admin.jira.test.basic_auth_username_invalid")) if basic_auth_username.blank?
+                      raise Error.new(I18n.t(:"admin.jira.test.basic_auth_password_invalid")) if basic_auth_password.blank?
+
+                      "Basic #{Base64.strict_encode64("#{basic_auth_username}:#{basic_auth_password}")}"
+                    else
+                      raise Error.new(I18n.t(:"admin.jira.api_client.unknown_auth_method"))
+                    end
+
+      @url = url.chomp("/")
+      @headers = {
+        "Accept" => "application/json",
+        "Authorization" => auth_header
+      }
+    end
+
+    def mypermissions
+      get("/rest/api/2/mypermissions")
+    end
+
+    def administrator?
+      mypermissions.dig("permissions", "ADMINISTER", "havePermission") == true
+    end
+
+    def index_condition_summary
+      get("/rest/api/2/index/summary")
+    end
+
+    def server_info
+      get("/rest/api/2/serverInfo")
+    end
+
+    def applicationrole
+      get("/rest/api/2/applicationrole")
+    end
+
+    def all_cluster_nodes
+      get("/rest/api/2/cluster/nodes")
+    end
+
+    def issue(issue_id, fields: "*all", expand: nil)
+      get("/rest/api/2/issue/#{issue_id}", params: { fields:, expand: }.compact)
+    end
+
+    def issue_watchers(issue_id_or_key)
+      get("/rest/api/2/issue/#{issue_id_or_key}/watchers")
+    end
+
+    def issues(jql: nil, start_at: 0, max_results: 100, fields: "*all", expand: "changelog")
+      get("/rest/api/2/search", params:
+        {
+          jql:,
+          startAt: start_at,
+          maxResults: max_results,
+          fields:,
+          expand:
+        })
+    end
+
+    def issues_count(jql: nil)
+      issues(jql:, max_results: 0, fields: "id")["total"]
+    end
+
+    def projects(expand = "description,projectKeys")
+      get("/rest/api/2/project", params: { "expand" => expand })
+    end
+
+    def project_types
+      get("/rest/api/2/project/type")
+    end
+
+    def project_versions(project_id_or_key:,
+                         start_at: 0,
+                         max_results: 100)
+      get("/rest/api/2/project/#{project_id_or_key}/version",
+          params: {
+            startAt: start_at,
+            maxResults: max_results
+          })
+    end
+
+    def issue_types
+      get("/rest/api/2/issuetype")
+    end
+
+    def issue_types_count
+      paged_total("/rest/api/2/issuetype/page") { issue_types.count }
+    end
+
+    def issue_types_schemes
+      get("/rest/api/2/issuetypescheme")
+    end
+
+    def workflows
+      get("/rest/api/2/workflow")
+    end
+
+    def workflowschemes
+      get("/rest/api/2/workflowscheme")
+    end
+
+    def statuses
+      get("/rest/api/2/status")
+    end
+
+    def statuses_count
+      paged_total("/rest/api/2/status/search") { statuses.count }
+    end
+
+    def resolutions
+      get("/rest/api/2/resolution")
+    end
+
+    def resolutions_count
+      paged_total("/rest/api/2/resolution/page") { resolutions.count }
+    end
+
+    def status_categories
+      get("/rest/api/2/statuscategory")
+    end
+
+    def permissions
+      get("/rest/api/2/permissions")
+    end
+
+    def permission_schemes
+      get("/rest/api/2/permissionschemes")
+    end
+
+    def priorities
+      get("/rest/api/2/priority")
+    end
+
+    def priority_schemes
+      get("/rest/api/2/priorityschemes")
+    end
+
+    def roles
+      get("/rest/api/2/role")
+    end
+
+    def fields
+      get("/rest/api/2/field")
+    end
+
+    # Options of a custom field in the context composed of the given projects and issue types.
+    # Available from Jira DC 9.3, where Atlassian flags it experimental; older versions have no
+    # such path and raise UnsupportedEndpointError.
+    def custom_field_options(custom_field_id, project_ids: nil, issue_type_ids: nil)
+      scope = { project_ids:, issue_type_ids: }
+      body = custom_field_options_request(custom_field_id, **scope)
+      options = Array(body["options"])
+      total = body["total"]&.to_i
+      return options if total && options.size >= total
+
+      paged_custom_field_options(custom_field_id, scope, options, total)
+    end
+
+    def issue_createmeta(project_keys: nil, project_ids: nil, issuetype_ids: nil, expand: "projects.issuetypes.fields")
+      params = { expand: }
+      params[:projectKeys] = Array(project_keys).join(",") if project_keys.present?
+      params[:projectIds] = Array(project_ids).join(",") if project_ids.present?
+      params[:issuetypeIds] = Array(issuetype_ids).join(",") if issuetype_ids.present?
+      get("/rest/api/2/issue/createmeta", params:)
+    end
+
+    # Custom field option discovery for Jira DC < 9.3, which does not serve #custom_field_options.
+    # An edit screen only reports the fields it shows, so its option sets can be incomplete.
+    def issue_editmeta(issue_id_or_key)
+      get("/rest/api/2/issue/#{issue_id_or_key}/editmeta")
+    end
+
+    # Jira returns all the issue's worklogs at once and ignores paging and filter params.
+    def issue_worklogs(issue_id_or_key)
+      get("/rest/api/2/issue/#{issue_id_or_key}/worklog")
+    end
+
+    def users_search(username: ".", start_at: 0, max_results: 50)
+      get("/rest/api/2/user/search", params:
+        {
+          username:,
+          startAt: start_at,
+          maxResults: max_results,
+          includeActive: true,
+          includeInactive: true
+        })
+    end
+
+    def user_by_key(key:)
+      get("/rest/api/2/user", params: { key:, expand: "groups" })
+    end
+
+    def user_by_username(username:)
+      get("/rest/api/2/user", params: { username:, expand: "groups" })
+    end
+
+    def groups(query: "", max_results: 1000)
+      get("/rest/api/2/groups/picker", params: { query:, maxResults: max_results })
+    end
+
+    def group_members(group_name: "jira-software-users", start_at: 0, max_results: 500)
+      get("/rest/api/2/group/member", params: { groupname: group_name, startAt: start_at, maxResults: max_results })
+    end
+
+    def project_statuses(project_id_or_key)
+      get("/rest/api/2/project/#{project_id_or_key}/statuses")
+    end
+
+    def project(project_id_or_key, expand:, properties:)
+      get("/rest/api/2/project/#{project_id_or_key}", params:
+        {
+          expand:,
+          properties:
+        })
+    end
+
+    def boards(project_id_or_key:, start_at: 0, max_results: AGILE_PAGE_SIZE)
+      get_supported("/rest/agile/1.0/board",
+                    params: {
+                      projectKeyOrId: project_id_or_key,
+                      startAt: start_at,
+                      maxResults: max_results
+                    },
+                    unsupported_statuses: AGILE_UNSUPPORTED_ENDPOINT_STATUSES)
+    end
+
+    def board_sprints(board_id:, state: "future,active,closed", start_at: 0, max_results: AGILE_PAGE_SIZE)
+      get_supported("/rest/agile/1.0/board/#{board_id}/sprint",
+                    params: { state:, startAt: start_at, maxResults: max_results },
+                    unsupported_statuses: AGILE_UNSUPPORTED_ENDPOINT_STATUSES)
+    end
+
+    def board_pages(project_id_or_key:, start_at: 0)
+      agile_pages(start_at:) { |page_start_at| boards(project_id_or_key:, start_at: page_start_at) }
+    end
+
+    def board_sprint_pages(board_id:)
+      agile_pages { |start_at| board_sprints(board_id:, start_at:) }
+    end
+
+    def sprint(sprint_id)
+      get_supported("/rest/agile/1.0/sprint/#{sprint_id}", unsupported_statuses: AGILE_UNSUPPORTED_ENDPOINT_STATUSES)
+    end
+
+    ##
+    # Downloads a file from the given URL and saves it to a temporary file.
+    #
+    # The temporary file is automatically deleted after the block completes.
+    # Use the block to process or copy the file contents before it is removed.
+    #
+    # @param content_url [String] The URL to download the attachment from
+    # @param filename [String] The name to use for the temporary file
+    # @yield [File] The temporary file containing the downloaded content
+    # @return [nil]
+    # @raise [ConnectionError] If SSRF protection blocks the request or connection fails
+    # @raise [ApiError] If the server returns a non-success response
+    def download_attachment(content_url, filename)
+      Tempfile.create(filename, binmode: true) do |tempfile|
+        write_attachment(content_url, tempfile)
+        tempfile.rewind
+        yield tempfile
+      end
+
+      nil
+    end
+
+    private
+
+    def agile_pages(start_at: 0)
+      Enumerator.new do |pages|
+        limit_reached = AGILE_PAGE_LIMIT.times do
+          response = yield(start_at)
+          values = Array(response["values"])
+          break if values.empty?
+
+          start_at += values.size
+          pages << [values, response, start_at]
+          break if response["isLast"]
+        end
+        Rails.logger.warn "Stopped paging the Jira Agile API after #{AGILE_PAGE_LIMIT} pages" if limit_reached
+      end
+    end
+
+    def write_attachment(content_url, tempfile)
+      OpenProject::SsrfProtection.get(content_url, headers: @headers, http_options: HTTP_OPTIONS, max_redirects: 0) do |response|
+        case response
+        when Net::HTTPSuccess
+          response.read_body do |chunk|
+            tempfile.write chunk
+          end
+        else
+          status = response.code.to_i
+          raise ApiError.new(I18n.t("admin.jira.client.api_error", status:),
+                             status:,
+                             response_body: response.body,
+                             response_headers: response.to_hash)
+        end
+      end
+    rescue *CONNECTION_ERRORS => e
+      raise connection_error(e)
+    end
+
+    def paged_custom_field_options(custom_field_id, scope, options, total)
+      collected = options.index_by { |option| custom_field_option_key(option) }
+      1.upto(CUSTOM_FIELD_OPTIONS_PAGE_LIMIT) do |page|
+        body = custom_field_options_request(custom_field_id, max_results: CUSTOM_FIELD_OPTIONS_PAGE_SIZE, page:, **scope)
+        added = merge_custom_field_options(collected, Array(body["options"]))
+        break if added.zero? || (total && collected.size >= total)
+      end
+      collected.values
+    end
+
+    def merge_custom_field_options(collected, page_options)
+      size_before = collected.size
+      page_options.each { |option| collected[custom_field_option_key(option)] ||= option }
+      collected.size - size_before
+    end
+
+    def custom_field_option_key(option)
+      option["id"] || option
+    end
+
+    def custom_field_options_request(custom_field_id, project_ids:, issue_type_ids:, max_results: nil, page: nil)
+      get_supported("/rest/api/2/customFields/#{custom_field_id}/options",
+                    params: custom_field_options_params(project_ids:, issue_type_ids:, max_results:, page:))
+    end
+
+    def custom_field_options_params(project_ids:, issue_type_ids:, max_results:, page:)
+      params = {}
+      params[:maxResults] = max_results if max_results
+      params[:page] = page if page
+      params[:projectIds] = Array(project_ids).join(",") if project_ids.present?
+      params[:issueTypeIds] = Array(issue_type_ids).join(",") if issue_type_ids.present?
+      params
+    end
+
+    def paged_total(path)
+      response = get_response(path, params: { maxResults: 0 })
+      if response.is_a?(Net::HTTPSuccess)
+        parse_json(response)["total"]
+      else
+        yield
+      end
+    end
+
+    def get(path, params: {})
+      response = get_response(path, params:)
+      handle_response(response)
+    end
+
+    def get_supported(path, params: {}, unsupported_statuses: UNSUPPORTED_ENDPOINT_STATUSES)
+      response = get_response(path, params:)
+      status = response.code.to_i
+      if unsupported_statuses.include?(status)
+        raise UnsupportedEndpointError, I18n.t("admin.jira.client.unsupported_endpoint", path:, status:)
+      end
+
+      handle_response(response)
+    end
+
+    def get_response(path, params: {})
+      OpenProject::SsrfProtection.get(
+        "#{@url}#{path}",
+        headers: @headers,
+        params:,
+        http_options: HTTP_OPTIONS
+      )
+    rescue *CONNECTION_ERRORS => e
+      raise connection_error(e)
+    end
+
+    def connection_error(error)
+      case error
+      when SsrfFilter::PrivateIPAddress
+        SsrfError.new(I18n.t("admin.jira.client.ssrf_blocked"))
+      when OpenSSL::SSL::SSLError
+        UnreachableError.new(I18n.t("admin.jira.client.ssl_error", message: error.message))
+      when Timeout::Error
+        UnreachableError.new(I18n.t("admin.jira.client.connection_timeout", message: error.message))
+      when SsrfFilter::UnresolvedHostname, SocketError, Errno::ECONNREFUSED, Errno::EHOSTUNREACH
+        UnreachableError.new(I18n.t("admin.jira.client.connection_error", message: error.message))
+      else
+        ConnectionError.new(I18n.t("admin.jira.client.connection_error", message: error.message))
+      end
+    end
+
+    def handle_response(response)
+      status = response.code.to_i
+      if response.is_a?(Net::HTTPSuccess)
+        parse_json(response)
+      else
+        raise ApiError.new(
+          I18n.t("admin.jira.client.#{status}_error", status:, default: :"admin.jira.client.api_error"),
+          status:,
+          response_body: response.body,
+          response_headers: response.to_hash
+        )
+      end
+    end
+
+    def parse_json(response)
+      JSON.parse(response.body)
+    rescue JSON::ParserError => e
+      raise ParseError, I18n.t("admin.jira.client.parse_error", message: e.message)
+    end
+  end
+end

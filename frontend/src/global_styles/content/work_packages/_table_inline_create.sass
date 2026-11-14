@@ -13,33 +13,23 @@
     display: inline-block
     line-height: 1.6
 
-.wp-inline-create--add-link,
-.wp-inline-create--reference-link
-  @include unset-button-styles
-  cursor: pointer
-  color: var(--content-link-color)
-  font-weight: bold
-
-  .icon::before
-    padding-left: 7px
-    padding-right: 10px
-    font-size: 11px
-
-  &:hover
-    color: var(--content-link-hover-active-color)
-    text-decoration: none
-
 .wp-inline-create-row
-  background: #BEF3CA
+  background: var(--display-green-bgColor-muted)
 
   &:hover
-    background: darken(#BEF3CA, 5%) !important
-
-  .inline-edit--display-field:hover
-    border-color: #35c53f
+    background: var(--display-pine-bgColor-muted)
 
 .wp-table--cancel-create-td
   text-align: center !important
+
+.wp-table--cancel-create-host
+  display: flex
+  align-items: center
+
+  .wp-table--cell-container
+    flex: 1 1 auto
+    width: auto
+    min-width: 0
 
 .wp-table--cancel-create-link
   &:before

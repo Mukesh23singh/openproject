@@ -1,0 +1,14 @@
+:root body {
+  --pf-v5-global--primary-color--100: #0F41B5;
+  --pf-v5-global--primary-color--200: #114ACF;
+}
+
+body {
+  background-color: rgb(235, 243, 247);
+}
+
+.pf-v5-c-brand {
+  font-size: 2rem;
+  font-weight: bold;
+  color: #0F41B5;
+}

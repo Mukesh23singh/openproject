@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +20,31 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { TestBed, waitForAsync } from '@angular/core/testing';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
+import { TestBed, } from '@angular/core/testing';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { States } from 'core-app/core/states/states.service';
 
 describe('APIv3Service', () => {
-  let service:APIV3Service;
+  let service:ApiV3Service;
 
-  beforeEach(waitForAsync(() => {
-    // noinspection JSIgnoredPromiseFromCall
-    TestBed.configureTestingModule({
+  beforeEach(async () => {
+    await TestBed.configureTestingModule({
       providers: [
         States,
         PathHelperService,
-        APIV3Service,
+        ApiV3Service,
       ],
-    })
-      .compileComponents()
-      .then(() => {
-        service = TestBed.inject(APIV3Service);
-      });
-  }));
+    }).compileComponents();
+    service = TestBed.inject(ApiV3Service);
+  });
 
-  function encodeParams(object:any) {
+  function encodeParams(object:Record<string, string>) {
     return new URLSearchParams(object).toString();
   }
 
@@ -60,27 +55,24 @@ describe('APIv3Service', () => {
       expect(service.projects.id(projectIdentifier).path).toEqual('/api/v3/projects/majora');
     });
 
-    it('should provide a path to work package query on subject or ID ', () => {
+    it('should provide a path to work package query on subject or ID', () => {
       let params = {
         filters: '[{"typeahead":{"operator":"**","values":["bogus"]}}]',
-        sortBy: '[["updatedAt","desc"]]',
+        sortBy: '[["exactMatch","desc"],["updatedAt","desc"]]',
         offset: '1',
         pageSize: '10',
       };
 
-      expect(
-        service.work_packages.filterByTypeaheadOrId('bogus').path,
-      ).toEqual(`/api/v3/work_packages?${encodeParams(params)}`);
+      expect(service.work_packages.filterByTypeaheadOrId('bogus').path).toEqual(`/api/v3/work_packages?${encodeParams(params)}`);
 
       params = {
         filters: '[{"id":{"operator":"=","values":["1234"]}}]',
-        sortBy: '[["updatedAt","desc"]]',
+        sortBy: '[["exactMatch","desc"],["updatedAt","desc"]]',
         offset: '1',
         pageSize: '10',
       };
-      expect(
-        service.work_packages.filterByTypeaheadOrId('1234', true).path,
-      ).toEqual(`/api/v3/work_packages?${encodeParams(params)}`);
+
+      expect(service.work_packages.filterByTypeaheadOrId('1234', true).path).toEqual(`/api/v3/work_packages?${encodeParams(params)}`);
     });
   });
 });

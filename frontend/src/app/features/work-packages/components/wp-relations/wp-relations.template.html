@@ -1,29 +1,15 @@
-<div class="loading-indicator--location"
-     data-indicator-name="relation-groups">
+<turbo-frame
+  #frameElement
+  [attr.src]="this.turboFrameSrc"
+  id="work-package-relations-tab-content"
+>
+  <op-content-loader viewBox="0 0 100 100">
+    <svg:rect x="0" y="0" width="70" height="5" rx="1" />
 
-  <div class="wp-relations-hierarchy-section"
-       *ngIf="!relationsPresent">
-    <div class="attributes-group--header">
-      <div class="attributes-group--header-container">
-        <h3 class="attributes-group--header-text"
-            [textContent]="text.relations_header">
-        </h3>
-      </div>
-    </div>
-  </div>
+    <svg:rect x="75" y="0" width="25" height="5" rx="1" />
 
+    <svg:rect x="0" y="10" width="100" height="8" rx="1" />
 
-  <div *ngFor="let type of relationGroupKeys; let first = first">
-    <wp-relations-group [header]="type"
-                        [groupByWorkPackageType]="groupByWorkPackageType"
-                        (onToggleGroupBy)="toggleGroupBy()"
-                        [firstGroup]="first"
-                        [relatedWorkPackages]="relationGroups[type]"
-                        [workPackage]="workPackage"></wp-relations-group>
-  </div>
-  <wp-relations-create *ngIf="canAddRelation"
-                       [workPackage]="workPackage">
-  </wp-relations-create>
-
-  <wp-relations-hierarchy [workPackage]="workPackage"></wp-relations-hierarchy>
-</div>
+    <svg:rect x="0" y="25" width="100" height="12" rx="1" />
+  </op-content-loader>
+</turbo-frame>

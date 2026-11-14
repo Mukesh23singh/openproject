@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,77 +22,76 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Revisions resource', type: :request do
+RSpec.describe "API v3 Revisions resource" do
   include Rack::Test::Methods
   include Capybara::RSpecMatchers
   include API::V3::Utilities::PathHelper
 
   let(:revision) do
-    FactoryBot.create(:changeset,
-                      repository: repository,
-                      comments: 'Some commit message',
-                      committer: 'foo bar <foo@example.org>')
+    create(:changeset,
+           repository:,
+           comments: "Some commit message",
+           committer: "foo bar <foo@example.org>")
   end
   let(:repository) do
-    FactoryBot.create(:repository_subversion, project: project)
+    create(:repository_subversion, project:)
   end
   let(:project) do
-    FactoryBot.create(:project, identifier: 'test_project', public: false)
+    create(:project, identifier: "test_project", public: false)
   end
   let(:role) do
-    FactoryBot.create(:role,
-                      permissions: [:view_changesets])
+    create(:project_role,
+           permissions: [:view_changesets])
   end
   let(:current_user) do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
 
-  let(:unauthorized_user) { FactoryBot.create(:user) }
+  let(:unauthorized_user) { create(:user) }
 
-  describe '#get' do
+  describe "#get" do
     let(:get_path) { api_v3_paths.revision revision.id }
 
-    context 'when acting as a user with permission to view revisions' do
-      before(:each) do
+    context "when acting as a user with permission to view revisions" do
+      before do
         allow(User).to receive(:current).and_return current_user
         get get_path
       end
 
-      it 'should respond with 200' do
-        expect(last_response.status).to eq(200)
+      it "responds with 200" do
+        expect(last_response).to have_http_status(:ok)
       end
 
-      describe 'response body' do
+      describe "response body" do
         subject(:response) { last_response.body }
 
-        it 'should respond with revision in HAL+JSON format' do
-          is_expected.to be_json_eql(revision.id.to_json).at_path('id')
+        it "responds with revision in HAL+JSON format" do
+          expect(subject).to be_json_eql(revision.id.to_json).at_path("id")
         end
       end
 
-      context 'requesting nonexistent revision' do
-        let(:get_path) { api_v3_paths.revision 909090 }
+      context "requesting nonexistent revision" do
+        let(:get_path) { api_v3_paths.revision(not_existing_id(Changeset)) }
 
-        it_behaves_like 'not found'
+        it_behaves_like "not found"
       end
     end
 
-    context 'when acting as an user without permission to view work package' do
-      before(:each) do
+    context "when acting as an user without permission to view work package" do
+      before do
         allow(User).to receive(:current).and_return unauthorized_user
         get get_path
       end
 
-      it_behaves_like 'not found'
+      it_behaves_like "not found"
     end
   end
 end

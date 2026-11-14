@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +20,39 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { APIv3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
+import { ApiV3GettableResource } from 'core-app/core/apiv3/paths/apiv3-resource';
 import { QueryResource } from 'core-app/features/hal/resources/query-resource';
-import { APIV3QueryOrder } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-order';
-import { Apiv3QueryForm } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-form';
+import { ApiV3QueryOrder } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-order';
+import { ApiV3QueryForm } from 'core-app/core/apiv3/endpoints/queries/apiv3-query-form';
 import { Observable } from 'rxjs';
 import { QueryFormResource } from 'core-app/features/hal/resources/query-form-resource';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
+import { LazyInject } from 'core-app/shared/helpers/angular/lazy-inject.decorator';
 import { QueryFiltersService } from 'core-app/features/work-packages/components/wp-query/query-filters.service';
 import { HalPayloadHelper } from 'core-app/features/hal/schemas/hal-payload.helper';
 import { PaginationObject } from 'core-app/shared/components/table-pagination/pagination-service';
+import { HTTPClientParamMap } from 'core-app/features/hal/http/http.interfaces';
 
-export class APIv3QueryPaths extends APIv3GettableResource<QueryResource> {
-  @InjectField() private queryFilters:QueryFiltersService;
+export class ApiV3QueryPaths extends ApiV3GettableResource<QueryResource> {
+  @LazyInject() private queryFilters:QueryFiltersService;
 
   // Static paths
-  readonly form = this.subResource('form', Apiv3QueryForm);
+  readonly form = this.subResource('form', ApiV3QueryForm);
 
   // Order path
-  readonly order = new APIV3QueryOrder(this.injector, this.path, 'order');
+  readonly order = new ApiV3QueryOrder(this.injector, this.path, 'order');
 
   /**
    * Stream the response for the given query request
    * @param queryData
    */
-  public parameterised(params:Object):Observable<QueryResource> {
+  public parameterised(params:object):Observable<QueryResource> {
     return this.halResourceService
-      .get<QueryResource>(this.path, params);
+      .get<QueryResource>(this.path, params as HTTPClientParamMap);
   }
 
   /**
@@ -60,7 +60,7 @@ export class APIv3QueryPaths extends APIv3GettableResource<QueryResource> {
    * @param query
    * @param form
    */
-  public patch(payload:QueryResource|Object, form?:QueryFormResource):Observable<QueryResource> {
+  public patch(payload:QueryResource|object, form?:QueryFormResource):Observable<QueryResource> {
     if (payload instanceof QueryResource && form) {
       // Extracting requires having the filter schemas loaded as the dependencies
       this.queryFilters.mapSchemasIntoFilters(payload, form);

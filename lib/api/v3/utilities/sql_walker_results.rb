@@ -1,14 +1,12 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
 #
 # OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
-# Copyright (C) 2006-2017 Jean-Philippe Lang
+# Copyright (C) 2006-2013 Jean-Philippe Lang
 # Copyright (C) 2010-2013 the ChiliProject Team
 #
 # This program is free software; you can redistribute it and/or
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,14 +30,16 @@ module API
     module Utilities
       class SqlWalkerResults
         def initialize(scope, url_query:, self_path: nil, replace_map: {})
-          self.scope = scope
+          self.filter_scope = scope.dup
+          self.projection_scope = scope.dup.distinct(false).reselect("#{scope.model.table_name}.*")
           self.ctes = {}
           self.self_path = self_path
           self.url_query = url_query
           self.replace_map = replace_map
         end
 
-        attr_accessor :scope,
+        attr_accessor :filter_scope,
+                      :projection_scope,
                       :sql,
                       :selects,
                       :ctes,
@@ -54,6 +53,14 @@ module API
 
         def offset
           url_query[:offset]
+        end
+
+        def select?(*path, attribute)
+          selectable = url_query.dig(:select, *path)
+          return false if selectable.nil?
+
+          selectable = selectable.select { |_, v| v.empty? }.keys
+          selectable.include?(attribute) || selectable.include?("*")
         end
       end
     end

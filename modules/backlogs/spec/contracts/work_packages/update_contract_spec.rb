@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,92 +22,109 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
+require_relative "shared_contract_examples"
 
-describe WorkPackages::UpdateContract do
+RSpec.describe WorkPackages::UpdateContract do
   let(:work_package) do
-    FactoryBot.create(:work_package,
-                      done_ratio: 50,
-                      estimated_hours: 6.0,
-                      project: project)
+    build_stubbed(:work_package,
+                  project: work_package_project,
+                  subject: "Some subject",
+                  type: work_package_type,
+                  priority: work_package_priority,
+                  status: work_package_status) do |wp|
+      wp.story_points = work_package_story_points
+      wp.sprint = work_package_sprint
+      wp.extend(OpenProject::ChangedBySystem)
+    end
   end
-  let(:member) { FactoryBot.create(:user, member_in_project: project, member_through_role: role) }
-  let(:project) { FactoryBot.create(:project) }
-  let(:current_user) { member }
+
   let(:permissions) do
     %i[
       view_work_packages
-      view_work_package_watchers
       edit_work_packages
-      add_work_package_watchers
-      delete_work_package_watchers
-      manage_work_package_relations
-      add_work_package_notes
+      manage_sprint_items
+      view_sprints
     ]
   end
-  let(:role) { FactoryBot.create :role, permissions: permissions }
-  let(:changed_values) { [] }
-
-  subject(:contract) { described_class.new(work_package, current_user) }
 
   before do
-    allow(work_package).to receive(:changed).and_return(changed_values)
+    visible_scope = instance_double(ActiveRecord::Relation)
+
+    allow(WorkPackage)
+      .to receive(:visible)
+            .with(user)
+            .and_return(visible_scope)
+    allow(visible_scope)
+      .to receive(:exists?)
+            .with(work_package.id)
+            .and_return(true)
   end
 
-  describe 'story points' do
-    context 'has not changed' do
-      it('is valid') { expect(contract.errors.empty?).to be true }
+  it_behaves_like "work package contract with backlogs extensions" do
+    describe "validations" do
+      context "when setting sprint and lock_version " \
+              "and only having the manage_sprint_items permission but lacking edit_work_packages" do
+        let(:permissions) { %i[view_work_packages manage_sprint_items view_sprints] }
+
+        before do
+          # Reverting the change done in the setup
+          work_package.restore_attributes([:story_points])
+        end
+
+        it_behaves_like "contract is valid"
+      end
+
+      context "when setting the sprint and another property " \
+              "and only having the manage_sprint_items permission but lacking edit_work_packages" do
+        let(:permissions) { %i[view_work_packages manage_sprint_items view_sprints] }
+
+        before do
+          work_package.subject = "Some other subject"
+        end
+
+        it_behaves_like "contract is invalid",
+                        subject: :error_readonly,
+                        story_points: :error_readonly
+      end
+
+      context "when sprint is not assignable but the assignment did not change" do
+        let(:completed_sprint) { build_stubbed(:sprint, status: :completed) }
+        let(:work_package_sprint) { completed_sprint }
+        let(:assignable_sprints) { [] }
+
+        before do
+          # So that the changes look like they came out of the database
+          work_package.clear_changes_information
+        end
+
+        it_behaves_like "contract is valid"
+      end
     end
 
-    context 'has changed' do
-      let(:changed_values) { ['story_points'] }
+    describe "writable_attributes" do
+      context "when the user has only :manage_sprint_items permission but lacks :edit_work_packages" do
+        let(:permissions) { %i[view_work_packages manage_sprint_items view_sprints] }
 
-      it('is valid') { expect(contract.errors.empty?).to be true }
-    end
-  end
-
-  describe 'remaining hours' do
-    context 'is no parent' do
-      before do
-        contract.validate
-      end
-
-      context 'has not changed' do
-        it('is valid') { expect(contract.errors.empty?).to be true }
-      end
-
-      context 'has changed' do
-        let(:changed_values) { ['remaining_hours'] }
-
-        it('is valid') { expect(contract.errors.empty?).to be true }
+        it "includes sprint, backlog_bucket and lock_version", :aggregate_failures do
+          expect(contract.writable_attributes).to include("backlog_bucket", "sprint", "lock_version")
+          expect(contract.writable_attributes).not_to include("story_points", "position")
+        end
       end
     end
 
-    context 'is a parent' do
-      before do
-        child
-        work_package.reload
-        contract.validate
-      end
-      let(:child) do
-        FactoryBot.create(:work_package, parent_id: work_package.id, project: project)
-      end
+    describe ".update_allowed?" do
+      context "with the user having manage_sprint_items" do
+        let(:permissions) { [:manage_sprint_items] }
 
-      context 'has not changed' do
-        it('is valid') { expect(contract.errors.empty?).to be true }
-      end
-
-      context 'has changed' do
-        let(:changed_values) { ['remaining_hours'] }
-
-        it('is invalid') do
-          expect(contract.errors.symbols_for(:remaining_hours)).to match_array([:error_readonly])
+        it "is allowed" do
+          expect(described_class)
+            .to be_update_allowed(user:, work_package:)
         end
       end
     end

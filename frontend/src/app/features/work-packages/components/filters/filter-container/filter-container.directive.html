@@ -1,26 +1,67 @@
-<button
-  class="button -small advanced-filters--toggle"
-  (click)="wpFiltersService.toggleVisibility()"
-  [class.-active]="visible$ | async"
-  *ngIf="showFilterButton"
->
-  <i class="button--icon icon-filter"></i>
-  <span class="button--text" [textContent]="filterButtonText"></span>
-</button>
+@if (showFilterButton) {
+  <button
+    class="button -small advanced-filters--toggle"
+    (click)="wpFiltersService.toggleVisibility()"
+    [class.-active]="visible$ | async"
+    >
+    <i class="button--icon icon-filter"></i>
+    <span class="button--text" [textContent]="filterButtonText"></span>
+  </button>
+}
+@if (wpTableFilters.semanticSearchAvailable) {
+  <segmented-control>
+    <ul class="SegmentedControl SegmentedControl mb-3 v-align-middle" role="list" [attr.aria-label]="text.search_mode_label">
+      <li
+        class="SegmentedControl-item"
+        [class.SegmentedControl-item--selected]="!wpTableFilters.semanticSearchEnabled"
+        role="listitem"
+        data-targets="segmented-control.items"
+        >
+        <a
+          class="Button Button--invisible Button--small"
+          [attr.href]="wpTableFilters.searchModeUrl('text')"
+          [attr.aria-current]="!wpTableFilters.semanticSearchEnabled"
+          >
+          <span class="Button-content">
+            <span class="Button-label" [textContent]="text.search_mode_text"></span>
+          </span>
+        </a>
+      </li>
+      <li
+        class="SegmentedControl-item"
+        [class.SegmentedControl-item--selected]="wpTableFilters.semanticSearchEnabled"
+        role="listitem"
+        data-targets="segmented-control.items"
+        >
+        <a
+          class="Button Button--invisible Button--small"
+          [attr.href]="wpTableFilters.searchModeUrl('semantic')"
+          [attr.aria-current]="wpTableFilters.semanticSearchEnabled"
+          >
+          <span class="Button-content">
+            <span class="Button-label" [textContent]="text.search_mode_semantic"></span>
+          </span>
+        </a>
+      </li>
+    </ul>
+  </segmented-control>
+}
 
 <div
   class="work-packages--filters-optional-container"
   [ngClass]="{ '-loaded': loaded }"
->
-  <div
-    id="query_form_content"
-    class="hide-when-print" *ngIf="visible$ | async"
   >
-    <query-filters
-      *ngIf="!!filters"
-      [filters]="filters"
-      [showCloseFilter]="true"
-      (filtersChanged)="replaceIfComplete($event)"
-    ></query-filters>
-  </div>
+  @if (visible$ | async) {
+    <div
+      id="query_form_content"
+      class="hide-when-print"
+      >
+      @if (!!filters) {
+        <op-query-filters [filters]="filters"
+          [showCloseFilter]="true"
+          (filtersChanged)="replaceIfComplete($event)"
+         />
+      }
+    </div>
+  }
 </div>

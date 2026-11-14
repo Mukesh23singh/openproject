@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  Component, ElementRef, OnInit, ViewChild,
-} from '@angular/core';
-import { ConfigurationService } from 'core-app/core/config/configuration.service';
+import { ChangeDetectionStrategy, Component, ElementRef, EventEmitter, Input, OnInit, Output, ViewChild, inject } from '@angular/core';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { HalResource } from 'core-app/features/hal/resources/hal-resource';
 import { HalResourceService } from 'core-app/features/hal/services/hal-resource.service';
@@ -38,200 +34,316 @@ import { filter, takeUntil } from 'rxjs/operators';
 import { ToastService } from 'core-app/shared/components/toaster/toast.service';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import {
+  ICKEditorMacroType,
   ICKEditorType,
 } from 'core-app/shared/components/editor/components/ckeditor/ckeditor-setup.service';
 import { OpCkeditorComponent } from 'core-app/shared/components/editor/components/ckeditor/op-ckeditor.component';
 import { componentDestroyed } from '@w11k/ngx-componentdestroyed';
-import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin'; import {
+import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
+import {
   ICKEditorContext,
   ICKEditorInstance,
 } from 'core-app/shared/components/editor/components/ckeditor/ckeditor.types';
-
-export const ckeditorAugmentedTextareaSelector = 'ckeditor-augmented-textarea';
+import { fromEvent, Subscription } from 'rxjs';
+import { AttachmentCollectionResource } from 'core-app/features/hal/resources/attachment-collection-resource';
+import { populateInputsFromDataset } from 'core-app/shared/components/dataset-inputs';
+import { navigator } from '@hotwired/turbo';
+import { attributeTokenList, ensureId } from 'core-app/shared/helpers/dom-helpers';
 
 @Component({
-  selector: ckeditorAugmentedTextareaSelector,
   templateUrl: './ckeditor-augmented-textarea.html',
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  standalone: false,
 })
 export class CkeditorAugmentedTextareaComponent extends UntilDestroyedMixin implements OnInit {
-  public textareaSelector:string;
+  readonly elementRef = inject<ElementRef<HTMLElement>>(ElementRef);
+  protected pathHelper = inject(PathHelperService);
+  protected halResourceService = inject(HalResourceService);
+  protected Notifications = inject(ToastService);
+  protected I18n = inject(I18nService);
+  protected states = inject(States);
 
-  public previewContext:string;
+  // Track form submission "in-flight" state per form, to prevent multiple
+  // submissions from multiple CKEditor instances on the same form.
+  private static inFlight = new WeakMap<HTMLFormElement, boolean>();
+
+  @Input() public textAreaId:string;
+
+  @Input() public previewContext:string;
+
+  @Input() public macros:ICKEditorMacroType;
+
+  @Input() public removePlugins:string[] = [];
+
+  @Input() public additionalToolbarItems:string[] = [];
+
+  @Input() public resource?:object;
+
+  @Input() public turboMode = false;
+
+  @Input() public editorType:ICKEditorType = 'full';
+
+  @Input() public showAttachments = true;
+
+  @Input() public primerized = false;
+
+  @Input() public storageKey?:string;
+
+  // Output save requests (ctrl+enter and cmd+enter)
+  @Output() saveRequested = new EventEmitter<string>();
+
+  @Output() editorEscape = new EventEmitter<string>();
+
+  // Output keyup events
+  @Output() editorKeyup = new EventEmitter<void>();
+
+  // Output blur events
+  @Output() editorBlur = new EventEmitter<void>();
+
+  // Output focus events
+  @Output() editorFocus = new EventEmitter<void>();
 
   // Which template to include
-  public $element:JQuery;
+  public element:HTMLElement;
 
-  public formElement:JQuery;
+  public formElement:HTMLFormElement;
 
-  public wrappedTextArea:JQuery;
-
-  public $attachmentsElement:JQuery;
+  public wrappedTextArea:HTMLTextAreaElement;
 
   // Remember if the user changed
   public changed = false;
 
-  public inFlight = false;
-
   public initialContent:string;
 
-  public resource?:HalResource;
+  public readOnly = false;
+
+  public halResource?:HalResource&{ attachments:AttachmentCollectionResource };
 
   public context:ICKEditorContext;
 
-  public macros:boolean;
+  public text = {
+    attachments: this.I18n.t('js.label_attachments'),
+  };
+
+  private focused = false;
 
   // Reference to the actual ckeditor instance component
   @ViewChild(OpCkeditorComponent, { static: true }) private ckEditorInstance:OpCkeditorComponent;
 
   private attachments:HalResource[];
 
-  private isEditing = false;
+  private labelClickSubscription:Subscription;
 
-  constructor(protected elementRef:ElementRef,
-    protected pathHelper:PathHelperService,
-    protected halResourceService:HalResourceService,
-    protected Notifications:ToastService,
-    protected I18n:I18nService,
-    protected states:States,
-    protected ConfigurationService:ConfigurationService) {
+  constructor() {
     super();
+    populateInputsFromDataset(this);
   }
 
   ngOnInit() {
-    this.$element = jQuery(this.elementRef.nativeElement);
-
-    // Parse the attribute explicitly since this is likely a bootstrapped element
-    this.textareaSelector = this.$element.attr('textarea-selector')!;
-    this.previewContext = this.$element.attr('preview-context')!;
-    this.macros = this.$element.attr('macros') !== 'false';
-    const editorType = (this.$element.attr('editor-type') || 'full') as ICKEditorType;
+    this.element = this.elementRef.nativeElement;
 
     // Parse the resource if any exists
-    const source = this.$element.data('resource');
-    this.resource = source ? this.halResourceService.createHalResource(source, true) : undefined;
+    this.halResource = this.resource ? this.halResourceService.createHalResource(this.resource, true) : undefined;
 
-    this.formElement = this.$element.closest('form');
-    this.wrappedTextArea = this.formElement.find(this.textareaSelector);
-    this.wrappedTextArea
-      .removeAttr('required')
-      .hide();
-    this.initialContent = this.wrappedTextArea.val() as string;
+    this.formElement = this.element.closest('form')!;
 
-    this.$attachmentsElement = this.formElement.find('#attachments_fields');
+    this.wrappedTextArea = document.getElementById(this.textAreaId) as HTMLTextAreaElement;
+
+    this.wrappedTextArea.style.display = 'none';
+    this.wrappedTextArea.required = false;
+    this.initialContent = this.wrappedTextArea.value;
+    this.readOnly = this.wrappedTextArea.disabled;
+
     this.context = {
-      type: editorType,
-      resource: this.resource,
+      type: this.editorType,
+      resource: this.halResource,
+      field: this.wrappedTextArea.name,
       previewContext: this.previewContext,
+      removePlugins: this.removePlugins,
+      additionalToolbarItems: this.additionalToolbarItems,
+      storageKey: this.storageKey,
     };
-    if (!this.macros) {
+    if (this.readOnly) {
       this.context.macros = 'none';
+    } else if (this.macros) {
+      this.context.macros = this.macros;
     }
+
+    this.registerFormSubmitListener();
+    this.registerRefreshSyncListener();
   }
 
-  ngOnDestroy() {
-    super.ngOnDestroy();
-    this.formElement.off('submit.ckeditor');
+  private registerFormSubmitListener():void {
+    fromEvent(this.formElement, 'submit')
+      .pipe(
+        filter(() => !CkeditorAugmentedTextareaComponent.inFlight.has(this.formElement)),
+        this.untilDestroyed(),
+      )
+      .subscribe((evt:SubmitEvent) => {
+        // Another handler (e.g. require-password-confirmation) already owns this
+        // submit. Still flush editor → textarea so a later confirmed submit has
+        // the latest content, but do not re-submit — Turbo's navigator.submitForm
+        // would bypass that other handler and POST without confirmation.
+        if (evt.defaultPrevented) {
+          this.syncToTextarea();
+          return;
+        }
+
+        evt.preventDefault();
+        void this.saveForm(evt);
+      });
   }
 
-  public markEdited() {
-    window.OpenProject.pageWasEdited = true;
+  private registerRefreshSyncListener():void {
+    fromEvent(this.formElement, 'refresh-on-form-changes:beforeSnapshot')
+      .pipe(this.untilDestroyed())
+      .subscribe(() => this.syncToTextarea());
+  }
+
+  public editorFocused():void {
+    this.focused = true;
+    this.editorFocus.emit();
+  }
+
+  public editorBlurred():void {
+    this.focused = false;
+    this.editorBlur.emit();
+  }
+
+  public async saveForm(evt?:SubmitEvent):Promise<void> {
+    if (CkeditorAugmentedTextareaComponent.inFlight.has(this.formElement)) {
+      return;
+    }
+
+    CkeditorAugmentedTextareaComponent.inFlight.set(this.formElement, true);
+
+    this.syncToTextarea();
+    window.OpenProject.pageState = 'submitted';
+
+    setTimeout(() => {
+      if (evt?.submitter) {
+        (evt.submitter as HTMLInputElement).disabled = false;
+      }
+
+      // Honor the form's data-turbo="false" even when this component was created
+      // with turboMode (Primer rich_text_area default). Turbo's submitForm skips
+      // the submit event and would bypass other submit interceptors.
+      const turboDisabled = this.formElement.dataset.turbo === 'false';
+      if (this.turboMode && !turboDisabled && !this.formElement.dataset.action) {
+        navigator.submitForm(this.formElement, evt?.submitter ?? undefined);
+      } else {
+        this.formElement.requestSubmit(evt?.submitter);
+      }
+
+      CkeditorAugmentedTextareaComponent.inFlight.delete(this.formElement);
+    });
   }
 
   public setup(editor:ICKEditorInstance) {
-    // Have a hacky way to access the editor from outside of angular.
-    // This is e.g. employed to set the text from outside to reuse the same editor for different languages.
-    this.$element.data('editor', editor);
+    this.setupMarkingReadonlyWhenTextareaIsDisabled(editor);
 
-    if (this.resource && this.resource.attachments) {
+    if (this.halResource?.attachments) {
       this.setupAttachmentAddedCallback(editor);
       this.setupAttachmentRemovalSignal(editor);
     }
 
-    // Listen for form submission to set textarea content
-    this.formElement.on('submit.ckeditor change.ckeditor', () => {
-      try {
-        this.wrappedTextArea.val(this.ckEditorInstance.getRawData());
-      } catch (e) {
-        console.error(`Failed to save CKEditor body to textarea: ${e}.`);
-        this.Notifications.addError(e || this.I18n.t('js.error.internal'));
-
-        // Avoid submission of the form
-        return false;
-      }
-
-      this.addUploadedAttachmentsToForm();
-
-      // Continue with submission
-      return true;
-    });
-
+    // Set initial label
     this.setLabel();
 
+    // Use focusTracker to maintain aria-labelledby as CKEditor re-renders aria-label on every focus/blur event
+    editor.ui.focusTracker.on('change:isFocused', (_evt:unknown, _name:string, _isFocused:boolean) => {
+      this.setLabel();
+    });
     return editor;
+  }
+
+  public updateContent(value:string) {
+    // Update the page state to edited
+    // but only if we're focused in the editor
+    if (this.focused) {
+      window.OpenProject.pageState = 'edited';
+    }
+
+    this.wrappedTextArea.value = value;
+  }
+
+  public syncToTextarea() {
+    try {
+      this.wrappedTextArea.value = this.ckEditorInstance.getTransformedContent(true);
+    } catch (e) {
+      // eslint-disable-next-line @typescript-eslint/no-base-to-string
+      const message = (e as Error)?.message || (e as object).toString();
+      console.error(`Failed to save CKEditor body to textarea: ${message}.`);
+      this.Notifications.addError(message || this.I18n.t('js.error.internal'));
+      throw e;
+    }
   }
 
   private setupAttachmentAddedCallback(editor:ICKEditorInstance) {
     editor.model.on('op:attachment-added', () => {
-      this.states.forResource(this.resource!)!.putValue(this.resource);
+      this.states.forResource(this.halResource as HalResource)?.putValue(this.halResource);
     });
   }
 
   private setupAttachmentRemovalSignal(editor:ICKEditorInstance) {
-    this.attachments = _.clone(this.resource!.attachments.elements);
+    this.attachments = [...this.halResource!.attachments.elements];
 
-    this.states.forResource(this.resource!)!.changes$()
+    this
+      .states
+      .forResource(this.halResource as HalResource)
+      ?.changes$()
       .pipe(
         takeUntil(componentDestroyed(this)),
         filter((resource) => !!resource),
-      ).subscribe((resource) => {
-        const missingAttachments = _.differenceBy(this.attachments,
-          resource!.attachments.elements,
-          (attachment:HalResource) => attachment.id);
+      )
+      .subscribe((resource:HalResource&{ attachments:AttachmentCollectionResource }) => {
+        const presentIds = new Set<string|null>(resource.attachments.elements.map((other:HalResource) => other.id));
+        const missingAttachments = this.attachments.filter((attachment:HalResource) => !presentIds.has(attachment.id));
 
-        const removedUrls = missingAttachments.map((attachment) => attachment.downloadLocation.href);
+        const removedUrls = missingAttachments.map((attachment) => (attachment.downloadLocation as HalResource).href);
 
         if (removedUrls.length) {
           editor.model.fire('op:attachment-removed', removedUrls);
         }
 
-        this.attachments = _.clone(resource!.attachments.elements);
+        this.attachments = [...resource.attachments.elements];
       });
   }
 
-  private setLabel() {
-    const textareaId = this.textareaSelector.substring(1);
-    const label = jQuery(`label[for=${textareaId}]`);
-
-    const ckContent = this.$element.find('.ck-content');
-
-    ckContent.attr('aria-label', null);
-    ckContent.attr('aria-labelledby', textareaId);
-
-    label.click(() => {
-      ckContent.focus();
+  private setupMarkingReadonlyWhenTextareaIsDisabled(editor:ICKEditorInstance) {
+    const observer = new MutationObserver((_mutations) => {
+      if (this.readOnly !== this.wrappedTextArea.disabled) {
+        this.readOnly = this.wrappedTextArea.disabled;
+        if (this.readOnly) {
+          editor.enableReadOnlyMode('wrapped-text-area-disabled');
+        } else {
+          editor.disableReadOnlyMode('wrapped-text-area-disabled');
+        }
+      }
     });
+    observer.observe(this.wrappedTextArea, { attributes: true });
+
+    if (this.readOnly) {
+      editor.enableReadOnlyMode('wrapped-text-area-disabled');
+    }
   }
 
-  private addUploadedAttachmentsToForm() {
-    if (!this.resource || !this.resource.attachments || this.resource.id) {
+  private setLabel() {
+    const label = document.querySelector<HTMLLabelElement>(`label[for=${this.textAreaId}]`);
+    if (!label) {
+      console.error(`Please provide a label for the textarea with id ${this.textAreaId}`);
       return;
     }
 
-    const takenIds = this.$attachmentsElement.find("input[type='file']").map((index, input) => {
-      const match = /attachments\[(\d+)\]\[(?:file|id)\]/.exec((input.getAttribute('name') || ''));
+    const ckContent = this.element.querySelector<HTMLElement>('.ck-content')!;
 
-      if (match) {
-        return parseInt(match[1]);
-      }
-      return 0;
-    });
+    ckContent.removeAttribute('aria-label');
+    attributeTokenList(ckContent, 'aria-labelledby').add(ensureId(label, 'label'));
 
-    const maxValue:number = takenIds.toArray().sort().pop() || 0;
-
-    const addedAttachments = this.resource.attachments.elements || [];
-
-    jQuery.each(addedAttachments, (index:number, attachment:HalResource) => {
-      this.$attachmentsElement.append(`<input type="hidden" name="attachments[${maxValue + index + 1}][id]" value="${attachment.id}">`);
-    });
+    if (!this.labelClickSubscription) {
+      this.labelClickSubscription = fromEvent(label, 'click')
+        .pipe(this.untilDestroyed())
+        .subscribe(() => ckContent.focus());
+    }
   }
 }

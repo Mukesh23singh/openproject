@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,45 +39,35 @@ module RepositoriesHelper
   ##
   # Format revision commits with plain formatter
   def format_revision_text(commit_message)
-    format_text(commit_message, format: 'plain')
+    format_text(commit_message, format: :plain)
   end
 
   def truncate_at_line_break(text, length = 255)
     text&.gsub(%r{^(.{#{length}}[^\n]*)\n.+$}m, '\\1...')
   end
 
-  def render_properties(properties)
-    unless properties.nil? || properties.empty?
-      content = ''
-      properties.keys.sort.each do |property|
-        content << content_tag('li', raw("<b>#{h property}</b>: <span>#{h properties[property]}</span>"))
-      end
-      content_tag('ul', content.html_safe, class: 'properties')
-    end
-  end
-
   def render_changeset_changes
-    changes = @changeset.file_changes.limit(1000).order(Arel.sql('path')).map do |change|
+    changes = @changeset.file_changes.limit(1000).order(Arel.sql("path")).filter_map do |change|
       case change.action
-      when 'A'
+      when "A"
         # Detects moved/copied files
-        if !change.from_path.blank?
-          action = @changeset.file_changes.detect { |c| c.action == 'D' && c.path == change.from_path }
-          change.action = action ? 'R' : 'C'
+        if change.from_path.present?
+          action = @changeset.file_changes.detect { |c| c.action == "D" && c.path == change.from_path }
+          change.action = action ? "R" : "C"
         end
         change
-      when 'D'
+      when "D"
         @changeset.file_changes.detect { |c| c.from_path == change.path } ? nil : change
       else
         change
       end
-    end.compact
+    end
 
     tree = {}
     changes.each do |change|
       p = tree
-      dirs = change.path.to_s.split('/').select { |d| !d.blank? }
-      path = ''
+      dirs = change.path.to_s.split("/").select { |d| d.present? }
+      path = ""
       dirs.each do |dir|
         path += with_leading_slash(dir)
         p[:s] ||= {}
@@ -95,8 +84,8 @@ module RepositoriesHelper
   # Mapping from internal action to (folder|file)-icon type
   def change_action_mapping
     {
-      'A' => :add,
-      'B' => :remove
+      "A" => :add,
+      "B" => :remove
     }
   end
 
@@ -113,62 +102,65 @@ module RepositoriesHelper
     seen.size == 1 ? seen.first : :open
   end
 
-  def render_changes_tree(tree)
-    return '' if tree.nil?
+  # rubocop:disable Rails/HelperInstanceVariable
+  def render_changes_tree(tree) # rubocop:disable Metrics/AbcSize,Metrics/PerceivedComplexity
+    return "" if tree.nil?
 
-    output = '<ul>'
-    tree.keys.sort.each do |file|
-      style = 'change'
+    items = tree.keys.sort.filter_map do |file|
       text = File.basename(file)
-      if s = tree[file][:s]
-        style << ' folder'
+
+      if (s = tree[file][:s])
         path_param = without_leading_slash(to_path_param(@repository.relative_path(file)))
-        text = link_to(h(text),
+        link = link_to(text,
                        show_revisions_path_project_repository_path(project_id: @project,
                                                                    repo_path: path_param,
                                                                    rev: @changeset.identifier),
                        title: I18n.t(:label_folder))
 
-        output << "<li class='#{style} icon icon-folder-#{calculate_folder_action(s)}'>#{text}</li>"
-        output << render_changes_tree(s)
-      elsif c = tree[file][:c]
-        style << " change-#{c.action}"
+        content_tag(:li, safe_join([link, render_changes_tree(s)]),
+                    class: "change folder icon icon-folder-#{calculate_folder_action(s)}")
+      elsif (c = tree[file][:c])
         path_param = without_leading_slash(to_path_param(@repository.relative_path(c.path)))
+        parts = []
 
-        unless c.action == 'D'
-          title_text = changes_tree_change_title c.action
+        parts <<
+          if c.action == "D"
+            text
+          else
+            link_to(text,
+                    entry_revision_project_repository_path(project_id: @project,
+                                                           repo_path: path_param,
+                                                           rev: @changeset.identifier),
+                    title: changes_tree_change_title(c.action))
+          end
 
-          text = link_to(h(text),
-                         entry_revision_project_repository_path(project_id: @project,
-                                                                repo_path: path_param,
-                                                                rev: @changeset.identifier),
-                         title: title_text)
+        parts << safe_join([" - ", c.revision]) if c.revision.present?
+
+        if c.action == "M"
+          diff_link = link_to(I18n.t(:label_diff),
+                              diff_revision_project_repository_path(project_id: @project,
+                                                                    repo_path: path_param,
+                                                                    rev: @changeset.identifier))
+          parts << safe_join([" (", diff_link, ") "])
         end
 
-        text << raw(" - #{h(c.revision)}") unless c.revision.blank?
+        parts << safe_join([" ", content_tag(:span, c.from_path, class: "copied-from")]) if c.from_path.present?
 
-        if c.action == 'M'
-          text << raw(' (' + link_to(I18n.t(:label_diff),
-                                     diff_revision_project_repository_path(project_id: @project,
-                                                                           repo_path: path_param,
-                                                                           rev: @changeset.identifier)) + ') ')
-        end
-
-        text << raw(' ' + content_tag('span', h(c.from_path), class: 'copied-from')) unless c.from_path.blank?
-
-        output << changes_tree_li_element(c.action, text, style)
+        changes_tree_li_element(c.action, safe_join(parts), "change change-#{c.action}")
       end
     end
-    output << '</ul>'
-    output.html_safe
+
+    content_tag(:ul, safe_join(items))
   end
+
+  # rubocop:enable Rails/HelperInstanceVariable
 
   def to_utf8_for_repositories(str)
     return str if str.nil?
 
     str = to_utf8_internal(str)
     if str.respond_to?(:force_encoding)
-      str.force_encoding('UTF-8')
+      str.force_encoding("UTF-8")
     end
     str
   end
@@ -177,17 +169,17 @@ module RepositoriesHelper
     return str if str.nil?
 
     if str.respond_to?(:force_encoding)
-      str.force_encoding('ASCII-8BIT')
+      str.force_encoding("ASCII-8BIT")
     end
     return str if str.empty?
-    return str if /\A[\r\n\t\x20-\x7e]*\Z/n.match(str) # for us-ascii
+    return str if /\A[\r\n\t\x20-\x7e]*\Z/n.match?(str) # for us-ascii
 
     if str.respond_to?(:force_encoding)
-      str.force_encoding('UTF-8')
+      str.force_encoding("UTF-8")
     end
-    @encodings ||= Setting.repositories_encodings.split(',').map(&:strip)
+    @encodings ||= Setting.repositories_encodings.split(",").map(&:strip)
     @encodings.each do |encoding|
-      return str.to_s.encode('UTF-8', encoding)
+      return str.to_s.encode("UTF-8", encoding)
     rescue Encoding::InvalidByteSequenceError, Encoding::UndefinedConversionError
       # do nothing here and try the next encoding
     end
@@ -200,15 +192,17 @@ module RepositoriesHelper
     return str if str.nil?
 
     if str.respond_to?(:force_encoding)
-      str.force_encoding('UTF-8')
-      if !str.valid_encoding?
-        str = str.encode("US-ASCII", invalid: :replace,
-                                     undef: :replace, replace: '?').encode("UTF-8")
+      str.force_encoding("UTF-8")
+      unless str.valid_encoding?
+        str = str.encode("US-ASCII",
+                         invalid: :replace,
+                         undef: :replace, replace: "?")
+                 .encode("UTF-8")
       end
     else
       # removes invalid UTF8 sequences
       begin
-        (str + '  ').encode('UTF-8', invalid: :replace, undef: :replace, replace: '?')[0..-3]
+        "#{str}  ".encode("UTF-8", invalid: :replace, undef: :replace, replace: "?")[0..-3]
       rescue Encoding::InvalidByteSequenceError, Encoding::UndefinedConversionError
       end
     end
@@ -236,25 +230,28 @@ module RepositoriesHelper
   def default_selected_option
     [
       "--- #{I18n.t(:actionview_instancetag_blank_option)} ---",
-      '',
+      "",
       { disabled: true, selected: true }
     ]
   end
 
   def scm_vendor_tag(repository)
-    select_tag('scm_vendor',
+    # rubocop:disable-next Rails/HelperInstanceVariable
+    url = url_for(controller: "/projects/settings/repository", action: "show", id: @project.id)
+
+    select_tag("scm_vendor",
                scm_options(repository),
-               class: 'form--select repositories--remote-select',
+               class: "form--select",
                data: {
-                 url: url_for(controller: '/projects/settings/repository',
-                              action: 'show',
-                              id: @project.id)
+                 url:,
+                 action: "repository-settings#updateSelectedType",
+                 "repository-settings-target": "scmVendor"
                },
-               disabled: (repository && !repository.new_record?))
+               disabled: repository && !repository.new_record?)
   end
 
   def git_path_encoding_options(repository)
-    default = repository.new_record? ? 'UTF-8' : repository.path_encoding
+    default = repository.new_record? ? "UTF-8" : repository.path_encoding
     options_for_select(Setting::ENCODINGS, default)
   end
 
@@ -268,22 +265,22 @@ module RepositoriesHelper
   end
 
   def with_leading_slash(path)
-    path.to_s.starts_with?('/') ? path : "/#{path}"
+    path.to_s.starts_with?("/") ? path : "/#{path}"
   end
 
   def without_leading_slash(path)
-    path.gsub(%r{\A/+}, '')
+    path.gsub(%r{\A/+}, "")
   end
 
   def changes_tree_change_title(action)
     case action
-    when 'A'
+    when "A"
       I18n.t(:label_added)
-    when 'D'
+    when "D"
       I18n.t(:label_deleted)
-    when 'C'
+    when "C"
       I18n.t(:label_copied)
-    when 'R'
+    when "R"
       I18n.t(:label_renamed)
     else
       I18n.t(:label_modified)
@@ -291,20 +288,15 @@ module RepositoriesHelper
   end
 
   def changes_tree_li_element(action, text, style)
-    icon_name = case action
-                when 'A'
-                  'icon-add'
-                when 'D'
-                  'icon-delete'
-                when 'C'
-                  'icon-copy'
-                when 'R'
-                  'icon-rename'
-                else
-                  'icon-arrow-left-right'
-                end
+    icon_name =
+      case action
+      when "A" then "icon-add"
+      when "D" then "icon-delete"
+      when "C" then "icon-copy"
+      when "R" then "icon-rename"
+      else "icon-arrow-left-right"
+      end
 
-    "<li class='#{style} icon #{icon_name}'
-         title='#{changes_tree_change_title(action)}'>#{text}</li>"
+    content_tag(:li, text, class: "#{style} icon #{icon_name}", title: changes_tree_change_title(action))
   end
 end

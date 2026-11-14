@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,56 +35,52 @@ module Accounts::UserPasswordChange
   # to change the password.
   # When making changes here, also check MyController.change_password
   def change_password_flow(user:, params:, update_legacy: true, show_user_name: false)
-    return render_404 if OpenProject::Configuration.disable_password_login?
+    return render_404 if Users::PasswordLogin.none?
 
     # A JavaScript hides the force_password_change field for external
     # auth sources in the admin UI, so this shouldn't normally happen.
     return if redirect_if_password_change_not_allowed(user)
 
-    # Ensure the current password is validated
-    unless user.check_password?(params[:password], update_legacy: update_legacy)
-      flash_and_log_invalid_credentials(is_logged_in: !show_user_name)
-      return render_password_change(user, nil, show_user_name: show_user_name)
-    end
+    rejection = reject_password_change_attempt(user, params, update_legacy:, show_user_name:)
+    return rejection if rejection
 
-    # Call the service to set the new password
-    call = ::Users::ChangePasswordService.new(current_user: @user, session: session).call(params)
+    call = ::Users::ChangePasswordService.new(current_user: @user, session:).call(params)
 
-    # Yield the success to the caller
     if call.success?
+      User.reset_failed_login_count_for(user)
+
       response = yield call
 
       call.apply_flash_message!(flash)
       return response
     end
 
-    # Render the username to hint to a user in case of a forced password change
-    render_password_change user, call.message, show_user_name: show_user_name
+    render_password_change user, call.message, show_user_name:
   end
 
-  ##
-  # Log an attempt to log in to a locked account or with invalid credentials
-  # and show a flash message.
-  def flash_and_log_invalid_credentials(flash_now: true, is_logged_in: false)
-    if is_logged_in
-      flash[:error] = I18n.t(:notice_account_wrong_password)
-      return
+  def reject_password_change_attempt(user, params, update_legacy:, show_user_name:)
+    if user.failed_too_many_recent_login_attempts?
+      return invalid_password_change_response(user, show_user_name:)
     end
 
-    flash_error_message(log_reason: 'invalid credentials', flash_now: flash_now) do
-      if Setting.brute_force_block_after_failed_logins?
-        :notice_account_invalid_credentials_or_blocked
-      else
-        :notice_account_invalid_credentials
-      end
+    unless user.check_password?(params[:password], update_legacy:)
+      user.log_failed_login
+      return invalid_password_change_response(user, show_user_name:)
     end
+
+    nil
+  end
+
+  def invalid_password_change_response(user, show_user_name:)
+    flash_and_log_invalid_credentials(is_logged_in: !show_user_name)
+    render_password_change(user, nil, show_user_name:)
   end
 
   def render_password_change(user, message, show_user_name: false)
     flash[:error] = message unless message.nil?
     @user = user
     @username = user.login
-    render 'my/password', locals: { show_user_name: show_user_name }
+    render "my/password", locals: { show_user_name: }, status: :unprocessable_entity
   end
 
   ##
@@ -91,22 +88,11 @@ module Accounts::UserPasswordChange
   def redirect_if_password_change_not_allowed(user)
     if user and not user.change_password_allowed?
       logger.warn "Password change for user '#{user}' forced, but user is not allowed " +
-                  'to change password'
+                  "to change password"
       flash[:error] = I18n.t(:notice_can_t_change_password)
-      redirect_to action: 'login'
+      redirect_to action: "login"
       return true
     end
     false
-  end
-
-  def flash_error_message(log_reason: '', flash_now: true)
-    flash_hash = flash_now ? flash.now : flash
-
-    logger.warn "Failed login for '#{params[:username]}' from #{request.remote_ip}" \
-                " at #{Time.now.utc}: #{log_reason}"
-
-    flash_message = yield
-
-    flash_hash[:error] = I18n.t(flash_message)
   end
 end

@@ -1,4 +1,4 @@
-@import "src/assets/sass/helpers"
+@import "helpers"
 
 .op-ifc-viewer
   display: flex
@@ -38,7 +38,7 @@
     right: 0
     display: flex
     justify-content: flex-end
-    margin: 0.5em
+    margin: 0.5em 0
 
     &-info-button
       margin-left: 0.5em
@@ -48,7 +48,7 @@
     border-left: 2px solid #eee
     border-top: 2px solid #eee
 
-    @media only screen and (max-width: 679px)
+    @media only screen and (max-width: $breakpoint-sm)
       width: 300px
       border-bottom: 2px solid #eee
 
@@ -62,9 +62,11 @@
     bottom: 68px
 
   &--keyboard-disabled-icon
+    @include unset-button-styles
     font-size: 42px
+    cursor: default
 
   &--nav-cube-canvas,
   &--focus-warning
-    @media only screen and (max-width: 679px)
+    @media only screen and (max-width: $breakpoint-sm)
       display: none

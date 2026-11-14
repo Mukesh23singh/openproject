@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -29,12 +30,22 @@
 class AttributeHelpText < ApplicationRecord
   acts_as_attachable viewable_by_all_users: true
 
+  def self.cached(user)
+    RequestStore.fetch(name) do
+      visible_condition(user).where(type: name).select(:id, :type, :attribute_name, :caption).index_by(&:attribute_name)
+    end
+  end
+
+  def self.for(model)
+    subclasses.find { |child| child.name.demodulize == model.model_name }
+  end
+
   def self.available_types
     subclasses.map { |child| child.name.demodulize }
   end
 
   def self.used_attributes(type)
-    where(type: type)
+    where(type:)
       .select(:attribute_name)
       .distinct
       .pluck(:attribute_name)
@@ -54,11 +65,13 @@ class AttributeHelpText < ApplicationRecord
     scope
   end
 
+  normalizes :attribute_name, with: -> { it.delete_suffix("_id") }
+
   validates :help_text, presence: true
   validates :attribute_name, uniqueness: { scope: :type }
 
-  def attribute_caption
-    @attribute_caption ||= self.class.available_attributes[attribute_name]
+  def attribute_field_name
+    @attribute_field_name ||= self.class.available_attributes[attribute_name]
   end
 
   def attribute_scope
@@ -66,17 +79,17 @@ class AttributeHelpText < ApplicationRecord
   end
 
   def type_caption
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
-  def self.visible_condition
-    raise NotImplementedError
+  def self.visible_condition(_user = nil)
+    raise SubclassResponsibilityError
   end
 
   def self.available_attributes
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 end
 
-require_dependency 'attribute_help_text/work_package'
-require_dependency 'attribute_help_text/project'
+require "attribute_help_text/work_package"
+require "attribute_help_text/project"

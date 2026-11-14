@@ -1,14 +1,14 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
 #
 # OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
-# Copyright (C) 2006-2017 Jean-Philippe Lang
+# Copyright (C) 2006-2013 Jean-Philippe Lang
 # Copyright (C) 2010-2013 the ChiliProject Team
 #
 # This program is free software; you can redistribute it and/or
@@ -22,63 +22,117 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Attachments::FinishDirectUploadJob, 'integration', type: :job do
-  shared_let(:user) { FactoryBot.create :admin }
+RSpec.describe Attachments::FinishDirectUploadJob, "integration", :with_direct_uploads, type: :job do
+  include DirectUploadHelpers
+
+  shared_let(:user) { create(:admin) }
 
   let!(:pending_attachment) do
-    FactoryBot.create(:attachment,
-                      author: user,
-                      downloads: -1,
-                      digest: '',
-                      container: container)
+    create(:attachment,
+           author: user,
+           status: :prepared,
+           digest: "",
+           container:)
   end
 
   let(:job) { described_class.new }
 
-  shared_examples_for 'turning pending attachment into a standard attachment' do
-    it do
+  before do
+    stage_direct_upload(pending_attachment)
+  end
+
+  def stored_content
+    File.read(Attachment.find(pending_attachment.id).diskfile.path)
+  end
+
+  shared_examples_for "completing direct upload of attachment" do |expect_extract_fulltext_job: true|
+    it "turns the pending attachment into a standard attachment" do
       job.perform(pending_attachment.id)
 
       attachment = Attachment.find(pending_attachment.id)
 
+      expect(attachment.status).to eq "uploaded"
       expect(attachment.downloads)
-        .to eql(0)
+        .to be(0)
       # expect to replace the content type with the actual value
       expect(attachment.content_type)
-        .to eql('text/plain')
+        .to eql("text/plain")
       expect(attachment.digest)
         .to eql("9473fdd0d880a43c21b7778d34872157")
     end
-  end
 
-  shared_examples_for "adding a journal to the attachment in the name of the attachment's author" do
-    it do
+    it "adds a journal to the attachment in the name of the attachment's author" do
       job.perform(pending_attachment.id)
 
       journals = Attachment.find(pending_attachment.id).journals
 
       expect(journals.count)
-        .to eql(2)
+        .to be(2)
 
       expect(journals.last.user)
         .to eql(pending_attachment.author)
     end
+
+    if expect_extract_fulltext_job
+      it "enqueues the ExtractFulltextJob job" do
+        clear_enqueued_jobs
+
+        job.perform(pending_attachment.id)
+
+        expect(Attachments::ExtractFulltextJob)
+          .to have_been_enqueued
+          .with(pending_attachment.id)
+      end
+    else
+      it "does not enqueue the ExtractFulltextJob job" do
+        clear_enqueued_jobs
+
+        job.perform(pending_attachment.id)
+
+        expect(Attachments::ExtractFulltextJob)
+          .not_to have_been_enqueued
+      end
+    end
+
+    context "when antivirus scan is disabled (default)",
+            with_settings: { antivirus_scan_mode: :disabled } do
+      it "does not enqueue the VirusScanJob job" do
+        clear_enqueued_jobs
+
+        job.perform(pending_attachment.id)
+
+        expect(Attachments::VirusScanJob)
+          .not_to have_been_enqueued
+      end
+    end
+
+    context "when antivirus scan is enabled",
+            with_ee: %i[virus_scanning],
+            with_settings: { antivirus_scan_mode: :clamav_socket } do
+      it "enqueues the VirusScanJob job" do
+        clear_enqueued_jobs
+
+        job.perform(pending_attachment.id)
+
+        expect(Attachments::VirusScanJob)
+          .to have_been_enqueued
+          .with(pending_attachment)
+      end
+    end
   end
 
-  context 'for a journalized container' do
-    let!(:container) { FactoryBot.create(:work_package) }
+  context "for a journalized container" do
+    let!(:container) { create(:work_package) }
     let!(:container_timestamp) { container.updated_at }
 
-    it_behaves_like 'turning pending attachment into a standard attachment'
-    it_behaves_like "adding a journal to the attachment in the name of the attachment's author"
+    it_behaves_like "completing direct upload of attachment"
 
     it "adds a journal to the container in the name of the attachment's author" do
       job.perform(pending_attachment.id)
@@ -86,7 +140,7 @@ describe Attachments::FinishDirectUploadJob, 'integration', type: :job do
       journals = container.journals.reload
 
       expect(journals.count)
-        .to eql(2)
+        .to be(2)
 
       expect(journals.last.user)
         .to eql(pending_attachment.author)
@@ -97,10 +151,110 @@ describe Attachments::FinishDirectUploadJob, 'integration', type: :job do
       container.reload
 
       expect(container.lock_version)
-        .to eql 0
+        .to be 0
     end
 
-    describe 'attachment created event' do
+    it "deletes the staged upload" do
+      job.perform(pending_attachment.id)
+
+      expect(staged_direct_upload(pending_attachment)).to be_nil
+    end
+
+    it "deletes the staged upload only after the transaction is committed" do
+      baseline_transactions = ActiveRecord::Base.connection.open_transactions
+      transactions_at_deletion = nil
+      stored_content_at_deletion = nil
+      allow(DirectFogUploader).to receive(:delete_staged_upload).and_wrap_original do |original, attachment|
+        transactions_at_deletion = ActiveRecord::Base.connection.open_transactions
+        stored_content_at_deletion = stored_content
+        original.call(attachment)
+      end
+
+      job.perform(pending_attachment.id)
+
+      expect(transactions_at_deletion).to eq baseline_transactions
+      expect(stored_content_at_deletion).to eq "test content"
+    end
+
+    context "when storing the final file fails" do
+      before do
+        pending_scope = instance_double(ActiveRecord::Relation, find_by: pending_attachment)
+        allow(Attachment).to receive(:pending_direct_upload).and_return(pending_scope)
+        allow(pending_attachment).to receive(:store_file!).and_raise("storage failure")
+      end
+
+      it "keeps the staged upload and the prepared attachment" do
+        expect { job.perform(pending_attachment.id) }.to raise_error("storage failure")
+
+        expect(Attachment.find(pending_attachment.id)).to be_prepared
+        expect(staged_direct_upload(pending_attachment)).not_to be_nil
+      end
+    end
+
+    context "with an isolated upload cache" do
+      let(:cache_dir) { Dir.mktmpdir }
+
+      before { allow(FogFileUploader).to receive(:cache_dir).and_return(cache_dir) }
+      after { FileUtils.rm_rf(cache_dir) }
+
+      it "leaves no copy of the upload in the cache" do
+        Rails.application.executor.wrap { job.perform(pending_attachment.id) }
+
+        expect(Dir.children(cache_dir)).to be_empty
+      end
+    end
+
+    context "without a staged upload" do
+      before do
+        staged_direct_upload(pending_attachment).destroy
+      end
+
+      it "removes the pending attachment" do
+        allow(OpenProject.logger).to receive(:error)
+
+        job.perform(pending_attachment.id)
+
+        expect { pending_attachment.reload }.to raise_error(ActiveRecord::RecordNotFound)
+      end
+    end
+
+    context "when the signed upload form is replayed after completion" do
+      it "keeps the completed content" do
+        job.perform(pending_attachment.id)
+        stage_direct_upload(pending_attachment, content: "replayed content")
+        job.perform(pending_attachment.id)
+
+        expect(stored_content).to eq "test content"
+        expect(Attachment.find(pending_attachment.id).digest)
+          .to eql("9473fdd0d880a43c21b7778d34872157")
+      end
+    end
+
+    context "when another completion finished first" do
+      it "does not complete the upload again" do
+        stale_attachment = Attachment.find(pending_attachment.id)
+        job.perform(pending_attachment.id)
+        stage_direct_upload(pending_attachment, content: "replayed content")
+
+        result = Attachments::FinishDirectUploadService.new(user:, model: stale_attachment).call
+
+        expect(result).to be_failure
+        expect(stored_content).to eq "test content"
+      end
+
+      it "keeps the completed attachment when a concurrent job loses the race" do
+        job.perform(pending_attachment.id)
+        allow(Attachment)
+          .to receive(:pending_direct_upload)
+          .and_return(Attachment.where(id: pending_attachment.id))
+
+        job.perform(pending_attachment.id)
+
+        expect(Attachment.find(pending_attachment.id)).to be_status_uploaded
+      end
+    end
+
+    describe "attachment created event" do
       let(:attachment_ids) { [] }
 
       let!(:subscription) do
@@ -121,26 +275,36 @@ describe Attachments::FinishDirectUploadJob, 'integration', type: :job do
     end
   end
 
-  context 'for a non journalized container' do
-    let!(:container) { FactoryBot.create(:wiki_page) }
+  context "for a non journalized container" do
+    let!(:container) { create(:wiki_page) }
 
-    it_behaves_like 'turning pending attachment into a standard attachment'
-    it_behaves_like "adding a journal to the attachment in the name of the attachment's author"
+    it_behaves_like "completing direct upload of attachment", expect_extract_fulltext_job: false
   end
 
-  context 'for a nil container' do
+  context "for a nil container" do
     let!(:container) { nil }
 
-    it_behaves_like 'turning pending attachment into a standard attachment'
-    it_behaves_like "adding a journal to the attachment in the name of the attachment's author"
+    it_behaves_like "completing direct upload of attachment"
   end
 
-  context 'with an incompatible attachment whitelist',
+  context "for an attachment that has been removed in the meantime" do
+    let!(:container) { create(:work_package) }
+
+    it "logs the error and resolves the job as done" do
+      allow(OpenProject.logger).to receive(:error)
+
+      job.perform(pending_attachment.id + 1)
+
+      expect(OpenProject.logger).to have_received(:error)
+    end
+  end
+
+  context "with an incompatible attachment allowlist",
           with_settings: { attachment_whitelist: %w[image/png] } do
-    let!(:container) { FactoryBot.create(:work_package) }
+    let!(:container) { create(:work_package) }
     let!(:container_timestamp) { container.updated_at }
 
-    it "Does not save the attachment" do
+    it "does not save the attachment" do
       allow(pending_attachment).to receive(:save!)
       allow(OpenProject.logger).to receive(:error)
 
@@ -155,26 +319,34 @@ describe Attachments::FinishDirectUploadJob, 'integration', type: :job do
       expect { pending_attachment.reload }.to raise_error(ActiveRecord::RecordNotFound)
     end
 
-    context 'when the job is getting a whitelist override' do
-      it "Does save the attachment" do
-        job.perform(pending_attachment.id, whitelist: false)
+    it "removes the staged upload together with the attachment" do
+      allow(OpenProject.logger).to receive(:error)
+
+      job.perform(pending_attachment.id)
+
+      expect(staged_direct_upload(pending_attachment)).to be_nil
+    end
+
+    context "when the job is getting a allowlist override" do
+      it "does save the attachment" do
+        job.perform(pending_attachment.id, allowlist: false)
 
         container.reload
 
         expect(container.attachments.count).to eq 1
-        expect { pending_attachment.reload }.not_to raise_error(ActiveRecord::RecordNotFound)
+        expect { pending_attachment.reload }.not_to raise_error
 
         expect(pending_attachment.downloads).to eq 0
       end
     end
   end
 
-  context 'with the user not being allowed',
+  context "with the user not being allowed",
           with_settings: { attachment_whitelist: %w[image/png] } do
-    shared_let(:user) { FactoryBot.create :user }
-    let!(:container) { FactoryBot.create(:work_package) }
+    shared_let(:user) { create(:user) }
+    let!(:container) { create(:work_package) }
 
-    it "Does not save the attachment" do
+    it "does not save the attachment" do
       allow(pending_attachment).to receive(:save!)
 
       job.perform(pending_attachment.id)

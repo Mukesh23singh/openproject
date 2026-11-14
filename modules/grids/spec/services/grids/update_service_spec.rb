@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,24 +20,23 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Grids::UpdateService, type: :model do
-  let(:user) { FactoryBot.build_stubbed(:user) }
+RSpec.describe Grids::UpdateService, type: :model do
+  let(:user) { build_stubbed(:user) }
   let(:contract_class) do
-    double('contract_class', "<=": true)
+    double("contract_class", "<=": true)
   end
   let(:grid_valid) { true }
   let(:instance) do
-    described_class.new(user: user,
+    described_class.new(user:,
                         model: grid,
-                        contract_class: contract_class)
+                        contract_class:)
   end
   let(:call_attributes) { {} }
   let(:grid_class) { Grids::Grid }
@@ -47,7 +44,7 @@ describe Grids::UpdateService, type: :model do
     true
   end
   let(:set_attributes_errors) do
-    double('set_attributes_errors')
+    double("set_attributes_errors")
   end
   let(:set_attributes_result) do
     ServiceResult.new result: grid,
@@ -55,7 +52,7 @@ describe Grids::UpdateService, type: :model do
                       errors: set_attributes_errors
   end
   let!(:grid) do
-    grid = FactoryBot.build_stubbed(grid_class.name.demodulize.underscore.to_sym)
+    grid = build_stubbed(grid_class.name.demodulize.underscore.to_sym)
 
     allow(grid)
       .to receive(:save)
@@ -64,13 +61,13 @@ describe Grids::UpdateService, type: :model do
     grid
   end
   let!(:set_attributes_service) do
-    service = double('set_attributes_service_instance')
+    service = double("set_attributes_service_instance")
 
     allow(Grids::SetAttributesService)
       .to receive(:new)
-      .with(user: user,
+      .with(user:,
             model: grid,
-            contract_class: contract_class,
+            contract_class:,
             contract_options: {})
       .and_return(service)
 
@@ -81,20 +78,20 @@ describe Grids::UpdateService, type: :model do
     service
   end
 
-  describe 'call' do
-    shared_examples_for 'service call' do
+  describe "call" do
+    shared_examples_for "service call" do
       subject { instance.call(call_attributes) }
 
-      it 'is successful' do
+      it "is successful" do
         expect(subject.success?).to be_truthy
       end
 
-      it 'returns the result of the SetAttributesService' do
+      it "returns the result of the SetAttributesService" do
         expect(subject)
           .to eql set_attributes_result
       end
 
-      it 'persists the grid' do
+      it "persists the grid" do
         expect(grid)
           .to receive(:save)
           .and_return(grid_valid)
@@ -102,21 +99,21 @@ describe Grids::UpdateService, type: :model do
         subject
       end
 
-      context 'when the SetAttributeService is unsuccessful' do
+      context "when the SetAttributeService is unsuccessful" do
         let(:set_attributes_success) { false }
 
-        it 'is unsuccessful' do
+        it "is unsuccessful" do
           expect(subject.success?).to be_falsey
         end
 
-        it 'returns the result of the SetAttributesService' do
+        it "returns the result of the SetAttributesService" do
           expect(subject)
             .to eql set_attributes_result
         end
 
-        it 'does not persist the changes' do
+        it "does not persist the changes" do
           expect(grid)
-            .to_not receive(:save)
+            .not_to receive(:save)
 
           subject
         end
@@ -128,10 +125,10 @@ describe Grids::UpdateService, type: :model do
         end
       end
 
-      context 'when the grid is invalid' do
+      context "when the grid is invalid" do
         let(:grid_valid) { false }
 
-        it 'is unsuccessful' do
+        it "is unsuccessful" do
           expect(subject.success?).to be_falsey
         end
 
@@ -143,14 +140,14 @@ describe Grids::UpdateService, type: :model do
       end
     end
 
-    context 'with parameters' do
+    context "with parameters" do
       let(:call_attributes) { { row_count: 5 } }
 
-      it_behaves_like 'service call'
+      it_behaves_like "service call"
     end
 
-    context 'with parameters only for widgets' do
-      let(:call_attributes) { { widgets: [FactoryBot.build_stubbed(:grid_widget)] } }
+    context "with parameters only for widgets" do
+      let(:call_attributes) { { widgets: [build_stubbed(:grid_widget)] } }
 
       before do
         allow(set_attributes_service)
@@ -170,7 +167,7 @@ describe Grids::UpdateService, type: :model do
           end
       end
 
-      it_behaves_like 'service call'
+      it_behaves_like "service call"
     end
   end
 end

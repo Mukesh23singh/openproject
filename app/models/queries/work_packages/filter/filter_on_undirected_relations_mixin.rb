@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -42,32 +41,33 @@ module Queries::WorkPackages::Filter::FilterOnUndirectedRelationsMixin
   end
 
   def relation_type
-    raise NotImplementedError
+    raise SubclassResponsibilityError
   end
 
   private
 
   def operator_and_junction
-    if operator_class == Queries::Operators::Equals
+    if operator_class <= Queries::Operators::Equals
       %w[IN OR]
     else
-      ['NOT IN', 'AND']
+      ["NOT IN", "AND"]
     end
   end
 
   def relations_subselect_to_from
-    Relation
-      .direct
-      .send(relation_type)
-      .where(to_id: values)
+    relation_subselect
+      .where(to_id: work_package_ids)
       .select(:from_id)
   end
 
   def relations_subselect_from_to
-    Relation
-      .direct
-      .send(relation_type)
-      .where(from_id: values)
+    relation_subselect
+      .where(from_id: work_package_ids)
       .select(:to_id)
+  end
+
+  def relation_subselect
+    Relation
+      .where(relation_type:)
   end
 end

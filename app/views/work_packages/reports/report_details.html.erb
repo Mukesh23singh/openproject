@@ -1,6 +1,6 @@
 <%#-- copyright
 OpenProject is an open source project management software.
-Copyright (C) 2012-2021 the OpenProject GmbH
+Copyright (C) the OpenProject GmbH
 
 This program is free software; you can redistribute it and/or
 modify it under the terms of the GNU General Public License version 3.
@@ -20,24 +20,34 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 See COPYRIGHT and LICENSE files for more details.
 
 ++#%>
 
 <% html_title t(:label_summary) %>
-<%= toolbar title: t(:label_summary) %>
-<div class="form--fieldset">
-  <div class="form--fieldset-legend"><%= @report.report_type %></div>
 
-  <%= render partial: 'report', locals: { statuses: @statuses,
+<%=
+  render Primer::OpenProject::PageHeader.new do |header|
+    header.with_title { t(:label_summary) }
+    header.with_breadcrumbs(
+      [{ href: project_overview_path(@project.id), text: @project.name },
+       { href: project_work_packages_path(@project), text: t(:label_work_package_plural) },
+       t(:label_summary)]
+    )
+  end
+%>
+
+<div class="form--fieldset">
+  <div class="form--fieldset-legend"><%= @report.title %></div>
+
+  <%= render partial: "report", locals: { statuses: @statuses,
                                           rows: @rows,
                                           data: @data,
                                           field_name: @field,
                                           report: @report } %>
-  <br />
+  <br>
 </div>
 
-<%= link_to t(:button_back), report_project_work_packages_path(@project), class:'button' %>
+<%= link_to t(:button_back), report_project_work_packages_path(@project), class: "button" %>

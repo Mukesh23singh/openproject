@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,90 +22,123 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe UpdateQueryFromParamsService,
-         type: :model do
-  let(:user) { FactoryBot.build_stubbed(:user) }
-  let(:query) { FactoryBot.build_stubbed(:query) }
+RSpec.describe UpdateQueryFromParamsService,
+               type: :model do
+  let(:user) { build_stubbed(:user) }
+  let(:query) { build_stubbed(:query) }
 
   let(:instance) { described_class.new(query, user) }
 
   let(:params) { {} }
 
-  describe '#call' do
+  describe "#call" do
     subject { instance.call(params) }
 
-    context 'group_by' do
-      context 'for an existing value' do
-        let(:params) { { group_by: 'status' } }
+    describe "group_by" do
+      context "for an existing value" do
+        let(:params) { { group_by: "status" } }
 
-        it 'sets the value' do
+        it "sets the value" do
           subject
 
           expect(query.group_by)
-            .to eql('status')
+            .to eql("status")
         end
       end
 
-      context 'for an explicitly nil value' do
+      context "for an explicitly nil value" do
         let(:params) { { group_by: nil } }
 
-        it 'sets the value' do
+        it "sets the value" do
           subject
 
           expect(query.group_by)
-            .to eql(nil)
+            .to be_nil
         end
       end
     end
 
-    context 'filters' do
+    describe "filters" do
       let(:params) do
-        { filters: [{ field: 'status_id', operator: '=', values: ['1', '2'] }] }
+        { filters: [{ field: "status_id", operator: "=", values: ["1", "2"] }] }
       end
 
-      context 'for a valid filter' do
-        it 'sets the filter' do
+      context "for a valid filter" do
+        it "sets the filter" do
           subject
 
           expect(query.filters.length)
-            .to eql(1)
+            .to be(1)
           expect(query.filters[0].name)
-            .to eql(:status_id)
+            .to be(:status_id)
           expect(query.filters[0].operator)
-            .to eql('=')
+            .to eql("=")
           expect(query.filters[0].values)
-            .to eql(['1', '2'])
+            .to eql(["1", "2"])
+        end
+      end
+
+      context "for both interchangeable version filters",
+              with_settings: { work_package_multiple_versions: true } do
+        let(:params) do
+          { filters: [{ field: "version_id", operator: "=", values: ["1"] },
+                      { field: "target_version_id", operator: "=", values: ["2"] }] }
+        end
+
+        it "sets the available one once with the later entry's values" do
+          subject
+
+          expect(query.filters.map(&:name))
+            .to eql([:target_version_id])
+          expect(query.filters[0].values)
+            .to eql(["2"])
+        end
+      end
+
+      context "for both interchangeable version filters with multiple versions inactive",
+              with_settings: { work_package_multiple_versions: false } do
+        let(:params) do
+          { filters: [{ field: "version_id", operator: "=", values: ["1"] },
+                      { field: "target_version_id", operator: "=", values: ["2"] }] }
+        end
+
+        it "sets the available one once with the later entry's values" do
+          subject
+
+          expect(query.filters.map(&:name))
+            .to eql([:version_id])
+          expect(query.filters[0].values)
+            .to eql(["2"])
         end
       end
     end
 
-    context 'sort_by' do
+    describe "sort_by" do
       let(:params) do
-        { sort_by: [['status_id', 'desc']] }
+        { sort_by: [["status_id", "desc"]] }
       end
 
-      it 'sets the order' do
+      it "sets the order" do
         subject
 
         expect(query.sort_criteria)
-          .to eql([['status_id', 'desc']])
+          .to eql([["status_id", "desc"]])
       end
     end
 
-    context 'columns' do
+    describe "columns" do
       let(:params) do
-        { columns: ['assigned_to', 'author', 'category', 'subject'] }
+        { columns: ["assigned_to", "author", "category", "subject"] }
       end
 
-      it 'sets the columns' do
+      it "sets the columns" do
         subject
 
         expect(query.column_names)
@@ -111,25 +146,25 @@ describe UpdateQueryFromParamsService,
       end
     end
 
-    context 'display representation' do
+    describe "display representation" do
       let(:params) do
-        { display_representation: 'list' }
+        { display_representation: "list" }
       end
 
-      it 'sets the display_representation' do
+      it "sets the display_representation" do
         subject
 
         expect(query.display_representation)
-          .to eq('list')
+          .to eq("list")
       end
     end
 
-    context 'highlighting mode', with_ee: %i[conditional_highlighting] do
+    describe "highlighting mode" do
       let(:params) do
-        { highlighting_mode: 'status' }
+        { highlighting_mode: "status" }
       end
 
-      it 'sets the highlighting_mode' do
+      it "sets the highlighting_mode" do
         subject
 
         expect(query.highlighting_mode)
@@ -137,12 +172,12 @@ describe UpdateQueryFromParamsService,
       end
     end
 
-    context 'default highlighting mode', with_ee: %i[conditional_highlighting] do
+    describe "default highlighting mode" do
       let(:params) do
         {}
       end
 
-      it 'sets the highlighting_mode' do
+      it "sets the highlighting_mode" do
         subject
 
         expect(query.highlighting_mode)
@@ -150,16 +185,48 @@ describe UpdateQueryFromParamsService,
       end
     end
 
-    context 'highlighting mode without EE' do
+    context "when using include subprojects" do
       let(:params) do
-        { highlighting_mode: 'status' }
+        { include_subprojects: }
       end
 
-      it 'sets the highlighting_mode' do
+      context "when true" do
+        let(:include_subprojects) { true }
+
+        it "sets the display_representation" do
+          subject
+
+          expect(query.include_subprojects)
+            .to be true
+        end
+      end
+
+      context "when false" do
+        let(:include_subprojects) { false }
+
+        it "sets the display_representation" do
+          subject
+
+          expect(query.include_subprojects)
+            .to be false
+        end
+      end
+    end
+
+    context "when providing timestamps" do
+      let(:timestamps) do
+        [
+          Timestamp.parse("2022-10-29T23:01:23Z"),
+          Timestamp.parse("oneWeekAgo@12:00+00:00"),
+          Timestamp.parse("PT0S")
+        ]
+      end
+      let(:params) { { timestamps: } }
+
+      it "sets the timestamps" do
         subject
 
-        expect(query.highlighting_mode)
-          .to eq(:none)
+        expect(query.timestamps).to eq timestamps
       end
     end
   end

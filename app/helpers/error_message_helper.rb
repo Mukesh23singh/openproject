@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,54 +22,60 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 module ErrorMessageHelper
-  def error_messages_for(*params)
-    objects, options = extract_objects_from_params(params)
+  include ActionView::Helpers::OutputSafetyHelper
 
-    error_messages = objects.map { |o| o.errors.full_messages }.flatten
+  def error_messages_for(object)
+    object = instance_variable_get(:"@#{object}") unless object.respond_to?(:to_model)
+    object = convert_to_model(object)
+    return unless object
 
-    render_error_messages_partial(error_messages, options)
+    assign_flash_error(object.errors, object)
+
+    # Don't output anything for compatibility
+    nil
   end
 
-  # Will take a contract to display the errors in a rails form.
-  # In order to have faulty field highlighted, the method sets
-  # all errors in the contract on the object as well.
-  def error_messages_for_contract(object, errors)
-    return unless errors
+  def assign_flash_error(errors, object)
+    return if errors.empty?
 
-    error_messages = errors.full_messages
+    base_error_messages = errors.full_messages_for(:base)
+    fields_error_messages = errors.full_messages - base_error_messages
 
-    object.errors.merge!(errors)
-
-    render_error_messages_partial(error_messages, object: object)
+    flash[:error] = {
+      message: error_message_header(object.class.model_name.human, base_error_messages.count + fields_error_messages.count),
+      description: error_flash_description(object, base_error_messages, fields_error_messages)
+    }
   end
 
-  def extract_objects_from_params(params)
-    options = params.extract_options!.symbolize_keys
-
-    objects = Array.wrap(options.delete(:object) || params).map do |object|
-      object = instance_variable_get("@#{object}") unless object.respond_to?(:to_model)
-      object = convert_to_model(object)
-      options[:object] ||= object
-
-      object
-    end
-
-    [objects.compact, options]
+  def error_message_header(object_name, count)
+    t("activerecord.errors.template.header", model: object_name, count:)
   end
 
-  def render_error_messages_partial(messages, options)
-    unless messages.empty?
-      render partial: 'common/validation_error',
-             locals: { error_messages: messages,
-                       classes: options[:classes],
-                       object_name: options[:object].class.model_name.human }
-    end
+  def error_flash_description(_object, base_error_messages, fields_error_messages)
+    safe_join([
+      list_of_messages(base_error_messages),
+      text_header_invalid_fields(base_error_messages, fields_error_messages),
+      list_of_messages(fields_error_messages)
+    ].compact, tag(:br))
+  end
+
+  def text_header_invalid_fields(base_error_messages, fields_error_messages)
+    return if fields_error_messages.blank?
+
+    i18n_key = base_error_messages.present? ? "errors.header_additional_invalid_fields" : "errors.header_invalid_fields"
+
+    t(i18n_key, count: fields_error_messages.count)
+  end
+
+  def list_of_messages(messages)
+    return if messages.blank?
+
+    safe_join(messages, tag(:br))
   end
 end

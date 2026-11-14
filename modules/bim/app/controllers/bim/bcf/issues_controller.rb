@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -48,29 +45,25 @@ module Bim
 
       def upload; end
 
-      def index
-        redirect_to action: :upload
-      end
-
       def prepare_import
         render_next
       rescue StandardError => e
-        flash[:error] = I18n.t('bcf.bcf_xml.import_failed', error: e.message)
-        redirect_to action: :upload
+        flash[:error] = I18n.t("bcf.bcf_xml.import_failed", error: e.message)
+        upload_error_redirect
       end
 
       def configure_import
         render_next
       rescue StandardError => e
-        flash[:error] = I18n.t('bcf.bcf_xml.import_failed', error: e.message)
-        redirect_to action: :upload
+        flash[:error] = I18n.t("bcf.bcf_xml.import_failed", error: e.message)
+        upload_error_redirect
       end
 
       def perform_import
         import_file
       rescue StandardError => e
-        flash[:error] = I18n.t('bcf.bcf_xml.import_failed', error: e.message)
-        redirect_to action: :upload
+        flash[:error] = I18n.t("bcf.bcf_xml.import_failed", error: e.message)
+        upload_error_redirect
       ensure
         @bcf_attachment&.destroy
       end
@@ -80,6 +73,10 @@ module Bim
       end
 
       private
+
+      def upload_error_redirect
+        redirect_to action: :upload
+      end
 
       def import_file
         set_import_options
@@ -100,8 +97,8 @@ module Bim
               unknown_statuses_action
               invalid_people_action
               unknown_mails_action
-              non_members_action].map { |key| params.dig(:import_options, key) }.include? 'cancel'
-          flash[:notice] = I18n.t('bcf.bcf_xml.import_canceled')
+              non_members_action].map { |key| params.dig(:import_options, key) }.include? "cancel"
+          flash[:notice] = I18n.t("bcf.bcf_xml.import_canceled")
           redirect_to_bcf_issues_list
         end
       end
@@ -112,8 +109,8 @@ module Bim
           unknown_statuses_action: params.dig(:import_options, :unknown_statuses_action).presence || "use_default",
           unknown_priorities_action: params.dig(:import_options, :unknown_priorities_action).presence || "use_default",
           invalid_people_action: params.dig(:import_options, :invalid_people_action).presence || "anonymize",
-          unknown_mails_action: params.dig(:import_options, :unknown_mails_action).presence || 'invite',
-          non_members_action: params.dig(:import_options, :non_members_action).presence || 'chose',
+          unknown_mails_action: params.dig(:import_options, :unknown_mails_action).presence || "invite",
+          non_members_action: params.dig(:import_options, :non_members_action).presence || "chose",
           unknown_types_chose_ids: params.dig(:import_options, :unknown_types_chose_ids) || [],
           unknown_statuses_chose_ids: params.dig(:import_options, :unknown_statuses_chose_ids) || [],
           unknown_priorities_chose_ids: params.dig(:import_options, :unknown_priorities_chose_ids) || [],
@@ -123,6 +120,8 @@ module Bim
       end
 
       def render_next
+        response.status = :unprocessable_entity
+
         if render_config_unknown_types?
           render_config_unknown_types
         elsif render_config_unknown_statuses?
@@ -142,7 +141,7 @@ module Bim
       end
 
       def render_config_invalid_people
-        render 'bim/bcf/issues/configure_invalid_people'
+        render "bim/bcf/issues/configure_invalid_people"
       end
 
       def render_config_invalid_people?
@@ -150,7 +149,7 @@ module Bim
       end
 
       def render_config_unknown_types
-        render 'bim/bcf/issues/configure_unknown_types'
+        render "bim/bcf/issues/configure_unknown_types"
       end
 
       def render_config_unknown_types?
@@ -158,7 +157,7 @@ module Bim
       end
 
       def render_config_unknown_statuses
-        render 'bim/bcf/issues/configure_unknown_statuses'
+        render "bim/bcf/issues/configure_unknown_statuses"
       end
 
       def render_config_unknown_statuses?
@@ -170,12 +169,12 @@ module Bim
       end
 
       def render_config_unknown_priorities
-        render 'bim/bcf/issues/configure_unknown_priorities'
+        render "bim/bcf/issues/configure_unknown_priorities"
       end
 
       def render_config_unknown_mails
-        @roles = Role.givable
-        render 'bim/bcf/issues/configure_unknown_mails'
+        @roles = ProjectRole.givable
+        render "bim/bcf/issues/configure_unknown_mails"
       end
 
       def render_config_unknown_mails?
@@ -183,8 +182,8 @@ module Bim
       end
 
       def render_config_non_members
-        @roles = Role.givable
-        render 'bim/bcf/issues/configure_non_members'
+        @roles = ProjectRole.givable
+        render "bim/bcf/issues/configure_non_members"
       end
 
       def render_config_non_members?
@@ -192,15 +191,15 @@ module Bim
       end
 
       def build_importer
-        @importer = ::OpenProject::Bim::BcfXml::Importer.new(@bcf_xml_file, @project, current_user: current_user)
+        @importer = ::OpenProject::Bim::BcfXml::Importer.new(@bcf_xml_file, @project, current_user:)
       end
 
       def get_persisted_file
         @bcf_attachment = Attachment.find_by!(id: session[:bcf_file_id], author: current_user)
         @bcf_xml_file = File.new @bcf_attachment.local_path
       rescue ActiveRecord::RecordNotFound
-        flash[:error] = I18n.t('bcf.bcf_xml.import.bcf_file_not_found')
-        redirect_to action: :upload
+        flash[:error] = I18n.t("bcf.bcf_xml.import.bcf_file_not_found")
+        upload_error_redirect
       end
 
       def persist_file
@@ -209,15 +208,15 @@ module Bim
         session[:bcf_file_id] = @bcf_attachment.id
       rescue StandardError => e
         flash[:error] = "Failed to persist BCF file: #{e.message}"
-        redirect_to action: :upload
+        upload_error_redirect
       end
 
       def create_attachment
         filename = params[:bcf_file].original_filename
         call = Attachments::CreateService
-          .bypass_whitelist(user: current_user, whitelist: %w[application/zip])
+          .bypass_allowlist(user: current_user, allowlist: %w[application/zip])
           .call(file: params[:bcf_file],
-                filename: filename,
+                filename:,
                 description: filename)
 
         call.on_failure { raise e.message }
@@ -228,17 +227,17 @@ module Bim
       def check_file_param
         path = params[:bcf_file]&.path
         unless path && File.readable?(path)
-          flash[:error] = I18n.t('bcf.bcf_xml.import_failed', error: 'File missing or not readable')
-          redirect_to action: :upload
+          flash[:error] = I18n.t("bcf.bcf_xml.import_failed", error: "File missing or not readable")
+          upload_error_redirect
         end
       end
 
       def check_bcf_version
         unless @importer.bcf_version_valid?
           flash[:error] =
-            I18n.t('bcf.bcf_xml.import_failed_unsupported_bcf_version',
+            I18n.t("bcf.bcf_xml.import_failed_unsupported_bcf_version",
                    minimal_version: OpenProject::Bim::BcfXml::Importer::MINIMUM_BCF_VERSION)
-          redirect_to action: :upload
+          upload_error_redirect
         end
       end
     end

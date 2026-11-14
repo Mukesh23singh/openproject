@@ -1,6 +1,11 @@
+# frozen_string_literal: true
+
+require "base64"
+require "json"
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +25,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,7 +34,7 @@ module API
   module V3
     module Documents
       class DocumentsAPI < ::API::OpenProjectAPI
-        helpers ::API::Utilities::PageSizeHelper
+        helpers ::API::Utilities::UrlPropsParsingHelper
 
         resources :documents do
           get do
@@ -43,25 +47,43 @@ module API
                                                 self_link: api_v3_paths.documents,
                                                 page: to_i_or_nil(params[:offset]),
                                                 per_page: resolve_page_size(params[:pageSize]),
-                                                current_user: current_user)
+                                                current_user:)
             else
-              raise ::API::Errors::InvalidQuery.new(query.errors.full_messages)
+              raise_query_errors query
             end
           end
 
-          route_param :id, type: Integer, desc: 'Document ID' do
+          route_param :id, type: Integer, desc: "Document ID" do
             helpers do
               def document
-                Document.visible.find(params[:id])
+                @document ||= Document.visible.find(params[:id])
               end
             end
 
             get do
               ::API::V3::Documents::DocumentRepresenter.new(document,
-                                                            current_user: current_user,
+                                                            current_user:,
                                                             embed_links: true)
             end
 
+            patch do
+              doc = document
+              request_body = JSON.parse(request.body.read)
+
+              result = ::Documents::UpdateService
+                .new(user: current_user, model: doc)
+                .call(request_body)
+
+              if result.success?
+                ::API::V3::Documents::DocumentRepresenter.new(doc,
+                                                              current_user:,
+                                                              embed_links: true)
+              else
+                fail ::API::Errors::ErrorBase.create_and_merge_errors(doc.errors)
+              end
+            end
+
+            mount ::API::V3::Documents::CollaborationTokenAPI
             mount ::API::V3::Attachments::AttachmentsByDocumentAPI
           end
         end

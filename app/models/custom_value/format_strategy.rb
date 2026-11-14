@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -37,14 +36,12 @@ class CustomValue::FormatStrategy
     @custom_value = custom_value
   end
 
-  def value_present?
-    !value.blank?
-  end
+  delegate :present?, to: :value, prefix: true
 
   # Returns the value of the CustomValue in a typed fashion (i.e. not as the string
   # that is used for representation in the database)
   def typed_value
-    raise 'SubclassResponsibility'
+    raise SubclassResponsibilityError
   end
 
   # Returns the value of the CustomValue formatted to a string
@@ -53,22 +50,14 @@ class CustomValue::FormatStrategy
     value.to_s
   end
 
-  # Parses the value to
-  # 1) have a unified representation for different inputs
-  # 2) memoize typed values (if the subclass decides to do so
+  # Parses the value to have a unified representation for different inputs
   def parse_value(val)
-    self.memoized_typed_value = nil
-
     val
   end
 
   # Validates the type of the custom field and returns a symbol indicating the validation error
   # if an error occurred; returns nil if no error occurred
   def validate_type_of_value
-    raise 'SubclassResponsibility'
+    raise SubclassResponsibilityError
   end
-
-  private
-
-  attr_accessor :memoized_typed_value
 end

@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -41,13 +40,12 @@ class Repository < ApplicationRecord
 
   # Managed repository lifetime
   after_create :create_managed_repository, if: Proc.new { |repo| repo.managed? }
-  after_destroy :delete_managed_repository, if: Proc.new { |repo| repo.managed? }
-
   # Raw SQL to delete changesets and changes in the database
   # has_many :changesets, dependent: :destroy is too slow for big repositories
   before_destroy :clear_changesets
+  after_destroy :delete_managed_repository, if: Proc.new { |repo| repo.managed? }
 
-  validates_length_of :password, maximum: 255, allow_nil: true
+  validates :password, length: { maximum: 255, allow_nil: true }
   validate :validate_enabled_scm, on: :create
 
   def file_changes
@@ -120,13 +118,9 @@ class Repository < ApplicationRecord
     self.class.vendor
   end
 
-  def supports_cat?
-    scm.supports_cat?
-  end
+  delegate :supports_cat?, to: :scm
 
-  def supports_annotate?
-    scm.supports_annotate?
-  end
+  delegate :supports_annotate?, to: :scm
 
   def supports_all_revisions?
     true
@@ -161,17 +155,11 @@ class Repository < ApplicationRecord
     end
   end
 
-  def branches
-    scm.branches
-  end
+  delegate :branches, to: :scm
 
-  def tags
-    scm.tags
-  end
+  delegate :tags, to: :scm
 
-  def default_branch
-    scm.default_branch
-  end
+  delegate :default_branch, to: :scm
 
   def properties(path, identifier = nil)
     scm.properties(path, identifier)
@@ -181,14 +169,12 @@ class Repository < ApplicationRecord
     scm.cat(path, identifier)
   end
 
-  def diff(path, rev, rev_to)
-    scm.diff(path, rev, rev_to)
-  end
+  delegate :diff, to: :scm
 
-  def diff_format_revisions(cs, cs_to, sep = ':')
-    text = ''
-    text << cs_to.format_identifier + sep if cs_to
-    text << cs.format_identifier if cs
+  def diff_format_revisions(cs, cs_to, sep = ":")
+    text = ""
+    text += (cs_to.format_identifier + sep) if cs_to
+    text += cs.format_identifier if cs
     text
   end
 
@@ -202,9 +188,9 @@ class Repository < ApplicationRecord
   # Returns whether an asynchronous count refresh has been requested.
   def update_required_storage
     if scm.storage_available?
-      oldest_cachable_time = Setting.repository_storage_cache_minutes.to_i.minutes.ago
+      oldest_cacheable_time = Setting.repository_storage_cache_minutes.to_i.minutes.ago
       if storage_updated_at.nil? ||
-         storage_updated_at < oldest_cachable_time
+         storage_updated_at < oldest_cacheable_time
 
         ::SCM::StorageUpdaterJob.perform_later(self)
         return true
@@ -219,7 +205,7 @@ class Repository < ApplicationRecord
     name = name.to_s
     return nil if name.blank?
 
-    changesets.where((name.match(/\A\d*\z/) ? ['revision = ?', name] : ['revision LIKE ?', name + '%'])).first
+    changesets.where((name.match?(/\A\d*\z/) ? ["revision = ?", name] : ["revision LIKE ?", name + "%"])).first
   end
 
   def latest_changeset
@@ -227,7 +213,7 @@ class Repository < ApplicationRecord
   end
 
   # Returns the latest changesets for +path+
-  # Default behaviour is to search in cached changesets
+  # Default behavior is to search in cached changesets
   def latest_changesets(path, _rev, limit = 10)
     if path.blank?
       changesets.includes(:user)
@@ -235,7 +221,7 @@ class Repository < ApplicationRecord
         .limit(limit)
     else
       changesets.includes(changeset: :user)
-        .where(['path = ?', path.with_leading_slash])
+        .where(["path = ?", path.with_leading_slash])
         .order("#{Changeset.table_name}.committed_on DESC, #{Changeset.table_name}.id DESC")
         .limit(limit)
         .map(&:changeset)
@@ -258,7 +244,7 @@ class Repository < ApplicationRecord
         new_user_id = h[committer]
         if new_user_id && (new_user_id.to_i != user_id.to_i)
           new_user_id = (new_user_id.to_i > 0 ? new_user_id.to_i : nil)
-          Changeset.where(['repository_id = ? AND committer = ?', id, committer])
+          Changeset.where(["repository_id = ? AND committer = ?", id, committer])
             .update_all("user_id = #{new_user_id.nil? ? 'NULL' : new_user_id}")
         end
       end
@@ -274,19 +260,19 @@ class Repository < ApplicationRecord
   # It will return nil if the committer is not yet mapped and if no User
   # with the same username or email was found
   def find_committer_user(committer)
-    unless committer.blank?
+    if committer.present?
       @found_committer_users ||= {}
       return @found_committer_users[committer] if @found_committer_users.has_key?(committer)
 
       user = nil
-      c = changesets.includes(:user).references(:users).find_by(committer: committer)
+      c = changesets.includes(:user).references(:users).find_by(committer:)
       if c && c.user
         user = c.user
       elsif committer.strip =~ /\A([^<]+)(<(.*)>)?\z/
         username = $1.strip
         email = $3
-        u = User.find_by_login(username)
-        u ||= User.find_by_mail(email) unless email.blank?
+        u = User.by_login(username).first
+        u ||= User.find_by_mail(email) if email.present?
         user = u
       end
       @found_committer_users[committer] = user
@@ -296,14 +282,14 @@ class Repository < ApplicationRecord
 
   def repo_log_encoding
     encoding = log_encoding.to_s.strip
-    encoding.blank? ? 'UTF-8' : encoding
+    encoding.presence || "UTF-8"
   end
 
   # Fetches new changesets for all repositories of active projects
   # Can be called periodically by an external script
   # eg. ruby script/runner "Repository.fetch_changesets"
   def self.fetch_changesets
-    Project.active.has_module(:repository).includes(:repository).each do |project|
+    Project.active.has_module(:repository).includes(:repository).find_each do |project|
       if project.repository
         begin
           project.repository.fetch_changesets
@@ -316,7 +302,7 @@ class Repository < ApplicationRecord
 
   # scan changeset comments to find related and fixed work packages for all repositories
   def self.scan_changesets_for_work_package_ids
-    all.each(&:scan_changesets_for_work_package_ids)
+    all.find_each(&:scan_changesets_for_work_package_ids)
   end
 
   ##
@@ -360,7 +346,7 @@ class Repository < ApplicationRecord
 
     if klass.nil?
       raise OpenProject::SCM::Exceptions::RepositoryBuildError.new(
-        I18n.t('repositories.errors.disabled_or_unknown_vendor', vendor: vendor)
+        I18n.t("repositories.errors.disabled_or_unknown_vendor", vendor:)
       )
     else
       klass
@@ -374,8 +360,8 @@ class Repository < ApplicationRecord
       repository.scm_type = type
     else
       raise OpenProject::SCM::Exceptions::RepositoryBuildError.new(
-        I18n.t('repositories.errors.disabled_or_unknown_type',
-               type: type,
+        I18n.t("repositories.errors.disabled_or_unknown_type",
+               type:,
                vendor: repository.vendor)
       )
     end

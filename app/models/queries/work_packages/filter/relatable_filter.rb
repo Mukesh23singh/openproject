@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -32,7 +31,7 @@ class Queries::WorkPackages::Filter::RelatableFilter < Queries::WorkPackages::Fi
   include Queries::WorkPackages::Filter::FilterForWpMixin
 
   def available?
-    User.current.allowed_to?(:manage_work_package_relations, nil, global: true)
+    User.current.allowed_in_any_work_package?(:manage_work_package_relations)
   end
 
   def type
@@ -48,35 +47,18 @@ class Queries::WorkPackages::Filter::RelatableFilter < Queries::WorkPackages::Fi
     "(1 = 1)"
   end
 
-  def scope
-    if operator == Relation::TYPE_RELATES
-      relateable_from_or_to
-    elsif operator != 'parent' && canonical_operator == operator
-      relateable_to
-    else
-      relateable_from
-    end
+  def apply_to(query_scope)
+    query_scope.relatable(WorkPackage.visible.find_by(id: work_package_ids.first), scope_operator)
   end
 
   private
 
-  def relateable_from_or_to
-    relateable_to.or(relateable_from)
-  end
-
-  def relateable_from
-    WorkPackage.relateable_from(from)
-  end
-
-  def relateable_to
-    WorkPackage.relateable_to(from)
-  end
-
-  def from
-    WorkPackage.find(values.first)
-  end
-
-  def canonical_operator
-    Relation.canonical_type(operator)
+  # 'children' used to be supported by the API although 'child' would be more fitting.
+  def scope_operator
+    if operator == "children"
+      Relation::TYPE_CHILD
+    else
+      operator
+    end
   end
 end

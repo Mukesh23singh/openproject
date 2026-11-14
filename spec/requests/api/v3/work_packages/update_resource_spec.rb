@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,97 +22,104 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Work package resource',
-         type: :request,
-         content_type: :json do
+RSpec.describe "API v3 Work package resource",
+               content_type: :json do
   include API::V3::Utilities::PathHelper
 
-  let(:closed_status) { FactoryBot.create(:closed_status) }
+  create_shared_association_defaults_for_work_package_factory
+
+  shared_let(:closed_status) { create(:closed_status) }
+  shared_let(:project) do
+    create(:project, identifier: "test_project", public: false)
+  end
 
   let(:work_package) do
-    FactoryBot.create(:work_package,
-                      project_id: project.id,
-                      description: 'lorem ipsum')
+    create(:work_package,
+           project:,
+           description: "lorem ipsum")
   end
-  let(:project) do
-    FactoryBot.create(:project, identifier: 'test_project', public: false)
-  end
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
-  let(:permissions) { %i[view_work_packages edit_work_packages assign_versions] }
-  let(:type) { FactoryBot.create(:type) }
+  let(:role) { create(:project_role, permissions:) }
+  let(:permissions) { %i[view_work_packages edit_work_packages assign_versions work_package_assigned] }
 
   current_user do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
 
-  describe 'PATCH /api/v3/work_packages/:id' do
+  describe "PATCH /api/v3/work_packages/:id" do
     let(:patch_path) { api_v3_paths.work_package work_package.id }
     let(:valid_params) do
       {
-        _type: 'WorkPackage',
+        _type: "WorkPackage",
         lockVersion: work_package.lock_version
       }
     end
 
     subject(:response) { last_response }
 
-    shared_context 'patch request' do
+    shared_context "patch request" do
       before do
         patch patch_path, params.to_json
       end
     end
 
-    context 'user without needed permissions' do
-      context 'no permission to see the work package' do
-        let(:work_package) { FactoryBot.create(:work_package) }
-        let(:current_user) { FactoryBot.create :user }
-        let(:params) { valid_params }
-
-        include_context 'patch request'
-
-        it_behaves_like 'not found',
-                        I18n.t('api_v3.errors.not_found.work_package')
-      end
-
-      context 'no permission to edit the work package' do
-        let(:role) { FactoryBot.create(:role, permissions: [:view_work_packages]) }
-        let(:current_user) do
-          FactoryBot.create(:user,
-                            member_in_project: work_package.project,
-                            member_through_role: role)
-        end
-        let(:params) { valid_params }
-
-        include_context 'patch request'
-
-        it_behaves_like 'unauthorized access'
+    shared_context "with application/hal+json content type" do
+      before do
+        header("Content-Type", "application/hal+json")
       end
     end
 
-    context 'user with needed permissions' do
-      shared_examples_for 'lock version updated' do
+    context "user without needed permissions" do
+      context "no permission to see the work package" do
+        let(:work_package) { create(:work_package) }
+        let(:current_user) { create(:user) }
+        let(:params) { valid_params }
+
+        include_context "patch request"
+
+        it_behaves_like "not found",
+                        I18n.t("api_v3.errors.not_found.work_package")
+      end
+
+      context "no permission to edit the work package" do
+        let(:role) { create(:project_role, permissions: %i[view_work_packages add_work_package_attachments]) }
+        let(:current_user) do
+          create(:user,
+                 member_with_roles: { work_package.project => role })
+        end
+        let(:params) { valid_params }
+
+        include_context "patch request"
+
+        it_behaves_like "unauthorized access"
+      end
+    end
+
+    context "user with needed permissions" do
+      shared_examples_for "lock version updated" do
         it {
           expect(subject.body)
             .to be_json_eql(work_package.reload.lock_version)
-                  .at_path('lockVersion')
+                  .at_path("lockVersion")
         }
       end
 
-      describe 'notification' do
-        let(:update_params) { valid_params.merge(subject: 'Updated subject') }
+      describe "notification" do
+        let(:update_params) { valid_params.merge(subject: "Updated subject") }
         let(:other_user) do
-          FactoryBot.create(:user,
-                            member_in_project: work_package.project,
-                            member_with_permissions: %i(view_work_packages))
+          create(:user,
+                 member_with_permissions: { work_package.project => %i(view_work_packages) },
+                 notification_settings: [
+                   build(:notification_setting,
+                         work_package_created: true)
+                 ])
         end
 
         before do
@@ -122,318 +131,335 @@ describe 'API v3 Work package resource',
           end
         end
 
-        context 'without the parameter' do
+        context "without the parameter" do
           let(:params) { update_params }
 
-          it 'creates a notification' do
+          it "creates a notification" do
             expect(Notification.where(recipient: other_user, resource: work_package))
               .to exist
           end
         end
 
-        context 'with the parameter disabling notifications' do
+        context "with the parameter disabling notifications" do
           let(:patch_path) { "#{api_v3_paths.work_package work_package.id}?notify=false" }
           let(:params) { update_params }
 
-          it 'creates no notification' do
+          it "creates no notification" do
             expect(Notification)
               .not_to exist
           end
         end
 
-        context 'with the parameter enabling notifications' do
+        context "with the parameter enabling notifications" do
           let(:patch_path) { "#{api_v3_paths.work_package work_package.id}?notify=Something" }
           let(:params) { update_params }
 
-          it 'creates a notification' do
+          it "creates a notification" do
             expect(Notification.where(recipient: other_user, resource: work_package))
               .to exist
           end
         end
       end
 
-      context 'subject' do
-        let(:params) { valid_params.merge(subject: 'Updated subject') }
+      context "subject" do
+        let(:params) { valid_params.merge(subject: "Updated subject") }
 
-        include_context 'patch request'
+        include_context "with application/hal+json content type"
+        include_context "patch request"
 
-        it { expect(response.status).to eq(200) }
+        it { expect(response).to have_http_status(:ok) }
 
-        it 'should respond with updated work package subject' do
-          expect(subject.body).to be_json_eql('Updated subject'.to_json).at_path('subject')
+        it "responds with updated work package subject" do
+          expect(subject.body).to be_json_eql("Updated subject".to_json).at_path("subject")
         end
 
-        it_behaves_like 'lock version updated'
+        it_behaves_like "lock version updated"
 
-        context 'for a user having assign_versions but lacking edit_work_packages permission' do
+        context "for a user having assign_versions but lacking edit_work_packages permission" do
           let(:permissions) { %i[view_work_packages assign_versions] }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it { expect(response.status).to eq(422) }
+          it { expect(response).to have_http_status(:unprocessable_entity) }
 
-          it 'has a readonly error' do
+          it "has a readonly error" do
             expect(response.body)
-              .to be_json_eql('urn:openproject-org:api:v3:errors:PropertyIsReadOnly'.to_json)
-                    .at_path('errorIdentifier')
+              .to be_json_eql("urn:openproject-org:api:v3:errors:PropertyIsReadOnly".to_json)
+                    .at_path("errorIdentifier")
           end
         end
       end
 
-      context 'description' do
-        shared_examples_for 'description updated' do
-          it_behaves_like 'API V3 formattable', 'description' do
-            let(:format) { 'markdown' }
+      context "description" do
+        shared_examples_for "description updated" do
+          it_behaves_like "API V3 formattable", "description" do
+            let(:format) { "markdown" }
 
             subject { response.body }
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
 
-        context 'w/o value (empty)' do
+        context "w/o value (empty)" do
           let(:raw) { nil }
-          let(:html) { '' }
+          let(:html) { "" }
           let(:params) { valid_params.merge(description: { raw: nil }) }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it_behaves_like 'description updated'
+          it_behaves_like "description updated"
         end
 
-        context 'with value' do
-          let(:raw) { '**Some text** *describing* **something**...' }
+        context "with value" do
+          let(:raw) { "**Some text** *describing* **something**..." }
           let(:html) do
             '<p class="op-uc-p"><strong>Some text</strong> <em>describing</em> <strong>something</strong>...</p>'
           end
-          let(:params) { valid_params.merge(description: { raw: raw }) }
+          let(:params) { valid_params.merge(description: { raw: }) }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it_behaves_like 'description updated'
+          it_behaves_like "description updated"
         end
       end
 
-      context 'schedule manually' do
+      context "schedule manually" do
         let(:schedule_manually) { true }
         let(:params) { valid_params.merge(scheduleManually: schedule_manually) }
 
-        include_context 'patch request'
+        include_context "patch request"
 
-        it { expect(response.status).to eq(200) }
+        it { expect(response).to have_http_status(:ok) }
 
-        it 'should update the scheduling mode' do
-          expect(subject.body).to be_json_eql(schedule_manually.to_json).at_path('scheduleManually')
+        it "updates the scheduling mode" do
+          expect(subject.body).to be_json_eql(schedule_manually.to_json).at_path("scheduleManually")
         end
       end
 
-      context 'start date' do
-        let(:dateString) { Date.today.to_date.iso8601 }
-        let(:params) { valid_params.merge(startDate: dateString) }
+      context "start date" do
+        let(:date_string) { Date.current.iso8601 }
+        let(:params) { valid_params.merge(startDate: date_string) }
 
-        include_context 'patch request'
+        include_context "patch request"
 
-        it { expect(response.status).to eq(200) }
+        it { expect(response).to have_http_status(:ok) }
 
-        it 'should respond with updated start date' do
-          expect(subject.body).to be_json_eql(dateString.to_json).at_path('startDate')
+        it "responds with updated start date" do
+          expect(subject.body).to be_json_eql(date_string.to_json).at_path("startDate")
         end
 
-        it_behaves_like 'lock version updated'
+        it_behaves_like "lock version updated"
       end
 
-      context 'finish date' do
-        let(:dateString) { Date.today.to_date.iso8601 }
-        let(:params) { valid_params.merge(dueDate: dateString) }
+      context "finish date" do
+        let(:date_string) { Date.current.iso8601 }
+        let(:params) { valid_params.merge(dueDate: date_string) }
 
-        include_context 'patch request'
+        include_context "patch request"
 
-        it { expect(response.status).to eq(200) }
+        it { expect(response).to have_http_status(:ok) }
 
-        it 'should respond with updated finish date' do
-          expect(subject.body).to be_json_eql(dateString.to_json).at_path('dueDate')
+        it "responds with updated finish date" do
+          expect(subject.body).to be_json_eql(date_string.to_json).at_path("dueDate")
         end
 
-        it_behaves_like 'lock version updated'
+        it_behaves_like "lock version updated"
       end
 
-      context 'status' do
-        let(:target_status) { FactoryBot.create(:status) }
+      describe "remaining time" do
+        let(:duration) { "PT12H30M" }
+        let(:params) { valid_params.merge(remainingTime: duration) }
+
+        include_context "patch request"
+
+        it { expect(response).to have_http_status(:ok) }
+
+        it "responds with updated finish date" do
+          expect(subject.body).to be_json_eql(duration.to_json).at_path("remainingTime")
+        end
+
+        it_behaves_like "lock version updated"
+      end
+
+      context "status" do
+        let(:target_status) { create(:status) }
         let(:status_link) { api_v3_paths.status target_status.id }
         let(:status_parameter) { { _links: { status: { href: status_link } } } }
         let(:params) { valid_params.merge(status_parameter) }
 
         before { allow(User).to receive(:current).and_return current_user }
 
-        context 'valid status' do
+        context "valid status" do
           let!(:workflow) do
-            FactoryBot.create(:workflow,
-                              type_id: work_package.type.id,
-                              old_status: work_package.status,
-                              new_status: target_status,
-                              role: current_user.memberships[0].roles[0])
+            create(:workflow,
+                   type_id: work_package.type.id,
+                   old_status: work_package.status,
+                   new_status: target_status,
+                   role: current_user.memberships[0].roles[0])
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with updated work package status' do
+          it "responds with updated work package status" do
             expect(subject.body).to be_json_eql(target_status.name.to_json)
-                                      .at_path('_embedded/status/name')
+                                      .at_path("_embedded/status/name")
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
 
-        context 'invalid status' do
-          include_context 'patch request'
+        context "invalid status" do
+          include_context "patch request"
 
-          it_behaves_like 'constraint violation' do
+          it_behaves_like "constraint violation" do
             let(:message) do
-              'Status ' + I18n.t('activerecord.errors.models.' \
-                          'work_package.attributes.status_id.status_transition_invalid')
+              "Status " + I18n.t("activerecord.errors.models." \
+                                 "work_package.attributes.status_id.status_transition_invalid")
             end
           end
         end
 
-        context 'wrong resource' do
+        context "wrong resource" do
           let(:status_link) { api_v3_paths.user current_user.id }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'invalid resource link' do
+          it_behaves_like "invalid resource link" do
             let(:message) do
-              I18n.t('api_v3.errors.invalid_resource',
-                     property: 'status',
-                     expected: '/api/v3/statuses/:id',
+              I18n.t("api_v3.errors.invalid_resource",
+                     property: "status",
+                     expected: "/api/v3/statuses/:id",
                      actual: status_link)
             end
           end
         end
       end
 
-      context 'type' do
-        let(:target_type) { FactoryBot.create(:type) }
+      context "type" do
+        let(:target_type) { create(:type) }
         let(:type_link) { api_v3_paths.type target_type.id }
         let(:type_parameter) { { _links: { type: { href: type_link } } } }
         let(:params) { valid_params.merge(type_parameter) }
 
         before { allow(User).to receive(:current).and_return current_user }
 
-        context 'valid type' do
+        context "valid type" do
           before do
-            project.types << target_type
+            project.project_types.create!(type: target_type)
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with updated work package type' do
+          it "responds with updated work package type" do
             expect(subject.body).to be_json_eql(target_type.name.to_json)
-                                      .at_path('_embedded/type/name')
+                                      .at_path("_embedded/type/name")
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
 
-        context 'valid type changing custom fields' do
-          let(:custom_field) { FactoryBot.create(:work_package_custom_field) }
-          let(:custom_field_parameter) { { "customField#{custom_field.id}": true } }
+        context "valid type changing custom fields" do
+          let(:custom_field) { create(:work_package_custom_field) }
+          let(:custom_field_parameter) { { custom_field.attribute_name(:camel_case) => true } }
           let(:params) { valid_params.merge(type_parameter).merge(custom_field_parameter) }
 
           before do
-            project.types << target_type
-            project.work_package_custom_fields << custom_field
-            target_type.custom_fields << custom_field
+            project.project_types.create!(type: target_type)
+            target_type.default_variant.custom_field_ids |= [custom_field.id]
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it 'responds with the new custom field having the desired value' do
+          it "responds with the new custom field having the desired value" do
             expect(subject.body)
               .to be_json_eql(true.to_json)
                     .at_path("customField#{custom_field.id}")
           end
         end
 
-        context 'invalid type' do
-          include_context 'patch request'
+        context "invalid type" do
+          include_context "patch request"
 
-          it_behaves_like 'constraint violation' do
+          it_behaves_like "constraint violation" do
             let(:message) { "Type #{I18n.t('activerecord.errors.messages.inclusion')}" }
           end
         end
 
-        context 'wrong resource' do
+        context "wrong resource" do
           let(:type_link) { api_v3_paths.user current_user.id }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'invalid resource link' do
+          it_behaves_like "invalid resource link" do
             let(:message) do
-              I18n.t('api_v3.errors.invalid_resource',
-                     property: 'type',
-                     expected: '/api/v3/types/:id',
+              I18n.t("api_v3.errors.invalid_resource",
+                     property: "type",
+                     expected: "/api/v3/types/:id",
                      actual: type_link)
             end
           end
         end
       end
 
-      context 'project' do
+      context "project" do
         let(:target_project) do
-          FactoryBot.create(:project, public: false)
+          create(:project, public: false)
         end
+        let(:permissions) { super() + [:move_work_packages] }
         let(:project_link) { api_v3_paths.project target_project.id }
         let(:project_parameter) { { _links: { project: { href: project_link } } } }
         let(:params) { valid_params.merge(project_parameter) }
+        let(:member_permissions) { [:move_work_packages] }
 
         before do
-          FactoryBot.create :member,
-                            user: current_user,
-                            project: target_project,
-                            roles: [FactoryBot.create(:role, permissions: [:move_work_packages])]
+          create(:member,
+                 user: current_user,
+                 project: target_project,
+                 roles: [create(:project_role, permissions: member_permissions)])
 
           allow(User).to receive(:current).and_return current_user
         end
 
-        context 'is changed' do
-          include_context 'patch request'
+        context "is changed" do
+          include_context "patch request"
 
-          it 'is successful' do
-            expect(response.status).to eq(200)
+          it "is successful" do
+            expect(response).to have_http_status(:ok)
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
 
-          it 'responds with the project changed' do
+          it "responds with the project changed" do
             href = {
               href: project_link,
               title: target_project.name
             }
-            expect(response.body).to be_json_eql(href.to_json).at_path('_links/project')
+            expect(response.body).to be_json_eql(href.to_json).at_path("_links/project")
           end
         end
 
-        context 'with a custom field defined on the target project' do
-          let(:custom_field) { FactoryBot.create(:work_package_custom_field) }
-          let(:custom_field_parameter) { { "customField#{custom_field.id}": true } }
+        context "with a custom field defined on the target project" do
+          let(:member_permissions) { %i[move_work_packages edit_work_packages] }
+          let(:custom_field) { create(:work_package_custom_field) }
+          let(:custom_field_parameter) { { custom_field.attribute_name(:camel_case) => true } }
           let(:params) { valid_params.merge(project_parameter).merge(custom_field_parameter) }
 
           before do
-            target_project.work_package_custom_fields << custom_field
-            work_package.type.custom_fields << custom_field
+            work_package.type.default_variant.custom_field_ids |= [custom_field.id]
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it 'responds with the new custom field having the desired value' do
+          it "responds with the new custom field having the desired value" do
             expect(subject.body)
               .to be_json_eql(true.to_json)
                     .at_path("customField#{custom_field.id}")
@@ -441,56 +467,54 @@ describe 'API v3 Work package resource',
         end
       end
 
-      context 'assignee and responsible' do
-        let(:user) { FactoryBot.create(:user, member_in_project: project) }
+      context "assignee and responsible" do
+        let(:user) { create(:user, member_with_permissions: { project => %i[work_package_assigned] }) }
+        let(:placeholder_user) do
+          create(:placeholder_user,
+                 member_with_roles: { project => role })
+        end
         let(:params) { valid_params.merge(user_parameter) }
         let(:work_package) do
-          FactoryBot.create(:work_package,
-                            project: project,
-                            assigned_to: current_user,
-                            responsible: current_user)
+          create(:work_package,
+                 project:,
+                 assigned_to: current_user,
+                 responsible: current_user)
         end
 
         before { login_as current_user }
 
-        shared_context 'setup group membership' do
-          let(:group) { FactoryBot.create(:group) }
-          let(:group_role) { FactoryBot.create(:role) }
+        shared_context "setup group membership" do
+          let(:group) { create(:group) }
+          let(:group_role) { create(:project_role, permissions: %i[work_package_assigned]) }
           let!(:group_member) do
-            FactoryBot.create(:member,
-                              principal: group,
-                              project: project,
-                              roles: [group_role])
+            create(:member,
+                   principal: group,
+                   project:,
+                   roles: [group_role])
           end
         end
 
-        let(:placeholder_user) do
-          FactoryBot.create(:placeholder_user,
-                            member_in_project: project,
-                            member_through_role: role)
-        end
-
-        shared_examples_for 'handling people' do |property|
+        shared_examples_for "handling people" do |property|
           let(:user_parameter) { { _links: { property => { href: user_href } } } }
           let(:href_path) { "_links/#{property}/href" }
 
-          describe 'nil' do
+          describe "nil" do
             let(:user_href) { nil }
 
-            include_context 'patch request'
+            include_context "patch request"
 
-            it { expect(response.status).to eq(200) }
+            it { expect(response).to have_http_status(:ok) }
 
             it { expect(response.body).to be_json_eql(nil.to_json).at_path(href_path) }
 
-            it_behaves_like 'lock version updated'
+            it_behaves_like "lock version updated"
           end
 
-          describe 'valid' do
-            shared_examples_for 'valid user assignment' do
+          describe "valid" do
+            shared_examples_for "valid user assignment" do
               let(:title) { assigned_user.name.to_s.to_json }
 
-              it { expect(response.status).to eq(200) }
+              it { expect(response).to have_http_status(:ok) }
 
               it {
                 expect(response.body)
@@ -498,77 +522,77 @@ describe 'API v3 Work package resource',
                         .at_path("_links/#{property}/title")
               }
 
-              it_behaves_like 'lock version updated'
+              it_behaves_like "lock version updated"
             end
 
-            context 'user' do
+            context "user" do
               let(:user_href) { api_v3_paths.user user.id }
 
-              include_context 'patch request'
+              include_context "patch request"
 
-              it_behaves_like 'valid user assignment' do
+              it_behaves_like "valid user assignment" do
                 let(:assigned_user) { user }
               end
             end
 
-            context 'group' do
+            context "group" do
               let(:user_href) { api_v3_paths.user group.id }
 
-              include_context 'setup group membership', true
-              include_context 'patch request'
+              include_context "setup group membership", true
+              include_context "patch request"
 
-              it_behaves_like 'valid user assignment' do
+              it_behaves_like "valid user assignment" do
                 let(:assigned_user) { group }
               end
             end
 
-            context 'placeholder user' do
+            context "placeholder user" do
               let(:user_href) { api_v3_paths.placeholder_user placeholder_user.id }
 
-              include_context 'patch request'
+              include_context "patch request"
 
-              it_behaves_like 'valid user assignment' do
+              it_behaves_like "valid user assignment" do
                 let(:assigned_user) { placeholder_user }
               end
             end
           end
 
-          describe 'invalid' do
-            include_context 'patch request'
+          describe "invalid" do
+            include_context "patch request"
 
-            context 'user doesn\'t exist' do
-              let(:user_href) { api_v3_paths.user 909090 }
+            context "user doesn't exist" do
+              let(:user_href) { api_v3_paths.user(not_existing_id(User)) }
 
-              it_behaves_like 'constraint violation' do
+              it_behaves_like "constraint violation" do
                 let(:message) do
-                  I18n.t('api_v3.errors.validation.' \
-                                     'invalid_user_assigned_to_work_package',
+                  I18n.t("api_v3.errors.validation." \
+                         "invalid_user_assigned_to_work_package",
                          property: WorkPackage.human_attribute_name(property))
                 end
               end
             end
 
-            context 'user is not visible' do
-              let(:invalid_user) { FactoryBot.create(:user) }
+            context "user is not visible" do
+              let(:invalid_user) { create(:user) }
               let(:user_href) { api_v3_paths.user invalid_user.id }
 
-              it_behaves_like 'constraint violation' do
+              it_behaves_like "constraint violation" do
                 let(:message) do
-                  I18n.t('api_v3.errors.validation.invalid_user_assigned_to_work_package',
+                  I18n.t("api_v3.errors.validation.invalid_user_assigned_to_work_package",
                          property: WorkPackage.human_attribute_name(property))
                 end
               end
             end
 
-            context 'wrong resource' do
+            context "wrong resource" do
               let(:user_href) { api_v3_paths.status work_package.status.id }
 
-              include_context 'patch request'
+              include_context "patch request"
 
-              it_behaves_like 'invalid resource link' do
+              it_behaves_like "invalid resource link" do
                 let(:message) do
-                  I18n.t('api_v3.errors.invalid_resource',
-                         property: property,
+                  I18n.t("api_v3.errors.invalid_resource",
+                         property:,
                          expected: "/api/v3/groups/:id' or '/api/v3/users/:id' or '/api/v3/placeholder_users/:id",
                          actual: user_href)
                 end
@@ -577,100 +601,383 @@ describe 'API v3 Work package resource',
           end
         end
 
-        context 'assingee' do
-          it_behaves_like 'handling people', 'assignee'
+        context "for the assignee" do
+          it_behaves_like "handling people", "assignee"
         end
 
-        context 'responsible' do
-          it_behaves_like 'handling people', 'responsible'
+        context "responsible" do
+          it_behaves_like "handling people", "responsible"
         end
       end
 
-      context 'version' do
-        let(:target_version) { FactoryBot.create(:version, project: project) }
+      describe "version", with_settings: { work_package_multiple_versions: false } do
+        let(:target_version) { create(:version, project:) }
         let(:version_link) { api_v3_paths.version target_version.id }
         let(:version_parameter) { { _links: { version: { href: version_link } } } }
         let(:params) { valid_params.merge(version_parameter) }
 
         before { allow(User).to receive(:current).and_return current_user }
 
-        context 'valid' do
-          include_context 'patch request'
+        context "when valid" do
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with the work package assigned to the version' do
+          it "responds with the work package assigned to the version" do
             expect(subject.body)
               .to be_json_eql(target_version.name.to_json)
-                    .at_path('_embedded/version/name')
+                    .at_path("_embedded/version/name")
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
 
-        context 'for a user lacking the assign_versions permission' do
+        context "for a user lacking the assign_versions permission" do
           let(:permissions) { %i[view_work_packages edit_work_packages] }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it { expect(response.status).to eq(422) }
+          it { expect(response).to have_http_status(:unprocessable_entity) }
 
-          it 'has a readonly error' do
+          it "has a readonly error" do
             expect(response.body)
-              .to be_json_eql('urn:openproject-org:api:v3:errors:PropertyIsReadOnly'.to_json)
-                    .at_path('errorIdentifier')
+              .to be_json_eql("urn:openproject-org:api:v3:errors:PropertyIsReadOnly".to_json)
+                    .at_path("errorIdentifier")
           end
         end
       end
 
-      context 'category' do
-        let(:target_category) { FactoryBot.create(:category, project: project) }
+      describe "targetVersions" do
+        let(:target_version) { create(:version, project:) }
+        let(:target_versions_links) { [{ href: api_v3_paths.version(target_version.id) }] }
+        let(:params) { valid_params.merge(_links: { targetVersions: target_versions_links }) }
+
+        before { allow(User).to receive(:current).and_return current_user }
+
+        context "with a single version" do
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "assigns the target version" do
+            expect(work_package.reload.target_versions).to contain_exactly(target_version)
+          end
+
+          it "responds with the target version link" do
+            expect(response.body)
+              .to be_json_eql(api_v3_paths.version(target_version.id).to_json)
+                    .at_path("_links/targetVersions/0/href")
+          end
+
+          it_behaves_like "lock version updated"
+        end
+
+        context "with an empty collection" do
+          let!(:existing) do
+            create(:work_package_version, work_package:, version: target_version, kind: "target")
+          end
+          let(:target_versions_links) { [] }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "clears the target versions" do
+            expect(work_package.reload.target_versions).to be_empty
+          end
+        end
+
+        context "with more than one version while multiple versions is disabled",
+                with_settings: { work_package_multiple_versions: false } do
+          let(:other_version) { create(:version, project:) }
+          let(:target_versions_links) do
+            [{ href: api_v3_paths.version(target_version.id) },
+             { href: api_v3_paths.version(other_version.id) }]
+          end
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:unprocessable_entity) }
+
+          it "rejects the update with a single-value error" do
+            expect(response.body).to include("Target Versions can only hold a single value")
+          end
+
+          it "does not assign any target version" do
+            expect(work_package.reload.target_versions).to be_empty
+          end
+        end
+
+        context "with more than one version while multiple versions is enabled",
+                with_settings: { work_package_multiple_versions: true } do
+          let(:other_version) { create(:version, project:) }
+          let(:target_versions_links) do
+            [{ href: api_v3_paths.version(target_version.id) },
+             { href: api_v3_paths.version(other_version.id) }]
+          end
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "assigns all target versions" do
+            expect(work_package.reload.target_versions)
+              .to contain_exactly(target_version, other_version)
+          end
+
+          it "responds with a link per target version" do
+            hrefs = parse_json(response.body, "_links/targetVersions").pluck("href")
+
+            expect(hrefs)
+              .to contain_exactly(api_v3_paths.version(target_version.id),
+                                  api_v3_paths.version(other_version.id))
+          end
+        end
+
+        context "for a user lacking the assign_versions permission" do
+          let(:permissions) { %i[view_work_packages edit_work_packages] }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:unprocessable_entity) }
+
+          it "has a readonly error" do
+            expect(response.body)
+              .to be_json_eql("urn:openproject-org:api:v3:errors:PropertyIsReadOnly".to_json)
+                    .at_path("errorIdentifier")
+          end
+        end
+      end
+
+      describe "labels" do
+        let(:label) { create(:label) }
+        let(:label_links) { [{ href: api_v3_paths.label(label.id) }] }
+        let(:params) { valid_params.merge(_links: { labels: label_links }) }
+
+        before { allow(User).to receive(:current).and_return current_user }
+
+        context "with a single label" do
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "assigns the label" do
+            expect(work_package.reload.labels).to contain_exactly(label)
+          end
+
+          it "responds with the label link" do
+            expect(response.body)
+              .to be_json_eql(api_v3_paths.label(label.id).to_json)
+                    .at_path("_links/labels/0/href")
+          end
+
+          it_behaves_like "lock version updated"
+        end
+
+        context "with an empty collection" do
+          before { work_package.labels << label }
+
+          let(:label_links) { [] }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "clears the labels" do
+            expect(work_package.reload.labels).to be_empty
+          end
+        end
+
+        context "with a label that does not exist" do
+          before { work_package.labels << label }
+
+          let(:label_links) { [{ href: api_v3_paths.label(0) }] }
+
+          include_context "patch request"
+
+          it_behaves_like "constraint violation" do
+            let(:message) { "Labels does not exist" }
+          end
+
+          it "leaves the labels alone" do
+            expect(work_package.reload.labels).to contain_exactly(label)
+          end
+        end
+
+        context "with a new title from a user the work package is shared with with edit rights" do
+          let(:label_links) { [{ href: nil, title: "Needs triage" }] }
+          let(:current_user) do
+            create(:user).tap do |user|
+              create(:work_package_member,
+                     principal: user,
+                     entity: work_package,
+                     roles: [create(:edit_work_package_role)])
+            end
+          end
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "creates the label and assigns it" do
+            expect(work_package.reload.labels).to contain_exactly(Label.find_by!(name: "Needs triage"))
+          end
+        end
+
+        context "when another attribute of the same request is invalid" do
+          let(:params) { valid_params.merge(subject: "", _links: { labels: label_links }) }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:unprocessable_entity) }
+
+          it "does not assign the label" do
+            expect(work_package.reload.labels).to be_empty
+          end
+        end
+
+        context "with a title for a label that does not exist yet" do
+          let(:label_links) { [{ href: nil, title: "Needs triage" }] }
+          let(:created_label) { Label.find_by!(name: "Needs triage") }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "creates the label as the current user and assigns it" do
+            expect(created_label.author).to eq(current_user)
+            expect(work_package.reload.labels).to contain_exactly(created_label)
+          end
+
+          it "responds with the href of the created label" do
+            expect(response.body)
+              .to be_json_eql(api_v3_paths.label(created_label.id).to_json)
+                    .at_path("_links/labels/0/href")
+          end
+        end
+
+        context "with a title matching an existing label in different casing" do
+          let!(:label) { create(:label, name: "Needs triage") }
+          let(:label_links) { [{ href: nil, title: "NEEDS TRIAGE" }] }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "reuses the existing label" do
+            expect(Label.count).to eq(1)
+            expect(work_package.reload.labels).to contain_exactly(label)
+          end
+        end
+
+        context "with a title and another attribute of the same request being invalid" do
+          let(:params) { valid_params.merge(subject: "", _links: { labels: [{ href: nil, title: "Needs triage" }] }) }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:unprocessable_entity) }
+
+          it "does not create the label" do
+            expect(Label.where(name: "Needs triage")).not_to exist
+          end
+        end
+
+        context "with a null href and no title" do
+          let(:label_links) { [{ href: nil }] }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:ok) }
+
+          it "creates no label and assigns none" do
+            expect(Label.count).to eq(0)
+            expect(work_package.reload.labels).to be_empty
+          end
+        end
+
+        context "for a user having assign_versions but lacking edit_work_packages permission" do
+          let(:permissions) { %i[view_work_packages assign_versions] }
+
+          include_context "patch request"
+
+          it { expect(response).to have_http_status(:unprocessable_entity) }
+
+          it "has a readonly error" do
+            expect(response.body)
+              .to be_json_eql("urn:openproject-org:api:v3:errors:PropertyIsReadOnly".to_json)
+                    .at_path("errorIdentifier")
+          end
+
+          it "does not assign the label" do
+            expect(work_package.reload.labels).to be_empty
+          end
+
+          context "with a title for a label that does not exist yet" do
+            let(:label_links) { [{ href: nil, title: "Needs triage" }] }
+
+            it { expect(response).to have_http_status(:unprocessable_entity) }
+
+            it "has a readonly error" do
+              expect(response.body)
+                .to be_json_eql("urn:openproject-org:api:v3:errors:PropertyIsReadOnly".to_json)
+                      .at_path("errorIdentifier")
+            end
+
+            it "does not create the label" do
+              expect(Label.where(name: "Needs triage")).not_to exist
+            end
+          end
+        end
+      end
+
+      context "category" do
+        let(:target_category) { create(:category, project:) }
         let(:category_link) { api_v3_paths.category target_category.id }
         let(:category_parameter) { { _links: { category: { href: category_link } } } }
         let(:params) { valid_params.merge(category_parameter) }
 
         before { allow(User).to receive(:current).and_return current_user }
 
-        context 'valid' do
-          include_context 'patch request'
+        context "valid" do
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with the work package assigned to the category' do
+          it "responds with the work package assigned to the category" do
             expect(subject.body)
               .to be_json_eql(target_category.name.to_json)
-                    .at_path('_embedded/category/name')
+                    .at_path("_embedded/category/name")
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
       end
 
-      context 'priority' do
-        let(:target_priority) { FactoryBot.create(:priority) }
+      context "priority" do
+        let(:target_priority) { create(:priority) }
         let(:priority_link) { api_v3_paths.priority target_priority.id }
         let(:priority_parameter) { { _links: { priority: { href: priority_link } } } }
         let(:params) { valid_params.merge(priority_parameter) }
 
         before { allow(User).to receive(:current).and_return current_user }
 
-        context 'valid' do
-          include_context 'patch request'
+        context "valid" do
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with the work package assigned to the priority' do
+          it "responds with the work package assigned to the priority" do
             expect(subject.body)
               .to be_json_eql(target_priority.name.to_json)
-                    .at_path('_embedded/priority/name')
+                    .at_path("_embedded/priority/name")
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
       end
 
-      context 'budget' do
-        let(:target_budget) { FactoryBot.create(:budget, project: project) }
+      context "budget" do
+        let(:target_budget) { create(:budget, project:) }
         let(:budget_link) { api_v3_paths.budget target_budget.id }
         let(:budget_parameter) { { _links: { budget: { href: budget_link } } } }
         let(:params) { valid_params.merge(budget_parameter) }
@@ -678,31 +985,31 @@ describe 'API v3 Work package resource',
 
         before { login_as(current_user) }
 
-        context 'valid' do
-          include_context 'patch request'
+        context "valid" do
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with the work package and its new budget' do
+          it "responds with the work package and its new budget" do
             expect(subject.body).to be_json_eql(target_budget.subject.to_json)
-                                      .at_path('_embedded/budget/subject')
+                                      .at_path("_embedded/budget/subject")
           end
         end
 
-        context 'not valid' do
-          let(:target_budget) { FactoryBot.create(:budget) }
+        context "not valid" do
+          let(:target_budget) { create(:budget) }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'constraint violation' do
-            let(:message) { I18n.t('activerecord.errors.messages.inclusion') }
+          it_behaves_like "constraint violation" do
+            let(:message) { I18n.t("activerecord.errors.messages.inclusion") }
           end
         end
       end
 
-      context 'list custom field' do
+      context "list custom field" do
         let(:custom_field) do
-          FactoryBot.create(:list_wp_custom_field)
+          create(:list_wp_custom_field)
         end
 
         let(:target_value) { custom_field.possible_values.last }
@@ -712,83 +1019,83 @@ describe 'API v3 Work package resource',
         end
 
         let(:value_parameter) do
-          { _links: { custom_field.accessor_name.camelize(:lower) => { href: value_link } } }
+          { _links: { custom_field.attribute_name.camelize(:lower) => { href: value_link } } }
         end
         let(:params) { valid_params.merge(value_parameter) }
 
         before do
           allow(User).to receive(:current).and_return current_user
-          work_package.project.work_package_custom_fields << custom_field
-          work_package.type.custom_fields << custom_field
+          work_package.type.default_variant.custom_field_ids |= [custom_field.id]
         end
 
-        context 'valid' do
-          include_context 'patch request'
+        context "valid" do
+          include_context "patch request"
 
-          it { expect(response.status).to eq(200) }
+          it { expect(response).to have_http_status(:ok) }
 
-          it 'should respond with the work package assigned to the new value' do
+          it "responds with the work package assigned to the new value" do
             expect(subject.body)
               .to be_json_eql(value_link.to_json)
-                    .at_path("_links/#{custom_field.accessor_name.camelize(:lower)}/href")
+                    .at_path("_links/#{custom_field.attribute_name.camelize(:lower)}/href")
           end
 
-          it_behaves_like 'lock version updated'
+          it_behaves_like "lock version updated"
         end
       end
 
-      describe 'update with read-only attributes' do
-        describe 'single read-only violation' do
-          context 'created and updated' do
+      describe "update with read-only attributes" do
+        describe "single read-only violation" do
+          context "created and updated" do
             let(:tomorrow) { (DateTime.now + 1.day).utc.iso8601 }
-            include_context 'patch request'
 
-            context 'created_at' do
+            include_context "patch request"
+
+            context "created_at" do
               let(:params) { valid_params.merge(createdAt: tomorrow) }
 
-              it_behaves_like 'read-only violation', 'createdAt', WorkPackage, 'Created on'
+              it_behaves_like "read-only violation", "createdAt", WorkPackage, "Created on"
             end
 
-            context 'updated_at' do
+            context "updated_at" do
               let(:params) { valid_params.merge(updatedAt: tomorrow) }
 
-              it_behaves_like 'read-only violation', 'updatedAt', WorkPackage, 'Updated on'
+              it_behaves_like "read-only violation", "updatedAt", WorkPackage, "Updated on"
             end
           end
         end
 
-        context 'multiple read-only attributes' do
+        context "multiple read-only attributes" do
           let(:params) do
-            valid_params.merge(createdAt: Date.today.iso8601, updatedAt: Date.today.iso8601)
+            valid_params.merge(createdAt: Time.zone.today.iso8601, updatedAt: Time.zone.today.iso8601)
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'multiple errors', 422
+          it_behaves_like "multiple errors", 422
 
-          it_behaves_like 'multiple errors of the same type', 2, 'PropertyIsReadOnly'
+          it_behaves_like "multiple errors of the same type", 2, "PropertyIsReadOnly"
 
-          it_behaves_like 'multiple errors of the same type with details',
-                          'attribute',
-                          'attribute' => ['createdAt', 'updatedAt']
+          it_behaves_like "multiple errors of the same type with details",
+                          "attribute",
+                          "attribute" => ["createdAt", "updatedAt"]
         end
       end
 
-      context 'invalid update' do
-        context 'single invalid attribute' do
-          let(:params) { valid_params.tap { |h| h[:subject] = '' } }
+      context "invalid update" do
+        context "single invalid attribute" do
+          let(:params) { valid_params.tap { |h| h[:subject] = "" } }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'constraint violation' do
+          it_behaves_like "constraint violation" do
             let(:message) { "Subject can't be blank" }
           end
         end
 
-        context 'multiple invalid attributes' do
+        context "multiple invalid attributes" do
           let(:params) do
             valid_params
-              .tap { |h| h[:subject] = '' }
+              .tap { |h| h[:subject] = "" }
               .merge(
                 _links: {
                   parent: {
@@ -802,46 +1109,196 @@ describe 'API v3 Work package resource',
             role.add_permission!(:manage_subtasks)
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'multiple errors', 422
+          it_behaves_like "multiple errors", 422
 
-          it_behaves_like 'multiple errors of the same type', 2, 'PropertyConstraintViolation'
+          it_behaves_like "multiple errors of the same type", 3, "PropertyConstraintViolation"
 
-          it_behaves_like 'multiple errors of the same type with messages' do
-            let(:message) { ['Subject can\'t be blank.', 'Parent does not exist.'] }
+          it_behaves_like "multiple errors of the same type with messages" do
+            let(:message) { ["Subject can't be blank.", "Parent does not exist.", "Parent may not be accessed."] }
           end
         end
 
-        context 'missing lock version' do
+        context "missing lock version" do
           let(:params) { valid_params.except(:lockVersion) }
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'update conflict'
+          it_behaves_like "update conflict"
         end
 
-        context 'stale object' do
-          let(:params) { valid_params.merge(subject: 'Updated subject') }
+        context "stale object" do
+          let(:params) { valid_params.merge(subject: "Updated subject") }
 
           before do
             params
 
-            work_package.subject = 'I am the first!'
+            work_package.subject = "I am the first!"
             work_package.save!
 
             expect(valid_params[:lockVersion]).not_to eq(work_package.lock_version)
           end
 
-          include_context 'patch request'
+          include_context "patch request"
 
-          it_behaves_like 'update conflict'
+          it_behaves_like "update conflict"
         end
       end
 
-      context 'claiming attachments' do
-        let(:old_attachment) { FactoryBot.create(:attachment, container: work_package) }
-        let(:attachment) { FactoryBot.create(:attachment, container: nil, author: current_user) }
+      describe "custom fields" do
+        context "when the custom field is required" do
+          let!(:required_custom_field) do
+            create(:work_package_custom_field,
+                   field_format: "string",
+                   name: "Department",
+                   is_required: true,
+                   types: [work_package.type])
+          end
+
+          context "when no custom field value is provided" do
+            let(:params) { valid_params }
+
+            include_context "patch request"
+
+            it "responds with 200" do
+              expect(response).to have_http_status(:ok)
+            end
+
+            it "keeps the custom field value to be empty" do
+              response
+              expect(work_package.reload.typed_custom_value_for(required_custom_field))
+                .to be_nil
+            end
+          end
+
+          context "when the custom field value is provided but empty" do
+            let(:params) do
+              valid_params.merge("customField#{required_custom_field.id}" => "")
+            end
+
+            include_context "patch request"
+
+            it "returns 422 with custom field validation error" do
+              expect(response)
+                .to have_http_status(422)
+
+              expect(response.body)
+                .to be_json_eql("Department can't be blank.".to_json)
+                .at_path("message")
+            end
+
+            it "does not alter the work package" do
+              expect { response }.not_to change(work_package.reload, :updated_at)
+            end
+          end
+
+          context "when custom field value is being cleared" do
+            let(:params) do
+              valid_params.merge("customField#{required_custom_field.id}" => "")
+            end
+
+            before do
+              # Set an initial value for the custom field
+              work_package.custom_field_values = { required_custom_field.id => "Initial Department" }
+              work_package.save!
+            end
+
+            include_context "patch request"
+
+            it "returns 422 with custom field validation error" do
+              expect(response)
+                .to have_http_status(422)
+
+              expect(response.body)
+                .to be_json_eql("Department can't be blank.".to_json)
+                .at_path("message")
+            end
+
+            it "does not alter the work package" do
+              expect { response }.not_to change(work_package.reload, :updated_at)
+
+              # Custom field value should remain unchanged
+              expect(work_package.reload.typed_custom_value_for(required_custom_field))
+                .to eq("Initial Department")
+            end
+          end
+
+          context "when the custom field value is provided and valid" do
+            let(:params) do
+              valid_params.merge("customField#{required_custom_field.id}" => "Engineering")
+            end
+
+            include_context "patch request"
+
+            it "responds with 200" do
+              expect(response).to have_http_status(:ok)
+            end
+
+            it "updates the custom field value" do
+              response
+              work_package.reload
+              expect(work_package.typed_custom_value_for(required_custom_field))
+                .to eq("Engineering")
+            end
+
+            it_behaves_like "lock version updated"
+          end
+        end
+
+        context "with a datetime custom field" do
+          let!(:datetime_custom_field) do
+            create(:wp_custom_field,
+                   :datetime,
+                   name: "Detected at",
+                   types: [work_package.type])
+          end
+          let(:params) { valid_params.merge(datetime_custom_field.attribute_name(:camel_case) => value) }
+
+          context "when the value has an offset" do
+            let(:value) { "2026-10-01T14:30:00+02:00" }
+
+            include_context "patch request"
+
+            it "responds with the value in UTC" do
+              expect(response).to have_http_status(:ok)
+              expect(response.body)
+                .to be_json_eql("2026-10-01T12:30:00.000Z".to_json)
+                .at_path(datetime_custom_field.attribute_name(:camel_case))
+            end
+          end
+
+          context "when the value is not ISO 8601" do
+            let(:value) { "01.10.2026 14:30" }
+
+            include_context "patch request"
+
+            it_behaves_like "constraint violation" do
+              let(:message) { "Detected at is not a valid date time." }
+            end
+          end
+
+          context "when the value is cleared" do
+            let(:value) { nil }
+
+            before do
+              work_package.custom_field_values = { datetime_custom_field.id => "2026-10-01T12:30:00Z" }
+              work_package.save!
+            end
+
+            include_context "patch request"
+
+            it "removes the value" do
+              expect(response).to have_http_status(:ok)
+              expect(work_package.reload.typed_custom_value_for(datetime_custom_field)).to be_nil
+            end
+          end
+        end
+      end
+
+      context "claiming attachments" do
+        let(:old_attachment) { create(:attachment, container: work_package) }
+        let(:attachment) { create(:attachment, container: nil, author: current_user) }
         let(:params) do
           {
             lockVersion: work_package.lock_version,
@@ -857,9 +1314,9 @@ describe 'API v3 Work package resource',
           old_attachment
         end
 
-        include_context 'patch request'
+        include_context "patch request"
 
-        it 'replaces the current with the provided attachments' do
+        it "replaces the current with the provided attachments" do
           work_package.reload
 
           expect(work_package.attachments)

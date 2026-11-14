@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,40 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'support/pages/page'
+
+require "support/pages/page"
 
 module Pages
   class WorkPackageCards < Page
-    include Capybara::DSL
-    include RSpec::Matchers
     attr_reader :project
 
     def initialize(project = nil)
       @project = project
+      super()
+    end
+
+    def expect_work_package_count(count)
+      expect(page).to have_css("wp-single-card", count:, wait: 20)
     end
 
     def expect_work_package_listed(*work_packages)
       work_packages.each do |wp|
-        expect(page).to have_selector("wp-single-card[data-work-package-id='#{wp.id}']", wait: 10)
+        expect(page).to have_css("wp-single-card[data-work-package-id='#{wp.id}']", wait: 10)
       end
     end
 
     def expect_work_package_not_listed(*work_packages)
       work_packages.each do |wp|
-        expect(page).not_to have_selector("wp-single-card[data-work-package-id='#{wp.id}']")
+        expect(page).to have_no_css("wp-single-card[data-work-package-id='#{wp.id}']")
       end
     end
 
     def expect_work_package_order(*ids)
       retry_block do
-        rows = page.all 'wp-single-card'
+        rows = page.all "wp-single-card"
         expected = ids.map { |el| el.is_a?(WorkPackage) ? el.id.to_s : el.to_s }
-        found = rows.map { |el| el['data-work-package-id'] }
+        found = rows.map { |el| el["data-work-package-id"] }
 
         raise "Order is incorrect: #{found.inspect} != #{expected.inspect}" unless found == expected
       end
@@ -62,22 +67,27 @@ module Pages
     def open_full_screen_by_doubleclick(work_package)
       retry_block do
         loading_indicator_saveguard
-        page.driver.browser.action.double_click(card(work_package).native).perform
+        card(work_package).double_click
 
         # Ensure we show the subject field
-        page.find('.work-packages--subject-type-row')
+        page.find(".work-packages--subject-type-row")
       end
 
       Pages::FullWorkPackage.new(work_package, project)
     end
 
-    def open_full_screen_by_details(work_package)
+    def open_split_view_by_info_icon(work_package)
       element = card(work_package)
       scroll_to_element(element)
-      element.hover
-      element.find('[data-qa-selector="op-wp-single-card--details-button"]').click
 
-      ::Pages::SplitWorkPackage.new(work_package, project)
+      # The offset is needed to ensure that the resizer does not catch the click, instead of the info icon
+      element.hover.find(:test_id, "op-wp-single-card--details-button").click(x: -5, y: 0)
+
+      ::Pages::PrimerizedSplitWorkPackage.new(work_package, project)
+    end
+
+    def drag_and_drop_work_package(from:, to:)
+      drag_and_drop_list(from:, to:, elements: "wp-single-card", handler: ".op-wp-single-card--content")
     end
 
     def select_work_package(work_package)
@@ -87,35 +97,34 @@ module Pages
     def click_info_icon(work_package)
       card_element = card(work_package)
       card_element.hover
-      card_element.find('[data-qa-selector="op-wp-single-card--details-button"]').click
+      card_element.find(:test_id, "op-wp-single-card--details-button").click
+    end
+
+    def click_id_link(work_package)
+      card_element = card(work_package)
+      card_element.find(".__ui-state-link").click
     end
 
     def deselect_work_package(work_package)
       element = find("wp-single-card[data-work-package-id='#{work_package.id}']")
 
-      page.driver.browser.action.key_down(:command)
-        .click(element.native)
-        .key_up(:command)
-        .perform
+      element.click(:command)
     end
 
     def select_work_package_with_shift(work_package)
       element = find("wp-single-card[data-work-package-id='#{work_package.id}']")
 
-      page.driver.browser.action.key_down(:shift)
-        .click(element.native)
-        .key_up(:shift)
-        .perform
+      element.click(:shift)
     end
 
     def select_all_work_packages
-      find('body').send_keys [:control, 'a']
-      expect(page).to have_no_selector '#work-package-context-menu'
+      send_select_all(page.first('.op-wp-single-card[tabindex="0"]', minimum: 1))
+      expect(page).to have_no_css "#work-package-context-menu"
     end
 
     def deselect_all_work_packages
-      find('body').send_keys [:control, 'd']
-      expect(page).to have_no_selector '#work-package-context-menu'
+      find("body").send_keys :escape
+      expect(page).to have_no_css "#work-package-context-menu"
     end
 
     def card(work_package)
@@ -128,7 +137,7 @@ module Pages
 
     def expect_work_package_selected(work_package, selected)
       selector = "wp-single-card[data-work-package-id='#{work_package.id}']"
-      checked_selector = "wp-single-card[data-work-package-id='#{work_package.id}'] [data-qa-checked='true']"
+      checked_selector = "wp-single-card[data-work-package-id='#{work_package.id}'] [data-qa-selected='true']"
 
       expect(page).to have_selector(selector)
       expect(page).to (selected ? have_selector(checked_selector) : have_no_selector(checked_selector))

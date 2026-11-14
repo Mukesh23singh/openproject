@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,26 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe WorkPackagesFilterHelper, type: :helper do
-  let(:project) { FactoryBot.create(:project) }
-  let(:version) { FactoryBot.create(:version, project: project) }
-  let(:global) { false }
+RSpec.describe WorkPackagesFilterHelper do
+  let(:project) { create(:project) }
+  let(:version) { create(:version, project:) }
 
-  shared_examples_for 'work package path with query_props' do
-    it 'is the expected path' do
-      path_regexp = if global
-                      Regexp.new("^#{work_packages_path}\\?query_props=(.*)")
-                    else
-                      Regexp.new("^#{project_work_packages_path(project.identifier)}\\?query_props=(.*)")
-                    end
+  shared_examples_for "work package path with query_props" do
+    it "is the expected path" do
+      path_regexp = Regexp.new("^#{project_work_packages_path(project.identifier)}\\?query_props=(.*)")
 
       expect(path)
         .to match path_regexp
@@ -51,18 +47,18 @@ describe WorkPackagesFilterHelper, type: :helper do
     end
   end
 
-  describe '#project_work_packages_closed_version_path' do
-    it_behaves_like 'work package path with query_props' do
+  describe "#project_work_packages_closed_version_path" do
+    it_behaves_like "work package path with query_props" do
       let(:expected_json) do
         {
           f: [
             {
-              n: 'status',
-              o: 'c'
+              n: "status",
+              o: "c"
             },
             {
-              n: 'version',
-              o: '=',
+              n: "version",
+              o: "=",
               v: version.id.to_s
             }
           ]
@@ -73,18 +69,18 @@ describe WorkPackagesFilterHelper, type: :helper do
     end
   end
 
-  describe '#project_work_packages_open_version_path' do
-    it_behaves_like 'work package path with query_props' do
+  describe "#project_work_packages_open_version_path" do
+    it_behaves_like "work package path with query_props" do
       let(:expected_json) do
         {
           f: [
             {
-              n: 'status',
-              o: 'o'
+              n: "status",
+              o: "o"
             },
             {
-              n: 'version',
-              o: '=',
+              n: "version",
+              o: "=",
               v: version.id.to_s
             }
           ]
@@ -95,30 +91,78 @@ describe WorkPackagesFilterHelper, type: :helper do
     end
   end
 
-  context 'project reports path helpers' do
-    let(:property_name) { 'priority' }
+  describe "#project_work_packages_shared_with_path" do
+    it_behaves_like "work package path with query_props" do
+      let(:principal) { build_stubbed(:user) }
+
+      let(:expected_json) do
+        {
+          f: [
+            {
+              n: "status",
+              o: "*"
+            },
+            {
+              n: "sharedWithUser",
+              o: "=",
+              v: principal.id.to_s
+            }
+          ]
+        }
+      end
+
+      let(:path) { helper.project_work_packages_shared_with_path(principal, project) }
+    end
+  end
+
+  describe "#project_work_packages_with_ids_path" do
+    it_behaves_like "work package path with query_props" do
+      let(:ids) { [13, 17, 42] }
+
+      let(:expected_json) do
+        {
+          f: [
+            {
+              n: "status",
+              o: "*"
+            },
+            {
+              n: "id",
+              o: "=",
+              v: ids.map(&:to_s)
+            }
+          ]
+        }
+      end
+
+      let(:path) { helper.project_work_packages_with_ids_path(ids, project) }
+    end
+  end
+
+  describe "project reports path helpers" do
+    let(:property_name) { "priority" }
     let(:property_id) { 5 }
 
-    describe '#project_report_property_path' do
-      it_behaves_like 'work package path with query_props' do
+    describe "#project_report_property_path" do
+      it_behaves_like "work package path with query_props" do
         let(:expected_json) do
           {
             f: [
               {
-                n: 'status',
-                o: '*'
+                n: "status",
+                o: "*"
               },
               {
-                n: 'subprojectId',
-                o: '!*'
+                n: "subprojectId",
+                o: "!*"
               },
               {
                 n: property_name,
-                o: '=',
+                o: "=",
                 v: property_id.to_s
               }
             ],
-            t: 'updated_at:desc'
+            t: "updated_at:desc"
           }
         end
 
@@ -126,28 +170,28 @@ describe WorkPackagesFilterHelper, type: :helper do
       end
     end
 
-    describe '#project_report_property_status_path' do
-      it_behaves_like 'work package path with query_props' do
+    describe "#project_report_property_status_path" do
+      it_behaves_like "work package path with query_props" do
         let(:status_id) { 2 }
         let(:expected_json) do
           {
             f: [
               {
-                n: 'status',
-                o: '=',
+                n: "status",
+                o: "=",
                 v: status_id.to_s
               },
               {
-                n: 'subprojectId',
-                o: '!*'
+                n: "subprojectId",
+                o: "!*"
               },
               {
                 n: property_name,
-                o: '=',
+                o: "=",
                 v: property_id.to_s
               }
             ],
-            t: 'updated_at:desc'
+            t: "updated_at:desc"
           }
         end
 
@@ -155,26 +199,26 @@ describe WorkPackagesFilterHelper, type: :helper do
       end
     end
 
-    describe '#project_report_property_open_path' do
-      it_behaves_like 'work package path with query_props' do
+    describe "#project_report_property_open_path" do
+      it_behaves_like "work package path with query_props" do
         let(:expected_json) do
           {
             f: [
               {
-                n: 'status',
-                o: 'o'
+                n: "status",
+                o: "o"
               },
               {
-                n: 'subprojectId',
-                o: '!*'
+                n: "subprojectId",
+                o: "!*"
               },
               {
                 n: property_name,
-                o: '=',
+                o: "=",
                 v: property_id.to_s
               }
             ],
-            t: 'updated_at:desc'
+            t: "updated_at:desc"
           }
         end
 
@@ -182,26 +226,26 @@ describe WorkPackagesFilterHelper, type: :helper do
       end
     end
 
-    describe '#project_report_property_closed_path' do
-      it_behaves_like 'work package path with query_props' do
+    describe "#project_report_property_closed_path" do
+      it_behaves_like "work package path with query_props" do
         let(:expected_json) do
           {
             f: [
               {
-                n: 'status',
-                o: 'c'
+                n: "status",
+                o: "c"
               },
               {
-                n: 'subprojectId',
-                o: '!*'
+                n: "subprojectId",
+                o: "!*"
               },
               {
                 n: property_name,
-                o: '=',
+                o: "=",
                 v: property_id.to_s
               }
             ],
-            t: 'updated_at:desc'
+            t: "updated_at:desc"
           }
         end
 
@@ -209,27 +253,27 @@ describe WorkPackagesFilterHelper, type: :helper do
       end
     end
 
-    describe '#project_version_property_path' do
-      it_behaves_like 'work package path with query_props' do
+    describe "#project_version_property_path" do
+      it_behaves_like "work package path with query_props" do
         let(:expected_json) do
           {
             f: [
               {
-                n: 'status',
-                o: '*'
+                n: "status",
+                o: "*"
               },
               {
-                n: 'version',
-                o: '=',
+                n: "version",
+                o: "=",
                 v: version.id.to_s
               },
               {
                 n: property_name,
-                o: '=',
+                o: "=",
                 v: property_id.to_s
               }
             ],
-            t: 'updated_at:desc'
+            t: "updated_at:desc"
           }
         end
 

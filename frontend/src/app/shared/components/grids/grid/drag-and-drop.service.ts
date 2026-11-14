@@ -1,4 +1,31 @@
-import { Injectable, OnDestroy } from '@angular/core';
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
+import { Injectable, OnDestroy, inject } from '@angular/core';
 import { GridWidgetArea } from 'core-app/shared/components/grids/areas/grid-widget-area';
 import { GridArea } from 'core-app/shared/components/grids/areas/grid-area';
 import { GridAreaService } from 'core-app/shared/components/grids/grid/area.service';
@@ -8,6 +35,9 @@ import { distinctUntilChanged, filter, throttleTime } from 'rxjs/operators';
 
 @Injectable()
 export class GridDragAndDropService implements OnDestroy {
+  readonly layout = inject(GridAreaService);
+  readonly move = inject(GridMoveService);
+
   public draggedArea:GridWidgetArea|null;
 
   public placeholderArea:GridWidgetArea|null;
@@ -16,8 +46,7 @@ export class GridDragAndDropService implements OnDestroy {
 
   private mousedOverAreaObserver:Subscription;
 
-  constructor(readonly layout:GridAreaService,
-    readonly move:GridMoveService) {
+  constructor() {
     // ngOnInit is not called on services
     this.setupMousedOverAreaSubscription();
   }
@@ -55,7 +84,7 @@ export class GridDragAndDropService implements OnDestroy {
 
     // Set the draggedArea's startRow/startColumn properties
     // to the drop zone ones.
-    // The dragged Area should keep it's height and width normally but will
+    // The dragged Area should keep its height and width normally but will
     // shrink if the area would otherwise end outside the grid.
     // we cannot use the widget's original area as moving it while dragging confuses cdkDrag
     this.copyPositionButRestrict(dropArea, this.placeholderArea);
@@ -86,7 +115,7 @@ export class GridDragAndDropService implements OnDestroy {
   public start(area:GridWidgetArea) {
     this.placeholderArea = new GridWidgetArea(area.widget);
     // TODO find an angular way to do this that ideally does not require passing the element from the grid component
-    this.draggedHeight = (document as any).getElementById(area.guid).offsetHeight - 2; // border width * 2
+    this.draggedHeight = document.getElementById(area.guid)!.offsetHeight - 2; // border width * 2
     this.draggedArea = area;
   }
 

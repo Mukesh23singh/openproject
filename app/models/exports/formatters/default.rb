@@ -1,5 +1,36 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 module Exports
   module Formatters
+    # Exports::Exporter caches one instance per attribute and export format and reuses it for
+    # every exported record, so a subclass must not memoize anything record-specific.
     class Default
       include Redmine::I18n
 
@@ -9,7 +40,7 @@ module Exports
         @attribute = attribute
       end
 
-      def self.apply?(_attribute)
+      def self.apply?(_attribute, _export_format)
         false
       end
 
@@ -21,18 +52,23 @@ module Exports
       # Takes a resource and an attribute and returns the value to be exported.
       def format(object, **options)
         value = retrieve_value(object)
+        format_value(value, options)
+      end
 
+      ##
+      # Takes a value and returns the formatted value to be exported.
+      def format_value(value, options)
         case value
         when Date
           format_date value
         when Time, DateTime, ActiveSupport::TimeWithZone
           format_time value
         when Array
-          value.join options.fetch(:array_separator, ', ')
+          value.join options.fetch(:array_separator, ", ")
         when nil
           # ruby >=2.7.1 will return a frozen string for nil.to_s which will cause an error when e.g. trying to
           # force an encoding
-          ''
+          ""
         else
           value.to_s
         end
@@ -42,6 +78,30 @@ module Exports
       # Takes an attribute and returns format options for it.
       def format_options
         {}
+      end
+
+      def currency_format
+        "#,##0.00 [$#{Setting.costs_currency}]"
+      end
+
+      def number_format
+        "0.00"
+      end
+
+      def integer_format
+        "0"
+      end
+
+      def date_format
+        "yyyy-mm-dd"
+      end
+
+      def datetime_format
+        "yyyy-mm-dd hh:mm"
+      end
+
+      def percentage_format
+        "0%"
       end
 
       protected

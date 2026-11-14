@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,144 +22,150 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'Attribute help texts', js: true do
-  shared_let(:admin) { FactoryBot.create :admin }
+RSpec.describe "Attribute help texts", :js do
+  shared_let(:user_with_permission) { create(:user, global_permissions: [:edit_attribute_help_texts]) }
 
   let(:instance) { AttributeHelpText.last }
-  let(:modal) { Components::AttributeHelpTextModal.new(instance) }
   let(:editor) { Components::WysiwygEditor.new }
-  let(:image_fixture) { UploadedFile.load_from('spec/fixtures/files/image.png') }
-  let(:relation_columns_allowed) { true }
+  let(:image_fixture) { UploadedFile.load_from("spec/fixtures/files/image.png") }
+  let(:enterprise_token) { true }
 
-  describe 'Work package help texts' do
+  describe "Work package help texts" do
     before do
-      with_enterprise_token(relation_columns_allowed ? :attribute_help_texts : nil)
-
-      login_as(admin)
+      login_as(user_with_permission)
       visit attribute_help_texts_path
     end
 
-    context 'with direct uploads (Regression #34285)', with_direct_uploads: true do
+    # TODO: Migrate to cuprite when the `better_cuprite_billy` driver is added
+    context "with direct uploads (Regression #34285)",
+            :selenium,
+            :with_direct_uploads do
       before do
         allow_any_instance_of(Attachment).to receive(:diskfile).and_return image_fixture
       end
 
-      it 'can upload an image' do
-        page.find('.attribute-help-texts--create-button').click
-        select 'Status', from: 'attribute_help_text_attribute_name'
+      it "can upload an image" do
+        page.find_test_selector("attribute-help-texts--create-button").click
+        select "Status", from: "attribute_help_text_attribute_name"
 
-        editor.set_markdown('My attribute help text')
-        editor.drag_attachment image_fixture.path, 'Image uploaded on creation'
+        editor.set_markdown("My attribute help text")
+        editor.drag_attachment image_fixture.path, "Image uploaded on creation"
 
-        expect(page).to have_selector('attachment-list-item', text: 'image.png')
-        click_button 'Save'
+        editor.attachments_list.expect_attached("image.png")
+        click_button "Save"
 
-        expect(instance.help_text).to include 'My attribute help text'
+        expect(page).to have_current_path attribute_help_texts_path(tab: :WorkPackage)
+
+        expect(instance.help_text).to include "My attribute help text"
         expect(instance.help_text).to match /\/api\/v3\/attachments\/\d+\/content/
       end
     end
 
-    context 'with help texts allowed by the enterprise token' do
-      it 'allows CRUD to attribute help texts' do
-        expect(page).to have_selector('.generic-table--no-results-container')
+    context "with help texts allowed by the enterprise token" do
+      it "allows CRUD to attribute help texts" do
+        expect(page).to have_css(".blankslate")
 
         # Create help text
         # -> new
-        page.find('.attribute-help-texts--create-button').click
+        page.find_test_selector("attribute-help-texts--create-button").click
 
         # Set attributes
         # -> create
-        select 'Status', from: 'attribute_help_text_attribute_name'
-        editor.set_markdown('My attribute help text')
+        select "Status", from: "attribute_help_text_attribute_name"
+        editor.set_markdown("My attribute help text")
 
         # Add an image
         # adding an image
-        editor.drag_attachment image_fixture.path, 'Image uploaded on creation'
-        expect(page).to have_selector('attachment-list-item', text: 'image.png')
-        click_button 'Save'
+        editor.drag_attachment image_fixture.path, "Image uploaded on creation"
+        editor.attachments_list.expect_attached("image.png")
+        click_button "Save"
 
         # Should now show on index for editing
-        expect(page).to have_selector('.attribute-help-text--entry td', text: 'Status')
-        expect(instance.attribute_scope).to eq 'WorkPackage'
-        expect(instance.attribute_name).to eq 'status'
-        expect(instance.help_text).to include 'My attribute help text'
+        expect(page).to have_test_selector("attribute-help-text-row-#{instance.id}", text: "Status")
+        expect(instance.attribute_scope).to eq "WorkPackage"
+        expect(instance.attribute_name).to eq "status"
+        expect(instance.help_text).to include "My attribute help text"
         expect(instance.help_text).to match /\/api\/v3\/attachments\/\d+\/content/
 
         # Open help text modal
-        modal.open!
-        expect(modal.modal_container).to have_text 'My attribute help text'
-        expect(modal.modal_container).to have_selector('img')
-        modal.expect_edit(admin: true)
+        click_on "Preview text"
 
-        # Expect files section to be present
-        expect(modal.modal_container).to have_selector('.form--fieldset-legend', text: 'FILES')
-        expect(modal.modal_container).to have_selector('.work-package--attachments--filename')
+        expect(page).to have_modal "Status"
+        within_modal "Status" do
+          expect(page).to have_text "My attribute help text"
+          expect(page).to have_css "img"
 
-        modal.close!
+          expect(page).to have_link "Edit"
+
+          # Expect files section to be present
+          expect(page).to have_heading "Attachments"
+          expect(page).to have_test_selector("op-files-tab--file-list-item-title")
+
+          click_on "Close"
+        end
 
         # -> edit
         SeleniumHubWaiter.wait
-        page.find('.attribute-help-text--entry td a', text: 'Status').click
+        within_test_selector("attribute-help-text-row-#{instance.id}") { click_on "Status" }
         SeleniumHubWaiter.wait
-        expect(page).to have_selector('#attribute_help_text_attribute_name[disabled]')
-        editor.set_markdown(' ')
-        click_button 'Save'
+        expect(page).to have_css("#attribute_help_text_attribute_name[disabled]")
+        editor.set_markdown(" ")
+        click_button "Save"
 
         # Handle errors
-        expect(page).to have_selector('#errorExplanation', text: "Help text can't be blank.")
+        expect_flash(type: :error, message: "Help text can't be blank.")
         SeleniumHubWaiter.wait
-        editor.set_markdown('New**help**text')
-        click_button 'Save'
+        editor.set_markdown("New**help**text")
+        click_button "Save"
 
         # On index again
-        expect(page).to have_selector('.attribute-help-text--entry td', text: 'Status')
+        expect(page).to have_test_selector("attribute-help-text-row-#{instance.id}", text: "Status")
         instance.reload
-        expect(instance.help_text).to eq 'New**help**text'
+        expect(instance.help_text).to eq "New**help**text"
 
         # Open help text modal
-        modal.open!
-        expect(modal.modal_container).to have_selector('strong', text: 'help')
-        modal.expect_edit(admin: true)
+        click_on "Preview text"
 
-        modal.close!
-        expect(page).to have_selector('.attribute-help-text--entry td', text: 'Status')
+        within_modal "Status" do
+          expect(page).to have_css "strong", text: "help"
+
+          expect(page).to have_link "Edit"
+
+          click_on "Close"
+        end
+
+        expect(page).to have_test_selector("attribute-help-text-row-#{instance.id}", text: "Status")
 
         # Open again and edit this time
-        modal.open!
-        modal.edit_button.click
-        expect(page).to have_selector('#attribute_help_text_attribute_name[disabled]')
+        click_on "Preview text"
+
+        within_modal "Status" do
+          click_on "Edit"
+        end
+
+        expect(page).to have_css("#attribute_help_text_attribute_name[disabled]")
         visit attribute_help_texts_path
 
         # Create new, status is now blocked
-        page.find('.attribute-help-texts--create-button').click
-        expect(page).to have_selector('#attribute_help_text_attribute_name option', text: 'Assignee')
-        expect(page).to have_no_selector('#attribute_help_text_attribute_name option', text: 'Status')
+        page.find_test_selector("attribute-help-texts--create-button").click
+        expect(page).to have_css("#attribute_help_text_attribute_name option", text: "Assignee")
+        expect(page).to have_no_css("#attribute_help_text_attribute_name option", text: "Status")
         visit attribute_help_texts_path
 
         # Destroy
-        page.find('.attribute-help-text--entry .icon-delete').click
-        page.driver.browser.switch_to.alert.accept
+        accept_confirm do
+          find_test_selector("attribute-help-text-delete-#{instance.id}").click
+        end
 
-        expect(page).to have_selector('.generic-table--no-results-container')
+        expect(page).to have_css(".blankslate")
         expect(AttributeHelpText.count).to be_zero
-      end
-    end
-
-    context 'with help texts disallowed by the enterprise token' do
-      let(:relation_columns_allowed) { false }
-
-      it 'hides CRUD to attribute help texts' do
-        expect(page)
-          .to have_selector(".errorExplanation",
-                            text: "The page you were trying to access doesn't exist or has been removed.")
       end
     end
   end

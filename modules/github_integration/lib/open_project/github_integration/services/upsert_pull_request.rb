@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,11 +20,11 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module OpenProject::GithubIntegration::Services
   ##
   # Takes pull request data coming from GitHub webhook data and stores
@@ -46,8 +44,8 @@ module OpenProject::GithubIntegration::Services
     private
 
     def find_or_initialize(payload)
-      GithubPullRequest.find_by_github_identifiers(id: payload.fetch('id'),
-                                                   url: payload.fetch('html_url'),
+      GithubPullRequest.find_by_github_identifiers(id: payload.fetch("id"),
+                                                   url: payload.fetch("html_url"),
                                                    initialize: true)
     end
 
@@ -57,35 +55,39 @@ module OpenProject::GithubIntegration::Services
     # rubocop:disable Metrics/AbcSize
     def extract_params(payload)
       {
-        github_id: payload.fetch('id'),
-        github_user: github_user_id(payload.fetch('user')),
-        number: payload.fetch('number'),
-        github_html_url: payload.fetch('html_url'),
-        github_updated_at: payload.fetch('updated_at'),
-        state: payload.fetch('state'),
-        title: payload.fetch('title'),
-        body: payload.fetch('body'),
-        repository: payload.fetch('base')
-                          .fetch('repo')
-                          .fetch('full_name'),
-        draft: payload.fetch('draft'),
-        merged: payload.fetch('merged'),
-        merged_by: github_user_id(payload['merged_by']),
-        merged_at: payload['merged_at'],
-        comments_count: payload.fetch('comments'),
-        review_comments_count: payload.fetch('review_comments'),
-        additions_count: payload.fetch('additions'),
-        deletions_count: payload.fetch('deletions'),
-        changed_files_count: payload.fetch('changed_files'),
-        labels: payload.fetch('labels').map { |values| extract_label_values(values) }
+        github_id: payload.fetch("id"),
+        github_user: github_user_id(payload.fetch("user")),
+        number: payload.fetch("number"),
+        github_html_url: payload.fetch("html_url"),
+        github_updated_at: payload.fetch("updated_at"),
+        state: payload.fetch("state"),
+        title: payload.fetch("title"),
+        body: payload.fetch("body"),
+        repository: payload.fetch("base")
+                          .fetch("repo")
+                          .fetch("full_name"),
+        repository_html_url: payload.fetch("base")
+                                    .fetch("repo")
+                                    .fetch("html_url"),
+        draft: payload.fetch("draft"),
+        merge_commit_sha: payload["merge_commit_sha"],
+        merged: payload.fetch("merged"),
+        merged_by: github_user_id(payload["merged_by"]),
+        merged_at: payload["merged_at"],
+        comments_count: payload.fetch("comments"),
+        review_comments_count: payload.fetch("review_comments"),
+        additions_count: payload.fetch("additions"),
+        deletions_count: payload.fetch("deletions"),
+        changed_files_count: payload.fetch("changed_files"),
+        labels: payload.fetch("labels").map { |values| extract_label_values(values) }
       }
     end
     # rubocop:enable Metrics/AbcSize
 
     def extract_label_values(payload)
       {
-        name: payload.fetch('name'),
-        color: payload.fetch('color')
+        name: payload.fetch("name"),
+        color: payload.fetch("color")
       }
     end
 

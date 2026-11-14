@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,22 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class CustomValue::ListStrategy < CustomValue::ARObjectStrategy
   def validate_type_of_value
-    unless custom_field.custom_options.pluck(:id).include?(value.to_i)
+    unless custom_field.custom_options.pluck(:id).include?(value.to_i) && usable_in_project?
       :inclusion
     end
   end
 
   def typed_value
-    super_value = super
-    super_value && super_value.to_s || nil
+    super&.to_s
   end
 
   private
@@ -47,11 +45,10 @@ class CustomValue::ListStrategy < CustomValue::ARObjectStrategy
   end
 
   def ar_object(value)
-    option = CustomOption.find_by(id: value.to_s)
-    if option.nil?
-      "#{value} #{I18n.t(:label_not_found)}"
-    else
+    if (option = super)
       option.value
+    else
+      "#{value} #{I18n.t(:label_not_found)}"
     end
   end
 end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,32 +20,37 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { IfcModelsDataService } from 'core-app/features/bim/ifc_models/pages/viewer/ifc-models-data.service';
 
 @Component({
   template: `
-    <a *ngIf="manageAllowed"
-       class="button"
-       [href]="manageIFCPath">
-      <op-icon icon-classes="button--icon icon-settings2"></op-icon>
-      <span class="button--text"
-            [textContent]="text.manage"
-            aria-hidden="true"></span>
-    </a>
+    @if (manageAllowed) {
+      <a
+        class="button"
+        [href]="manageIFCPath">
+        <op-icon icon-classes="button--icon icon-settings2" />
+        <span class="button--text"
+          [textContent]="text.manage"
+        aria-hidden="true"></span>
+      </a>
+    }
 
-  `,
+    `,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  selector: 'bim-view-toggle-button',
+  selector: 'op-bcf-manage-ifc-button',
+  standalone: false,
 })
 export class BimManageIfcModelsButtonComponent {
+  readonly I18n = inject(I18nService);
+  readonly ifcData = inject(IfcModelsDataService);
+
   text = {
     manage: this.I18n.t('js.ifc_models.models.ifc_models'),
   };
@@ -53,8 +58,4 @@ export class BimManageIfcModelsButtonComponent {
   manageAllowed = this.ifcData.allowed('manage_ifc_models');
 
   manageIFCPath = this.ifcData.manageIFCPath;
-
-  constructor(readonly I18n:I18nService,
-    readonly ifcData:IfcModelsDataService) {
-  }
 }

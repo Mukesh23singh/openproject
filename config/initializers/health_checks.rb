@@ -1,107 +1,64 @@
-require 'ok_computer/ok_computer_controller'
+# frozen_string_literal: true
 
-class DelayedJobNeverRanCheck < OkComputer::Check
-  attr_reader :threshold
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
 
-  def initialize(minute_threshold)
-    @threshold = minute_threshold.to_i
-  end
+Rails.application.configure do
+  config.after_initialize do
+    OkComputer::Registry.register "worker", OpenProject::HealthChecks::GoodJobCheck.new
+    OkComputer::Registry.register "worker_backed_up", OpenProject::HealthChecks::GoodJobBackedUpCheck.new
 
-  def check
-    never_ran = Delayed::Job.where('run_at < ?', threshold.minutes.ago).count
+    OkComputer::Registry.register "puma", OpenProject::HealthChecks::PumaCheck.new
 
-    if never_ran.zero?
-      mark_message "All previous jobs have completed within the past #{threshold} minutes."
-    else
-      mark_failure
-      mark_message "#{never_ran} jobs waiting to be executed for more than #{threshold} minutes"
+    # Make dj backed up optional due to bursts
+    OkComputer.make_optional %w(worker_backed_up puma)
+
+    # Register web worker check for web + database
+    OkComputer::CheckCollection.new("web").tap do |collection|
+      collection.register :default, OkComputer::Registry.fetch("default")
+      collection.register :database, OkComputer::Registry.fetch("database")
+      OkComputer::Registry.default_collection.register "web", collection
+    end
+
+    # Register full check for web + database + dj worker
+    OkComputer::CheckCollection.new("full").tap do |collection|
+      collection.register :default, OkComputer::Registry.fetch("default")
+      collection.register :database, OkComputer::Registry.fetch("database")
+      collection.register :mail, OpenProject::HealthChecks::SmtpCheck.new
+      collection.register :worker, OkComputer::Registry.fetch("worker")
+      collection.register :worker_backed_up, OkComputer::Registry.fetch("worker_backed_up")
+      collection.register :puma, OkComputer::Registry.fetch("puma")
+      OkComputer::Registry.default_collection.register "full", collection
+    end
+
+    # Check if authentication required
+    authentication_password = OpenProject::Configuration.health_checks_authentication_password
+    if authentication_password.present?
+      OkComputer.require_authentication("health_checks", authentication_password)
     end
   end
-end
-
-class PumaCheck < OkComputer::Check
-  attr_reader :threshold
-
-  def initialize(backlog_threshold)
-    @threshold = backlog_threshold.to_i
-  end
-
-  def check
-    stats = self.stats
-
-    return mark_message "N/A as Puma is not used." if stats.nil?
-
-    if stats[:running] > 0
-      mark_message "Puma is running"
-    else
-      mark_failure
-      mark_message "Puma is not running"
-    end
-
-    if stats[:backlog] < threshold
-      mark_message "Backlog ok"
-    else
-      mark_failure
-      mark_message "Backlog congested"
-    end
-  end
-
-  def stats
-    return nil unless applicable?
-
-    server = Puma::Server.current
-    return nil if server.nil?
-
-    {
-      backlog: server.backlog || 0,
-      running: server.running || 0,
-      pool_capacity: server.pool_capacity || 0,
-      max_threads: server.max_threads || 0
-    }
-  end
-
-  def applicable?
-    return @applicable unless @applicable.nil?
-
-    @applicable = Object.const_defined?("Puma::Server") && !Puma::Server.current.nil?
-  end
-end
-
-# Register delayed_job backed up test
-dj_max = OpenProject::Configuration.health_checks_jobs_queue_count_threshold
-OkComputer::Registry.register "delayed_jobs_backed_up",
-                              OkComputer::DelayedJobBackedUpCheck.new(0, dj_max)
-
-dj_never_ran_max = OpenProject::Configuration.health_checks_jobs_never_ran_minutes_ago
-OkComputer::Registry.register "delayed_jobs_never_ran",
-                              DelayedJobNeverRanCheck.new(dj_never_ran_max)
-
-backlog_threshold = OpenProject::Configuration.health_checks_backlog_threshold
-OkComputer::Registry.register "puma", PumaCheck.new(backlog_threshold)
-
-# Make dj backed up optional due to bursts
-OkComputer.make_optional %w(delayed_jobs_backed_up puma)
-
-# Register web worker check for web + database
-OkComputer::CheckCollection.new('web').tap do |collection|
-  collection.register :default, OkComputer::Registry.fetch('default')
-  collection.register :database, OkComputer::Registry.fetch('database')
-  OkComputer::Registry.default_collection.register 'web', collection
-end
-
-# Register full check for web + database + dj worker
-OkComputer::CheckCollection.new('full').tap do |collection|
-  collection.register :default, OkComputer::Registry.fetch('default')
-  collection.register :database, OkComputer::Registry.fetch('database')
-  collection.register :mail, OkComputer::ActionMailerCheck.new
-  collection.register :delayed_jobs_backed_up, OkComputer::Registry.fetch('delayed_jobs_backed_up')
-  collection.register :delayed_jobs_never_ran, OkComputer::Registry.fetch('delayed_jobs_never_ran')
-  collection.register :puma, OkComputer::Registry.fetch('puma')
-  OkComputer::Registry.default_collection.register 'full', collection
-end
-
-# Check if authentication required
-authentication_password = OpenProject::Configuration.health_checks_authentication_password
-if authentication_password.present?
-  OkComputer.require_authentication('health_checks', authentication_password)
 end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,20 +31,48 @@ module API
   module V3
     module Utilities
       module EpropsConversion
+        # Limit decompressed eprops to 10MB to prevent decompression bomb (zip bomb) attacks.
+        MAX_DECOMPRESSED_SIZE = 10 * 1024 * 1024
+        DECOMPRESS_CHUNK_SIZE = 16 * 1024
+
         def raise_invalid_eprops(error, i18n_key)
-          mapped_error = OpenStruct.new(params: [:eprops], message: I18n.t(i18n_key, message: error.message))
-          raise ::Grape::Exceptions::ValidationErrors.new errors: [mapped_error]
+          mapped_error = ::Grape::Exceptions::Validation.new(params: [:eprops],
+                                                             message: I18n.t(i18n_key, message: error.message))
+          raise ::Grape::Exceptions::ValidationErrors.new(exceptions: [mapped_error])
         end
 
         def transform_eprops
-          if params && params[:eprops]
-            props = ::JSON.parse(Zlib::Inflate.inflate(Base64.decode64(params[:eprops]))).with_indifferent_access
-            params.merge!(props)
-          end
+          return unless params && params[:eprops]
+
+          decoded = Base64.decode64(params[:eprops])
+          props = ::JSON.parse(limited_inflate(decoded)).with_indifferent_access
+          params.merge!(props)
         rescue Zlib::DataError => e
-          raise_invalid_eprops(e, 'api_v3.errors.eprops.invalid_gzip')
+          raise_invalid_eprops(e, "api_v3.errors.eprops.invalid_gzip")
         rescue JSON::ParserError, NoMethodError => e
-          raise_invalid_eprops(e, 'api_v3.errors.eprops.invalid_json')
+          raise_invalid_eprops(e, "api_v3.errors.eprops.invalid_json")
+        end
+
+        private
+
+        def limited_inflate(data)
+          inflater = Zlib::Inflate.new
+          decompressed = +""
+
+          begin
+            pos = 0
+            while pos < data.bytesize
+              decompressed << inflater.inflate(data.byteslice(pos, DECOMPRESS_CHUNK_SIZE))
+              pos += DECOMPRESS_CHUNK_SIZE
+              if decompressed.bytesize > MAX_DECOMPRESSED_SIZE
+                raise Zlib::DataError, "Decompressed data exceeds maximum allowed size (#{MAX_DECOMPRESSED_SIZE} bytes)"
+              end
+            end
+          ensure
+            inflater.close
+          end
+
+          decompressed
         end
       end
     end

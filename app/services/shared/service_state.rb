@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,12 +22,10 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require "ostruct"
 
 ##
 # Service state object to be passed around services
@@ -36,34 +34,12 @@ require "ostruct"
 # Borrows heavily from interactor gem's context class at
 # https://github.com/collectiveidea/interactor
 module Shared
-  class ServiceState < OpenStruct
+  class ServiceState < Hashie::Mash
     ##
     # Builds the context object unless
     # it's already an instance of this context.
     def self.build(state = {})
       self === state ? state : new(state)
-    end
-
-    ##
-    # Remember that the state was passed to the given service
-    def called!(service)
-      service_chain << service
-    end
-
-    # Roll back the context on all used services
-    def rollback!
-      return false if @rolled_back
-
-      service_chain.reverse_each do |service|
-        Rails.logger.debug { "[Service state] Rolling back execution of #{service}." }
-        service.rollback
-      end
-      @rolled_back = true
-    end
-
-    # Remembered service calls this context was used against
-    def service_chain
-      @service_chain ||= []
     end
   end
 end

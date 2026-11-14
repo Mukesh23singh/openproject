@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,88 +20,49 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.expand_path(File.dirname(__FILE__) + '/../spec_helper.rb')
+require_relative "../spec_helper"
 
-describe 'hourly rates on a member', type: :feature, js: true do
-  let(:project) { FactoryBot.build :project }
-  let(:user) do
-    FactoryBot.create :admin,
-                      member_in_project: project
-  end
-  let(:member) { Member.find_by(project: project, principal: user) }
-
-  def view_rates
-    visit edit_user_path(user, tab: 'rates')
+RSpec.describe "hourly rates on a member", :js do
+  shared_let(:project) { create(:project) }
+  shared_let(:user) do
+    create(:admin, member_with_permissions: { project => %i[view_work_packages edit_work_packages] })
   end
 
-  def view_project_members
-    visit project_members_path(project)
-  end
-
-  def expect_current_rate_in_members_table(amount)
-    view_project_members
-
-    expect(page).to have_selector("#member-#{member.id} .currency", text: amount)
-  end
-
-  def add_rate(rate:, date: nil)
-    expect(page).to have_selector(".add-row-button")
-    sleep(0.1)
-    all("tr[id^='user_new_rate_attributes_'] .delete-row-button").each(&:click)
-    sleep(0.1)
-    click_link_or_button 'Add rate'
-
-    within "tr[id^='user_new_rate_attributes_']" do
-      fill_in 'Valid from', with: date.strftime('%Y-%m-%d') if date
-      fill_in 'Rate', with: rate
-    end
-  end
-
-  def change_rate_date(from:, to:)
-    input = find("table.rates .date[value='#{from.strftime('%Y-%m-%d')}']")
-    input.set(to.strftime('%Y-%m-%d'))
-  end
+  let(:member) { Member.find_by(project:, principal: user) }
 
   before do
-    project.save!
-
     login_as(user)
   end
 
-  it 'displays always the currently active rate' do
-    expect_current_rate_in_members_table('0.00 EUR')
+  def expect_current_rate_in_members_table(amount)
+    visit project_members_path(project)
 
-    click_link('0.00 EUR')
-    SeleniumHubWaiter.wait
+    expect(page).to have_css("#member-#{member.id} .currency", text: amount)
+  end
 
-    add_rate(date: Date.today, rate: 10)
+  context "without any rate" do
+    it "falls back to zero" do
+      expect_current_rate_in_members_table("0.00 €")
+    end
+  end
 
-    click_button 'Save'
+  context "with rates taking effect on different dates" do
+    before do
+      create(:hourly_rate, principal: user, project:, valid_from: 5.days.ago, rate: 20)
+      create(:hourly_rate, principal: user, project:, valid_from: Date.current, rate: 10)
+    end
 
-    expect_current_rate_in_members_table('10.00 EUR')
+    it "displays the rate in effect today and links to the rate history" do
+      expect_current_rate_in_members_table("10.00 €")
 
-    SeleniumHubWaiter.wait
-    click_link('10.00 EUR')
+      click_link("10.00 €")
 
-    add_rate(date: 3.days.ago, rate: 20)
-
-    click_button 'Save'
-
-    expect_current_rate_in_members_table('10.00 EUR')
-
-    SeleniumHubWaiter.wait
-    click_link('10.00 EUR')
-
-    change_rate_date(from: Date.today, to: 5.days.ago)
-
-    click_button 'Save'
-
-    expect_current_rate_in_members_table('20.00 EUR')
+      expect(page).to have_current_path(projects_hourly_rate_path(project_id: project, id: user))
+    end
   end
 end

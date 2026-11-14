@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -40,24 +39,58 @@ module OpenProject::GithubIntegration
     # We need to check validity of the data and send a Notification
     # to be processed in our `NotificationHandler`.
     def process(_hook, request, params, user)
-      event_type = request.env['HTTP_X_GITHUB_EVENT']
-      event_delivery = request.env['HTTP_X_GITHUB_DELIVERY']
+      event_type = request.env["HTTP_X_GITHUB_EVENT"]
+      event_delivery = request.env["HTTP_X_GITHUB_DELIVERY"]
 
-      Rails.logger.debug "Received github webhook #{event_type} (#{event_delivery})"
+      Rails.logger.debug { "Received github webhook #{event_type} (#{event_delivery})" }
 
-      return 404 unless KNOWN_EVENTS.include?(event_type) && event_delivery
-      return 403 if user.blank?
+      return 404 unless valid_event?(event_type, event_delivery)
+      return 403 unless authorized?(request, user)
 
+      notify(params, user, event_type, event_delivery)
+      200
+    end
+
+    private
+
+    def valid_event?(event_type, event_delivery)
+      KNOWN_EVENTS.include?(event_type) && event_delivery
+    end
+
+    def authorized?(request, user)
+      valid_signature?(request) &&
+        user.present? &&
+        (configured_user_id.blank? || user.id == configured_user_id)
+    end
+
+    def notify(params, user, event_type, event_delivery)
       payload = params[:payload]
                 .permit!
                 .to_h
-                .merge('open_project_user_id' => user.id,
-                       'github_event' => event_type,
-                       'github_delivery' => event_delivery)
+                .merge("open_project_user_id" => user.id,
+                       "github_event" => event_type,
+                       "github_delivery" => event_delivery)
 
       OpenProject::Notifications.send("github.#{event_type}", payload)
+    end
 
-      200
+    def valid_signature?(request)
+      secret = plugin_settings[:webhook_secret].presence
+      return true if secret.blank?
+
+      signature_header = request.env["HTTP_X_HUB_SIGNATURE_256"]
+      return false if signature_header.blank?
+
+      expected = "sha256=#{OpenSSL::HMAC.hexdigest('SHA256', secret, request.raw_post)}"
+      ActiveSupport::SecurityUtils.secure_compare(expected, signature_header)
+    end
+
+    def configured_user_id
+      plugin_settings[:github_user_id].presence&.to_i
+    end
+
+    def plugin_settings
+      Hash(Setting.plugin_openproject_github_integration).with_indifferent_access
     end
   end
 end

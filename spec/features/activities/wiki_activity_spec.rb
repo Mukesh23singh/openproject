@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,23 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-feature 'Wiki activities' do
+RSpec.describe "Wiki Activity", :js do
   let(:user) do
-    FactoryBot.create :user,
-                      member_in_project: project,
-                      member_with_permissions: %w[view_wiki_pages
-                                                  edit_wiki_pages
-                                                  view_wiki_edits]
+    create(:user,
+           member_with_permissions: { project => %i[view_wiki_pages
+                                                    edit_wiki_pages
+                                                    view_wiki_edits] })
   end
-  let(:project) { FactoryBot.create :project, enabled_module_names: %w[wiki activity] }
+  let(:project) { create(:project, :with_internal_wiki, enabled_module_names: %w[activity]) }
   let(:wiki) { project.wiki }
   let(:editor) { Components::WysiwygEditor.new }
 
@@ -44,47 +44,55 @@ feature 'Wiki activities' do
     login_as user
   end
 
-  it 'tracks the wiki\'s activities', js: true do
+  it "tracks the wiki's activities" do
     # create a wiki page
-    visit project_wiki_path(project, 'mypage')
+    visit project_wiki_path(project, "mypage")
 
-    fill_in 'content_page_title', with: 'My page'
+    fill_in "page_title", with: "My page"
 
-    editor.set_markdown('First content')
+    editor.set_markdown("First content")
 
-    click_button 'Save'
-    expect(page).to have_text("Successful creation")
+    click_button "Create"
+
+    expect_and_dismiss_flash(message: "Successful creation.")
 
     # We mock letting some time pass by altering the timestamps
     Journal.last.update_columns(created_at: Time.now - 5.days, updated_at: Time.now - 5.days)
 
     # alter the page
-    SeleniumHubWaiter.wait
-    click_link 'Edit'
+    click_link "Edit"
 
-    editor.set_markdown('Second content')
+    editor.set_markdown("Second content")
 
-    click_button 'Save'
+    click_button "Save"
     expect(page).to have_text("Successful update")
 
     # After creating and altering the page, there
     # will be two activities to see
     visit project_activity_index_path(project)
 
-    check 'Wiki edits'
+    check "Wiki"
 
-    click_button 'Apply'
-
-    expect(page)
-      .to have_link('Wiki edit: My page (#1)')
+    click_button "Apply"
 
     expect(page)
-      .to have_link('Wiki edit: My page (#2)')
-
-    click_link('Wiki edit: My page (#2)')
+      .to have_link("Wiki: My page")
 
     expect(page)
-      .to have_current_path(project_wiki_path(project.id, 'my-page', version: 2))
+      .to have_link("Wiki: My page")
+
+    within("li.op-activity-list--item", match: :first) do
+      expect(page)
+        .to have_css("li", text: "Page content changed (Details)")
+      expect(page)
+        .to have_link("Details")
+    end
+
+    # Click on the second wiki activity item
+    find(:xpath, "(//a[text()='Wiki: My page'])[1]").click
+
+    expect(page)
+      .to have_current_path(project_wiki_path(project.id, "my-page"))
 
     # disable the wiki module
 
@@ -96,7 +104,6 @@ feature 'Wiki activities' do
 
     visit project_activity_index_path(project)
 
-    expect(page)
-      .to have_no_content('Wiki edits')
+    expect(page).to have_no_text("Wiki edits") # rubocop:disable Capybara/RSpec/NegationMatcherAfterVisit
   end
 end

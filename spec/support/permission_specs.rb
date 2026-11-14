@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,41 +22,76 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require File.expand_path('shared/become_member', __dir__)
+require_relative "shared/become_member"
 
 module PermissionSpecs
   def self.included(base)
     base.class_eval do
-      let(:project) { FactoryBot.create(:project, public: false) }
-      let(:current_user) { FactoryBot.create(:user) }
+      let(:project) { create(:project, public: false) }
+      let(:current_user) { create(:user) }
 
       include BecomeMember
 
-      def self.check_permission_required_for(controller_action, permission)
-        controller_name, action_name = controller_action.split('#')
+      # returns actions defined in routes and controller code for the described
+      # controller class
+      def self.controller_actions
+        Rails.application.routes.routes
+          .map(&:defaults)
+          .select { it[:controller] == described_class.controller_path }
+          .pluck(:action)
+          .uniq
+          .select { described_class.action_methods.include?(it) }
+          .sort
+      end
 
-        it "should allow calling #{controller_action} when having the permission #{permission} permission" do
+      def self.check_permission_required_for(controller_action, permission)
+        controller_name, action_name = controller_action.split("#")
+
+        it "allows calling #{controller_action} when having the permission #{permission}" do
+          allow(controller).to receive_messages(controller_path: controller_name, action_name:)
+
           become_member_with_permissions(project, current_user, permission)
 
-          expect(controller.send(:authorize, controller_name, action_name)).to be_truthy
+          expect(controller.send(:authorize)).to be_truthy
         end
 
-        it "should prevent calling #{controller_action} when not having the permission #{permission} permission" do
-          become_member_with_permissions(project, current_user)
+        it "prevents calling #{controller_action} when not having the permission #{permission}" do
+          allow(controller).to receive_messages(controller_path: controller_name, action_name:)
 
-          expect(controller.send(:authorize, controller_name, action_name)).to be_falsey
+          become_member(project, current_user)
+
+          expect(controller.send(:authorize)).to be_falsey
+        end
+      end
+
+      def self.check_global_permission_required_for(controller_action, permission)
+        controller_name, action_name = controller_action.split("#")
+
+        it "allows calling #{controller_action} when having the global permission #{permission}" do
+          allow(controller).to receive_messages(controller_path: controller_name, action_name:)
+
+          grant_global_permissions(current_user, permission)
+
+          expect(controller.send(:authorize)).to be_truthy
+        end
+
+        it "prevents calling #{controller_action} when not having the global permission #{permission}" do
+          allow(controller).to receive_messages(controller_path: controller_name, action_name:)
+
+          become_member_with_permissions(project, current_user, permission)
+
+          expect(controller.send(:authorize)).to be_falsey
         end
       end
 
       before do
         # As failures generate a response we need to prevent calls to nil
-        controller.response = ActionDispatch::TestResponse.new
+        controller.set_response!(ActionDispatch::TestResponse.new)
 
         allow(User).to receive(:current).and_return(current_user)
 

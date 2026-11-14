@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,60 +22,79 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::ProjectFilter, type: :model do
-  it_behaves_like 'basic query filter' do
+RSpec.describe Queries::WorkPackages::Filter::ProjectFilter do
+  it_behaves_like "basic query filter" do
     let(:type) { :list }
     let(:class_key) { :project_id }
+    let(:visible_projects) { build_stubbed_list(:project, 2) }
 
-    describe '#available?' do
-      context 'within a project' do
-        it 'is false' do
-          expect(instance).to_not be_available
-        end
-      end
+    before do
+      scope = class_double(Project)
 
-      context 'outside of a project' do
-        let(:project) { nil }
+      allow(Project)
+        .to receive(:visible)
+              .and_return(scope)
 
-        it 'is true if the user can see project' do
-          allow(Project)
-            .to receive_message_chain(:visible, :active, :exists?)
-            .and_return(true)
+      allow(scope)
+        .to receive(:active)
+              .and_return(visible_projects)
 
-          expect(instance).to be_available
-        end
+      without_partial_double_verification do
+        allow(visible_projects)
+          .to receive(:exists?)
+                .and_return(visible_projects.any?)
 
-        it 'is true if the user can not see project' do
-          allow(Project)
-            .to receive_message_chain(:visible, :active, :exists?)
-            .and_return(false)
-
-          expect(instance).to_not be_available
+        allow(visible_projects)
+          .to receive(:where) do |args|
+          ids = args[:id]
+          visible_projects.select { |p| ids.include?(p.id) }
         end
       end
     end
 
-    describe '#allowed_values' do
+    describe "#available?" do
+      shared_examples_for "filter availability" do
+        context "when able to see projects" do
+          it "is true" do
+            expect(instance).to be_available
+          end
+        end
+
+        context "when not able to see projects" do
+          let(:visible_projects) { [] }
+
+          it "is true" do
+            expect(instance).not_to be_available
+          end
+        end
+      end
+
+      context "when inside a project" do
+        # Used to be always false hence still checking.
+        it_behaves_like "filter availability"
+      end
+
+      context "when outside of a project" do
+        let(:project) { nil }
+
+        it_behaves_like "filter availability"
+      end
+    end
+
+    describe "#allowed_values" do
       let(:project) { nil }
+      let(:parent) { build_stubbed(:project, id: 1) }
+      let(:child) { build_stubbed(:project, parent:, id: 2) }
+      let(:visible_projects) { [parent, child] }
 
-      it 'is an array of group values' do
-        parent = FactoryBot.build_stubbed(:project, id: 1)
-        child = FactoryBot.build_stubbed(:project, parent: parent, id: 2)
-
-        visible_projects = [parent, child]
-
-        allow(Project)
-          .to receive_message_chain(:visible, :active)
-          .and_return(visible_projects)
-
+      it "is an array of group values" do
         allow(Project)
           .to receive(:project_tree)
           .with(visible_projects)
@@ -81,33 +102,44 @@ describe Queries::WorkPackages::Filter::ProjectFilter, type: :model do
           .and_yield(child, 1)
 
         expect(instance.allowed_values)
-          .to match_array [[parent.name, parent.id.to_s],
-                           ["-- #{child.name}", child.id.to_s]]
+          .to contain_exactly([parent.name, parent.id.to_s], ["-- #{child.name}", child.id.to_s])
       end
     end
 
-    describe '#ar_object_filter?' do
-      it 'is true' do
+    describe "#ar_object_filter?" do
+      it "is true" do
         expect(instance)
           .to be_ar_object_filter
       end
     end
 
-    describe '#value_objects' do
-      let(:project) { FactoryBot.build_stubbed(:project) }
-      let(:project2) { FactoryBot.build_stubbed(:project) }
+    describe "#value_objects" do
+      let(:selected) { visible_projects.first }
+      let(:visible_descendants) { [] }
+      let(:descendants) { double("Project", visible: visible_descendants) } # rubocop:disable RSpec/VerifiedDoubles
 
       before do
-        allow(Project)
-          .to receive_message_chain(:visible, :active)
-          .and_return([project, project2])
+        allow(selected).to receive(:descendants).and_return(descendants)
 
-        instance.values = [project.id.to_s]
+        instance.values = [selected.id.to_s]
       end
 
-      it 'returns an array of projects' do
+      it "returns an array of projects" do
         expect(instance.value_objects)
-          .to match_array([project])
+          .to contain_exactly(selected)
+      end
+
+      context "with a visible child" do
+        # No explicit id: the point is only that the child is a different project from
+        # its parent, and a hardcoded one can collide with the id the parent was stubbed
+        # with, which makes the two compare equal and the example prove nothing.
+        let(:child) { build_stubbed(:project, parent: selected) }
+        let(:visible_descendants) { [child] }
+
+        it "still only returns the parent object" do
+          expect(instance.value_objects)
+            .to contain_exactly(selected)
+        end
       end
     end
   end

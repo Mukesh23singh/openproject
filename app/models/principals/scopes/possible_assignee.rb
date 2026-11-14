@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -41,14 +40,53 @@ module Principals::Scopes
       # * PlaceholderUser
       # * Group
       # User instances need to be non locked (status).
-      # Only principals with a role marked as assignable in the project are returned.
-      # @project [Project] The project for which eligible candidates are to be searched
+      # Only principals with a role marked as assignable in the project or work package are returned.
+      # If more than one project or work package is given, the principals need to be assignable in all of the
+      # resources (intersection).
+      # @work_package_or_project [WorkPackage, [WorkPackage], Project, [Project]] The resource for which
+      #   eligible candidates are to be searched
       # @return [ActiveRecord::Relation] A scope of eligible candidates
-      def possible_assignee(project)
-        not_locked
-          .includes(:members)
-          .references(:members)
-          .merge(Member.assignable.of(project))
+      def possible_assignee(work_package_or_project)
+        work_package_or_project = as_collection(work_package_or_project)
+
+        if resource_class(work_package_or_project) == WorkPackage
+          where(id: on_work_package_user_ids(work_package_or_project))
+            .or(where(id: on_project_user_ids(work_package_or_project.map(&:project_id))))
+        else
+          where(id: on_project_user_ids(work_package_or_project))
+        end
+      end
+
+      private
+
+      def resource_class(work_package_or_project)
+        if work_package_or_project.all? { it.class <= WorkPackage }
+          WorkPackage
+        elsif work_package_or_project.all? { it.instance_of?(Project) }
+          Project
+        end
+      end
+
+      def as_collection(resource)
+        Array(resource)
+      end
+
+      def on_work_package_user_ids(work_package)
+        Member
+          .assignable
+          .of_work_package(work_package)
+          .group("user_id")
+          .having(["COUNT(DISTINCT(project_id, entity_type, entity_id, user_id)) = ?", work_package.size])
+          .select("user_id")
+      end
+
+      def on_project_user_ids(project)
+        Member
+          .assignable
+          .of_project(project)
+          .group("user_id")
+          .having(["COUNT(DISTINCT(project_id, user_id)) = ?", project.size])
+          .select("user_id")
       end
     end
   end

@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,16 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import {
-  ChangeDetectorRef, Directive, Injector, OnInit, ViewChild,
-} from '@angular/core';
-import { StateService, Transition } from '@uirouter/core';
+import { ChangeDetectorRef, Directive, Injector, Input, OnInit, ViewChild, OnDestroy, inject } from '@angular/core';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
 import { States } from 'core-app/core/states/states.service';
 import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
@@ -38,23 +34,44 @@ import { takeWhile } from 'rxjs/operators';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { WorkPackageViewFiltersService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-filters.service';
 import { WorkPackageChangeset } from 'core-app/features/work-packages/components/wp-edit/work-package-changeset';
-import { WorkPackageViewFocusService } from 'core-app/features/work-packages/routing/wp-view-base/view-services/wp-view-focus.service';
 import { EditFormComponent } from 'core-app/shared/components/fields/edit/edit-form/edit-form.component';
 import { WorkPackageNotificationService } from 'core-app/features/work-packages/services/notifications/work-package-notification.service';
-import * as URI from 'urijs';
+import URI from 'urijs';
 import { UntilDestroyedMixin } from 'core-app/shared/helpers/angular/until-destroyed.mixin';
-import { splitViewRoute } from 'core-app/features/work-packages/routing/split-view-routes.helper';
-import { APIV3Service } from 'core-app/core/apiv3/api-v3.service';
-import { HalSource } from 'core-app/features/hal/resources/hal-resource';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { OpTitleService } from 'core-app/core/html/op-title.service';
 import { WorkPackageCreateService } from './wp-create.service';
 import { HalError } from 'core-app/features/hal/services/hal-error';
+import { CurrentProjectService } from 'core-app/core/current-project/current-project.service';
+import { HalSource } from 'core-app/features/hal/interfaces';
+import { ProjectResource } from 'core-app/features/hal/resources/project-resource';
+
+export interface WorkPackageCreateStateParams {
+  type?:string;
+  parent_id?:string;
+  projectPath?:string;
+  copiedFromWorkPackageId?:string;
+  defaults?:{
+    _links?:Record<string, { href:string }>;
+    startDate?:string;
+    dueDate?:string;
+    ignoreNonWorkingDays?:boolean;
+  };
+}
 
 @Directive()
-export class WorkPackageCreateComponent extends UntilDestroyedMixin implements OnInit {
-  public successState:string = splitViewRoute(this.$state);
-
-  public cancelState:string = this.$state.current.data.baseRoute;
+export class WorkPackageCreateComponent extends UntilDestroyedMixin implements OnInit, OnDestroy {
+  readonly injector = inject(Injector);
+  protected readonly I18n = inject(I18nService);
+  protected readonly titleService = inject(OpTitleService);
+  protected readonly notificationService = inject(WorkPackageNotificationService);
+  protected readonly states = inject(States);
+  protected readonly wpCreate = inject(WorkPackageCreateService);
+  protected readonly wpTableFilters = inject(WorkPackageViewFiltersService);
+  protected readonly pathHelper = inject(PathHelperService);
+  protected readonly apiV3Service = inject(ApiV3Service);
+  protected readonly currentProjectService = inject(CurrentProjectService);
+  protected readonly cdRef = inject(ChangeDetectorRef);
 
   public newWorkPackage:WorkPackageResource;
 
@@ -65,7 +82,7 @@ export class WorkPackageCreateComponent extends UntilDestroyedMixin implements O
   /** Are we in the copying substates ? */
   public copying = false;
 
-  public stateParams = this.$transition.params('to');
+  @Input() public stateParams:WorkPackageCreateStateParams;
 
   public text = {
     button_settings: this.I18n.t('js.button_settings'),
@@ -76,48 +93,26 @@ export class WorkPackageCreateComponent extends UntilDestroyedMixin implements O
   /** Explicitly remember destroy state in this abstract base */
   protected destroyed = false;
 
-  constructor(public readonly injector:Injector,
-    protected readonly $transition:Transition,
-    protected readonly $state:StateService,
-    protected readonly I18n:I18nService,
-    protected readonly titleService:OpTitleService,
-    protected readonly notificationService:WorkPackageNotificationService,
-    protected readonly states:States,
-    protected readonly wpCreate:WorkPackageCreateService,
-    protected readonly wpViewFocus:WorkPackageViewFocusService,
-    protected readonly wpTableFilters:WorkPackageViewFiltersService,
-    protected readonly pathHelper:PathHelperService,
-    protected readonly apiV3Service:APIV3Service,
-    protected readonly cdRef:ChangeDetectorRef) {
-    super();
-  }
-
   public ngOnInit() {
     this.closeEditFormWhenNewWorkPackageSaved();
 
     this.showForm();
+
+    window.OpenProject.pageState = 'edited';
   }
 
   public ngOnDestroy() {
     super.ngOnDestroy();
   }
 
-  public switchToFullscreen() {
-    this.$state.go('work-packages.new', this.$state.params);
-  }
-
   public onSaved(params:{ savedResource:WorkPackageResource, isInitial:boolean }) {
-    const { savedResource, isInitial } = params;
+    const { savedResource } = params;
 
     this.editForm?.cancel(false);
 
-    if (this.successState) {
-      this.$state.go(this.successState, { workPackageId: savedResource.id })
-        .then(() => {
-          this.wpViewFocus.updateFocus(savedResource.id!);
-          this.notificationService.showSave(savedResource, isInitial);
-        });
-    }
+    window.OpenProject.pageState = 'submitted';
+    const savedResourceProject = savedResource.project as ProjectResource;
+    Turbo.visit(this.pathHelper.projectWorkPackagePath(savedResourceProject.identifier, savedResource.displayId) + window.location.search);
   }
 
   protected showForm() {
@@ -172,15 +167,16 @@ export class WorkPackageCreateComponent extends UntilDestroyedMixin implements O
     this.titleService.setFirstPart(this.I18n.t('js.work_packages.create.title'));
   }
 
-  public cancelAndBackToList() {
+  public cancelAndBack() {
     this.wpCreate.cancelCreation();
-    this.$state.go(this.cancelState, this.$state.params);
+
+    const link = this.stateParams.projectPath ? this.pathHelper.workPackagesPath(this.stateParams.projectPath) : this.pathHelper.workPackagesPath(null);
+    window.location.href = (link + window.location.search);
   }
 
   protected createdWorkPackage() {
-    const defaults:HalSource = {
-      _links: {},
-    };
+    const defaults:HalSource = (this.stateParams.defaults as HalSource) || {};
+    defaults._links = defaults._links || {};
 
     const type = this.stateParams.type ? parseInt(this.stateParams.type) : undefined;
     const parent = this.stateParams.parent_id ? parseInt(this.stateParams.parent_id) : undefined;

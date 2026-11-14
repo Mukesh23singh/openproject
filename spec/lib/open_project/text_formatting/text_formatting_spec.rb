@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,27 +22,27 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-describe OpenProject::TextFormatting do
+require "spec_helper"
+
+RSpec.describe OpenProject::TextFormatting do
   include OpenProject::TextFormatting
 
-  it 'should markdown formatter' do
+  it "markdowns formatter" do
     expect(OpenProject::TextFormatting::Formats::Markdown::Formatter).to eq(OpenProject::TextFormatting::Formats.rich_formatter)
     expect(OpenProject::TextFormatting::Formats::Markdown::Helper).to eq(OpenProject::TextFormatting::Formats.rich_helper)
   end
 
-  it 'should plain formatter' do
+  it "plains formatter" do
     expect(OpenProject::TextFormatting::Formats::Plain::Formatter).to eq(OpenProject::TextFormatting::Formats.plain_formatter)
     expect(OpenProject::TextFormatting::Formats::Plain::Helper).to eq(OpenProject::TextFormatting::Formats.plain_helper)
   end
 
-  it 'should link urls and email addresses' do
+  it "links urls and email addresses" do
     raw = <<~DIFF
       This is a sample *text* with a link: http://www.redmine.org
       and an email address foo@example.net
@@ -53,18 +53,35 @@ describe OpenProject::TextFormatting do
       and an email address <a href="mailto:foo@example.net">foo@example.net</a></p>
     EXPECTED
 
-    assert_equal expected.gsub(%r{[\r\n\t]}, ''),
-                 OpenProject::TextFormatting::Formats::Plain::Formatter.new({}).to_html(raw).gsub(%r{[\r\n\t]}, '')
+    expect(expected.gsub(%r{[\r\n\t]},
+                         "")).to eq(OpenProject::TextFormatting::Formats::Plain::Formatter.new({}).to_html(raw).gsub(
+                                      %r{[\r\n\t]}, ""
+                                    ))
   end
 
-  describe 'options' do
-    describe '#format' do
-      it 'uses format of Settings, if nothing is specified' do
-        expect(format_text('_Stars!_')).to be_html_eql('<p class="op-uc-p"><em>Stars!</em></p>')
+  describe "HTML safety" do
+    context "with blank strings" do
+      it "always returns HTML-safe strings" do
+        expect(format_text("")).to be_html_safe
+        expect(format_text(" ")).to be_html_safe
+      end
+    end
+
+    context "with non-blank strings" do
+      it "always returns HTML-safe strings" do
+        expect(format_text("abc")).to be_html_safe
+      end
+    end
+  end
+
+  describe "options" do
+    describe "#format" do
+      it "uses format of Settings, if nothing is specified" do
+        expect(format_text("_Stars!_")).to be_html_eql('<p class="op-uc-p"><em>Stars!</em></p>')
       end
 
-      it 'allows plain format of options, if specified' do
-        expect(format_text('*Stars!*', format: 'plain')).to be_html_eql('<p>*Stars!*</p>')
+      it "allows plain format of options, if specified" do
+        expect(format_text("*Stars!*", format: :plain)).to be_html_eql("<p>*Stars!*</p>")
       end
     end
   end

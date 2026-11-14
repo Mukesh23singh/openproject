@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,41 +20,42 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-require_relative '../../support/pages/my/page'
+require_relative "../../support/pages/my/page"
 
-describe 'My page', type: :feature, js: true do
-  let!(:type) { FactoryBot.create :type }
-  let!(:project) { FactoryBot.create :project, types: [type] }
-  let!(:open_status) { FactoryBot.create :default_status }
+RSpec.describe "My page",
+               :js,
+               :selenium do
+  let!(:type) { create(:type) }
+  let!(:project) { create(:project, types: [type]) }
+  let!(:open_status) { create(:default_status) }
   let!(:created_work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      author: user
+    create(:work_package,
+           project:,
+           type:,
+           author: user)
   end
   let!(:assigned_work_package) do
-    FactoryBot.create :work_package,
-                      project: project,
-                      type: type,
-                      assigned_to: user
+    create(:work_package,
+           project:,
+           type:,
+           assigned_to: user)
   end
 
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[view_work_packages add_work_packages save_queries])
+    create(:user,
+           member_with_permissions: { project => %i[view_work_packages add_work_packages save_queries] })
   end
   let(:my_page) do
     Pages::My::Page.new
   end
+  let(:global_html_title) { Components::HtmlTitle.new }
 
   before do
     login_as user
@@ -91,13 +92,18 @@ describe 'My page', type: :feature, js: true do
   end
 
   def find_area(name)
-    index = grid.widgets.sort_by(&:id).each_with_index.detect { |w, _index| w.options["name"] == name }.last
+    retry_block do
+      index = grid.widgets.sort_by(&:id).each_with_index.detect { |w, _index| w.options["name"] == name }.last
 
-    Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(#{index + 1})")
+      Components::Grids::GridArea.new(".grid--area.-widgeted:nth-of-type(#{index + 1})")
+    end
   end
 
-  it 'renders the default view, allows altering and saving' do
-    sleep(0.5)
+  it "renders the default view, allows altering and saving" do
+    global_html_title.expect_first_segment "My page"
+
+    # Waits for the default view to be created
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
     assigned_area.expect_to_exist
     created_area.expect_to_exist
@@ -106,75 +112,68 @@ describe 'My page', type: :feature, js: true do
 
     # The widgets load their respective contents
     expect(page)
-      .to have_content(created_work_package.subject)
+      .to have_text(created_work_package.subject)
     expect(page)
-      .to have_content(assigned_work_package.subject)
+      .to have_text(assigned_work_package.subject)
 
     # add widget above to right area
-    my_page.add_widget(1, 1, :row, 'Calendar')
-
-    sleep(0.5)
+    my_page.add_widget(1, 1, :row, "Calendar")
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
     reload_grid!
 
-    calendar_area.expect_to_span(1, 1, 2, 2)
+    calendar_area.expect_to_span(2, 1, 3, 2)
 
     # resizing will move the created area down
     calendar_area.resize_to(1, 2)
-
-    sleep(0.1)
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
     # resizing again will not influence the created area. It will stay down
     calendar_area.resize_to(1, 1)
 
-    calendar_area.expect_to_span(1, 1, 2, 2)
+    calendar_area.expect_to_span(3, 2, 4, 3)
 
     # add widget right next to the calendar widget
-    my_page.add_widget(1, 2, :within, 'News')
-
-    sleep(0.5)
+    my_page.add_widget(1, 2, :within, "News")
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
     reload_grid!
 
-    news_area.expect_to_span(1, 2, 2, 3)
+    news_area.expect_to_span(3, 2, 4, 3)
 
     calendar_area.resize_to(2, 1)
-
-    sleep(0.3)
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
     # Resizing leads to the calendar area now spanning a larger area
-    calendar_area.expect_to_span(1, 1, 3, 2)
+    calendar_area.expect_to_span(2, 1, 4, 2)
     # Because of the added row, and the resizing the other widgets (assigned and created) have moved down
-    assigned_area.expect_to_span(3, 1, 4, 2)
-    created_area.expect_to_span(2, 2, 3, 3)
+    assigned_area.expect_to_span(1, 1, 2, 2)
+    created_area.expect_to_span(1, 2, 2, 3)
 
-    my_page.add_widget(1, 3, :column, 'Work packages watched by me')
-
-    sleep(0.5)
+    my_page.add_widget(1, 3, :column, "Work packages watched by me")
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
     reload_grid!
 
     watched_area.expect_to_exist
-
-    sleep(1)
 
     # dragging makes room for the dragged widget which means
     # that widgets that have been there are moved down
     created_area.drag_to(1, 3)
 
-    my_page.expect_and_dismiss_toaster message: I18n.t('js.notice_successful_update')
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
     reload_grid!
 
-    calendar_area.expect_to_span(1, 1, 3, 2)
-    watched_area.expect_to_span(2, 3, 3, 4)
-    assigned_area.expect_to_span(3, 1, 4, 2)
+    calendar_area.expect_to_span(2, 1, 4, 2)
+    watched_area.expect_to_span(3, 2, 4, 4)
+    assigned_area.expect_to_span(1, 1, 2, 2)
     created_area.expect_to_span(1, 3, 2, 4)
-    news_area.expect_to_span(1, 2, 2, 3)
+    news_area.expect_to_span(2, 3, 3, 4)
 
     # dragging again makes room for the dragged widget which means
     # that widgets that have been there are moved down. Additionally,
     # as no more widgets start in the second column, that column is removed
     news_area.drag_to(1, 3)
 
-    my_page.expect_and_dismiss_toaster message: I18n.t('js.notice_successful_update')
+    my_page.expect_and_dismiss_all_toasters message: I18n.t("js.notice_successful_update")
 
     reload_grid!
 
@@ -182,10 +181,10 @@ describe 'My page', type: :feature, js: true do
     visit home_path
     my_page.visit!
 
-    calendar_area.expect_to_span(1, 1, 3, 2)
-    news_area.expect_to_span(1, 2, 2, 3)
-    created_area.expect_to_span(2, 2, 3, 3)
-    assigned_area.expect_to_span(3, 1, 4, 2)
-    watched_area.expect_to_span(3, 2, 4, 3)
+    calendar_area.expect_to_span(2, 1, 4, 2)
+    news_area.expect_to_span(2, 3, 3, 4)
+    created_area.expect_to_span(1, 3, 2, 4)
+    assigned_area.expect_to_span(1, 1, 2, 2)
+    watched_area.expect_to_span(3, 2, 4, 4)
   end
 end

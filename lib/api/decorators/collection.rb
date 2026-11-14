@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -38,29 +37,39 @@ module API
         @groups = groups
         @self_link = self_link
 
-        super(models, current_user: current_user)
+        super(models, current_user:)
       end
 
-      class_attribute :element_decorator_class
+      class << self
+        attr_writer :element_decorator_class
 
-      def self.element_decorator(klass)
-        self.element_decorator_class = klass
+        def element_decorator_class
+          @element_decorator_class ||= begin
+            unless name.end_with?("CollectionRepresenter")
+              raise ArgumentError,
+                    "Can't deduce representer name from #{name}, please specify it with `element_decorator ClassName`"
+            end
+
+            name.gsub("CollectionRepresenter", "Representer")
+                .constantize
+          end
+        end
+
+        def element_decorator(klass)
+          self.element_decorator_class = klass
+        end
+
+        def to_eager_load
+          super || element_decorator_class.to_eager_load
+        end
+
+        def to_preload
+          super || element_decorator_class.to_preload
+        end
       end
 
       def element_decorator
-        self.class.element_decorator_class || deduce_element_decorator
-      end
-
-      def deduce_element_decorator
-        name = self.class.name
-
-        unless name.end_with?('CollectionRepresenter')
-          raise ArgumentError, "Can't deduce representer name from #{name}, please specify it with `element_decorator ClassName`"
-        end
-
-        name
-          .gsub("CollectionRepresenter", "Representer")
-          .constantize
+        self.class.element_decorator_class
       end
 
       link :self do
@@ -68,7 +77,7 @@ module API
       end
 
       property :total, getter: ->(*) { @total }, exec_context: :decorator
-      property :count, getter: ->(*) { count }
+      property :count, getter: ->(*) { represented.to_a.size }, exec_context: :decorator
 
       property :groups,
                exec_context: :decorator,
@@ -77,14 +86,14 @@ module API
       collection :elements,
                  getter: ->(*) {
                    represented.map do |model|
-                     element_decorator.create(model, current_user: current_user)
+                     element_decorator.create(model, current_user:)
                    end
                  },
                  exec_context: :decorator,
                  embedded: true
 
       def _type
-        'Collection'
+        "Collection"
       end
 
       attr_reader :groups

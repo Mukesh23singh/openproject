@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,44 +22,43 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Users::Scopes::FindByLogin, type: :model do
-  let!(:activity) { FactoryBot.create(:time_entry_activity) }
-  let!(:project) { FactoryBot.create(:project) }
-  let!(:user) { FactoryBot.create(:user, login: login) }
-  let(:login) { 'Some string' }
+RSpec.describe Users::Scopes::FindByLogin do
+  let!(:activity) { create(:time_entry_activity) }
+  let!(:project) { create(:project) }
+  let!(:user) { create(:user, login:) }
+  let(:login) { "Some string" }
   let(:search_login) { login }
 
-  describe '.find_by_login' do
+  describe ".find_by_login" do
     subject { User.find_by_login(search_login) }
 
-    context 'with the exact same login' do
-      it 'returns the user' do
+    context "with the exact same login" do
+      it "returns the user" do
         expect(subject)
           .to eql user
       end
     end
 
-    context 'with a non existing login' do
-      let(:search_login) { 'nothing' }
+    context "with a non existing login" do
+      let(:search_login) { "nothing" }
 
-      it 'returns nil' do
+      it "returns nil" do
         expect(subject)
           .to be_nil
       end
     end
 
-    context 'with a lowercase login' do
+    context "with a lowercase login" do
       let(:search_login) { login.downcase }
 
-      it 'returns the user with the matching login' do
+      it "returns the user with the matching login" do
         expect(subject)
           .to eql user
       end

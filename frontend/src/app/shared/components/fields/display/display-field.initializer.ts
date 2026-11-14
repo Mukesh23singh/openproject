@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,36 +20,77 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { DisplayFieldService } from 'core-app/shared/components/fields/display/display-field.service';
-import { TextDisplayField } from 'core-app/shared/components/fields/display/field-types/text-display-field.module';
-import { FloatDisplayField } from 'core-app/shared/components/fields/display/field-types/float-display-field.module';
-import { IntegerDisplayField } from 'core-app/shared/components/fields/display/field-types/integer-display-field.module';
-import { ResourceDisplayField } from 'core-app/shared/components/fields/display/field-types/resource-display-field.module';
-import { ResourcesDisplayField } from 'core-app/shared/components/fields/display/field-types/resources-display-field.module';
-import { FormattableDisplayField } from 'core-app/shared/components/fields/display/field-types/formattable-display-field.module';
-import { DurationDisplayField } from 'core-app/shared/components/fields/display/field-types/duration-display-field.module';
+import {
+  BooleanDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/boolean-display-field.module';
+import {
+  CombinedDateDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/combined-date-display.field';
+import {
+  CompoundProgressDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/compound-progress-display-field.module';
 import { DateDisplayField } from 'core-app/shared/components/fields/display/field-types/date-display-field.module';
-import { DateTimeDisplayField } from 'core-app/shared/components/fields/display/field-types/datetime-display-field.module';
-import { BooleanDisplayField } from 'core-app/shared/components/fields/display/field-types/boolean-display-field.module';
-import { ProgressDisplayField } from 'core-app/shared/components/fields/display/field-types/progress-display-field.module';
-import { WorkPackageDisplayField } from 'core-app/shared/components/fields/display/field-types/work-package-display-field.module';
-import { WorkPackageSpentTimeDisplayField } from 'core-app/shared/components/fields/display/field-types/wp-spent-time-display-field.module';
+import {
+  DateTimeDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/datetime-display-field.module';
+import {
+  DaysDurationDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/days-duration-display-field.module';
+import { DisplayFieldService } from 'core-app/shared/components/fields/display/display-field.service';
+import { WorkDisplayField } from 'core-app/shared/components/fields/display/field-types/work-display-field.module';
+import { FloatDisplayField } from 'core-app/shared/components/fields/display/field-types/float-display-field.module';
+import {
+  FormattableDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/formattable-display-field.module';
+import {
+  HighlightedResourceDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/highlighted-resource-display-field.module';
 import { IdDisplayField } from 'core-app/shared/components/fields/display/field-types/id-display-field.module';
-import { HighlightedResourceDisplayField } from 'core-app/shared/components/fields/display/field-types/highlighted-resource-display-field.module';
+import {
+  IntegerDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/integer-display-field.module';
+import {
+  LinkedWorkPackageDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/linked-work-package-display-field.module';
+import {
+  MultipleUserFieldModule,
+} from 'core-app/shared/components/fields/display/field-types/multiple-user-display-field.module';
+import {
+  PlainFormattableDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/plain-formattable-display-field.module';
+import {
+  ProjectStatusDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/project-status-display-field.module';
+import {
+  ResourceDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/resource-display-field.module';
+import {
+  ResourcesDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/resources-display-field.module';
+import { TextDisplayField } from 'core-app/shared/components/fields/display/field-types/text-display-field.module';
 import { TypeDisplayField } from 'core-app/shared/components/fields/display/field-types/type-display-field.module';
 import { UserDisplayField } from 'core-app/shared/components/fields/display/field-types/user-display-field.module';
-import { MultipleUserFieldModule } from 'core-app/shared/components/fields/display/field-types/multiple-user-display-field.module';
-import { WorkPackageIdDisplayField } from 'core-app/shared/components/fields/display/field-types/wp-id-display-field.module';
-import { ProjectStatusDisplayField } from 'core-app/shared/components/fields/display/field-types/project-status-display-field.module';
-import { PlainFormattableDisplayField } from 'core-app/shared/components/fields/display/field-types/plain-formattable-display-field.module';
-import { LinkedWorkPackageDisplayField } from 'core-app/shared/components/fields/display/field-types/linked-work-package-display-field.module';
-import { CombinedDateDisplayField } from 'core-app/shared/components/fields/display/field-types/combined-date-display.field';
+import {
+  WorkPackageDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/work-package-display-field.module';
+import {
+  WorkPackageIdDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/wp-id-display-field.module';
+import {
+  WorkPackageSpentTimeDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/wp-spent-time-display-field.module';
+import {
+  LabelsDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/labels-display-field.module';
+import { LinkDisplayField } from 'core-app/shared/components/fields/display/field-types/link-display-field.module';
+import {
+  ProjectPhaseDisplayField,
+} from 'core-app/shared/components/fields/display/field-types/project-phase-display-field.module';
 
 export function initializeCoreDisplayFields(displayFieldService:DisplayFieldService) {
   return () => {
@@ -68,15 +109,25 @@ export function initializeCoreDisplayFields(displayFieldService:DisplayFieldServ
         'TimeEntriesActivity',
         'Version',
         'Category',
-        'CustomOption'])
-      .addFieldType(ResourcesDisplayField, 'resources', ['[]CustomOption'])
+        'BacklogBucket',
+        'Sprint',
+        'CustomField::Hierarchy::Item',
+        'CustomOption',
+        'Workspace'])
+      .addFieldType(ProjectPhaseDisplayField, 'projectPhase', ['ProjectPhase'])
+      .addFieldType(ResourcesDisplayField, 'resources', ['[]CustomOption', '[]CustomField::Hierarchy::Item'])
+      .addFieldType(ResourcesDisplayField, 'resources', ['[]Version'])
+      .addFieldType(LabelsDisplayField, 'labels', ['[]Label'])
       .addFieldType(MultipleUserFieldModule, 'users', ['[]User'])
       .addFieldType(FormattableDisplayField, 'formattable', ['Formattable'])
-      .addFieldType(DurationDisplayField, 'duration', ['Duration'])
+      .addFieldType(DaysDurationDisplayField, 'duration', ['duration'])
+      .addFieldType(WorkDisplayField, 'remainingTime', ['remainingTime'])
+      .addFieldType(WorkDisplayField, 'estimatedTime', ['estimatedTime'])
       .addFieldType(DateDisplayField, 'date', ['Date'])
       .addFieldType(DateTimeDisplayField, 'datetime', ['DateTime'])
       .addFieldType(BooleanDisplayField, 'boolean', ['Boolean'])
-      .addFieldType(ProgressDisplayField, 'progress', ['percentageDone'])
+      .addFieldType(LinkDisplayField, 'link', ['Link'])
+      .addFieldType(CompoundProgressDisplayField, 'progress', ['percentageDone'])
       .addFieldType(LinkedWorkPackageDisplayField, 'work_package', ['WorkPackage'])
       .addFieldType(IdDisplayField, 'id', ['id'])
       .addFieldType(UserDisplayField, 'user', ['User']);

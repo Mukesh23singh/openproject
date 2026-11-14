@@ -1,0 +1,683 @@
+# frozen_string_literal: true
+
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
+require "spec_helper"
+
+RSpec.describe Import::JiraClient do
+  subject(:client) { described_class.new(url:, auth_method:, personal_access_token:, basic_auth_username:, basic_auth_password:) }
+
+  let(:url) { "https://jira.example.com" }
+  let(:auth_method) { "bearer" }
+  let(:personal_access_token) { "test-token" }
+  let(:basic_auth_username) { nil }
+  let(:basic_auth_password) { nil }
+
+  describe "#initialize" do
+    context "with bearer auth" do
+      let(:auth_method) { "bearer" }
+
+      context "when personal_access_token is nil" do
+        let(:personal_access_token) { nil }
+
+        it "raises Error" do
+          expect { client }.to raise_error(Import::JiraClient::Error, /personal access token/i)
+        end
+      end
+
+      context "when personal_access_token is blank" do
+        let(:personal_access_token) { "" }
+
+        it "raises Error" do
+          expect { client }.to raise_error(Import::JiraClient::Error, /personal access token/i)
+        end
+      end
+
+      context "when personal_access_token is present" do
+        let(:personal_access_token) { "valid-token" }
+
+        it "creates the client successfully" do
+          expect { client }.not_to raise_error
+        end
+      end
+    end
+
+    context "with basic auth" do
+      let(:auth_method) { "basic" }
+      let(:personal_access_token) { nil }
+      let(:basic_auth_username) { "user" }
+      let(:basic_auth_password) { "pass" }
+
+      context "when basic_auth_username is blank" do
+        let(:basic_auth_username) { "" }
+
+        it "raises Error" do
+          expect { client }.to raise_error(Import::JiraClient::Error, /basic auth username/i)
+        end
+      end
+
+      context "when basic_auth_password is blank" do
+        let(:basic_auth_password) { "" }
+
+        it "raises Error" do
+          expect { client }.to raise_error(Import::JiraClient::Error, /basic auth password/i)
+        end
+      end
+
+      context "when both username and password are present" do
+        it "creates the client successfully" do
+          expect { client }.not_to raise_error
+        end
+      end
+    end
+
+    context "with unknown auth method" do
+      let(:auth_method) { "unknown" }
+
+      it "raises Error" do
+        expect { client }.to raise_error(Import::JiraClient::Error, /Unknown authentication method/i)
+      end
+    end
+  end
+
+  describe "#issue_watchers", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:issue_key) { "OP-10" }
+    let(:issue_watchers_url) { "#{url}/rest/api/2/issue/#{issue_key}/watchers" }
+    let(:headers) { { "Content-Type" => "application/json" } }
+    let(:body) do
+      {
+        "watchers" => [
+          {
+            "name" => "magdalena",
+            "key" => "JIRAUSER666",
+            "emailAddress" => "maggie@jira.internet",
+            "displayName" => "maggie",
+            "active" => true,
+            "timeZone" => "Etc/UTC"
+          }
+        ],
+        "isWatching" => true,
+        "watchCount" => 1
+      }
+    end
+
+    it "returns the watchers of the given issue" do
+      stub_request(:get, issue_watchers_url).to_return(status: 200, body: body.to_json, headers:)
+      expect(client.issue_watchers(issue_key)).to eq(body)
+    end
+
+    context "when the issue is not found" do
+      let(:body) { { "errorMessages" => ["Issue Does Not Exist"], "errors" => {} } }
+
+      it "raises an error" do
+        stub_request(:get, issue_watchers_url).to_return(status: 404, body: body.to_json, headers:)
+        expect { client.issue_watchers(issue_key) }.to raise_error(Import::JiraClient::ApiError, /status 404/)
+      end
+    end
+  end
+
+  describe "#resolutions", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:body) { [{ "id" => "10000", "name" => "Done" }, { "id" => "10001", "name" => "Won't Do" }] }
+
+    it "returns all resolutions of the instance" do
+      stub_request(:get, "#{url}/rest/api/2/resolution")
+        .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+      expect(client.resolutions).to eq(body)
+    end
+  end
+
+  describe "#resolutions_count", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:headers) { { "Content-Type" => "application/json" } }
+
+    it "returns the total of the paged resolutions" do
+      stub_request(:get, "#{url}/rest/api/2/resolution/page")
+        .with(query: { maxResults: 0 })
+        .to_return(status: 200, body: { "total" => 7, "values" => [] }.to_json, headers:)
+
+      expect(client.resolutions_count).to eq(7)
+    end
+
+    context "when the paged resolutions are not supported" do
+      it "counts all resolutions of the instance" do
+        stub_request(:get, "#{url}/rest/api/2/resolution/page")
+          .with(query: { maxResults: 0 })
+          .to_return(status: 404, body: { "errorMessages" => [] }.to_json, headers:)
+        stub_request(:get, "#{url}/rest/api/2/resolution")
+          .to_return(status: 200, body: [{ "id" => "10000" }, { "id" => "10001" }].to_json, headers:)
+
+        expect(client.resolutions_count).to eq(2)
+      end
+    end
+  end
+
+  describe "#administrator?", :webmock do
+    include_context "with ssrf stubs"
+
+    before do
+      stub_request(:get, "#{url}/rest/api/2/mypermissions")
+        .to_return(status: 200, body: mypermissions.to_json, headers: { "Content-Type" => "application/json" })
+    end
+
+    context "when the credentials hold the ADMINISTER permission" do
+      let(:mypermissions) { { "permissions" => { "ADMINISTER" => { "havePermission" => true } } } }
+
+      it { expect(client).to be_administrator }
+    end
+
+    context "when the credentials lack the ADMINISTER permission" do
+      let(:mypermissions) { { "permissions" => { "ADMINISTER" => { "havePermission" => false } } } }
+
+      it { expect(client).not_to be_administrator }
+    end
+
+    context "when Jira does not report the ADMINISTER permission" do
+      let(:mypermissions) { { "permissions" => {} } }
+
+      it { expect(client).not_to be_administrator }
+    end
+  end
+
+  describe "#custom_field_options", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:options_url) { "#{url}/rest/api/2/customFields/10264/options" }
+
+    def stub_options(query:, options:, total: :unset, status: 200)
+      body = { options: }
+      body[:total] = total == :unset ? options.size : total
+      body.delete(:total) if total.nil?
+      stub_request(:get, options_url)
+        .with(query:)
+        .to_return(status:, body: body.to_json, headers: { "Content-Type" => "application/json" })
+    end
+
+    def option(id, value)
+      { "value" => value, "id" => id, "disabled" => false, "childrenIds" => [] }
+    end
+
+    it "returns the options of the field context the projects and issue types resolve to" do
+      stub_options(query: { "projectIds" => "10012", "issueTypeIds" => "10100" }, options: [option(10200, "Red")])
+
+      expect(client.custom_field_options(10264, project_ids: ["10012"], issue_type_ids: ["10100"]))
+        .to eq([option(10200, "Red")])
+    end
+
+    it "joins several projects and issue types into one request" do
+      request = stub_options(query: { "projectIds" => "10012,10013", "issueTypeIds" => "10100,10200" },
+                             options: [option(10200, "Red")])
+
+      client.custom_field_options(10264, project_ids: %w[10012 10013], issue_type_ids: %w[10100 10200])
+
+      expect(request).to have_been_requested
+    end
+
+    it "asks without any parameter when no project or issue type is given" do
+      request = stub_options(query: {}, options: [option(10200, "Red")])
+
+      client.custom_field_options(10264)
+
+      expect(request).to have_been_requested
+    end
+
+    it "reads a context whose options the first response already holds with a single request" do
+      request = stub_options(query: {}, options: [option(10200, "Red")], total: 1)
+
+      expect(client.custom_field_options(10264).size).to eq(1)
+      expect(request).to have_been_requested.once
+    end
+
+    it "returns nothing for a context without options" do
+      request = stub_options(query: {}, options: [], total: 0)
+
+      expect(client.custom_field_options(10264)).to eq([])
+      expect(request).to have_been_requested.once
+    end
+
+    it "reads on when the first response was short of the total" do
+      stub_options(query: {}, options: [option(10200, "Red")], total: 3)
+      stub_options(query: { "maxResults" => "10000", "page" => "1" },
+                   options: [option(10200, "Red"), option(10201, "Purple"), option(10202, "Green")], total: 3)
+
+      expect(client.custom_field_options(10264).pluck("value")).to eq(%w[Red Purple Green])
+    end
+
+    # Jira caps maxResults server side, so a page can come back smaller than the one asked for.
+    it "keeps reading pages until the context holds as many options as the total promises" do
+      stub_options(query: {}, options: [option(10200, "Red")], total: 4)
+      stub_options(query: { "maxResults" => "10000", "page" => "1" },
+                   options: [option(10200, "Red"), option(10201, "Purple")], total: 4)
+      stub_options(query: { "maxResults" => "10000", "page" => "2" },
+                   options: [option(10202, "Green"), option(10203, "Blue")], total: 4)
+
+      expect(client.custom_field_options(10264).pluck("value")).to eq(%w[Red Purple Green Blue])
+    end
+
+    it "stops once a page adds no option the previous ones did not already hold" do
+      stub_options(query: {}, options: [option(10200, "Red")], total: 4)
+      stub_options(query: { "maxResults" => "10000", "page" => "1" }, options: [option(10200, "Red")], total: 4)
+      second_page = stub_options(query: { "maxResults" => "10000", "page" => "2" },
+                                 options: [option(10201, "Purple")], total: 4)
+
+      expect(client.custom_field_options(10264).pluck("value")).to eq(%w[Red])
+      expect(second_page).not_to have_been_requested
+    end
+
+    # An endpoint answering every page with the same options would otherwise never let go.
+    it "gives up after the page limit when every page keeps adding options" do
+      stub_options(query: {}, options: [option(10200, "Red")], total: nil)
+      stub_request(:get, options_url)
+        .with(query: hash_including({ "page" => /\d+/ }))
+        .to_return do |request|
+          page = CGI.parse(URI(request.uri).query).fetch("page").first.to_i
+          { status: 200,
+            body: { options: [option(10_200 + page, "Color #{page}")] }.to_json,
+            headers: { "Content-Type" => "application/json" } }
+        end
+
+      expect(client.custom_field_options(10264).size)
+        .to eq(described_class::CUSTOM_FIELD_OPTIONS_PAGE_LIMIT + 1)
+    end
+
+    context "when Jira reports no total" do
+      it "reads page by page until a page comes back empty" do
+        stub_options(query: {}, options: [option(10200, "Red")], total: nil)
+        stub_options(query: { "maxResults" => "10000", "page" => "1" },
+                     options: [option(10200, "Red"), option(10201, "Purple")], total: nil)
+        stub_options(query: { "maxResults" => "10000", "page" => "2" }, options: [option(10202, "Green")], total: nil)
+        stub_options(query: { "maxResults" => "10000", "page" => "3" }, options: [], total: nil)
+
+        expect(client.custom_field_options(10264).pluck("value")).to eq(%w[Red Purple Green])
+      end
+
+      it "returns nothing when the first page is already empty" do
+        stub_options(query: {}, options: [], total: nil)
+        stub_options(query: { "maxResults" => "10000", "page" => "1" }, options: [], total: nil)
+
+        expect(client.custom_field_options(10264)).to eq([])
+      end
+    end
+
+    # The endpoint only exists from Jira DC 9.3 on, and answers the same way for a field the token
+    # cannot see; callers fall back to editmeta in both cases.
+    it "raises UnsupportedEndpointError when the endpoint does not exist" do
+      stub_request(:get, options_url).with(query: hash_including({})).to_return(status: 404)
+
+      expect { client.custom_field_options(10264) }
+        .to raise_error(Import::JiraClient::UnsupportedEndpointError, /customFields\/10264\/options/)
+    end
+
+    it "raises ApiError when access is forbidden" do
+      stub_request(:get, options_url).with(query: hash_including({})).to_return(status: 403)
+
+      expect { client.custom_field_options(10264) }.to raise_error(Import::JiraClient::ApiError)
+    end
+
+    it "raises ApiError for any other error status" do
+      stub_request(:get, options_url).with(query: hash_including({})).to_return(status: 500)
+
+      expect { client.custom_field_options(10264) }.to raise_error(Import::JiraClient::ApiError)
+    end
+  end
+
+  describe "#boards", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:boards_url) { "#{url}/rest/agile/1.0/board" }
+    let(:body) do
+      {
+        "maxResults" => 50, "startAt" => 0, "isLast" => true,
+        "values" => [{ "id" => 3, "name" => "OP board", "type" => "scrum",
+                       "location" => { "projectId" => 10000, "projectKey" => "OP" } }]
+      }
+    end
+
+    it "returns a page of the boards of the given project" do
+      stub_request(:get, boards_url)
+        .with(query: { "projectKeyOrId" => "OP", "startAt" => "50", "maxResults" => "25" })
+        .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+      expect(client.boards(project_id_or_key: "OP", start_at: 50, max_results: 25)).to eq(body)
+    end
+
+    it "raises UnsupportedEndpointError when Jira has no Agile API" do
+      stub_request(:get, boards_url).with(query: hash_including({})).to_return(status: 404)
+
+      expect { client.boards(project_id_or_key: "OP") }
+        .to raise_error(Import::JiraClient::UnsupportedEndpointError, %r{rest/agile/1\.0/board})
+    end
+
+    it "raises UnsupportedEndpointError when the Jira Software license is missing or expired" do
+      body = { "errorMessages" => ["You currently don't have access to perform this operation."] }
+      stub_request(:get, boards_url).with(query: hash_including({})).to_return(status: 403, body: body.to_json)
+
+      expect { client.boards(project_id_or_key: "OP") }
+        .to raise_error(Import::JiraClient::UnsupportedEndpointError, /status 403/)
+    end
+
+    it "raises ApiError for any other error status" do
+      stub_request(:get, boards_url).with(query: hash_including({})).to_return(status: 500)
+
+      expect { client.boards(project_id_or_key: "OP") }.to raise_error(Import::JiraClient::ApiError)
+    end
+  end
+
+  describe "#board_sprints", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:sprints_url) { "#{url}/rest/agile/1.0/board/3/sprint" }
+    let(:body) do
+      {
+        "maxResults" => 50, "startAt" => 0, "isLast" => true,
+        "values" => [{ "id" => 5, "name" => "Sprint 1", "state" => "active", "originBoardId" => 3 }]
+      }
+    end
+
+    it "returns a page of the sprints of the given board in every state" do
+      stub_request(:get, sprints_url)
+        .with(query: { "state" => "future,active,closed", "startAt" => "0", "maxResults" => "50" })
+        .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+      expect(client.board_sprints(board_id: 3)).to eq(body)
+    end
+
+    it "raises ApiError with Jira's reason for a Kanban board" do
+      stub_request(:get, sprints_url).with(query: hash_including({}))
+        .to_return(status: 400, body: { "errorMessages" => ["The board doesn't support sprints."] }.to_json)
+
+      expect { client.board_sprints(board_id: 3) }
+        .to raise_error(Import::JiraClient::ApiError, /The board doesn't support sprints/)
+    end
+
+    it "raises UnsupportedEndpointError when Jira has no Agile API" do
+      stub_request(:get, sprints_url).with(query: hash_including({})).to_return(status: 404)
+
+      expect { client.board_sprints(board_id: 3) }.to raise_error(Import::JiraClient::UnsupportedEndpointError)
+    end
+
+    it "raises UnsupportedEndpointError when the Jira Software license is missing or expired" do
+      stub_request(:get, sprints_url).with(query: hash_including({})).to_return(status: 403)
+
+      expect { client.board_sprints(board_id: 3) }.to raise_error(Import::JiraClient::UnsupportedEndpointError)
+    end
+
+    it "raises ApiError for any other error status" do
+      stub_request(:get, sprints_url).with(query: hash_including({})).to_return(status: 500)
+
+      expect { client.board_sprints(board_id: 3) }.to raise_error(Import::JiraClient::ApiError)
+    end
+  end
+
+  describe "#board_pages", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:boards_url) { "#{url}/rest/agile/1.0/board" }
+
+    def stub_page(start_at, ids, is_last:)
+      stub_request(:get, boards_url)
+        .with(query: { "projectKeyOrId" => "DEMO", "startAt" => start_at.to_s, "maxResults" => "50" })
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { "isLast" => is_last, "values" => ids.map { { "id" => it } } }.to_json)
+    end
+
+    def ids_and_next_start_at(pages)
+      pages.map { |values, _response, next_start_at| [values.pluck("id"), next_start_at] }
+    end
+
+    it "requests each page from where the previous one ended until Jira reports the last page" do
+      stub_page(0, [1, 2], is_last: false)
+      stub_page(2, [3], is_last: true)
+
+      expect(ids_and_next_start_at(client.board_pages(project_id_or_key: "DEMO"))).to eq([[[1, 2], 2], [[3], 3]])
+    end
+
+    it "starts at the given position" do
+      stub_page(50, [51], is_last: true)
+
+      expect(ids_and_next_start_at(client.board_pages(project_id_or_key: "DEMO", start_at: 50))).to eq([[[51], 51]])
+    end
+
+    it "stops at an empty page" do
+      stub_page(0, [], is_last: false)
+
+      expect(client.board_pages(project_id_or_key: "DEMO").to_a).to be_empty
+    end
+
+    it "stops after the page limit when Jira ignores startAt and never reports the last page" do
+      stub_const("#{described_class}::AGILE_PAGE_LIMIT", 3)
+      stub_request(:get, boards_url).with(query: hash_including({}))
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { "isLast" => false, "values" => [{ "id" => 1 }] }.to_json)
+      allow(Rails.logger).to receive(:warn)
+
+      expect(client.board_pages(project_id_or_key: "DEMO").count).to eq(3)
+      expect(Rails.logger).to have_received(:warn).with(/after 3 pages/)
+    end
+
+    it "raises UnsupportedEndpointError when Jira has no Agile API" do
+      stub_request(:get, boards_url).with(query: hash_including({})).to_return(status: 403)
+
+      expect { client.board_pages(project_id_or_key: "DEMO").to_a }.to raise_error(Import::JiraClient::UnsupportedEndpointError)
+    end
+  end
+
+  describe "#board_sprint_pages", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:sprints_url) { "#{url}/rest/agile/1.0/board/3/sprint" }
+
+    def stub_page(start_at, ids, is_last:)
+      stub_request(:get, sprints_url)
+        .with(query: { "state" => "future,active,closed", "startAt" => start_at.to_s, "maxResults" => "50" })
+        .to_return(status: 200, headers: { "Content-Type" => "application/json" },
+                   body: { "isLast" => is_last, "values" => ids.map { { "id" => it } } }.to_json)
+    end
+
+    it "returns the sprints of every page of the board" do
+      stub_page(0, [2, 1], is_last: false)
+      stub_page(2, [3], is_last: true)
+
+      expect(client.board_sprint_pages(board_id: 3).flat_map { |values, _response, _next_start_at| values.pluck("id") })
+        .to eq([2, 1, 3])
+    end
+
+    it "raises ApiError for a Kanban board" do
+      stub_request(:get, sprints_url).with(query: hash_including({})).to_return(status: 400)
+
+      expect { client.board_sprint_pages(board_id: 3).to_a }.to raise_error(Import::JiraClient::ApiError)
+    end
+  end
+
+  describe "#sprint", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:sprint_url) { "#{url}/rest/agile/1.0/sprint/5" }
+    let(:body) { { "id" => 5, "name" => "Sprint 1", "state" => "closed", "goal" => "Ship it" } }
+
+    it "returns the given sprint" do
+      stub_request(:get, sprint_url)
+        .to_return(status: 200, body: body.to_json, headers: { "Content-Type" => "application/json" })
+
+      expect(client.sprint(5)).to eq(body)
+    end
+
+    it "raises UnsupportedEndpointError when Jira has no Agile API" do
+      stub_request(:get, sprint_url).to_return(status: 404)
+
+      expect { client.sprint(5) }.to raise_error(Import::JiraClient::UnsupportedEndpointError)
+    end
+
+    it "raises UnsupportedEndpointError when the Jira Software license is missing or expired" do
+      stub_request(:get, sprint_url).to_return(status: 403)
+
+      expect { client.sprint(5) }.to raise_error(Import::JiraClient::UnsupportedEndpointError)
+    end
+  end
+
+  describe "#download_attachment", :webmock do
+    include_context "with ssrf stubs"
+
+    let(:content_url) { "#{url}/secure/attachment/10100/screenshot.png" }
+
+    before do
+      stub_request(:get, content_url).to_return(status: 200, body: "file content")
+    end
+
+    it "yields the downloaded file and removes it afterwards" do
+      content = nil
+      path = nil
+      client.download_attachment(content_url, "screenshot.png") do |file|
+        content = file.read
+        path = file.path
+      end
+
+      expect(content).to eq("file content")
+      expect(File).not_to exist(path)
+    end
+
+    it "lets errors raised while handling the file through as they are" do
+      expect { client.download_attachment(content_url, "screenshot.png") { raise Timeout::Error } }
+        .to raise_error(Timeout::Error)
+    end
+
+    context "when the download fails" do
+      subject(:download) { client.download_attachment(content_url, "screenshot.png") { nil } }
+
+      it "raises a retryable error if it times out" do
+        stub_request(:get, content_url).to_timeout
+
+        expect { download }.to raise_error(Import::JiraClient::Error) do |error|
+          expect(error).to be_retryable
+        end
+      end
+
+      context "with a URL the SSRF filter rejects" do
+        let(:content_url) { "ftp://jira.example.com/screenshot.png" }
+
+        it "raises a non-retryable error" do
+          expect { download }.to raise_error(Import::JiraClient::Error) do |error|
+            expect(error).not_to be_retryable
+          end
+        end
+      end
+    end
+  end
+
+  describe Import::JiraClient::ApiError do
+    subject(:error) { described_class.new("Jira error", status: 404, response_body:, response_headers: {}) }
+
+    context "when the response body holds non-ASCII UTF-8 text as BINARY" do
+      let(:response_body) { %({"errorMessages":["Benutzer 'jöhn' existiert nicht"]}).b }
+
+      it "can be interpolated next to non-ASCII text" do
+        expect("Error fetching user data for user key jöhn: #{error.message}")
+          .to include("Benutzer 'jöhn' existiert nicht")
+      end
+    end
+
+    context "when the response body holds bytes that are not valid UTF-8" do
+      let(:response_body) { "M\xFCller".b }
+
+      it "replaces them" do
+        expect(error.response_body).to eq("M\uFFFDller")
+      end
+    end
+
+    context "when there is no response body" do
+      let(:response_body) { nil }
+
+      it "keeps an empty body" do
+        expect(error.response_body).to eq("")
+      end
+    end
+
+    describe "#retryable?" do
+      subject(:error) { described_class.new("Jira error", status:, response_body: nil, response_headers: {}) }
+
+      context "when the token stopped working" do
+        let(:status) { 401 }
+
+        it { is_expected.to be_retryable }
+      end
+
+      context "when Jira rate limits the request" do
+        let(:status) { 429 }
+
+        it { is_expected.to be_retryable }
+      end
+
+      context "when Jira fails to serve the request" do
+        let(:status) { 503 }
+
+        it { is_expected.to be_retryable }
+      end
+
+      context "when Jira no longer has the resource" do
+        let(:status) { 404 }
+
+        it { is_expected.not_to be_retryable }
+      end
+    end
+  end
+
+  describe "SSRF protection" do
+    context "when using a loopback address" do
+      let(:url) { "http://127.0.0.1" }
+
+      it "raises ConnectionError for API requests" do
+        expect { client.server_info }
+          .to raise_error(Import::JiraClient::ConnectionError)
+      end
+
+      it "raises ConnectionError for download_attachment" do
+        expect { client.download_attachment("#{url}/attachment/123", "filename") }
+          .to raise_error(Import::JiraClient::ConnectionError)
+      end
+    end
+
+    context "when using a private network address (10.x.x.x)" do
+      let(:url) { "http://10.0.0.1" }
+
+      it "raises ConnectionError for API requests" do
+        expect { client.projects }
+          .to raise_error(Import::JiraClient::ConnectionError)
+      end
+
+      it "raises ConnectionError for download_attachment" do
+        expect { client.download_attachment("#{url}/attachment/123", "filename") }
+          .to raise_error(Import::JiraClient::ConnectionError)
+      end
+    end
+  end
+end

@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,14 +22,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 FactoryBot.define do
-  factory :group, parent: :principal, class: 'Group' do
+  factory :group, parent: :principal, class: "Group" do
     # groups have lastnames? hmm...
     sequence(:lastname) { |g| "Group #{g}" }
 
@@ -40,11 +41,21 @@ FactoryBot.define do
       next if members.empty?
 
       User.system.run_given do |system_user|
-        ::Groups::AddUsersService
+        Groups::AddUsersService
           .new(group, current_user: system_user)
-          .call(ids: members.map(&:id))
+          .call(ids: members.map(&:id), send_notifications: false)
           .on_failure { |call| raise call.message }
       end
+    end
+
+    factory :department do
+      sequence(:lastname) { |n| "Department #{n}" }
+      organizational_unit { true }
+    end
+
+    factory :group_marked_for_deletion do
+      lastname { "DeletedGroup" }
+      status { Group.statuses[:deleted] }
     end
   end
 end

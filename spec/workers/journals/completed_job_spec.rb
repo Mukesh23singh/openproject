@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,84 +22,80 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Journals::CompletedJob, type: :model do
+RSpec.describe Journals::CompletedJob, type: :model do
   let(:send_mail) { true }
 
   let(:journal) do
-    FactoryBot.build_stubbed(:journal, journable: journable).tap do |j|
-      allow(Journal)
-        .to receive(:find)
-              .with(j.id.to_s)
-              .and_return(j)
-      allow(Journal)
-        .to receive(:find_by)
-              .with(id: j.id)
-              .and_return(j)
-      allow(Journal)
-        .to receive(:exists?)
-              .with(id: j.id)
-              .and_return(true)
-    end
+    build_stubbed(:journal, journable:)
   end
 
-  describe '.schedule' do
+  describe ".schedule" do
     subject { described_class.schedule(journal, send_mail) }
 
-    shared_examples_for 'enqueues a JournalCompletedJob' do
+    shared_examples_for "enqueues a JournalCompletedJob" do
       before do
         allow(Time)
           .to receive(:current)
                 .and_return(Time.current)
       end
 
-      it 'enqueues a JournalCompletedJob' do
+      it "enqueues a JournalCompletedJob" do
         expect { subject }
           .to have_enqueued_job(described_class)
                 .at(Setting.journal_aggregation_time_minutes.to_i.minutes.from_now)
                 .with(journal.id,
+                      journal.updated_at,
                       send_mail)
       end
     end
 
-    shared_examples_for 'enqueues no job' do
-      it 'enqueues no JournalCompletedJob' do
+    shared_examples_for "enqueues no job" do
+      it "enqueues no JournalCompletedJob" do
         expect { subject }
           .not_to have_enqueued_job(described_class)
       end
     end
 
-    context 'with a work_package' do
-      let(:journable) { FactoryBot.build_stubbed(:work_package) }
+    context "with a work_package" do
+      let(:journable) { build_stubbed(:work_package) }
 
-      it_behaves_like 'enqueues a JournalCompletedJob'
+      it_behaves_like "enqueues a JournalCompletedJob"
     end
 
-    context 'with a wiki page' do
-      let(:journable) { FactoryBot.build_stubbed(:wiki_content) }
+    context "with a wiki page" do
+      let(:journable) { build_stubbed(:wiki_page) }
 
-      it_behaves_like 'enqueues a JournalCompletedJob'
+      it_behaves_like "enqueues a JournalCompletedJob"
     end
 
-    context 'with a news' do
-      let(:journable) { FactoryBot.build_stubbed(:news) }
+    context "with a news" do
+      let(:journable) { build_stubbed(:news) }
 
-      it_behaves_like 'enqueues a JournalCompletedJob'
+      it_behaves_like "enqueues a JournalCompletedJob"
     end
   end
 
-  describe '#perform' do
-    subject { described_class.new.perform(journal.id, send_mail) }
+  describe "#perform" do
+    subject { described_class.new.perform(journal.id, journal.updated_at, send_mail) }
 
-    shared_examples_for 'sends a notification' do |event|
-      it 'sends a notification' do
+    let(:find_by_journal) { journal }
+
+    before do
+      allow(Journal)
+        .to receive(:find_by)
+              .with(id: journal.id, updated_at: journal.updated_at)
+              .and_return(find_by_journal)
+    end
+
+    shared_examples_for "sends a notification" do |event|
+      it "sends a notification" do
         allow(OpenProject::Notifications)
           .to receive(:send)
 
@@ -108,43 +104,37 @@ describe Journals::CompletedJob, type: :model do
         expect(OpenProject::Notifications)
           .to have_received(:send)
                 .with(event,
-                      journal: journal,
-                      send_mail: send_mail)
+                      journal:,
+                      send_mail:)
       end
     end
 
-    context 'with a work packages' do
-      let(:journable) { FactoryBot.build_stubbed(:work_package) }
+    context "with a work packages" do
+      let(:journable) { build_stubbed(:work_package) }
 
-      it_behaves_like 'sends a notification',
+      it_behaves_like "sends a notification",
                       OpenProject::Events::AGGREGATED_WORK_PACKAGE_JOURNAL_READY
     end
 
-    context 'with wiki page content' do
-      let(:journable) { FactoryBot.build_stubbed(:wiki_content) }
+    context "with wiki page content" do
+      let(:journable) { build_stubbed(:wiki_page) }
 
-      it_behaves_like 'sends a notification',
+      it_behaves_like "sends a notification",
                       OpenProject::Events::AGGREGATED_WIKI_JOURNAL_READY
     end
 
-    context 'with a news' do
-      let(:journable) { FactoryBot.build_stubbed(:news) }
+    context "with a news" do
+      let(:journable) { build_stubbed(:news) }
 
-      it_behaves_like 'sends a notification',
+      it_behaves_like "sends a notification",
                       OpenProject::Events::AGGREGATED_NEWS_JOURNAL_READY
     end
 
-    context 'with a non non-existant journal' do
-      let(:journable) { FactoryBot.build_stubbed(:work_package) }
+    context "with a non non-existent journal (either because the journable was deleted or the journal updated)" do
+      let(:journable) { build_stubbed(:work_package) }
+      let(:find_by_journal) { nil }
 
-      before do
-        allow(Journal)
-          .to receive(:find_by)
-                .with(id: journal.id)
-                .and_return(nil)
-      end
-
-      it 'sends no notification' do
+      it "sends no notification" do
         allow(OpenProject::Notifications)
           .to receive(:send)
 

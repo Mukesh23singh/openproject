@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,27 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Queries::WorkPackages::Filter::AssigneeOrGroupFilter <
   Queries::WorkPackages::Filter::PrincipalBaseFilter
-  def allowed_values
-    @allowed_values ||= begin
-      values = principal_loader.user_values + principal_loader.group_values
-      me_allowed_value + values.sort
-    end
-  end
-
   def type
     :list_optional
   end
 
   def human_name
-    I18n.t('query_fields.assignee_or_group')
+    I18n.t("query_fields.assignee_or_group")
   end
 
   def self.key
@@ -53,7 +45,7 @@ class Queries::WorkPackages::Filter::AssigneeOrGroupFilter <
     operator_strategy.sql_for_field(
       values_replaced,
       self.class.model.table_name,
-      'assigned_to_id'
+      "assigned_to_id"
     )
   end
 

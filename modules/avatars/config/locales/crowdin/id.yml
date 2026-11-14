@@ -1,41 +1,49 @@
-#English strings go here
+---
 id:
-  label_avatar: "Avatar"
-  label_avatar_plural: "Avatar"
-  label_current_avatar: "Avatar saat ini"
-  label_choose_avatar: "Pilih avatar dari file"
-  message_avatar_uploaded: "Avatar berhasil diubah"
-  error_image_upload: "Kesalahan menyimpan gambar"
-  error_image_size: "Gambar terlalu besar"
-  button_change_avatar: "Ubah avatar"
-  are_you_sure_delete_avatar: "Apakah anda yakin ingin menghapus avatar anda?"
-  avatar_deleted: "Avatar berhasil dihapus"
-  unable_to_delete_avatar: "Avatar tidak bisa dihapus"
-  wrong_file_format: "Format yang diperbolehkan adalah jpg, png, gif"
-  empty_file_error: "Unggah gambar yang valid (jpg, png, gif)"
+  are_you_sure_delete_avatar: Apakah anda yakin ingin menghapus avatar anda?
+  avatar_deleted: Avatar berhasil dihapus
   avatars:
-    label_avatar: "Avatar"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Avatar saat ini'
-    label_local_avatar: 'Avatar khusus'
-    text_current_avatar: |
-      Gambar berikut menunjukkan avatar saat ini.
-    text_upload_instructions: |
-      Unggah avatar khusus Anda yang berukuran 128 x 128 pixel. File yang lebih besar akan diubah ukurannya dan dipotong agar sesuai.
-      Pratinjau avatar Anda akan ditampilkan sebelum mengunggah, setelah Anda memilih gambar
-    text_change_gravatar_html: "\nUntuk mengubah atau menambahkan Gravatar untuk alamat email Anda, buka %{gravatar_url}"
-    text_your_local_avatar: |
-
-      OpenProject memungkinkan Anda untuk mengunggah avatar khusus Anda sendiri.
-    text_local_avatar_over_gravatar: |
-      Jika Anda menyetelnya, avatar khusus ini digunakan lebih dulu daripada gravatar di atas.
-    text_your_current_gravatar: |
-      OpenProject menggunakan gravatar Anda jika Anda mendaftar, atau gambar atau ikon default jika ada.
-      Gravatar saat ini adalah sebagai berikut:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Avatar khusus
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Aktifkan gravatar pengguna'
-      gravatar_default: "Gambar Gravatar default"
-      enable_local_avatars: 'Aktifkan Avatar khusus pengguna'
-
-
-
+      enable_gravatars: Aktifkan gravatar pengguna
+      enable_local_avatars: Aktifkan Avatar khusus pengguna
+      gravatar_default: Gambar Gravatar default
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Unggah gambar yang valid (jpg, png, gif)
+  error_image_size: Gambar terlalu besar
+  error_image_upload: Kesalahan menyimpan gambar
+  label_avatar: Avatar
+  label_avatar_plural: Avatar
+  label_choose_avatar: Pilih avatar dari file
+  label_current_avatar: Avatar saat ini
+  message_avatar_uploaded: Avatar berhasil diubah
+  plugin_openproject_avatars:
+    description: Plugin ini memungkinkan pengguna OpenProject untuk mengunggah gambar yang akan digunakan sebagai avatar atau menggunakan gambar yang terdaftar di Gravatar.
+    name: Avatar
+  unable_to_delete_avatar: Avatar tidak bisa dihapus
+  wrong_file_format: Format yang diperbolehkan adalah jpg, png, gif

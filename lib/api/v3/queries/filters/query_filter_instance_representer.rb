@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -70,9 +67,9 @@ module API
 
                           represented.operator = ::API::Utilities::ResourceLinkParser
                                                  .parse_id fragment["href"],
-                                                           property: 'operator',
-                                                           expected_version: '3',
-                                                           expected_namespace: 'queries/operators'
+                                                           property: "operator",
+                                                           expected_version: "3",
+                                                           expected_namespace: "queries/operators"
                         }
 
           resources :values,
@@ -80,17 +77,8 @@ module API
                       next unless represented.ar_object_filter?
 
                       represented.value_objects.map do |value_object|
-                        href = begin
-                          path_name = value_object.class.name.demodulize.underscore
-
-                          api_v3_paths.send(path_name, value_object.id)
-                        rescue StandardError => e
-                          Rails.logger.error "Failed to get href for value_object #{value_object}: #{e}"
-                          nil
-                        end
-
                         link_object = {
-                          href: href,
+                          href: api_v3_paths.path_for_object(value_object),
                           title: value_object.name
                         }
 
@@ -124,7 +112,7 @@ module API
 
           property :name,
                    exec_context: :decorator,
-                   writeable: false
+                   writable: false
 
           def _type
             "#{converted_name.camelize}QueryFilter"
@@ -159,7 +147,7 @@ module API
           end
 
           def query_filter_instance_links_representer(represented)
-            ::API::V3::Queries::Filters::QueryFilterInstanceLinksRepresenter.new represented, current_user: current_user
+            ::API::V3::Queries::Filters::QueryFilterInstanceLinksRepresenter.new represented, current_user:
           end
 
           def represented_is_boolean_list?(represented)

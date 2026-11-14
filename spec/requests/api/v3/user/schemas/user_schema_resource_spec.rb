@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,21 +22,20 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Users schema resource', type: :request, content_type: :json do
+RSpec.describe "API v3 Users schema resource", content_type: :json do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
   shared_let(:current_user) do
-    FactoryBot.create(:user)
+    create(:user)
   end
 
   let(:path) { api_v3_paths.user_schema }
@@ -45,19 +46,19 @@ describe 'API v3 Users schema resource', type: :request, content_type: :json do
 
   subject(:response) { last_response }
 
-  describe '#GET /users/schema' do
+  describe "#GET /users/schema" do
     before do
       get path
     end
 
-    it 'responds with 200 OK' do
+    it "responds with 200 OK" do
       expect(subject.status).to eq(200)
     end
 
-    it 'returns a schema' do
+    it "returns a schema" do
       expect(subject.body)
-        .to be_json_eql('Schema'.to_json)
-        .at_path '_type'
+        .to be_json_eql("Schema".to_json)
+        .at_path "_type"
     end
   end
 end

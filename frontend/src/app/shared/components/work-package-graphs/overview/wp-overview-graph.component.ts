@@ -1,11 +1,33 @@
+//-- copyright
+// OpenProject is an open source project management software.
+// Copyright (C) the OpenProject GmbH
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License version 3.
+//
+// OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+// Copyright (C) 2006-2013 Jean-Philippe Lang
+// Copyright (C) 2010-2013 the ChiliProject Team
+//
+// This program is free software; you can redistribute it and/or
+// modify it under the terms of the GNU General Public License
+// as published by the Free Software Foundation; either version 2
+// of the License, or (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
+//
+// See COPYRIGHT and LICENSE files for more details.
+//++
+
 import {
-  ChangeDetectionStrategy,
-  ChangeDetectorRef,
-  Component,
-  ElementRef,
-  Input,
-  OnInit,
-  ViewChild,
+  ChangeDetectionStrategy, ChangeDetectorRef, Component, InputSignal, OnInit, ViewChild, inject, input,
+  booleanAttribute, model,
 } from '@angular/core';
 import {
   WorkPackageEmbeddedGraphComponent,
@@ -13,34 +35,45 @@ import {
 } from 'core-app/shared/components/work-package-graphs/embedded/wp-embedded-graph.component';
 import { I18nService } from 'core-app/core/i18n/i18n.service';
 import { ChartOptions } from 'chart.js';
-import { WpGraphConfigurationService } from 'core-app/shared/components/work-package-graphs/configuration/wp-graph-configuration.service';
+import {
+  WpGraphConfigurationService,
+} from 'core-app/shared/components/work-package-graphs/configuration/wp-graph-configuration.service';
 import {
   WpGraphConfiguration,
   WpGraphQueryParams,
 } from 'core-app/shared/components/work-package-graphs/configuration/wp-graph-configuration';
 
-export const wpOverviewGraphSelector = 'wp-overview-graph';
+type GraphFilter = Record<string, { operator:string; values:unknown[] }>;
 
 @Component({
-  selector: wpOverviewGraphSelector,
+  selector: 'opce-wp-overview-graph',
   templateUrl: './wp-overview-graph.template.html',
   styleUrls: ['./wp-overview-graph.component.sass'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [
     WpGraphConfigurationService,
   ],
+  standalone: false,
 })
-
 export class WorkPackageOverviewGraphComponent implements OnInit {
-  @Input() additionalFilter:any;
+  readonly I18n = inject(I18nService);
+  readonly graphConfigurationService = inject(WpGraphConfigurationService);
+  protected readonly cdr = inject(ChangeDetectorRef);
+
+  // Rendered as a custom element, so inputs may arrive as attribute strings.
+  readonly initialFilters = input<GraphFilter[]|null, string|GraphFilter[]|null>(null, {
+    transform: (value) => (typeof value === 'string' ? JSON.parse(value) as GraphFilter[] : value),
+  });
+
+  readonly globalScope = input(false, { transform: booleanAttribute });
 
   @ViewChild('wpEmbeddedGraphMulti') private embeddedGraphMulti:WorkPackageEmbeddedGraphComponent;
 
   @ViewChild('wpEmbeddedGraphSingle') private embeddedGraphSingle:WorkPackageEmbeddedGraphComponent;
 
-  @Input() groupBy = 'status';
+  readonly groupBy = model('status');
 
-  @Input() chartOptions:ChartOptions = { maintainAspectRatio: false };
+  readonly chartOptions:InputSignal<ChartOptions> = input<ChartOptions>({ maintainAspectRatio: false });
 
   public datasets:WorkPackageEmbeddedGraphDataset[] = [];
 
@@ -50,10 +83,9 @@ export class WorkPackageOverviewGraphComponent implements OnInit {
 
   public error:string|null = null;
 
-  constructor(readonly elementRef:ElementRef,
-    readonly I18n:I18nService,
-    readonly graphConfigurationService:WpGraphConfigurationService,
-    protected readonly cdr:ChangeDetectorRef) {
+  constructor() {
+    const I18n = this.I18n;
+
     this.availableGroupBy = [{ label: I18n.t('js.work_packages.properties.category'), key: 'category' },
       { label: I18n.t('js.work_packages.properties.type'), key: 'type' },
       { label: I18n.t('js.work_packages.properties.status'), key: 'status' },
@@ -63,9 +95,6 @@ export class WorkPackageOverviewGraphComponent implements OnInit {
   }
 
   ngOnInit() {
-    const element = this.elementRef.nativeElement;
-    this.additionalFilter = JSON.parse(element.getAttribute('additional-filter'));
-
     this.setQueryProps();
   }
 
@@ -75,6 +104,7 @@ export class WorkPackageOverviewGraphComponent implements OnInit {
     const params = this.graphParams;
 
     this.graphConfigurationService.configuration = new WpGraphConfiguration(params, {}, 'horizontalBar');
+    this.graphConfigurationService.globalScope = this.globalScope();
 
     // 'finally' was not available yet so the code for the change detection is duplicated
     this
@@ -95,14 +125,15 @@ export class WorkPackageOverviewGraphComponent implements OnInit {
   public get graphParams() {
     const params = [];
 
-    if (this.groupBy === 'status') {
+    if (this.groupBy() === 'status') {
       this.displayModeSingle = true;
 
       params.push({ name: this.I18n.t('js.label_all'), props: this.propsBoth });
     } else {
       this.displayModeSingle = false;
 
-      params.push({ name: this.I18n.t('js.label_open_work_packages'), props: this.propsOpen });
+      params.push({ name: this.I18n.t('js.label_to_do_work_packages'), props: this.propsToDo });
+      params.push({ name: this.I18n.t('js.label_in_progress_work_packages'), props: this.propsInProgress });
       params.push({ name: this.I18n.t('js.label_closed_work_packages'), props: this.propsClosed });
     }
 
@@ -119,29 +150,36 @@ export class WorkPackageOverviewGraphComponent implements OnInit {
     return this.baseProps();
   }
 
-  public get propsOpen() {
-    return this.baseProps({ status: { operator: 'o', values: [] } });
+  public get propsToDo() {
+    return this.baseProps({ status: { operator: 'to_do', values: [] } });
+  }
+
+  public get propsInProgress() {
+    return this.baseProps({ status: { operator: 'in_progress', values: [] } });
   }
 
   public get propsClosed() {
     return this.baseProps({ status: { operator: 'c', values: [] } });
   }
 
-  private baseProps(filter?:any) {
-    const filters = [{ subprojectId: { operator: '*', values: [] } }];
+  private baseProps(filter?:GraphFilter) {
+    const filters:GraphFilter[] = [];
+
+    const initialFilters = this.initialFilters();
+    if (initialFilters) {
+      filters.push(...initialFilters);
+    } else {
+      filters.push({ subprojectId: { operator: '*', values: [] } });
+    }
 
     if (filter) {
       filters.push(filter);
     }
 
-    if (this.additionalFilter) {
-      filters.push(this.additionalFilter);
-    }
-
     return {
       'columns[]': [],
       filters: JSON.stringify(filters),
-      group_by: this.groupBy,
+      group_by: this.groupBy(),
       pageSize: 0,
     };
   }

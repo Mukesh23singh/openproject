@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class DesignColor < ApplicationRecord
+  include ::Colors::HexColor
+
   after_commit -> do
     # CustomStyle.current.updated_at determines the cache key for inline_css
     # in which the CSS color variables will be overwritten. That is why we need
@@ -39,11 +42,11 @@ class DesignColor < ApplicationRecord
     end
   end
 
-  before_validation :normalize_hexcode
+  validates :variable, :hexcode, presence: true
+  validates :variable, uniqueness: true
+  validates :hexcode, format: { with: RGB_HEX_FORMAT, message: :hexcode_invalid, allow_blank: true }
 
-  validates_uniqueness_of :variable
-  validates_presence_of :hexcode, :variable
-  validates_format_of :hexcode, with: /\A#[0-9A-F]{6}\z/, unless: lambda { |e| e.hexcode.blank? }
+  normalizes :hexcode, with: ::Colors::HexColor::Normalizer
 
   class << self
     def setables
@@ -59,23 +62,6 @@ class DesignColor < ApplicationRecord
 
       all.to_a.select do |color|
         overridable.include?(color.variable) && color.hexcode.present?
-      end
-    end
-  end
-
-  protected
-
-  # This could be DRY! This method is taken from model Color.
-  def normalize_hexcode
-    if hexcode.present? and hexcode_changed?
-      self.hexcode = hexcode.strip.upcase
-
-      unless hexcode.starts_with? '#'
-        self.hexcode = '#' + hexcode
-      end
-
-      if hexcode.size == 4 # =~ /#.../
-        self.hexcode = hexcode.gsub(/([^#])/, '\1\1')
       end
     end
   end

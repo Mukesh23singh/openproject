@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,28 +20,36 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-/* jshint expr: true */
-
+import { TestBed } from '@angular/core/testing';
 import { UrlParamsHelperService } from 'core-app/features/work-packages/components/wp-query/url-params-helper';
+import { PaginationService } from 'core-app/shared/components/table-pagination/pagination-service';
 
 describe('UrlParamsHelper', () => {
   const paginationStub = {
     getPerPage: () => 20,
   } as any;
 
-  const UrlParamsHelper = new UrlParamsHelperService(paginationStub);
-  let queryString;
+  let UrlParamsHelper:UrlParamsHelperService;
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        UrlParamsHelperService,
+        { provide: PaginationService, useValue: paginationStub },
+      ],
+    });
+    UrlParamsHelper = TestBed.inject(UrlParamsHelperService);
+  });
 
   describe('buildQueryString', () => {
     const params = {
       ids: [1, 2, 3],
       str: '@#$%',
+      importantOption: false
     };
     let queryString:string;
 
@@ -49,12 +57,34 @@ describe('UrlParamsHelper', () => {
       queryString = UrlParamsHelper.buildQueryString(params)!;
     });
 
-    it("concatenates propertys with '&'", () => {
-      expect(queryString.split('&').length).toEqual(4);
+    it("concatenates properties with '&'", () => {
+      expect(queryString.split('&').length).toEqual(5);
     });
 
     it('escapes special characters', () => {
-      expect(queryString.indexOf('@') === -1).toBeTruthy();
+      expect(!queryString.includes('@')).toBeTruthy();
+    });
+
+    it('does not omit false', () => {
+      expect(queryString.includes('importantOption=false')).toBeTruthy();
+    });
+  });
+
+  describe('queryFilterValueToParam', () => {
+    it.each([
+      [true, 't'],
+      [false, 'f'],
+      ['', ''],
+      [0, ''],
+      ['7', '7'],
+      [7, '7'],
+      [{ id: 3 }, '3'],
+      [{ id: 0 }, '0'],
+      [{ id: 3, href: '/api/v3/users/9' }, '3'],
+      [{ href: '/api/v3/users/me' }, 'me'],
+      [{ href: '/api/v3/work_packages/{id}' }, '{id}'],
+    ])('encodes %j as %j', (value, expected) => {
+      expect(UrlParamsHelper.queryFilterValueToParam(value)).toBe(expected);
     });
   });
 
@@ -93,7 +123,8 @@ describe('UrlParamsHelper', () => {
         timelineVisible: true,
         timelineZoomLevel: 'days',
         showHierarchies: true,
-        highlightingMode: 'disabled',
+        highlightingMode: 'inline',
+        highlightedAttributes: [{ href: 'a' }, { href: 'b' }],
         columns: [{ id: 'type' }, { id: 'status' }, { id: 'soße' }],
         groupBy: {
           id: 'status',
@@ -105,14 +136,14 @@ describe('UrlParamsHelper', () => {
       };
 
       additional = {
-        page: 10,
-        perPage: 100,
+        pa: 10,
+        pp: 100,
       };
     });
 
     it('should encode query to params JSON', () => {
       const encodedJSON = UrlParamsHelper.encodeQueryJsonParams(query, additional);
-      const expectedJSON = '{"c":["type","status","soße"],"s":true,"tv":true,"tzl":"days","hl":"disabled","hi":true,"g":"status","t":"type:desc","f":[{"n":"soße","o":"=","v":["knoblauch"]},{"n":"created_at","o":"<t-","v":["5"]}],"pa":10,"pp":100}';
+      const expectedJSON = '{"c":["type","status","soße"],"hi":true,"g":"status","s":true,"tv":true,"tzl":"days","hl":"inline","hla":["a","b"],"t":"type:desc","f":[{"n":"soße","o":"=","v":["knoblauch"]},{"n":"created_at","o":"<t-","v":["5"]}],"pa":10,"pp":100}';
 
       expect(encodedJSON).toEqual(expectedJSON);
     });
@@ -155,7 +186,7 @@ describe('UrlParamsHelper', () => {
         pageSize: 100,
       };
 
-      expect(_.isEqual(decodedQueryParams, expected)).toBeTruthy();
+      expect(decodedQueryParams).toEqual(expected);
     });
   });
 
@@ -208,6 +239,7 @@ describe('UrlParamsHelper', () => {
           },
         ],
         filters: [filter1, filter2],
+        timestamps: ['PT0S'],
       };
 
       additional = {
@@ -238,13 +270,15 @@ describe('UrlParamsHelper', () => {
         sortBy: JSON.stringify([['type', 'desc'], ['status', 'asc']]),
         timelineVisible: false,
         showHierarchies: false,
+        includeSubprojects: false,
         highlightingMode: 'inline',
         'highlightedAttributes[]': ['a', 'b'],
         offset: 10,
         pageSize: 100,
+        timestamps: 'PT0S',
       };
 
-      expect(_.isEqual(v3Params, expected)).toBeTruthy();
+      expect(v3Params).toEqual(expected);
     });
 
     it('decodes custom options filters', () => {
@@ -276,6 +310,7 @@ describe('UrlParamsHelper', () => {
         groupBy: '',
         timelineZoomLevel: 0,
         highlightingMode: 'inline',
+        timestamps: ['PT0S'],
         sums: false,
       };
 
@@ -298,11 +333,12 @@ describe('UrlParamsHelper', () => {
         timelineVisible: false,
         showHierarchies: false,
         highlightingMode: 'inline',
-
+        includeSubprojects: false,
         sortBy: '[]',
+        timestamps: 'PT0S',
       };
 
-      expect(_.isEqual(v3Params, expected)).toBeTruthy();
+      expect(v3Params).toEqual(expected);
     });
   });
 });

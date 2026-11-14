@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-RSpec.feature 'Keep current details tab', js: true, selenium: true do
-  let(:user) { FactoryBot.create(:admin) }
-  let(:project) { FactoryBot.create(:project) }
-  let!(:wp1) { FactoryBot.create(:work_package, project: project) }
-  let!(:wp2) { FactoryBot.create(:work_package, project: project) }
+RSpec.describe "Keep current details tab", :js do
+  let(:user) { create(:admin) }
+  let(:project) { create(:project) }
+  let!(:wp1) { create(:work_package, project:) }
+  let!(:wp2) { create(:work_package, project:) }
 
   let(:wp_table) { Pages::WorkPackagesTable.new(project) }
   let(:split) { Pages::WorkPackagesTable.new(project) }
@@ -42,7 +43,7 @@ RSpec.feature 'Keep current details tab', js: true, selenium: true do
     wp_table.visit!
   end
 
-  scenario 'Remembers the tab while navigating the page' do
+  it "Remembers the tab while navigating the page" do
     wp_table.expect_work_package_listed(wp1)
     wp_table.expect_work_package_listed(wp2)
 
@@ -64,7 +65,7 @@ RSpec.feature 'Keep current details tab', js: true, selenium: true do
     wp_full = wp_split1.switch_to_fullscreen
     wp_full.expect_tab :activity
 
-    page.execute_script('window.history.back()')
+    page.execute_script("window.history.back()")
     wp_split1.expect_tab :activity
 
     # Assert that overview tab is mapped to activity in show

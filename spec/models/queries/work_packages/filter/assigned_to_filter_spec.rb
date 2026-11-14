@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
+RSpec.describe Queries::WorkPackages::Filter::AssignedToFilter do
   let(:instance) do
     filter = described_class.create!
     filter.values = values
@@ -36,27 +37,27 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
     filter
   end
 
-  let(:operator) { '=' }
+  let(:operator) { "=" }
   let(:values) { [] }
 
-  describe 'where filter results' do
-    let(:work_package) { FactoryBot.create(:work_package, assigned_to: assignee) }
-    let(:assignee) { FactoryBot.create(:user) }
-    let(:group) { FactoryBot.create(:group) }
+  describe "where filter results" do
+    let(:work_package) { create(:work_package, assigned_to: assignee) }
+    let(:assignee) { create(:user) }
+    let(:group) { create(:group) }
 
     subject { WorkPackage.where(instance.where) }
 
-    context 'for the user value' do
+    context "for the user value" do
       let(:values) { [assignee.id.to_s] }
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
-    context 'for the me value with the user being logged in' do
-      let(:values) { ['me'] }
+    context "for the me value with the user being logged in" do
+      let(:values) { ["me"] }
 
       before do
         allow(User)
@@ -64,39 +65,39 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
           .and_return(assignee)
       end
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
 
-      it 'returns the corrected value object' do
+      it "returns the corrected value object" do
         objects = instance.value_objects
 
         expect(objects.size).to eq(1)
-        expect(objects.first.id).to eq 'me'
-        expect(objects.first.name).to eq 'me'
+        expect(objects.first.id).to eq "me"
+        expect(objects.first.name).to eq "me"
       end
     end
 
-    context 'for the me value with another user being logged in' do
-      let(:values) { ['me'] }
+    context "for the me value with another user being logged in" do
+      let(:values) { ["me"] }
 
       before do
         allow(User)
           .to receive(:current)
-          .and_return(FactoryBot.create(:user))
+          .and_return(create(:user))
       end
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
 
-    context 'for me and user values' do
-      let(:user) { FactoryBot.create :user }
-      let(:assignee2) { FactoryBot.create :user }
-      let(:values) { [assignee.id, user.id, 'me', assignee2.id] }
+    context "for me and user values" do
+      let(:user) { create(:user) }
+      let(:assignee2) { create(:user) }
+      let(:values) { [assignee.id, user.id, "me", assignee2.id] }
 
       before do
         assignee
@@ -109,40 +110,40 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
           .and_return(user)
       end
 
-      it 'returns the mapped value' do
+      it "returns the mapped value" do
         objects = instance.value_objects
 
         # As no order is defined in the filter, we use the same method of fetching the values
-        # from the DB as the object under text expecting it to return the values in the same order
-        expect(objects.map(&:id)).to eql ['me'] + Principal.where(id: [assignee.id, assignee2.id]).pluck(:id)
+        # from the DB as the object under test expecting it to return the values in the same order
+        expect(objects.map(&:id)).to eql ["me"] + Principal.where(id: [assignee.id, assignee2.id]).pluck(:id)
       end
     end
 
-    context 'for a group value with the group being assignee' do
+    context "for a group value with the group being assignee" do
       let(:assignee) { group }
       let(:values) { [group.id.to_s] }
 
-      it 'returns the work package' do
-        is_expected
-          .to match_array [work_package]
+      it "returns the work package" do
+        expect(subject)
+          .to contain_exactly(work_package)
       end
     end
 
-    context 'for a group value with a group member being assignee' do
+    context "for a group value with a group member being assignee" do
       let(:values) { [group.id.to_s] }
-      let(:group) { FactoryBot.create(:group, members: assignee) }
+      let(:group) { create(:group, members: assignee) }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
 
-    context 'for a group value with no group member being assignee' do
+    context "for a group value with no group member being assignee" do
       let(:values) { [group.id.to_s] }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
@@ -150,11 +151,11 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
     context "for a user value with the user's group being assignee" do
       let(:values) { [user.id.to_s] }
       let(:assignee) { group }
-      let(:user) { FactoryBot.create(:user) }
-      let(:group) { FactoryBot.create(:group, members: user) }
+      let(:user) { create(:user) }
+      let(:group) { create(:group, members: user) }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
@@ -162,48 +163,155 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
     context "for a user value with the user not being member of the assigned group" do
       let(:values) { [user.id.to_s] }
       let(:assignee) { group }
-      let(:user) { FactoryBot.create(:user) }
+      let(:user) { create(:user) }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
 
-    context 'for an unmatched value' do
-      let(:values) { ['0'] }
+    context "for an unmatched value" do
+      let(:values) { ["0"] }
 
-      it 'does not return the work package' do
-        is_expected
+      it "does not return the work package" do
+        expect(subject)
           .to be_empty
       end
     end
   end
 
-  it_behaves_like 'basic query filter' do
+  describe "#autocomplete_options" do
+    let(:query) { build_stubbed(:query, project:) }
+    let(:project) { nil }
+    let(:instance) do
+      described_class.create!(context: query).tap { |filter| filter.values = values }
+    end
+    let(:user) { create(:user) }
+
+    before do
+      login_as user
+    end
+
+    it "renders an autocompleter against the principals API" do
+      expect(instance.autocomplete_options)
+        .to include(component: "opce-user-autocompleter",
+                    resource: "principals",
+                    url: "/api/v3/principals",
+                    searchKey: "any_name_attribute")
+    end
+
+    it "offers the me value alongside the API results" do
+      expect(instance.autocomplete_options[:additionalOptions])
+        .to contain_exactly({ id: "me", name: I18n.t(:label_me) })
+    end
+
+    context "when not being logged in" do
+      before do
+        login_as User.anonymous
+      end
+
+      it "does not offer the me value" do
+        expect(instance.autocomplete_options[:additionalOptions])
+          .to be_empty
+      end
+    end
+
+    it "advertises every principal type" do
+      expect(instance.autocomplete_options[:filters])
+        .to be_empty
+    end
+
+    context "with a project" do
+      let(:project) { build_stubbed(:project) }
+
+      it "restricts the candidates to the project members" do
+        expect(instance.autocomplete_options[:filters])
+          .to contain_exactly({ name: "member", operator: "=", values: [project.id.to_s] })
+      end
+    end
+
+    context "without values" do
+      it "preselects nothing" do
+        expect(instance.autocomplete_options[:model])
+          .to be_empty
+      end
+    end
+
+    it "hides selected values from the candidates so they cannot be picked twice" do
+      expect(instance.autocomplete_options[:hideSelected]).to be(true)
+    end
+
+    context "with a principal value" do
+      let(:assignee) { create(:user) }
+      let(:values) { [assignee.id.to_s] }
+
+      it "preselects the principal with the href the principals API returns for it" do
+        expect(instance.autocomplete_options[:model])
+          .to contain_exactly({ id: assignee.id.to_s,
+                                name: assignee.name,
+                                href: "/api/v3/users/#{assignee.id}" })
+      end
+    end
+
+    context "with a group value" do
+      let(:group) { create(:group) }
+      let(:values) { [group.id.to_s] }
+
+      it "preselects the group with its own resource href" do
+        expect(instance.autocomplete_options[:model])
+          .to contain_exactly({ id: group.id.to_s,
+                                name: group.name,
+                                href: "/api/v3/groups/#{group.id}" })
+      end
+    end
+
+    context "with a placeholder user value" do
+      let(:placeholder) { create(:placeholder_user) }
+      let(:values) { [placeholder.id.to_s] }
+
+      it "preselects the placeholder user with its own resource href" do
+        expect(instance.autocomplete_options[:model])
+          .to contain_exactly({ id: placeholder.id.to_s,
+                                name: placeholder.name,
+                                href: "/api/v3/placeholder_users/#{placeholder.id}" })
+      end
+    end
+
+    context "with the me value" do
+      let(:values) { ["me"] }
+
+      it "preselects the me value without an href, matching the additional option" do
+        expect(instance.autocomplete_options[:model])
+          .to contain_exactly({ id: "me", name: I18n.t(:label_me) })
+      end
+    end
+  end
+
+  it_behaves_like "basic query filter" do
     let(:type) { :list_optional }
     let(:class_key) { :assigned_to_id }
 
-    let(:user) { FactoryBot.build_stubbed(:user) }
-    let(:group) { FactoryBot.build_stubbed(:group) }
-    let(:placeholder_user) { FactoryBot.build_stubbed(:group) }
+    let(:user) { build_stubbed(:user) }
+    let(:group) { build_stubbed(:group) }
+    let(:placeholder_user) { build_stubbed(:group) }
 
     let(:principal_loader) do
-      double('principal_loader', principal_values: principal_values)
+      double("principal_loader", principal_values:)
     end
     let(:principal_values) { [] }
 
-    describe '#valid_values!' do
-      let(:principal_values) { [[user.name, user.id.to_s]] }
+    describe "#valid_values!" do
+      let(:principal_values) { [[nil, user.id.to_s]] }
 
       before do
-        instance.values = [user.id.to_s, '99999']
+        instance.values = [user.id.to_s, "99999"]
       end
 
-      it 'remove the invalid value' do
+      it "remove the invalid value" do
         instance.valid_values!
 
-        expect(instance.values).to match_array [user.id.to_s]
+        expect(instance.values).to contain_exactly(user.id.to_s)
       end
     end
 
@@ -214,7 +322,7 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
         .and_return(principal_loader)
     end
 
-    describe '#available?' do
+    describe "#available?" do
       let(:logged_in) { true }
 
       before do
@@ -223,78 +331,78 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
           .and_return(logged_in)
       end
 
-      context 'when being logged in' do
-        context 'if no value is available' do
+      context "when being logged in" do
+        context "if no value is available" do
           let(:principal_values) { [] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
 
-        context 'if a user is available' do
-          let(:principal_values) { [[user.name, user.id.to_s]] }
+        context "if a user is available" do
+          let(:principal_values) { [[nil, user.id.to_s]] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
 
-        context 'if a placeholder user is available' do
-          let(:principal_values) { [[placeholder_user.name, placeholder_user.id.to_s]] }
+        context "if a placeholder user is available" do
+          let(:principal_values) { [[nil, placeholder_user.id.to_s]] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
 
-        context 'if another group selectable' do
-          let(:principal_values) { [[group.name, group.id.to_s]] }
+        context "if another group selectable" do
+          let(:principal_values) { [[nil, group.id.to_s]] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
       end
 
-      context 'when not being logged in' do
+      context "when not being logged in" do
         let(:logged_in) { false }
 
-        context 'if no value is available' do
+        context "if no value is available" do
           let(:principal_values) { [] }
 
-          it 'is false' do
+          it "is false" do
             expect(instance).not_to be_available
           end
         end
 
-        context 'if a user is available' do
-          let(:principal_values) { [[user.name, user.id.to_s]] }
+        context "if a user is available" do
+          let(:principal_values) { [[nil, user.id.to_s]] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
 
-        context 'if a placeholder user is available' do
-          let(:principal_values) { [[placeholder_user.name, placeholder_user.id.to_s]] }
+        context "if a placeholder user is available" do
+          let(:principal_values) { [[nil, placeholder_user.id.to_s]] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
 
-        context 'if another group selectable' do
-          let(:principal_values) { [[group.name, group.id.to_s]] }
+        context "if another group selectable" do
+          let(:principal_values) { [[nil, group.id.to_s]] }
 
-          it 'is true' do
+          it "is true" do
             expect(instance).to be_available
           end
         end
       end
     end
 
-    describe '#allowed_values' do
+    describe "#allowed_values" do
       let(:logged_in) { true }
 
       before do
@@ -304,25 +412,22 @@ describe Queries::WorkPackages::Filter::AssignedToFilter, type: :model do
 
         allow(principal_loader)
           .to receive(:principal_values)
-          .and_return([[user.name, user.id.to_s], [group.name, group.id.to_s]])
+          .and_return([[nil, user.id.to_s], [nil, group.id.to_s]])
       end
 
-      context 'when being logged in' do
-        it 'returns the me value and the available users and groups' do
+      context "when being logged in" do
+        it "returns the me value and the available users and groups" do
           expect(instance.allowed_values)
-            .to match_array([[I18n.t(:label_me), 'me'],
-                             [user.name, user.id.to_s],
-                             [group.name, group.id.to_s]])
+            .to contain_exactly([I18n.t(:label_me), "me"], [nil, user.id.to_s], [nil, group.id.to_s])
         end
       end
 
-      context 'when not being logged in' do
+      context "when not being logged in" do
         let(:logged_in) { false }
 
-        it 'returns the available users' do
+        it "returns the available users" do
           expect(instance.allowed_values)
-            .to match_array([[user.name, user.id.to_s],
-                             [group.name, group.id.to_s]])
+            .to contain_exactly([nil, user.id.to_s], [nil, group.id.to_s])
         end
       end
     end

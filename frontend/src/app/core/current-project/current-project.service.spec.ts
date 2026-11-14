@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,18 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-/* jshint expr: true */
-
+import { TestBed } from '@angular/core/testing';
 import { PathHelperService } from 'core-app/core/path-helper/path-helper.service';
+import { ApiV3Service } from 'core-app/core/apiv3/api-v3.service';
 import { CurrentProjectService } from './current-project.service';
 
 describe('currentProject service', () => {
-  let element:JQuery;
+  let element:HTMLMetaElement;
   let currentProject:CurrentProjectService;
 
   const apiV3Stub:any = {
@@ -42,7 +41,14 @@ describe('currentProject service', () => {
   };
 
   beforeEach(() => {
-    currentProject = new CurrentProjectService(new PathHelperService(), apiV3Stub);
+    TestBed.configureTestingModule({
+      providers: [
+        CurrentProjectService,
+        PathHelperService,
+        { provide: ApiV3Service, useValue: apiV3Stub },
+      ],
+    });
+    currentProject = TestBed.inject(CurrentProjectService);
   });
 
   describe('with no meta present', () => {
@@ -57,12 +63,12 @@ describe('currentProject service', () => {
 
   describe('with a meta value present', () => {
     beforeEach(() => {
-      const html = `
-          <meta name="current_project" data-project-name="Foo 1234" data-project-id="1" data-project-identifier="foobar"/>
-        `;
-
-      element = jQuery(html);
-      jQuery(document.body).append(element);
+      element = document.createElement('meta');
+      element.setAttribute('name', 'current_project');
+      element.dataset.projectName = 'Foo 1234';
+      element.dataset.projectId = '1';
+      element.dataset.projectIdentifier = 'foobar';
+      document.head.appendChild(element);
       currentProject.detect();
     });
 

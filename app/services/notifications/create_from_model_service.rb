@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,36 +22,74 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Notifications::CreateFromModelService
-  MENTION_USER_ID_PATTERN =
-    '<mention[^>]*(?:data-type="user"[^>]*data-id="(\d+)")|(?:data-id="(\d+)"[^>]*data-type="user")[^>]*>)|(?:\buser#(\d+)\b'
-      .freeze
+  MENTION_USER_TAG_ID_PATTERN =
+    '<mention[^>]*(?:data-type="user"[^>]*data-id="(\d+)")|(?:data-id="(\d+)"[^>]*data-type="user")[^>]*>'
+
+  MENTION_USER_HASH_ID_PATTERN =
+    '\buser#(\d+)\b'
+
   MENTION_USER_LOGIN_PATTERN =
-    '\buser:"(.+?)"'.freeze
-  MENTION_GROUP_ID_PATTERN =
-    '<mention[^>]*(?:data-type="group"[^>]*data-id="(\d+)")|(?:data-id="(\d+)"[^>]*data-type="group")[^>]*>)|(?:\bgroup#(\d+)\b'
-      .freeze
-  MENTION_PATTERN = Regexp.new("(?:#{MENTION_USER_ID_PATTERN})|(?:#{MENTION_USER_LOGIN_PATTERN})|(?:#{MENTION_GROUP_ID_PATTERN})")
+    '\buser:"(.+?)"'
+  MENTION_GROUP_TAG_ID_PATTERN =
+    '<mention[^>]*(?:data-type="group"[^>]*data-id="(\d+)")|(?:data-id="(\d+)"[^>]*data-type="group")[^>]*>'
+
+  MENTION_GROUP_HASH_ID_PATTERN =
+    '\bgroup#(\d+)\b'
+
+  COMBINED_MENTION_PATTERN =
+    [MENTION_USER_TAG_ID_PATTERN,
+     MENTION_USER_HASH_ID_PATTERN,
+     MENTION_USER_LOGIN_PATTERN,
+     MENTION_GROUP_TAG_ID_PATTERN,
+     MENTION_GROUP_HASH_ID_PATTERN]
+      .map { |pattern| "(?:#{pattern})" }
+      .join("|").freeze
+
+  # Skip looking for mentions in quoted lines completely.
+  # We need to allow an optional single white space before the ">", because the `#text_for_mentions`
+  # method appends a white space to the journal details. With the notes it's not the case.
+  QUOTED_LINES_PATTERN = /^ ?> .*$/
+  MENTION_PATTERN = Regexp.new(COMBINED_MENTION_PATTERN)
 
   def initialize(model)
     self.model = model
   end
 
+  # Creates Notifications according to the various settings:
+  #
+  # * configured by the individual users
+  # * the send_notifications property provided
+  #
+  # and also by the properties of the journal, e.g.:
+  #
+  # * a work package mentioning a user
+  # * a news begin watched
+  #
+  # This method might be called multiple times, mostly when a journal is
+  # aggregated. On the second run, the potentially existing Notifications need
+  # to be taken into account by
+  #
+  # * updating them if the user is still to be notified: resetting the read_ian
+  #   to false if the strategy supports ian
+  # * destroying them if the user is no longer to be notified
   def call(send_notifications)
-    result = ServiceResult.new success: !abort_sending?(send_notifications)
+    result = ServiceResult.new success: !abort_sending?
 
     return result if result.failure?
 
-    notification_receivers.each do |recipient_id, reasons|
-      call = create_notification(recipient_id, reasons)
-      result.add_dependent!(call)
+    current_notifications = notification_receivers(send_notifications).transform_values(&:first)
+
+    current_notifications.each do |recipient_id, reason|
+      result.add_dependent!(update_or_create_notification(recipient_id, reason))
     end
+
+    delete_outdated_notifications(current_notifications.keys)
 
     result
   end
@@ -60,17 +98,22 @@ class Notifications::CreateFromModelService
 
   attr_accessor :model
 
-  def create_notification(recipient_id, reasons)
+  # In case a notification already exists (because the journal was aggregated)
+  # an existing notification is updated
+  def update_or_create_notification(recipient_id, reason)
+    update_notification(recipient_id, reason) or create_notification(recipient_id, reason)
+  end
+
+  def create_notification(recipient_id, reason)
     notification_attributes = {
-      recipient_id: recipient_id,
-      project: project,
-      resource: resource,
-      journal: journal,
+      recipient_id:,
+      resource:,
+      journal:,
       actor: user_with_fallback,
-      reason: reasons.first,
-      read_ian: strategy.supports_ian? ? false : nil,
-      mail_reminder_sent: strategy.supports_mail_digest? ? false : nil,
-      mail_alert_sent: strategy.supports_mail? ? false : nil
+      reason:,
+      read_ian: strategy.supports_ian?(reason) ? false : nil,
+      mail_reminder_sent: strategy.supports_mail_digest?(reason) ? false : nil,
+      mail_alert_sent: strategy.supports_mail?(reason) ? false : nil
     }
 
     Notifications::CreateService
@@ -78,8 +121,30 @@ class Notifications::CreateFromModelService
       .call(notification_attributes)
   end
 
-  def notification_receivers
+  def update_notification(recipient_id, reason)
+    existing_notification = Notification
+                              .find_by(resource:, journal:, recipient_id:)
+
+    return unless existing_notification
+
+    Notifications::UpdateService
+      .new(model: existing_notification, user:, contract_class: EmptyContract)
+      .call(read_ian: strategy.supports_ian?(reason) ? false : nil,
+            mail_alert_sent: existing_notification.mail_alert_sent || (strategy.supports_mail?(reason) ? false : nil),
+            reason:)
+  end
+
+  def delete_outdated_notifications(current_recipient_ids)
+    Notification
+      .where(journal:)
+      .where.not(recipient_id: current_recipient_ids)
+      .destroy_all
+  end
+
+  def notification_receivers(send_notifications)
     receivers = receivers_hash
+
+    return receivers unless send_notification?(send_notifications)
 
     strategy.reasons.each do |reason|
       add_receivers_by_reason(receivers, reason)
@@ -95,9 +160,7 @@ class Notifications::CreateFromModelService
   end
 
   def settings_of_mentioned
-    return NotificationSetting.none if has_aggregated_notification?(journal)
-
-    project_applicable_settings(mentioned_ids,
+    project_applicable_settings(strategy.mentionable_users(mentioned_ids, journal),
                                 project,
                                 NotificationSetting::MENTIONED)
   end
@@ -105,13 +168,19 @@ class Notifications::CreateFromModelService
   def settings_of_assigned
     project_applicable_settings(User.where(id: group_or_user_ids(journal.data.assigned_to)),
                                 project,
-                                NotificationSetting::INVOLVED)
+                                NotificationSetting::ASSIGNEE)
   end
 
   def settings_of_responsible
     project_applicable_settings(User.where(id: group_or_user_ids(journal.data.responsible)),
                                 project,
-                                NotificationSetting::INVOLVED)
+                                NotificationSetting::RESPONSIBLE)
+  end
+
+  def settings_of_shared
+    project_applicable_settings(strategy.shared_users(model),
+                                project,
+                                NotificationSetting::SHARED)
   end
 
   def settings_of_subscribed
@@ -177,21 +246,26 @@ class Notifications::CreateFromModelService
   def settings_for_allowed_users(user_scope, reason)
     NotificationSetting
       .where(reason => true)
-      .where(user: user_scope.where(id: User.allowed(strategy.permission, project)))
+      .where(user: user_scope.where(id: User.allowed(strategy.permission(journal, reason), project)))
   end
 
+  # Returns the text of the model (work package description and subject, message subject and content)
+  # eligible to be looked at for mentions of users and groups:
+  # * only lines added
+  # * excluding quoted lines
   def text_for_mentions
-    potential_text = ""
+    potential_text = +""
     potential_text << journal.notes if journal.try(:notes)
 
-    %i[description subject].each do |field|
-      details = journal.details[field]
-
-      if details.present?
-        potential_text << "\n#{Redmine::Helpers::Diff.new(*details.reverse).additions.join(' ')}"
-      end
+    %i[description subject content].each do |field|
+      potential_text << "\n#{added_text(field)}" if journal.details[field].present?
     end
-    potential_text
+
+    potential_text.gsub(QUOTED_LINES_PATTERN, "")
+  end
+
+  def added_text(field)
+    Redmine::Helpers::Diff.new(*journal.details[field].reverse).additions.join(" ")
   end
 
   def mentioned_ids
@@ -215,31 +289,31 @@ class Notifications::CreateFromModelService
   end
 
   def mention_matches
-    text = text_for_mentions
+    @mention_matches ||= begin
+      text = text_for_mentions
 
-    user_ids_tag_after,
-      user_ids_tag_before,
-      user_ids_hash,
-      user_login_names,
-      group_ids_tag_after,
-      group_ids_tag_before,
-      group_ids_hash = text
-                         .scan(MENTION_PATTERN)
-                         .transpose
-                         .each(&:compact!)
+      user_ids_tag_after,
+        user_ids_tag_before,
+        user_ids_hash,
+        user_login_names,
+        group_ids_tag_after,
+        group_ids_tag_before,
+        group_ids_hash = text
+                           .scan(MENTION_PATTERN)
+                           .transpose
+                           .each(&:compact!)
 
-    {
-      user_ids: [user_ids_tag_after, user_ids_tag_before, user_ids_hash].flatten.compact,
-      user_login_names: [user_login_names].flatten.compact,
-      group_ids: [group_ids_tag_after, group_ids_tag_before, group_ids_hash].flatten.compact
-    }
+      {
+        user_ids: [user_ids_tag_after, user_ids_tag_before, user_ids_hash].flatten.compact,
+        user_login_names: [user_login_names].flatten.compact,
+        group_ids: [group_ids_tag_after, group_ids_tag_before, group_ids_hash].flatten.compact
+      }
+    end
   end
 
-  def abort_sending?(send_notifications)
-    !send_notification?(send_notifications) ||
-      model.nil? ||
+  def abort_sending?
+    model.nil? ||
       !model.class.exists?(id: model.id) ||
-      journal&.noop? ||
       !supported?
   end
 
@@ -257,16 +331,20 @@ class Notifications::CreateFromModelService
     end
   end
 
-  def remove_self_recipient(receivers)
-    receivers.delete(user_with_fallback.id)
+  def user_not_mentioned_or_mentioned_indirectly(self_reason)
+    self_reason != NotificationSetting::MENTIONED ||
+    (mention_matches[:user_ids].exclude?(user_with_fallback.id.to_s) &&
+     mention_matches[:user_login_names].exclude?(user_with_fallback.login))
   end
 
-  ##
-  # If the journal has any mentioned notification
-  # then the mention was aggregated to a new journal
-  # by +Notifications::AggregatedJournalService+
-  def has_aggregated_notification?(journal)
-    Notification.exists?(journal_id: journal.id, reason: :mentioned)
+  def remove_self_recipient(receivers)
+    if receivers.key?(user_with_fallback.id)
+      self_reasons = receivers[user_with_fallback.id]
+      self_reasons.delete_if { |reason| user_not_mentioned_or_mentioned_indirectly(reason) }
+      if self_reasons.empty?
+        receivers.delete(user_with_fallback.id)
+      end
+    end
   end
 
   def receivers_hash
@@ -276,7 +354,7 @@ class Notifications::CreateFromModelService
   end
 
   def strategy
-    @strategy ||= if self.class.const_defined?("#{resource.class}Strategy")
+    @strategy ||= if self.class.const_defined?(:"#{resource.class}Strategy")
                     "#{self.class}::#{resource.class}Strategy".constantize
                   end
   end

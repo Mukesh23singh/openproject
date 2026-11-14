@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,15 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require_relative './dropdown'
+
+require_relative "dropdown"
 
 module Components
   class QuickAddMenu < Dropdown
+    def id
+      "op-app-header--quick-add-menu"
+    end
 
     def expect_visible
       expect(trigger_element).to be_present
@@ -39,26 +44,40 @@ module Components
     end
 
     def expect_add_project(present: true)
-      expect_link 'New project', present: present
+      expect_link "Project", present:
     end
 
     def expect_user_invite(present: true)
-      expect_link 'Invite user', present: present
+      expect_link "Invite user", present:
+    end
+
+    def expect_board(present: true)
+      expect_link "Board", present:
+    end
+
+    def expect_meeting(present: true)
+      expect_link "Meeting", present:
+    end
+
+    def expect_document(present: true)
+      expect_link "Document", present:
+    end
+
+    def open_work_package_submenu
+      within_dropdown do
+        page.click_button "Work package"
+      end
     end
 
     def expect_work_package_type(*names, present: true)
-      within_dropdown do
-        expect(page).to have_text 'WORK PACKAGES'
-      end
-
       names.each do |name|
-        expect_link name, present: present
+        expect_link name, present:
       end
     end
 
     def expect_no_work_package_types
       within_dropdown do
-        expect(page).to have_no_text 'Work packages'
+        expect(page).to have_no_button "Work package"
       end
     end
 
@@ -79,7 +98,7 @@ module Components
     end
 
     def trigger_element
-      page.find('a[title="Open quick add menu"]')
+      page.find_test_selector("quick-add-menu-button")
     end
   end
 end

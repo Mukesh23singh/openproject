@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,39 +22,39 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe 'API v3 Query resource', type: :request, content_type: :json do
+RSpec.describe "API v3 Query resource",
+               content_type: :json do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.create(:project, identifier: 'test_project', public: false) }
-  let(:other_project) { FactoryBot.create(:project) }
+  let(:project) { create(:project, identifier: "test_project", public: false) }
+  let(:other_project) { create(:project) }
   let(:current_user) do
-    FactoryBot.create(:user, member_in_project: project, member_through_role: role)
+    create(:user, member_with_roles: { project => role })
   end
-  let(:role) { FactoryBot.create(:role, permissions: permissions) }
+  let(:role) { create(:project_role, permissions:) }
   let(:permissions) { [:view_work_packages] }
   let(:manage_public_queries_role) do
-    FactoryBot.create(:role, permissions: [:manage_public_queries])
+    create(:project_role, permissions: [:manage_public_queries])
   end
-  let(:query) { FactoryBot.create(:public_query, project: project) }
-  let(:other_query) { FactoryBot.create(:public_query, project: other_project) }
-  let(:global_query) { FactoryBot.create(:global_query) }
-  let(:work_package) { FactoryBot.create(:work_package, project: project) }
+  let(:query) { create(:public_query, project:) }
+  let(:other_query) { create(:public_query, project: other_project) }
+  let(:global_query) { create(:global_query) }
+  let(:work_package) { create(:work_package, project:) }
 
   before do
     allow(User).to receive(:current).and_return current_user
   end
 
-  describe '#get queries/' do
+  describe "#get queries/" do
     let(:path) { api_v3_paths.queries }
     let(:prepare) {}
 
@@ -62,36 +64,43 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
       get path
     end
 
-    context 'user has view_work_packages in a project' do
-      it 'should succeed' do
-        expect(last_response.status).to eq(200)
+    context "user has view_work_packages in a project" do
+      it "succeeds" do
+        expect(last_response).to have_http_status(:ok)
       end
     end
 
-    context 'user has manage_public_queries in a project' do
+    context "user has manage_public_queries in a project" do
       let(:permissions) { [:manage_public_queries] }
-      it 'should succeed' do
-        expect(last_response.status).to eq(200)
+
+      it "succeeds" do
+        expect(last_response).to have_http_status(:ok)
       end
     end
 
-    context 'user not allowed to see queries' do
-      include_context 'with non-member permissions from non_member_permissions'
-      let(:current_user) { FactoryBot.create(:user) }
+    context "user not allowed to see queries" do
+      let(:current_user) { create(:user) }
       let(:non_member_permissions) { [:view_work_packages] }
 
-      it 'should succeed' do
-        expect(last_response.status).to eq(200)
+      let(:prepare) do
+        # Create a public project so that the non-member permission has something to attach to
+        create(:project, public: true, active: true)
       end
 
-      context 'that is not allowed to see queries anywhere' do
+      include_context "with non-member permissions from non_member_permissions"
+
+      it "succeeds" do
+        expect(last_response).to have_http_status(:ok)
+      end
+
+      context "that is not allowed to see queries anywhere" do
         let(:non_member_permissions) { [] }
 
-        it_behaves_like 'unauthorized access'
+        it_behaves_like "unauthorized access"
       end
     end
 
-    context 'filtering for project' do
+    context "filtering for project" do
       let(:path) do
         filter = [project: { operator: "=", values: [project.id.to_s] }]
 
@@ -103,13 +112,13 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
         global_query
         other_query
 
-        FactoryBot.create(:member,
-                          roles: [role],
-                          project: other_query.project,
-                          user: current_user)
+        create(:member,
+               roles: [role],
+               project: other_query.project,
+               user: current_user)
       end
 
-      it 'includes only queries from the specified project' do
+      it "includes only queries from the specified project" do
         expect(last_response.body)
           .to be_json_eql(1)
           .at_path("count")
@@ -122,7 +131,7 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
       end
     end
 
-    context 'filtering for global query' do
+    context "filtering for global query" do
       let(:path) do
         filter = [project: { operator: "!*", values: [] }]
 
@@ -134,13 +143,13 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
         global_query
         other_query
 
-        FactoryBot.create(:member,
-                          roles: [role],
-                          project: other_query.project,
-                          user: current_user)
+        create(:member,
+               roles: [role],
+               project: other_query.project,
+               user: current_user)
       end
 
-      it 'includes only queries not belonging to a project' do
+      it "includes only queries not belonging to a project" do
         expect(last_response.body)
           .to be_json_eql(1)
           .at_path("count")
@@ -153,8 +162,8 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
       end
     end
 
-    context 'filtering by updated_at' do
-      let(:old_query) { FactoryBot.create(:public_query, project: project) }
+    context "filtering by updated_at" do
+      let(:old_query) { create(:public_query, project:) }
 
       let(:prepare) do
         query
@@ -162,12 +171,12 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
       end
 
       let(:path) do
-        filter = [updated_at: { operator: "<>d", values: [(DateTime.current - 3.hour).to_s] }]
+        filter = [updated_at: { operator: "<>d", values: [(DateTime.current - 3.hours).to_s] }]
 
         api_v3_paths.path_for(:queries, filters: filter)
       end
 
-      it 'includes only queries updated after the value' do
+      it "includes only queries updated after the value" do
         expect(last_response.body)
           .to be_json_eql(1)
           .at_path("count")
@@ -180,7 +189,7 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
       end
     end
 
-    context 'filtering by id' do
+    context "filtering by id" do
       let(:prepare) do
         query
         global_query
@@ -192,7 +201,7 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
         api_v3_paths.path_for(:queries, filters: filter)
       end
 
-      it 'includes only queries with that id' do
+      it "includes only queries with that id" do
         expect(last_response.body)
           .to be_json_eql(1)
           .at_path("count")
@@ -206,31 +215,77 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
     end
   end
 
-  describe '#get queries/:id' do
+  describe "#get queries/:id" do
     let(:base_path) { api_v3_paths.query(query.id) }
 
-    it_behaves_like 'GET individual query' do
-      context 'lacking permissions' do
+    it_behaves_like "GET individual query" do
+      context "lacking permissions" do
         let(:permissions) { [] }
 
-        it_behaves_like 'not found'
+        it_behaves_like "not found"
+      end
+    end
+
+    context "with a version filter stored under the interchangeable key" do
+      let(:version) { create(:version, project:) }
+
+      def store_raw_filters(filters_hash)
+        Query.where(id: query.id).update_all(["filters = ?", YAML.dump(filters_hash)])
+      end
+
+      context "when stored as version_id with multiple versions active",
+              with_settings: { work_package_multiple_versions: true } do
+        before do
+          store_raw_filters("version_id" => { "operator" => "=", "values" => [version.id.to_s] })
+
+          get base_path
+        end
+
+        it "renders the filter as targetVersion, keeping its values" do
+          expect(last_response.body)
+            .to be_json_eql("/api/v3/queries/filters/targetVersion".to_json)
+            .at_path("filters/0/_links/filter/href")
+
+          expect(last_response.body)
+            .to be_json_eql(api_v3_paths.version(version.id).to_json)
+            .at_path("filters/0/_links/values/0/href")
+        end
+      end
+
+      context "when stored as target_version_id with multiple versions inactive",
+              with_settings: { work_package_multiple_versions: false } do
+        before do
+          store_raw_filters("target_version_id" => { "operator" => "=", "values" => [version.id.to_s] })
+
+          get base_path
+        end
+
+        it "renders the filter as version, keeping its values" do
+          expect(last_response.body)
+            .to be_json_eql("/api/v3/queries/filters/version".to_json)
+            .at_path("filters/0/_links/filter/href")
+
+          expect(last_response.body)
+            .to be_json_eql(api_v3_paths.version(version.id).to_json)
+            .at_path("filters/0/_links/values/0/href")
+        end
       end
     end
   end
 
-  describe '#get queries/default' do
+  describe "#get queries/default" do
     let(:base_path) { api_v3_paths.query_default }
 
-    it_behaves_like 'GET individual query' do
-      context 'lacking permissions' do
+    it_behaves_like "GET individual query" do
+      context "lacking permissions" do
         let(:permissions) { [] }
 
-        it_behaves_like 'unauthorized access'
+        it_behaves_like "unauthorized access"
       end
     end
   end
 
-  describe '#delete queries/:id' do
+  describe "#delete queries/:id" do
     let(:path) { api_v3_paths.query query.id }
     let(:permissions) { %i[view_work_packages manage_public_queries] }
 
@@ -238,252 +293,257 @@ describe 'API v3 Query resource', type: :request, content_type: :json do
       delete path
     end
 
-    it 'responds with HTTP No Content' do
-      expect(last_response.status).to eq 204
+    it "responds with HTTP No Content" do
+      expect(last_response).to have_http_status :no_content
     end
 
-    it 'deletes the Query' do
+    it "deletes the Query" do
       expect(Query.exists?(query.id)).to be_falsey
     end
 
-    context 'user not allowed' do
+    context "user not allowed" do
       let(:permissions) { [:view_work_packages] }
 
-      it_behaves_like 'unauthorized access'
+      it_behaves_like "unauthorized access"
 
-      it 'does not delete the Query' do
+      it "does not delete the Query" do
         expect(Query.exists?(query.id)).to be_truthy
       end
     end
 
-    context 'for a non-existent query' do
+    context "for a non-existent query" do
       let(:query_id) { 1337 } # could be anything as long as we do not create an actual query
       let(:path) { api_v3_paths.query query_id }
 
-      it_behaves_like 'not found'
+      it_behaves_like "not found"
     end
   end
 
-  describe '#get queries/available_projects' do
+  describe "#get queries/available_projects" do
     before do
       other_project
       get api_v3_paths.query_available_projects
     end
 
-    it 'should succeed' do
-      expect(last_response.status).to eq(200)
+    it "succeeds" do
+      expect(last_response).to have_http_status(:ok)
     end
 
-    it 'returns a Collection of projects for which the user has view work packages permission' do
+    it "returns a Collection of projects for which the user has view work packages permission" do
       expect(last_response.body)
-        .to be_json_eql('Collection'.to_json)
-        .at_path('_type')
-      expect(last_response.body)
-        .to be_json_eql(1.to_json)
-        .at_path('count')
+        .to be_json_eql("Collection".to_json)
+        .at_path("_type")
       expect(last_response.body)
         .to be_json_eql(1.to_json)
-        .at_path('total')
+        .at_path("count")
+      expect(last_response.body)
+        .to be_json_eql(1.to_json)
+        .at_path("total")
       expect(last_response.body)
         .to be_json_eql(api_v3_paths.project(project.id).to_json)
-        .at_path('_embedded/elements/0/_links/self/href')
+        .at_path("_embedded/elements/0/_links/self/href")
     end
 
-    context 'user not allowed' do
+    context "user not allowed" do
       let(:permissions) { [] }
 
-      it_behaves_like 'unauthorized access'
+      it_behaves_like "unauthorized access"
     end
   end
 
-  describe '#star' do
+  describe "#star" do
     let(:star_path) { api_v3_paths.query_star query.id }
 
-    before(:each) do
+    before do
       patch star_path
     end
 
-    describe 'public queries' do
-      context 'user with permission to manage public queries' do
+    describe "public queries" do
+      context "user with permission to manage public queries" do
         let(:permissions) { %i[view_work_packages manage_public_queries] }
 
-        context 'when starring an unstarred query' do
-          it 'should respond with 200' do
-            expect(last_response.status).to eq(200)
+        context "when starring an unstarred query" do
+          it "responds with 200" do
+            expect(last_response).to have_http_status(:ok)
           end
 
-          it 'should return the query with "starred" property set to true' do
-            expect(last_response.body).to be_json_eql(true).at_path('starred')
-          end
-        end
-
-        context 'when starring already starred query' do
-          it 'should respond with 200' do
-            expect(last_response.status).to eq(200)
-          end
-
-          it 'should return the query with "starred" property set to true' do
-            expect(last_response.body).to be_json_eql(true).at_path('starred')
+          it 'returns the query with "starred" property set to true' do
+            expect(last_response.body).to be_json_eql(true).at_path("starred")
           end
         end
 
-        context 'when trying to star nonexistent query' do
-          let(:star_path) { api_v3_paths.query_star 999 }
+        context "when starring already starred query" do
+          it "responds with 200" do
+            expect(last_response).to have_http_status(:ok)
+          end
 
-          it_behaves_like 'not found'
+          it 'returns the query with "starred" property set to true' do
+            expect(last_response.body).to be_json_eql(true).at_path("starred")
+          end
+        end
+
+        context "when trying to star nonexistent query" do
+          let(:star_path) { api_v3_paths.query_star(not_existing_id(Query)) }
+
+          it_behaves_like "not found"
         end
       end
 
-      context 'user without permission to manage public queries' do
+      context "user without permission to manage public queries" do
         let(:permissions) { [:view_work_packages] }
 
-        it_behaves_like 'unauthorized access'
+        it_behaves_like "unauthorized access"
       end
     end
 
-    describe 'private queries' do
-      context 'user with permission to save queries' do
-        let(:query) { FactoryBot.create(:private_query, project: project, user: current_user) }
+    describe "private queries" do
+      context "user with permission to save queries" do
+        let(:query) { create(:private_query, project:, user: current_user) }
         let(:permissions) { %i[view_work_packages save_queries] }
 
-        context 'starring his own query' do
-          it 'should respond with 200' do
-            expect(last_response.status).to eq(200)
+        context "starring his own query" do
+          it "responds with 200" do
+            expect(last_response).to have_http_status(:ok)
           end
 
-          it 'should return the query with "starred" property set to true' do
-            expect(last_response.body).to be_json_eql(true).at_path('starred')
+          it 'returns the query with "starred" property set to true' do
+            expect(last_response.body).to be_json_eql(true).at_path("starred")
           end
         end
 
-        context 'trying to star somebody else\'s query' do
-          let(:another_user) { FactoryBot.create(:user) }
-          let(:query) { FactoryBot.create(:private_query, project: project, user: another_user) }
+        context "trying to star somebody else's query" do
+          let(:another_user) { create(:user) }
+          let(:query) { create(:private_query, project:, user: another_user) }
 
-          it_behaves_like 'not found'
+          it_behaves_like "not found"
         end
       end
 
-      context 'user without permission to save queries' do
-        let(:query) { FactoryBot.create(:private_query, project: project, user: current_user) }
+      context "user without permission to save queries" do
+        let(:query) { create(:private_query, project:, user: current_user) }
         let(:permissions) { [:view_work_packages] }
 
-        it_behaves_like 'unauthorized access'
+        it_behaves_like "unauthorized access"
       end
     end
   end
 
-  describe '#unstar' do
+  describe "#unstar" do
     let(:unstar_path) { api_v3_paths.query_unstar query.id }
 
-    describe 'public queries' do
-      let(:query) { FactoryBot.create(:public_query, project: project) }
+    describe "public queries" do
+      let(:query) { create(:public_query, project:) }
 
-      context 'user with permission to manage public queries' do
+      context "user with permission to manage public queries" do
         let(:permissions) { %i[view_work_packages manage_public_queries] }
 
-        context 'when unstarring a starred query' do
-          before(:each) do
-            FactoryBot.create(:query_menu_item, query: query)
+        context "when unstarring a starred query" do
+          let(:query) { create(:public_query, project:, starred: true) }
+
+          before do
             patch unstar_path
           end
 
-          it 'should respond with 200' do
-            expect(last_response.status).to eq(200)
+          it "responds with 200" do
+            expect(last_response).to have_http_status(:ok)
           end
 
-          it 'should return the query with "starred" property set to false' do
-            expect(last_response.body).to be_json_eql(false).at_path('starred')
+          it 'returns the query with "starred" property set to false' do
+            expect(last_response.body).to be_json_eql(false).at_path("starred")
           end
         end
 
-        context 'when unstarring an unstarred query' do
-          before(:each) do
+        context "when unstarring an unstarred query" do
+          before do
             patch unstar_path
           end
 
-          it 'should respond with 200' do
-            expect(last_response.status).to eq(200)
+          it "responds with 200" do
+            expect(last_response).to have_http_status(:ok)
           end
 
-          it 'should return the query with "starred" property set to false' do
-            expect(last_response.body).to be_json_eql(false).at_path('starred')
+          it 'returns the query with "starred" property set to false' do
+            expect(last_response.body).to be_json_eql(false).at_path("starred")
           end
         end
 
-        context 'when trying to unstar nonexistent query' do
-          let(:unstar_path) { api_v3_paths.query_unstar 999 }
-          before(:each) do
+        context "when trying to unstar nonexistent query" do
+          let(:unstar_path) { api_v3_paths.query_unstar(not_existing_id(Query)) }
+
+          before do
             patch unstar_path
           end
 
-          it_behaves_like 'not found'
+          it_behaves_like "not found"
         end
       end
 
-      context 'user without permission to manage public queries' do
+      context "user without permission to manage public queries" do
         let(:permissions) { [:view_work_packages] }
-        before(:each) do
+
+        before do
           patch unstar_path
         end
 
-        it_behaves_like 'unauthorized access'
+        it_behaves_like "unauthorized access"
       end
     end
 
-    describe 'private queries' do
-      context 'user with permission to save queries' do
-        let(:query) { FactoryBot.create(:private_query, project: project, user: current_user) }
+    describe "private queries" do
+      context "user with permission to save queries" do
+        let(:query) { create(:private_query, project:, user: current_user) }
         let(:permissions) { %i[view_work_packages save_queries] }
-        before(:each) do
+
+        before do
           patch unstar_path
         end
 
-        context 'unstarring his own query' do
-          it 'should respond with 200' do
-            expect(last_response.status).to eq(200)
+        context "unstarring his own query" do
+          it "responds with 200" do
+            expect(last_response).to have_http_status(:ok)
           end
 
-          it 'should return the query with "starred" property set to true' do
-            expect(last_response.body).to be_json_eql(false).at_path('starred')
+          it 'returns the query with "starred" property set to true' do
+            expect(last_response.body).to be_json_eql(false).at_path("starred")
           end
         end
 
-        context 'trying to unstar somebody else\'s query' do
-          let(:another_user) { FactoryBot.create(:user) }
-          let(:query) { FactoryBot.create(:private_query, project: project, user: another_user) }
+        context "trying to unstar somebody else's query" do
+          let(:another_user) { create(:user) }
+          let(:query) { create(:private_query, project:, user: another_user) }
 
-          it_behaves_like 'not found'
+          it_behaves_like "not found"
         end
       end
 
-      context 'user without permission to save queries' do
-        let(:query) { FactoryBot.create(:private_query, project: project, user: current_user) }
+      context "user without permission to save queries" do
+        let(:query) { create(:private_query, project:, user: current_user) }
         let(:permissions) { [:view_work_packages] }
-        before(:each) do
+
+        before do
           patch unstar_path
         end
 
-        it_behaves_like 'unauthorized access'
+        it_behaves_like "unauthorized access"
       end
     end
   end
 
-  describe '#post queries/form' do
+  describe "#post queries/form" do
     let(:path) { api_v3_paths.create_query_form }
 
     before do
       post path
     end
 
-    it 'succeeds' do
-      expect(last_response.status).to eq(200)
+    it "succeeds" do
+      expect(last_response).to have_http_status(:ok)
     end
 
-    it 'returns the form' do
+    it "returns the form" do
       expect(last_response.body)
-        .to be_json_eql('Form'.to_json)
-        .at_path('_type')
+        .to be_json_eql("Form".to_json)
+        .at_path("_type")
     end
   end
 end

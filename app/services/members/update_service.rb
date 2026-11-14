@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +22,14 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Members::UpdateService < ::BaseServices::Update
+class Members::UpdateService < BaseServices::Update
   include Members::Concerns::CleanedUp
+  include Members::Concerns::NotificationSender
 
   around_call :post_process
 
@@ -49,23 +49,17 @@ class Members::UpdateService < ::BaseServices::Update
     end
   end
 
-  def send_notification(member)
-    OpenProject::Notifications.send(OpenProject::Events::MEMBER_UPDATED,
-                                    member: member,
-                                    message: notification_message)
-  end
-
   def update_group_roles(member)
+    group_ids = member.principal.descendants.pluck(:id)
+    user_ids = member.principal.self_and_descendants.flat_map(&:user_ids).uniq
+    principal_ids = (user_ids + group_ids).uniq
+
     Groups::UpdateRolesService
       .new(member.principal, current_user: user, contract_class: EmptyContract)
-      .call(member: member, send_notifications: true, message: notification_message)
+      .call(member:, user_ids: principal_ids, send_notifications: send_notifications?, message: notification_message)
   end
 
-  def set_attributes_params(params)
-    super.except(:notification_message)
-  end
-
-  def notification_message
-    params[:notification_message]
+  def event_type
+    OpenProject::Events::MEMBER_UPDATED
   end
 end

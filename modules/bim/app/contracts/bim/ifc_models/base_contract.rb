@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -47,7 +46,7 @@ module Bim
       validate :uploader_is_ifc_attachment_author
 
       def user_allowed_to_manage
-        if model.project && !user.allowed_to?(:manage_ifc_models, model.project)
+        if model.project && !user.allowed_in_project?(:manage_ifc_models, model.project)
           errors.add :base, :error_unauthorized
         end
       end
@@ -80,7 +79,7 @@ module Bim
         # For local uploads the file must remain to be copied later to its final (local) destination from the cache.
         return unless OpenProject::Configuration.direct_uploads?
 
-        FileUtils.rm file_path if File.exists? file_path
+        FileUtils.rm_rf file_path
       end
 
       def uploader_is_ifc_attachment_author

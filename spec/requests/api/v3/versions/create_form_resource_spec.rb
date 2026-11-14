@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,23 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
 
-require 'spec_helper'
-require 'rack/test'
+require "spec_helper"
+require "rack/test"
 
-describe ::API::V3::Versions::CreateFormAPI, content_type: :json do
+RSpec.describe API::V3::Versions::CreateFormAPI, content_type: :json do
   include Rack::Test::Methods
   include API::V3::Utilities::PathHelper
 
-  let(:project) { FactoryBot.create(:project) }
+  let(:project) { create(:project) }
   let(:user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: permissions)
+    create(:user, member_with_permissions: { project => permissions })
   end
   let(:permissions) { [:manage_versions] }
 
@@ -52,42 +50,42 @@ describe ::API::V3::Versions::CreateFormAPI, content_type: :json do
 
   subject(:response) { last_response }
 
-  describe '#POST /api/v3/versions/form' do
-    it 'returns 200 OK' do
-      expect(response.status).to eq(200)
+  describe "#POST /api/v3/versions/form" do
+    it "returns 200 OK" do
+      expect(response).to have_http_status(:ok)
     end
 
-    it 'returns a form' do
+    it "returns a form" do
       expect(response.body)
-        .to be_json_eql('Form'.to_json)
-        .at_path('_type')
+        .to be_json_eql("Form".to_json)
+        .at_path("_type")
     end
 
-    it 'does not create a version' do
+    it "does not create a version" do
       expect(Version.count)
-        .to eql 0
+        .to be 0
     end
 
-    context 'with empty parameters' do
-      it 'has 2 validation errors' do
-        expect(subject.body).to have_json_size(2).at_path('_embedded/validationErrors')
+    context "with empty parameters" do
+      it "has 2 validation errors" do
+        expect(subject.body).to have_json_size(2).at_path("_embedded/validationErrors")
       end
 
-      it 'has a validation error on name' do
-        expect(subject.body).to have_json_path('_embedded/validationErrors/name')
+      it "has a validation error on name" do
+        expect(subject.body).to have_json_path("_embedded/validationErrors/name")
       end
 
-      it 'has a validation error on project' do
-        expect(subject.body).to have_json_path('_embedded/validationErrors/project')
+      it "has a validation error on project" do
+        expect(subject.body).to have_json_path("_embedded/validationErrors/project")
       end
 
-      it 'has no commit link' do
+      it "has no commit link" do
         expect(subject.body)
-          .not_to have_json_path('_links/commit')
+          .not_to have_json_path("_links/commit")
       end
     end
 
-    context 'with all minimum parameters' do
+    context "with all minimum parameters" do
       let(:parameters) do
         {
           _links: {
@@ -95,80 +93,80 @@ describe ::API::V3::Versions::CreateFormAPI, content_type: :json do
               href: api_v3_paths.project(project.id)
             }
           },
-          name: 'lorem ipsum'
+          name: "lorem ipsum"
         }
       end
 
-      it 'has 0 validation errors' do
-        expect(subject.body).to have_json_size(0).at_path('_embedded/validationErrors')
+      it "has 0 validation errors" do
+        expect(subject.body).to have_json_size(0).at_path("_embedded/validationErrors")
       end
 
-      it 'has a commit link' do
+      it "has a commit link" do
         expect(subject.body)
           .to be_json_eql(api_v3_paths.versions.to_json)
-          .at_path('_links/commit/href')
+          .at_path("_links/commit/href")
       end
     end
 
-    context 'with all parameters' do
-      let!(:int_cf) { FactoryBot.create(:int_version_custom_field) }
-      let!(:list_cf) { FactoryBot.create(:list_version_custom_field) }
+    context "with all parameters" do
+      let!(:int_cf) { create(:version_custom_field, :integer) }
+      let!(:list_cf) { create(:version_custom_field, :list) }
       let(:parameters) do
         {
-          name: 'New version',
+          name: "New version",
           description: {
-            raw: 'A new description'
+            raw: "A new description"
           },
-          "customField#{int_cf.id}": 5,
-          "startDate": "2018-01-01",
-          "endDate": "2018-01-09",
-          "status": "closed",
-          "sharing": "descendants",
+          int_cf.attribute_name(:camel_case) => 5,
+          startDate: "2018-01-01",
+          endDate: "2018-01-09",
+          status: "closed",
+          sharing: "descendants",
           _links: {
             definingProject: {
               href: api_v3_paths.project(project.id)
             },
-            "customField#{list_cf.id}": {
+            list_cf.attribute_name(:camel_case) => {
               href: api_v3_paths.custom_option(list_cf.custom_options.first.id)
             }
           }
         }
       end
 
-      it 'has 0 validation errors' do
-        expect(subject.body).to have_json_size(0).at_path('_embedded/validationErrors')
+      it "has 0 validation errors" do
+        expect(subject.body).to have_json_size(0).at_path("_embedded/validationErrors")
       end
 
-      it 'has the values prefilled in the payload' do
+      it "has the values prefilled in the payload" do
         body = subject.body
 
         expect(body)
-          .to be_json_eql('New version'.to_json)
-          .at_path('_embedded/payload/name')
+          .to be_json_eql("New version".to_json)
+          .at_path("_embedded/payload/name")
 
         expect(last_response.body)
-          .to be_json_eql('<p>A new description</p>'.to_json)
-          .at_path('_embedded/payload/description/html')
+          .to be_json_eql("<p>A new description</p>".to_json)
+          .at_path("_embedded/payload/description/html")
 
         expect(last_response.body)
-          .to be_json_eql('2018-01-01'.to_json)
-          .at_path('_embedded/payload/startDate')
+          .to be_json_eql("2018-01-01".to_json)
+          .at_path("_embedded/payload/startDate")
 
         expect(last_response.body)
-          .to be_json_eql('2018-01-09'.to_json)
-          .at_path('_embedded/payload/endDate')
+          .to be_json_eql("2018-01-09".to_json)
+          .at_path("_embedded/payload/endDate")
 
         expect(last_response.body)
-          .to be_json_eql('closed'.to_json)
-          .at_path('_embedded/payload/status')
+          .to be_json_eql("closed".to_json)
+          .at_path("_embedded/payload/status")
 
         expect(last_response.body)
-          .to be_json_eql('descendants'.to_json)
-          .at_path('_embedded/payload/sharing')
+          .to be_json_eql("descendants".to_json)
+          .at_path("_embedded/payload/sharing")
 
         expect(body)
           .to be_json_eql(api_v3_paths.project(project.id).to_json)
-          .at_path('_embedded/payload/_links/definingProject/href')
+          .at_path("_embedded/payload/_links/definingProject/href")
 
         expect(last_response.body)
           .to be_json_eql(api_v3_paths.custom_option(list_cf.custom_options.first.id).to_json)
@@ -179,18 +177,111 @@ describe ::API::V3::Versions::CreateFormAPI, content_type: :json do
           .at_path("_embedded/payload/customField#{int_cf.id}")
       end
 
-      it 'has a commit link' do
+      it "has a commit link" do
         expect(subject.body)
           .to be_json_eql(api_v3_paths.versions.to_json)
-                .at_path('_links/commit/href')
+                .at_path("_links/commit/href")
       end
     end
 
-    context 'without the necessary permission' do
+    describe "custom fields" do
+      context "with a required custom field" do
+        shared_let(:required_custom_field) do
+          create(:version_custom_field, :string,
+                 name: "Release Notes",
+                 is_required: true)
+        end
+
+        context "when no custom field value is provided" do
+          let(:parameters) do
+            {
+              name: "New version with CF",
+              _links: {
+                definingProject: {
+                  href: api_v3_paths.project(project.id)
+                }
+              }
+            }
+          end
+
+          it "has 1 validation error" do
+            expect(subject.body).to have_json_size(1).at_path("_embedded/validationErrors")
+          end
+
+          it "has a validation error on the custom field" do
+            expect(subject.body).to have_json_path("_embedded/validationErrors/customField#{required_custom_field.id}")
+          end
+
+          it "has no commit link" do
+            expect(subject.body)
+              .not_to have_json_path("_links/commit")
+          end
+        end
+
+        context "when the custom field value is provided but empty" do
+          let(:parameters) do
+            {
+              name: "New version with CF",
+              "customField#{required_custom_field.id}" => "",
+              _links: {
+                definingProject: {
+                  href: api_v3_paths.project(project.id)
+                }
+              }
+            }
+          end
+
+          it "has 1 validation error" do
+            expect(subject.body).to have_json_size(1).at_path("_embedded/validationErrors")
+          end
+
+          it "has a validation error on the custom field" do
+            expect(subject.body).to have_json_path("_embedded/validationErrors/customField#{required_custom_field.id}")
+          end
+
+          it "has no commit link" do
+            expect(subject.body)
+              .not_to have_json_path("_links/commit")
+          end
+        end
+
+        context "when the custom field value is provided and valid" do
+          let(:parameters) do
+            {
+              name: "New version with valid CF",
+              "customField#{required_custom_field.id}" => "Bug fixes and improvements",
+              _links: {
+                definingProject: {
+                  href: api_v3_paths.project(project.id)
+                }
+              }
+            }
+          end
+
+          it "has 0 validation errors" do
+            expect(subject.body).to have_json_size(0).at_path("_embedded/validationErrors")
+          end
+
+          it "has a commit link" do
+            expect(subject.body)
+              .to be_json_eql(api_v3_paths.versions.to_json)
+              .at_path("_links/commit/href")
+          end
+
+          it "has the custom field value in the payload" do
+            expect(subject.body)
+              .to be_json_eql("Bug fixes and improvements".to_json)
+              .at_path("_embedded/payload/customField#{required_custom_field.id}")
+          end
+        end
+      end
+    end
+
+    context "without the necessary permission" do
       let(:permissions) { [] }
 
-      it 'returns 403 Not Authorized' do
-        expect(response.status).to eq(403)
+      it "returns 403 Not Authorized" do
+        expect(response).to have_http_status(:forbidden)
       end
     end
   end

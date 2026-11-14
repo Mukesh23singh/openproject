@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,29 +22,19 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 class Setting < ApplicationRecord
-  DATE_FORMATS = [
-    '%Y-%m-%d',
-    '%d/%m/%Y',
-    '%d.%m.%Y',
-    '%d-%m-%Y',
-    '%m/%d/%Y',
-    '%d %b %Y',
-    '%d %B %Y',
-    '%b %d, %Y',
-    '%B %d, %Y'
-  ]
+  class NotWritableError < StandardError; end
 
-  TIME_FORMATS = [
-    '%H:%M',
-    '%I:%M %p'
-  ]
+  extend Accessors
+  extend Aliases
+  extend MailSettings
+
+  PASSWORD_MAX_LENGTH = 128
 
   ENCODINGS = %w(US-ASCII
                  windows-1250
@@ -84,76 +74,60 @@ class Setting < ApplicationRecord
                  EUC-KR
                  Big5
                  Big5-HKSCS
-                 TIS-620)
+                 TIS-620).freeze
 
-  cattr_accessor :available_settings
+  validates :name,
+            uniqueness: true,
+            inclusion: {
+              in: ->(*) { Settings::Definition.all.keys.map(&:to_s) } # @available_settings change at runtime
+            }
+  validates :value,
+            numericality: {
+              only_integer: true,
+              if: ->(setting) { setting.non_null_integer_format? }
+            }
+  validates :value,
+            numericality: {
+              only_integer: true,
+              allow_nil: true,
+              if: ->(setting) { setting.nullable_integer_format? }
+            }
+  validates :value,
+            numericality: {
+              only_integer: true,
+              greater_than_or_equal_to: 1,
+              less_than_or_equal_to: PASSWORD_MAX_LENGTH,
+              if: ->(setting) { setting.name == "password_min_length" }
+            }
 
-  def self.create_setting(name, value = nil)
-    @@available_settings[name] = value
+  def nullable_integer_format?
+    format == :integer && definition.default.nil?
   end
 
-  def self.create_setting_accessors(name)
-    return if [:installation_uuid].include?(name.to_sym)
-
-    # Defines getter and setter for each setting
-    # Then setting values can be read using: Setting.some_setting_name
-    # or set using Setting.some_setting_name = "some value"
-    src = <<-END_SRC
-      def self.#{name}
-        # when running too early, there is no settings table. do nothing
-        self[:#{name}] if settings_table_exists_yet?
-      end
-
-      def self.#{name}?
-        # when running too early, there is no settings table. do nothing
-        return unless settings_table_exists_yet?
-        value = self[:#{name}]
-        ActiveRecord::Type::Boolean.new.cast(value)
-      end
-
-      def self.#{name}=(value)
-        if settings_table_exists_yet?
-          self[:#{name}] = value
-        else
-          logger.warn "Trying to save a setting named '#{name}' while there is no 'setting' table yet. This setting will not be saved!"
-          nil # when running too early, there is no settings table. do nothing
-        end
-      end
-    END_SRC
-    class_eval src, __FILE__, __LINE__
+  def non_null_integer_format?
+    format == :integer && !definition.default.nil?
   end
-
-  @@available_settings = YAML::load(File.open(Rails.root.join('config/settings.yml')))
-
-  # Defines getter and setter for each setting
-  # Then setting values can be read using: Setting.some_setting_name
-  # or set using Setting.some_setting_name = "some value"
-  @@available_settings.each do |name, _params|
-    create_setting_accessors(name)
-  end
-
-  validates_uniqueness_of :name
-  validates_inclusion_of :name, in: lambda { |_setting|
-                                      @@available_settings.keys
-                                    } # lambda, because @available_settings changes at runtime
-  validates_numericality_of :value, only_integer: true, if: Proc.new { |setting|
-                                                              @@available_settings[setting.name]['format'] == 'int'
-                                                            }
 
   def value
     self.class.deserialize(name, read_attribute(:value))
   end
 
-  def value=(v)
-    write_attribute(:value, formatted_value(v))
+  def value=(val)
+    set_value! val
+  end
+
+  def set_value!(val, force: false)
+    unless force || definition.writable?
+      raise NotWritableError, "#{name} is not writable but can be set through env vars or configuration.yml file."
+    end
+
+    self[:value] = formatted_value(val)
   end
 
   def formatted_value(value)
-    return value unless value.present?
+    return value if value.blank?
 
-    default = @@available_settings[name]
-
-    if default['serialized']
+    if definition.serialized?
       return value.to_yaml
     end
 
@@ -162,13 +136,13 @@ class Setting < ApplicationRecord
 
   # Returns the value of the setting named name
   def self.[](name)
-    filtered_cached_or_default(name)
+    cached_or_default(name)
   end
 
-  def self.[]=(name, v)
-    old_setting = cached_or_default(name)
-    new_setting = find_or_initialize_by(name: name)
-    new_setting.value = v
+  def self.[]=(name, value)
+    old_value = cached_or_default(name)
+    new_setting = find_or_initialize_by(name:)
+    new_setting.value = value
 
     # Keep the current cache key,
     # since updated_at will change after .save
@@ -180,40 +154,15 @@ class Setting < ApplicationRecord
       # Delete the cache
       clear_cache(old_cache_key)
 
-      # fire callbacks for name and pass as much information as possible
-      fire_callbacks(name, new_value, old_setting)
-
       new_value
     else
-      old_setting
+      old_value
     end
   end
 
   # Check whether a setting was defined
   def self.exists?(name)
-    @@available_settings.has_key?(name)
-  end
-
-  def self.installation_uuid
-    if settings_table_exists_yet?
-      # we avoid the default getters and setters since the cache messes things up
-      setting = find_or_initialize_by(name: "installation_uuid")
-      if setting.value.blank?
-        setting.value = generate_installation_uuid
-        setting.save!
-      end
-      setting.value
-    else
-      "unknown"
-    end
-  end
-
-  def self.generate_installation_uuid
-    if Rails.env.test?
-      "test"
-    else
-      SecureRandom.uuid
-    end
+    Settings::Definition[name].present?
   end
 
   %i[emails_header emails_footer].each do |mail|
@@ -244,30 +193,66 @@ class Setting < ApplicationRecord
     RequestStore.delete :settings_updated_at
   end
 
-  # Returns the Setting instance for the setting named name
-  # and allows to filter the returned value
-  def self.filtered_cached_or_default(name)
-    name = name.to_s
-    raise "There's no setting named #{name}" unless exists? name
-
-    value = cached_or_default(name)
-
-    case name
-    when "work_package_list_default_highlighting_mode"
-      value = "none" unless EnterpriseToken.allows_to? :conditional_highlighting
-    end
-
-    value
-  end
-
-  # Returns the Setting instance for the setting named name
-  # (record found in cache or default value)
+  # Returns the value of the setting named name
+  # The value will be retrieved from that order:
+  # 1. An overwritten definition (e.g., when provided as ENV var)
+  # 2. The cached database value
+  # 3. The setting definition default
   def self.cached_or_default(name)
     name = name.to_s
-    raise "There's no setting named #{name}" unless exists? name
+    raise "There's no setting named #{name}" unless exists?(name)
 
-    value = cached_settings.fetch(name) { @@available_settings[name]['default'] }
-    deserialize(name, value)
+    definition = Settings::Definition[name]
+
+    # Non-writable settings always use definition value (e.g., from ENV vars)
+    return deserialize(name, definition.value) unless definition.writable?
+
+    resolve_writable_value(name, definition)
+  end
+
+  # Resolves the value for a writable setting by checking (in order):
+  # 1. Cache (RequestStore, or Rails.cache populated from DB)
+  # 2. Persisted default value if setting has persist_on_first_read?
+  # 3. Definition default
+  def self.resolve_writable_value(name, definition)
+    settings_cache = cached_settings
+    if settings_cache.key?(name)
+      deserialize(name, settings_cache[name])
+    elsif definition.persist_on_first_read?
+      persist_default_value(name)
+    else
+      deserialize(name, definition.value)
+    end
+  end
+
+  # Persists the setting's default value to the database on first read.
+  # Uses advisory locking to prevent race conditions when multiple processes
+  # attempt to initialize the same setting concurrently.
+  #
+  # After persisting, clears the cache so subsequent calls to cached_settings
+  # will include the newly created setting.
+  def self.persist_default_value(name)
+    definition = Settings::Definition[name]
+    return definition.value unless settings_table_exists_yet?
+
+    OpenProject::Mutex.with_advisory_lock(Setting, "persist_default_#{name}") do
+      # Once we acquired the lock, check again whether the setting was not created by now.
+      setting = find_by(name:)
+      return setting.value if setting
+
+      generated_value = definition.default
+      create!(name:, value: formatted_value_for(generated_value, definition))
+
+      # Clear cache so the next setting call populates it with this value
+      clear_cache
+      generated_value
+    end
+  end
+
+  def self.formatted_value_for(value, definition)
+    return value.to_yaml if definition.serialized?
+
+    value.to_s
   end
 
   # Returns the settings from two levels of cache
@@ -279,7 +264,7 @@ class Setting < ApplicationRecord
   def self.cached_settings
     RequestStore.fetch(:cached_settings) do
       Rails.cache.fetch(cache_key) do
-        Hash[Setting.pluck(:name, :value)]
+        Setting.pluck(:name, :value).to_h
       end
     end
   end
@@ -309,39 +294,54 @@ class Setting < ApplicationRecord
     @settings_table_exists_yet ||= connection.data_source_exists?(table_name)
   end
 
-  # Unserialize a serialized settings value
-  def self.deserialize(name, v)
-    default = @@available_settings[name]
+  # Deserialize a serialized settings value
+  def self.deserialize(name, value)
+    definition = Settings::Definition[name]
 
-    if default['serialized'] && v.is_a?(String)
-      YAML::load(v)
-    elsif v.present?
-      read_formatted_setting v, default["format"]
-    else
-      v
+    if definition.nil?
+      nil
+    elsif definition.serialized? && value.is_a?(String)
+      deserialize_hash(value)
+    elsif value != "" && !value.nil?
+      read_formatted_setting(value, definition.format)
+    elsif definition.format == :string
+      value
     end
+  end
+
+  def self.deserialize_hash(value)
+    YAML::safe_load(value, permitted_classes: [Symbol, ActiveSupport::HashWithIndifferentAccess, Date, Time, URI::Generic])
+      .tap { |maybe_hash| normalize_hash!(maybe_hash) if maybe_hash.is_a?(Hash) }
+  end
+
+  def self.normalize_hash!(hash)
+    hash.deep_stringify_keys!
+    hash.deep_transform_values! { |v| v.is_a?(URI::Generic) ? v.to_s : v }
   end
 
   def self.read_formatted_setting(value, format)
     case format
-    when "boolean"
+    when :boolean
       ActiveRecord::Type::Boolean.new.cast(value)
-    when "symbol"
+    when :symbol
       value.to_sym
-    when "int"
+    when :integer
       value.to_i
-    when "date"
+    when :date
       Date.parse value
-    when "datetime"
+    when :datetime
       DateTime.parse value
     else
       value
     end
   end
 
-  require_dependency 'setting/callbacks'
-  extend Callbacks
+  protected
 
-  require_dependency 'setting/aliases'
-  extend Aliases
+  def definition
+    @definition ||= Settings::Definition[name]
+  end
+
+  delegate :format,
+           to: :definition
 end

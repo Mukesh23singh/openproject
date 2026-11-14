@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,37 +20,36 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
+
 module Bim
   module DemoData
     class BcfXmlSeeder < ::Seeder
-      attr_reader :project, :key
+      attr_reader :project
+      alias_method :project_data, :seed_data
 
-      def initialize(project, key)
+      def initialize(project, project_data)
+        super(project_data)
         @project = project
-        @key = key
       end
 
       def seed_data!
-        filename = project_data_for(key, 'bcf_xml_file')
-        return unless filename.present?
+        filename = project_data.lookup("bcf_xml_file")
+        return if filename.blank?
 
-        user = User.admin.active.first
-
-        print_status '    ↳ Import BCF XML file'
+        print_status "    ↳ Import BCF XML file"
 
         import_options = {
-          invalid_people_action: 'anonymize',
-          unknown_mails_action: 'anonymize',
-          non_members_action: 'anonymize'
+          invalid_people_action: "anonymize",
+          unknown_mails_action: "anonymize",
+          non_members_action: "anonymize"
         }
 
-        bcf_xml_file = File.new(File.join(Rails.root, 'modules/bim/files', filename))
-        importer = ::OpenProject::Bim::BcfXml::Importer.new(bcf_xml_file, project, current_user: user)
+        bcf_xml_file = Rails.root.join("modules/bim/files", filename).to_s
+        importer = ::OpenProject::Bim::BcfXml::Importer.new(bcf_xml_file, project, current_user: admin_user)
         importer.import!(import_options).flatten
       end
     end

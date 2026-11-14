@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,81 +22,87 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'News creation and commenting', type: :feature, js: true do
-  let(:project) { FactoryBot.create(:project) }
+RSpec.describe "News creation and commenting", :js do
+  let(:project) { create(:project) }
   let!(:other_user) do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[])
+    create(:user,
+           member_with_permissions: { project => %i[] },
+           notification_settings: [
+             build(:notification_setting, news_added: true, news_commented: true)
+           ])
   end
+  let(:global_html_title) { Components::HtmlTitle.new(project) }
 
   current_user do
-    FactoryBot.create(:user,
-                      member_in_project: project,
-                      member_with_permissions: %i[manage_news comment_news])
+    create(:user,
+           member_with_permissions: { project => %i[manage_news comment_news] })
   end
 
-  it 'allows creating new and commenting it all of which will result in notifications and mails' do
-    visit project_news_index_path(project)
+  include Flash::Expectations
 
-    within '.toolbar-items' do
-      click_link 'News'
-    end
+  it "allows creating new and commenting it all of which will result in notifications and mails" do
+    visit project_news_index_path(project)
+    global_html_title.expect_first_segment "News"
+
+    page.find_test_selector("add-news-button").click
 
     # Create the news
-    fill_in 'Title', with: 'My new news'
-    fill_in 'Summary', with: 'The news summary'
+    fill_in "Title", with: "My new news"
+    fill_in "Summary", with: "The news summary"
 
     perform_enqueued_jobs do
-      click_button 'Create'
+      click_button "Create"
+      wait_for_network_idle
     end
 
     # The new news is visible on the index page
     expect(page)
-      .to have_link('My new news')
+      .to have_link("My new news")
 
     expect(page)
-      .to have_content 'The news summary'
+      .to have_text "The news summary"
 
     # Creating the news will have sent out mails
     expect(ActionMailer::Base.deliveries.size)
-      .to be 1
+      .to eq 1
 
     expect(ActionMailer::Base.deliveries.last.to)
-      .to match_array [other_user.mail]
+      .to contain_exactly(other_user.mail)
 
     expect(ActionMailer::Base.deliveries.last.subject)
-      .to include 'My new news'
+      .to include "My new news"
 
-    click_link 'My new news'
+    click_link "My new news"
 
-    comment_editor = ::Components::WysiwygEditor.new
+    comment_editor = Components::WysiwygEditor.new
     comment_editor.set_markdown "A new **text**"
 
     perform_enqueued_jobs do
-      click_button 'Add comment'
+      click_button "Add comment"
+      wait_for_network_idle
     end
+
+    expect_and_dismiss_flash message: "Comment added"
 
     # The new comment is visible on the show page
     expect(page)
-      .to have_content "A new text"
+      .to have_text "A new text"
 
     # Creating the news comment will have sent out mails
     expect(ActionMailer::Base.deliveries.size)
-      .to be 2
+      .to eq 2
 
     expect(ActionMailer::Base.deliveries.last.to)
-      .to match_array [other_user.mail]
+      .to contain_exactly(other_user.mail)
 
     expect(ActionMailer::Base.deliveries.last.subject)
-      .to include 'My new news'
+      .to include "My new news"
   end
 end

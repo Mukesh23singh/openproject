@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +22,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class ::Query::SortCriteria < ::SortHelper::SortCriteria
+class Query::SortCriteria < SortHelper::SortCriteria
   attr_reader :available_columns
 
   ##
@@ -46,8 +45,7 @@ class ::Query::SortCriteria < ::SortHelper::SortCriteria
       .map { |attribute, order| [find_column(attribute), @available_criteria[attribute], order] }
       .reject { |column, criterion, _| column.nil? || criterion.nil? }
       .map { |column, criterion, order| [column, execute_criterion(criterion), order] }
-      .map { |column, criterion, order| append_order(column, Array(criterion), order) }
-      .compact
+      .filter_map { |column, criterion, order| append_order(column, Array(criterion), order) }
   end
 
   private
@@ -78,8 +76,8 @@ class ::Query::SortCriteria < ::SortHelper::SortCriteria
   end
 
   def criteria_with_default_order
-    if @criteria.none? { |attribute, _| attribute == 'id' }
-      @criteria + [['id', false]]
+    if @criteria.none? { |attribute, _| attribute == "id" }
+      @criteria + [["id", false]]
     else
       @criteria
     end

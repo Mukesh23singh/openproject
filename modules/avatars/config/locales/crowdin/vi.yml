@@ -1,39 +1,49 @@
-#English strings go here
+---
 vi:
-  label_avatar: "Hình đại diện"
-  label_avatar_plural: "Các hình đại diện"
-  label_current_avatar: "Hình đại diện hiện tại"
-  label_choose_avatar: "Chọn hình đại diện từ tập tin"
-  message_avatar_uploaded: "Hình đại diện đã thay đổi thành công"
-  error_image_upload: "Lỗi khi lưu ảnh!"
-  error_image_size: "Ảnh quá lớn"
-  button_change_avatar: "Đổi ảnh đại diện"
-  are_you_sure_delete_avatar: "Bạn có chắc muốn xóa hình đại diện của bạn ?"
-  avatar_deleted: "Hình đại diện đã xóa thành công"
-  unable_to_delete_avatar: "Hình đại diện không thể bị xóa"
-  wrong_file_format: "Định dạng ảnh được chấp nhận: jpg, png, gif"
-  empty_file_error: "Xin hãy tải lên hình ảnh đúng định dạng(jpg, png, gif)"
+  are_you_sure_delete_avatar: Bạn có chắc muốn xóa hình đại diện của bạn ?
+  avatar_deleted: Hình đại diện đã xóa thành công
   avatars:
-    label_avatar: "Hình đại diện"
-    label_gravatar: 'Nhóm ảnh đại diện'
-    label_current_avatar: 'Hình đại diện hiện tại'
-    label_local_avatar: 'Tùy chỉnh hình đại diện'
-    text_current_avatar: |
-      Hình ảnh sau đây hiển thị hình đại diện hiện tại.
-    text_upload_instructions: |
-      Tải lên hình đại diện tùy chỉnh của bạn, kích thước 128x128 điểm ảnh. Kích thước lớn hơn sẽ bị giảm chất lượng và thu nhỏ để phù hợp. Ảnh xem trước của hình đại diện sẽ hiện lên trước khi tải lên khi mà bạn chọn ảnh.
-    text_change_gravatar_html: 'Để thay đổi hoặc thêm Gravatar cho địa chỉ thư điện tử, đi đến  %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject chấp thuận hình đại diện được tùy chỉnh.
-    text_local_avatar_over_gravatar: |
-      Nếu bạn đặt một, hình đại diện tùy chỉnh này sẽ được ưu tiên hơn so với gravatar ở trên.
-    text_your_current_gravatar: |
-      OpenProject sử dụng gravatar của bạn nếu bạn đã đăng ký hoặc một hình ảnh hoặc biểu tượng mặc định nếu có.
-      Gravatar hiện tại như sau:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Nhóm ảnh đại diện
+    label_local_avatar: Tùy chỉnh hình đại diện
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Bật gravatars của người dùng'
-      gravatar_default: "Hình ảnh Gravatar mặc định"
-      enable_local_avatars: 'Cho phép người dùng tùy chỉnh hình đại diện'
-
-
-
+      enable_gravatars: Bật gravatars của người dùng
+      enable_local_avatars: Cho phép người dùng tùy chỉnh hình đại diện
+      gravatar_default: Hình ảnh Gravatar mặc định
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Xin hãy tải lên hình ảnh đúng định dạng(jpg, png, gif)
+  error_image_size: Ảnh quá lớn
+  error_image_upload: Lỗi khi lưu ảnh!
+  label_avatar: Hình đại diện
+  label_avatar_plural: Các hình đại diện
+  label_choose_avatar: Chọn hình đại diện từ tập tin
+  label_current_avatar: Hình đại diện hiện tại
+  message_avatar_uploaded: Hình đại diện đã thay đổi thành công
+  plugin_openproject_avatars:
+    description: Plugin này cho phép người dùng OpenProject tải lên hình ảnh để sử dụng làm hình đại diện hoặc sử dụng hình ảnh đã đăng ký từ Gravatar.
+    name: hình đại diện
+  unable_to_delete_avatar: Hình đại diện không thể bị xóa
+  wrong_file_format: 'Định dạng ảnh được chấp nhận: jpg, png, gif'

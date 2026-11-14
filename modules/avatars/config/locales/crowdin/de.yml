@@ -1,39 +1,49 @@
-#English strings go here
+---
 de:
-  label_avatar: "Profilbild"
-  label_avatar_plural: "Avatare"
-  label_current_avatar: "Aktuelles Profilbild"
-  label_choose_avatar: "Profilbild aus Datei auswählen"
-  message_avatar_uploaded: "Das Porfilbild wurde erfolgreich geändert."
-  error_image_upload: "Fehler beim Speichern des Bildes."
-  error_image_size: "Das Bild ist zu groß."
-  button_change_avatar: "Profilbild ändern"
-  are_you_sure_delete_avatar: "Sind Sie sicher, dass Sie das Profilbild löschen möchten?"
-  avatar_deleted: "Profilbild erfolgreich gelöscht."
-  unable_to_delete_avatar: "Profilbild konnte nicht gelöscht werden."
-  wrong_file_format: "Erlaubte Formate sind JPG, PNG und GIF"
-  empty_file_error: "Bitte laden Sie ein gültiges Bild hoch (JPG, PNG, GIF)"
+  are_you_sure_delete_avatar: Sind Sie sicher, dass Sie das Profilbild löschen möchten?
+  avatar_deleted: Profilbild erfolgreich gelöscht.
   avatars:
-    label_avatar: "Profilbild"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Aktuelles Profilbild'
-    label_local_avatar: 'Selbsterstelltes Profilbild'
-    text_current_avatar: |
-      Das folgende Bild zeigt das aktuelle Profilbild.
-    text_upload_instructions: |
-      Laden Sie Ihr eigenes Profilbild von 128 mal 128 Pixeln hoch. Größere Dateien werden verkleinert und zugeschnitten.
-      Eine Vorschau Ihres Profilbild wird angezeigt, sobald Sie ein Bild ausgewählt haben.
-    text_change_gravatar_html: 'Um das Gravatar für Ihre E-Mail-Adresse zu ändern oder eines hinzuzufügen, gehen Sie zu %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject ermöglicht es Ihnen, Ihr eigenes Profilbild hochzuladen.
-    text_local_avatar_over_gravatar: |
-      Wenn Sie ein eigenes Profilbild verwenden, wird es vorrangig vor dem für Ihre E-Mail-Adresse hinterlegten Gravatar verwendet.
-    text_your_current_gravatar: |
-      OpenProject verwendet, sofern verfügbar, Ihr Gravatar oder ein Standardbild. Das aktuelle Gravatar sieht wie folgt aus:
+    background_color_hint: Lassen Sie das Feld leer, um die Farbe automatisch ableiten zu lassen.
+    delete_image: Bild löschen
+    edit_avatar: Avatar bearbeiten
+    image_hint: Wählen Sie ein JPG-, PNG- oder GIF-Bild aus. Ihr Bild wird gespeichert, sobald Sie auf Speichern klicken.
+    image_required: Wählen Sie ein Bild aus oder wählen Sie eine andere Option für das Avatar.
+    label_avatar_text: Avatartext
+    label_background_color: Hintergrundfarbe
+    label_gravatar: Gravatar
+    label_local_avatar: Selbsterstelltes Profilbild
+    label_option: Avataroption
+    manage_gravatar: Verwalten Sie Ihr Profilbild auf Gravatar
+    message_avatar_updated: Das Porfilbild wurde erfolgreich geändert.
+    preview: Vorschau
+    randomize_color: Farbe zufällig auswählen
     settings:
-      enable_gravatars: 'Aktiviere Gravatare'
-      gravatar_default: "Standard-Gravatar-Bild"
-      enable_local_avatars: 'Selbsterstellte Profilbilder aktivieren'
-
-
-
+      enable_gravatars: Aktiviere Gravatare
+      enable_local_avatars: Selbsterstellte Profilbilder aktivieren
+      gravatar_default: Standard-Gravatar-Bild
+    text_avatar_text: Geben Sie bis zu zwei Zeichen ein. Lassen Sie das Feld leer, um die Initialen Ihres Namens zu verwenden.
+    text_invalid_error: Verwenden Sie bitte sichtbare Schriftzeichen.
+    text_length_error: Geben Sie bis zu zwei Zeichen ein.
+    types:
+      gravatar:
+        description: Das Bild, das unter Ihrer E-Mail-Adresse bei Gravatar hinterlegt ist
+        label: Gravatar
+      image:
+        description: Ein benutzerdefiniertes Bild, das Sie in diese Instanz hochladen können
+        label: Bild
+      initials:
+        description: Verwenden Sie die Initialen Ihres Namens oder ersetzen Sie diese durch bis zu zwei Zeichen.
+        label: Initialen
+  empty_file_error: Bitte laden Sie ein gültiges Bild hoch (JPG, PNG, GIF)
+  error_image_size: Das Bild ist zu groß.
+  error_image_upload: Fehler beim Speichern des Bildes.
+  label_avatar: Profilfoto
+  label_avatar_plural: Avatars
+  label_choose_avatar: Profilbild aus Datei auswählen
+  label_current_avatar: Aktuelles Profilbild
+  message_avatar_uploaded: Das Porfilbild wurde erfolgreich geändert.
+  plugin_openproject_avatars:
+    description: Dieses Plugin erlaubt es OpenProject-Benutzern, Avatare hochzuladen oder von Gravatar zu übernehmen.
+    name: Avatars
+  unable_to_delete_avatar: Profilbild konnte nicht gelöscht werden.
+  wrong_file_format: Erlaubte Formate sind JPG, PNG und GIF

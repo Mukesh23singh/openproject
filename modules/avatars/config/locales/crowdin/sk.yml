@@ -1,40 +1,49 @@
-#English strings go here
+---
 sk:
-  label_avatar: "Avatar"
-  label_avatar_plural: "Avatary"
-  label_current_avatar: "Aktuálny avatar"
-  label_choose_avatar: "Choose Avatar from file"
-  message_avatar_uploaded: "Avatar changed successfully."
-  error_image_upload: "Chyba pri ukladaní obrázka"
-  error_image_size: "Obrázok je príliš veľký"
-  button_change_avatar: "Zmeniť avatar"
-  are_you_sure_delete_avatar: "Vážne chcete zmazať váš účet?"
-  avatar_deleted: "Úspešne odstránené."
-  unable_to_delete_avatar: "Avatar could not be deleted."
-  wrong_file_format: "Allowed formats are jpg, png, gif"
-  empty_file_error: "Please upload a valid image (jpg, png, gif)"
+  are_you_sure_delete_avatar: Vážne chcete zmazať váš účet?
+  avatar_deleted: Úspešne odstránené.
   avatars:
-    label_avatar: "Avatar"
-    label_gravatar: 'Gravatar'
-    label_current_avatar: 'Aktuálny avatar'
-    label_local_avatar: 'Custom avatar'
-    text_current_avatar: |
-      The following image shows the current avatar.
-    text_upload_instructions: |
-      Upload your own custom avatar of 128 by 128 pixels. Larger files will be resized and cropped to match.
-      A preview of your avatar will be shown before uploading, once you selected an image.
-    text_change_gravatar_html: 'To change or add the Gravatar for your mail address, go to %{gravatar_url}.'
-    text_your_local_avatar: |
-      OpenProject allows you to upload your own custom avatar.
-    text_local_avatar_over_gravatar: |
-      If you set one, this custom avatar is used in precedence over the gravatar above.
-    text_your_current_gravatar: |
-      OpenProject uses your gravatar if you registered one, or a default image or icon if one exists.
-      The current gravatar is as follows:
+    background_color_hint: Leave blank for an automatic color.
+    delete_image: Delete image
+    edit_avatar: Edit avatar
+    image_hint: Choose a JPG, PNG, or GIF. Your image is saved when you select Save.
+    image_required: Choose an image, or select a different avatar option.
+    label_avatar_text: Avatar text
+    label_background_color: Background color
+    label_gravatar: Gravatar
+    label_local_avatar: Vlastný avatar
+    label_option: Avatar option
+    manage_gravatar: Manage your image on Gravatar
+    message_avatar_updated: Avatar changed successfully.
+    preview: Preview
+    randomize_color: Randomize color
     settings:
-      enable_gravatars: 'Povoliť Gravatar'
-      gravatar_default: "Predvolený Gravatar obrázok"
-      enable_local_avatars: 'Povoliť Gravatar'
-
-
-
+      enable_gravatars: Povoliť Gravatar
+      enable_local_avatars: Povoliť Gravatar
+      gravatar_default: Predvolený Gravatar obrázok
+    text_avatar_text: Enter up to two characters. Leave blank to use your name's initials.
+    text_invalid_error: Use only visible characters.
+    text_length_error: Enter up to two characters.
+    types:
+      gravatar:
+        description: The image registered for your email address on Gravatar
+        label: Gravatar
+      image:
+        description: A custom image you can upload to this instance
+        label: Image
+      initials:
+        description: Use your name's initials or override them with up to two characters.
+        label: Initials
+  empty_file_error: Prosím, nahrajte platný obrázok (jpg, png, gif)
+  error_image_size: Obrázok je príliš veľký
+  error_image_upload: Chyba pri ukladaní obrázka
+  label_avatar: Avatar
+  label_avatar_plural: Avatary
+  label_choose_avatar: Výber avatara zo súboru
+  label_current_avatar: Aktuálny avatar
+  message_avatar_uploaded: Profilová fotka bola úspešne zmenená.
+  plugin_openproject_avatars:
+    description: This plugin allows OpenProject users to upload a picture to be used as an avatar or use registered images from Gravatar.
+    name: Avatary
+  unable_to_delete_avatar: Profilovú fotku sa nepodarilo vymazať.
+  wrong_file_format: Povolené formáty sú jpg, png, gif

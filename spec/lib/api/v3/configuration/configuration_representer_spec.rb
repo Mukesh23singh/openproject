@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,215 +22,287 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::API::V3::Configuration::ConfigurationRepresenter do
-  include ::API::V3::Utilities::PathHelper
+RSpec.describe API::V3::Configuration::ConfigurationRepresenter do
+  include API::V3::Utilities::PathHelper
 
   let(:represented) { Setting }
   let(:current_user) do
-    FactoryBot.build_stubbed(:user).tap do |user|
+    build_stubbed(:user).tap do |user|
       allow(user)
         .to receive(:preference)
-        .and_return(FactoryBot.build_stubbed(:user_preference))
+        .and_return(build_stubbed(:user_preference, settings: preferences))
     end
   end
+  let(:preferences) { {} }
   let(:embed_links) { false }
   let(:representer) do
-    described_class.new(represented, current_user: current_user, embed_links: embed_links)
+    described_class.new(represented, current_user:, embed_links:)
   end
 
-  context 'generation' do
-    subject { representer.to_json }
+  subject { representer.to_json }
 
-    describe '_links' do
-      it_behaves_like 'has an untitled link' do
-        let(:link) { 'self' }
-        let(:href) { api_v3_paths.configuration }
-      end
-
-      context 'userPreferences' do
-        context 'if logged in' do
-          it_behaves_like 'has an untitled link' do
-            let(:link) { 'userPreferences' }
-            let(:href) { api_v3_paths.user_preferences(current_user.id) }
-          end
-        end
-
-        context 'if not logged in' do
-          let(:current_user) { FactoryBot.build_stubbed(:anonymous) }
-
-          it_behaves_like 'has an untitled link' do
-            let(:link) { 'userPreferences' }
-            let(:href) { api_v3_paths.user_preferences(current_user.id) }
-          end
-        end
-      end
+  describe "_links" do
+    it_behaves_like "has an untitled link" do
+      let(:link) { "self" }
+      let(:href) { api_v3_paths.configuration }
     end
 
-    it 'indicates its type' do
-      is_expected.to be_json_eql('Configuration'.to_json).at_path('_type')
-    end
-
-    it 'indicates maximumAttachmentFileSize in Bytes' do
-      allow(Setting).to receive(:attachment_max_size).and_return('1024')
-      is_expected.to be_json_eql((1024 * 1024).to_json).at_path('maximumAttachmentFileSize')
-    end
-
-    it 'indicates perPageOptions as array of integers' do
-      allow(Setting).to receive(:per_page_options).and_return('1, 50 ,   100  ')
-      is_expected.to be_json_eql([1, 50, 100].to_json).at_path('perPageOptions')
-    end
-
-    context 'timeFormat' do
-      context 'with time format', with_settings: { time_format: '%I:%M %p' } do
-        it 'indicates the timeFormat' do
-          is_expected
-            .to be_json_eql('hh:mm a'.to_json)
-            .at_path('timeFormat')
+    describe "userPreferences" do
+      context "if logged in" do
+        it_behaves_like "has an untitled link" do
+          let(:link) { "userPreferences" }
+          let(:href) { api_v3_paths.user_preferences(current_user.id) }
         end
       end
 
-      context 'with time format', with_settings: { time_format: '%H:%M' } do
-        it 'indicates the timeFormat' do
-          is_expected
-            .to be_json_eql('HH:mm'.to_json)
-            .at_path('timeFormat')
+      context "if not logged in" do
+        let(:current_user) { build_stubbed(:anonymous) }
+
+        it_behaves_like "has an untitled link" do
+          let(:link) { "userPreferences" }
+          let(:href) { api_v3_paths.user_preferences(current_user.id) }
+        end
+      end
+    end
+  end
+
+  describe "properties" do
+    it "indicates its type" do
+      expect(subject).to be_json_eql("Configuration".to_json).at_path("_type")
+    end
+
+    it "indicates maximumAttachmentFileSize in Bytes" do
+      allow(Setting).to receive(:attachment_max_size).and_return("1024")
+      expect(subject).to be_json_eql((1024 * 1024).to_json).at_path("maximumAttachmentFileSize")
+    end
+
+    it "indicates perPageOptions as array of integers" do
+      allow(Setting).to receive(:per_page_options).and_return("1, 50 ,   100  ")
+      expect(subject).to be_json_eql([1, 50, 100].to_json).at_path("perPageOptions")
+    end
+
+    describe "timeFormat" do
+      context "with time format", with_settings: { time_format: "%I:%M %p" } do
+        it "indicates the timeFormat" do
+          expect(subject)
+            .to be_json_eql("hh:mm A".to_json)
+            .at_path("timeFormat")
         end
       end
 
-      context 'with a time format', with_settings: { time_format: '' } do
-        it 'indicates the timeFormat' do
-          is_expected
+      context "with time format", with_settings: { time_format: "%H:%M" } do
+        it "indicates the timeFormat" do
+          expect(subject)
+            .to be_json_eql("HH:mm".to_json)
+            .at_path("timeFormat")
+        end
+      end
+
+      context "with a time format", with_settings: { time_format: "" } do
+        it "indicates the timeFormat" do
+          expect(subject)
             .to be_json_eql(nil.to_json)
-            .at_path('timeFormat')
+            .at_path("timeFormat")
+        end
+      end
+
+      context "with a user preference", with_settings: { time_format: "%H:%M" } do
+        let(:preferences) { { "time_format" => "%I:%M %p" } }
+
+        it "indicates the user's timeFormat" do
+          expect(subject)
+            .to be_json_eql("hh:mm A".to_json)
+            .at_path("timeFormat")
         end
       end
     end
 
-    context 'dateFormat' do
-      context 'without a date format', with_settings: { date_format: '' } do
-        it 'indicates the dateFormat' do
-          is_expected
+    describe "dateFormat" do
+      context "without a date format", with_settings: { date_format: "" } do
+        it "indicates the dateFormat" do
+          expect(subject)
             .to be_json_eql(nil.to_json)
-            .at_path('dateFormat')
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%Y-%m-%d)', with_settings: { date_format: '%Y-%m-%d' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('YYYY-MM-DD'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%Y-%m-%d)", with_settings: { date_format: "%Y-%m-%d" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("YYYY-MM-DD".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%d/%m/%Y)', with_settings: { date_format: '%Y-%m-%d' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('YYYY-MM-DD'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%d.%m.%Y)", with_settings: { date_format: "%d.%m.%Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("DD.MM.YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%d.%m.%Y)', with_settings: { date_format: '%d.%m.%Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('DD.MM.YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%d-%m-%Y)", with_settings: { date_format: "%d-%m-%Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("DD-MM-YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%d-%m-%Y)', with_settings: { date_format: '%d-%m-%Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('DD-MM-YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%m/%d/%Y)", with_settings: { date_format: "%m/%d/%Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("MM/DD/YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%m/%d/%Y)', with_settings: { date_format: '%m/%d/%Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('MM/DD/YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%d %b %Y)", with_settings: { date_format: "%d %b %Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("DD MMM YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%d %b %Y)', with_settings: { date_format: '%d %b %Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('DD MMM YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%d %B %Y)", with_settings: { date_format: "%d %B %Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("DD MMMM YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%d %B %Y)', with_settings: { date_format: '%d %B %Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('DD MMMM YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%b %d, %Y)", with_settings: { date_format: "%b %d, %Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("MMM DD, YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%b %d, %Y)', with_settings: { date_format: '%b %d, %Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('MMM DD, YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with date format (%B %d, %Y)", with_settings: { date_format: "%B %d, %Y" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("MMMM DD, YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
 
-      context 'with date format (%B %d, %Y)', with_settings: { date_format: '%B %d, %Y' } do
-        it 'indicates the dateFormat' do
-          is_expected
-            .to be_json_eql('MMMM DD, YYYY'.to_json)
-            .at_path('dateFormat')
+      context "with a user preference", with_settings: { date_format: "%Y-%m-%d" } do
+        let(:preferences) { { "date_format" => "%d.%m.%Y" } }
+
+        it "indicates the user's dateFormat" do
+          expect(subject)
+            .to be_json_eql("DD.MM.YYYY".to_json)
+            .at_path("dateFormat")
         end
       end
     end
 
-    context 'startOfWeek' do
-      context 'without a setting', with_settings: { start_of_week: '' } do
-        it 'is null' do
-          is_expected
+    describe "user_default_timezone" do
+      context "without a setting", with_settings: { user_default_timezone: nil } do
+        it "is null" do
+          expect(subject)
             .to be_json_eql(nil.to_json)
-            .at_path('startOfWeek')
+            .at_path("userDefaultTimezone")
         end
       end
 
-      context 'with `Monday` being set', with_settings: { start_of_week: '1' } do
-        it 'indicates the dateFormat' do
-          is_expected
+      context "with `Europe/Berlin` being set", with_settings: { user_default_timezone: "Europe/Berlin" } do
+        it "indicates the dateFormat" do
+          expect(subject)
+            .to be_json_eql("Europe/Berlin".to_json)
+            .at_path("userDefaultTimezone")
+        end
+      end
+    end
+
+    describe "startOfWeek" do
+      context "without a setting", with_settings: { start_of_week: "" } do
+        it "is null" do
+          expect(subject)
+            .to be_json_eql(nil.to_json)
+            .at_path("startOfWeek")
+        end
+      end
+
+      context "with `Monday` being set", with_settings: { start_of_week: "1" } do
+        it "indicates the dateFormat" do
+          expect(subject)
             .to be_json_eql(1.to_json)
-            .at_path('startOfWeek')
+            .at_path("startOfWeek")
         end
       end
     end
 
-    describe '_embedded' do
-      context 'userPreferences' do
-        context 'if embedding' do
-          let(:embed_links) { true }
+    describe "activeFeatureFlags" do
+      context "without any active flags" do
+        it "is an empty array" do
+          expect(subject)
+            .to be_json_eql([].to_json)
+                  .at_path("activeFeatureFlags")
+        end
+      end
 
-          it 'embedds the user preferences' do
-            is_expected
-              .to be_json_eql('UserPreferences'.to_json)
-              .at_path('_embedded/userPreferences/_type')
-          end
+      context "with active flags" do
+        before do
+          allow(OpenProject::FeatureDecisions)
+            .to receive(:active)
+                  .and_return(%w(the active_flags))
         end
 
-        context 'if not embedding' do
-          it 'embedds the user preferences' do
-            is_expected
-              .not_to have_json_path('_embedded/userPreferences/_type')
-          end
+        it "is an array of strings of those flags" do
+          expect(subject)
+            .to be_json_eql(%w(the activeFlags).to_json)
+                  .at_path("activeFeatureFlags")
+        end
+      end
+    end
+
+    describe "availableFeatures" do
+      context "without any features" do
+        it "is an empty array" do
+          expect(subject)
+            .to be_json_eql([].to_json)
+                  .at_path("availableFeatures")
+        end
+      end
+
+      context "with certain features allowed", with_ee: %i[some_value foobar] do
+        it "is an array of strings of those flags" do
+          expect(subject)
+            .to be_json_eql(%w(some_value foobar).to_json)
+                  .at_path("availableFeatures")
+        end
+      end
+    end
+  end
+
+  describe "_embedded" do
+    describe "userPreferences" do
+      context "if embedding" do
+        let(:embed_links) { true }
+
+        it "embeds the user preferences" do
+          expect(subject)
+            .to be_json_eql("UserPreferences".to_json)
+            .at_path("_embedded/userPreferences/_type")
+        end
+      end
+
+      context "if not embedding" do
+        it "embeds the user preferences" do
+          expect(subject)
+            .not_to have_json_path("_embedded/userPreferences/_type")
         end
       end
     end

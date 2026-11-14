@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,22 +22,21 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-airbrake = OpenProject::Configuration['airbrake']
+airbrake = OpenProject::Configuration["airbrake"]
 
-if airbrake && airbrake['api_key']
+if airbrake && airbrake["api_key"]
   # airbrake isn't loaded by default, so let's do that now
-  require 'airbrake'
+  require "airbrake"
 
   Airbrake.configure do |config|
-    config.api_key = airbrake['api_key']
-    config.host = airbrake['host'] if airbrake['host']
-    config.port = Integer(airbrake['port'] || 443)
+    config.api_key = airbrake["api_key"]
+    config.host = airbrake["host"] if airbrake["host"]
+    config.port = Integer(airbrake["port"] || 443)
     config.secure = config.port == 443
 
     Rails.logger.info "Successfully connected to Airbrake at #{config.host}:#{config.port}."

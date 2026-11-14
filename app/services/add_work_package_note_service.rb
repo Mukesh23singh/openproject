@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -34,6 +33,8 @@
 
 class AddWorkPackageNoteService
   include Contracted
+  include Shared::ServiceContext
+
   attr_accessor :user, :work_package
 
   def initialize(user:, work_package:)
@@ -42,16 +43,49 @@ class AddWorkPackageNoteService
     self.contract_class = WorkPackages::CreateNoteContract
   end
 
-  def call(notes, send_notifications: true)
-    Journal::NotificationConfiguration.with send_notifications do
-      work_package.add_journal(user, notes)
+  def call(notes, send_notifications: nil, internal: false)
+    in_context(work_package, send_notifications:) do
+      add_journal_to_work_package(notes, internal)
+      success, errors = save_journal_with_validation
 
-      success, errors = validate_and_yield(work_package, user) do
-        work_package.save_journals
-      end
+      journal = fetch_latest_journal if success
 
-      journal = work_package.journals.last if success
-      ServiceResult.new(success: success, result: journal, errors: errors)
+      build_service_result(success, journal, errors)
     end
+  end
+
+  private
+
+  def add_journal_to_work_package(notes, internal)
+    work_package.add_journal(user:, notes:, internal:)
+  end
+
+  def save_journal_with_validation
+    validate_and_yield(work_package, user) do
+      work_package.save_journals
+    end
+  end
+
+  def fetch_latest_journal
+    # In test environment, because of the difference in the way of handling transactions,
+    # the journal needs to be actively loaded without SQL caching in place.
+    Journal.connection.uncached do
+      work_package.journals.last
+    end
+  end
+
+  def build_service_result(success, result, errors)
+    ServiceResult.new(success:, result:, errors:).on_success { add_attachment_claims_to(it) }
+  end
+
+  def add_attachment_claims_to(service_result)
+    attachments_claims = claim_attachments_for(service_result.result)
+    service_result.add_dependent!(attachments_claims)
+  end
+
+  def claim_attachments_for(journal)
+    WorkPackages::ActivitiesTab::CommentAttachmentsClaims::ClaimsService
+      .new(user: User.current, model: journal)
+      .call
   end
 end

@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -31,24 +28,23 @@
 module API
   module Errors
     class NotFound < ErrorBase
-      identifier 'NotFound'
+      identifier "NotFound"
       code 404
 
       def initialize(_message = nil, exception: nil, model: nil)
         # Try to find a localizable error message for
         # the not found error by checking the "model" property set by rails.
         model ||= exception&.model&.underscore
-        super not_found_message(model)
+        super(not_found_message(model))
       end
 
       private
 
-
       def not_found_message(model)
         if model.present?
-          I18n.t("api_v3.errors.not_found.#{model}", default: I18n.t('api_v3.errors.code_404'))
+          I18n.t("api_v3.errors.not_found.#{model}", default: I18n.t("api_v3.errors.code_404"))
         else
-          I18n.t('api_v3.errors.code_404')
+          I18n.t("api_v3.errors.code_404")
         end
       end
     end

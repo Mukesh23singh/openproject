@@ -1,0 +1,21 @@
+rules:
+  artipacked:
+    ignore:
+      # These workflows intentionally persist credentials because they push commits/branches
+      - create-merge-from-previous-release-branch-pr.yml
+      - create-merge-release-into-dev-pr.yml
+      - crowdin.yml
+      - sync-internal-fork.yml
+  dangerous-triggers:
+    ignore:
+      # CLA workflow intentionally uses pull_request_target to handle outside contributors
+      - cla.yml
+  cache-poisoning:
+    ignore:
+      # release/* pushes run tests here; this workflow does not publish release artifacts.
+      - test-core.yml
+      # Frontend unit tests cache npm packages; only triggered on push/PR from trusted branches
+      - test-frontend-unit.yml
+      # Check-only jobs; nothing built here is published
+      - i18n-tasks.yml
+      - migrate-without-optional-extensions.yml

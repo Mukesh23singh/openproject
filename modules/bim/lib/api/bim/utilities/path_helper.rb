@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -35,36 +32,45 @@ module API
         include API::Utilities::UrlHelper
 
         # rubocop:disable Naming/ClassAndModuleCamelCase
-        class BCF2_1Path
+        module BCF2_1Path
+          module_function
+
           # rubocop:enable Naming/ClassAndModuleCamelCase
           extend API::Utilities::UrlHelper
 
           # Determining the root_path on every url we want to render is
           # expensive. As the root_path will not change within a
           # request, we can cache the first response on each request.
-          def self.root_path
+          def root_path
             RequestStore.store[:cached_root_path] ||= super
           end
 
-          def self.root
+          def root
             "#{root_path}api/bcf/2.1/"
           end
 
-          def self.project(identifier)
-            "#{root}projects/#{identifier}"
+          def project(identifier)
+            path_segments("projects", identifier)
           end
 
-          def self.topics(project_identifier)
-            "#{project(project_identifier)}/topics"
+          def topics(project_identifier)
+            path_segments("projects", project_identifier, "topics")
           end
 
-          def self.topic(project_identifier, uuid)
-            "#{topics(project_identifier)}/#{uuid}"
+          def topic(project_identifier, uuid)
+            path_segments("projects", project_identifier, "topics", uuid)
           end
 
-          def self.viewpoint(project_identifier, topic_uuid, viewpoint_topic)
-            "#{topic(project_identifier, topic_uuid)}/viewpoints/#{viewpoint_topic}"
+          def viewpoint(project_identifier, topic_uuid, viewpoint_topic)
+            path_segments("projects", project_identifier, "topics", topic_uuid, "viewpoints", viewpoint_topic)
           end
+
+          def path_segments(*segments)
+            subpath = segments.map { |segment| ::ERB::Util.url_encode(segment.to_s) }.join("/")
+            "#{root}#{subpath}"
+          end
+
+          private_class_method :path_segments
         end
 
         def bcf_v2_1_paths

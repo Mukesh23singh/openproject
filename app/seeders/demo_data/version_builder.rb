@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2020 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,19 +22,22 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
+#++
+
 module DemoData
   class VersionBuilder
     include ::DemoData::References
 
-    attr_reader :config, :project
+    attr_reader :config, :project, :user, :seed_data
 
-    def initialize(config, project)
+    def initialize(config, project:, user:, seed_data:)
       @config = config
       @project = project
+      @user = user
+      @seed_data = seed_data
     end
 
     def create!
@@ -55,24 +58,44 @@ module DemoData
 
     def version
       version = Version.create!(
-        name: config[:name],
-        status: config[:status],
-        sharing: config[:sharing],
-        project: project
+        name: config["name"],
+        status: config["status"],
+        sharing: config["sharing"],
+        project:,
+        **date_attributes
       )
+      seed_data.store_reference(config["reference"], version)
 
-      set_wiki! version, config[:wiki] if config[:wiki]
+      set_wiki! version, config["wiki"]
 
       version
     end
 
-    def set_wiki!(version, config)
-      version.wiki_page_title = config[:title]
-      page = WikiPage.create! wiki: version.project.wiki, title: version.wiki_page_title
+    def date_attributes
+      return {} if config["start"].nil?
 
-      content = with_references config[:content], project
+      start_date = Date.current.monday + config["start"].days
+
+      {
+        start_date:,
+        effective_date: WorkPackages::Shared::AllDays.new.due_date(start_date, config["duration"])
+      }
+    end
+
+    def set_wiki!(version, config)
+      return unless config
+
+      unless Wiki.exists?(project: version.project)
+        version.project.create_wiki(start_page: "Wiki")
+      end
+
+      version.wiki_page_title = config["title"]
+
       Journal::NotificationConfiguration.with false do
-        WikiContent.create! page: page, author: User.admin.first, text: content
+        WikiPage.create! wiki: version.project.wiki,
+                         title: version.wiki_page_title,
+                         author: User.admin.first,
+                         text: with_references(config["content"])
       end
 
       version.save!

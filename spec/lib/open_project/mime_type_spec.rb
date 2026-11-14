@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,18 +22,18 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
-require 'spec_helper'
 
-describe OpenProject::MimeType do
-  describe '#of' do
-    to_test = { 'test.unk' => nil,
-                'test.txt' => 'text/plain',
-                'test.c' => 'text/x-c' }
+require "spec_helper"
+
+RSpec.describe OpenProject::MimeType do
+  describe "#of" do
+    to_test = { "test.unk" => nil,
+                "test.txt" => "text/plain",
+                "test.c" => "text/x-c" }
     to_test.each do |name, expected|
       it do
         expect(described_class.of(name)).to eq expected
@@ -41,10 +41,10 @@ describe OpenProject::MimeType do
     end
   end
 
-  describe '#css_class_of' do
-    to_test = { 'test.unk' => nil,
-                'test.txt' => 'text-plain',
-                'test.c' => 'text-x-c' }
+  describe "#css_class_of" do
+    to_test = { "test.unk" => nil,
+                "test.txt" => "text-plain",
+                "test.c" => "text-x-c" }
     to_test.each do |name, expected|
       it do
         expect(described_class.css_class_of(name)).to eq expected
@@ -52,10 +52,10 @@ describe OpenProject::MimeType do
     end
   end
 
-  describe '#main_mimetype_of' do
-    to_test = { 'test.unk' => nil,
-                'test.txt' => 'text',
-                'test.c' => 'text' }
+  describe "#main_mimetype_of" do
+    to_test = { "test.unk" => nil,
+                "test.txt" => "text",
+                "test.c" => "text" }
     to_test.each do |name, expected|
       it do
         expect(described_class.main_mimetype_of(name)).to eq expected
@@ -63,23 +63,15 @@ describe OpenProject::MimeType do
     end
   end
 
-  describe '#is_type?' do
-    to_test = { ['text', 'test.unk'] => false,
-                ['text', 'test.txt'] => true,
-                ['text', 'test.c'] => true }
+  describe "#is_type?" do
+    to_test = { ["text", "test.unk"] => false,
+                ["text", "test.txt"] => true,
+                ["text", "test.c"] => true }
 
     to_test.each do |args, expected|
       it do
         expect(described_class.is_type?(*args)).to eq expected
       end
     end
-  end
-
-  it 'equals the main type for the narrow type' do
-    expect(described_class.narrow_type('rubyfile.rb', 'text/plain')).to eq 'text/x-ruby'
-  end
-
-  it 'uses original type if main type differs' do
-    expect(described_class.narrow_type('rubyfile.rb', 'application/zip')).to eq 'application/zip'
   end
 end

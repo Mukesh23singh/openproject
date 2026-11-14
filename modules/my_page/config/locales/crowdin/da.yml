@@ -1,0 +1,9 @@
+---
+da:
+  activerecord:
+    models:
+      grids/my_page:
+        one: Min side
+        other: Mine sider
+  my_page:
+    label: Min side

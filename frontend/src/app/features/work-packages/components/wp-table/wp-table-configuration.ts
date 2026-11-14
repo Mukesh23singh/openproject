@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,13 +20,12 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-export type WorkPackageTableConfigurationObject = Partial<{ [field in keyof WorkPackageTableConfiguration]:string|boolean }>;
+export type WorkPackageTableConfigurationObject = Partial<WorkPackageTableConfiguration>;
 
 export class WorkPackageTableConfiguration {
   /** Render the table results, set to false when only wanting the table initialization */
@@ -37,6 +36,9 @@ export class WorkPackageTableConfiguration {
 
   /** Render the action column (last column) with the actions defined in the TableActionsService */
   public actionsColumnEnabled = true;
+
+  /** Id of the visible heading that names the treegrid, used instead of the default label */
+  public labelledBy:string|null = null;
 
   /** Whether the work package context menu is enabled */
   public contextMenuEnabled = true;
@@ -52,6 +54,12 @@ export class WorkPackageTableConfiguration {
 
   /** Whether inline create is enabled */
   public inlineCreateEnabled = true;
+
+  /** Whether inline edit is enabled */
+  public inlineEditEnabled = true;
+
+  /** Whether rows can be selected and activated as the current work package */
+  public selectionEnabled = true;
 
   /** Whether the hierarchy toggler item in the subject column is enabled */
   public hierarchyToggleEnabled = true;
@@ -78,9 +86,15 @@ export class WorkPackageTableConfiguration {
   public filterButtonText:string = I18n.t('js.button_filter');
 
   constructor(providedConfig:WorkPackageTableConfigurationObject) {
-    _.each(providedConfig, (value, k) => {
-      const key = (k as keyof WorkPackageTableConfiguration);
-      (this as any)[key] = value;
+    Object.entries(providedConfig).forEach(([k, value]) => {
+      if (value !== undefined) {
+        const key = (k as keyof WorkPackageTableConfiguration);
+        (this as Record<string, unknown>)[key] = value;
+      }
     });
+
+    if (!this.inlineEditEnabled) {
+      this.inlineCreateEnabled = false;
+    }
   }
 }

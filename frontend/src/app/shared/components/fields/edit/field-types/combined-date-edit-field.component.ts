@@ -1,6 +1,6 @@
-// -- copyright
+//-- copyright
 // OpenProject is an open source project management software.
-// Copyright (C) 2012-2021 the OpenProject GmbH
+// Copyright (C) the OpenProject GmbH
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License version 3.
@@ -20,104 +20,95 @@
 // GNU General Public License for more details.
 //
 // You should have received a copy of the GNU General Public License
-// along with this program; if not, write to the Free Software
-// Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+// along with this program. If not, see <https://www.gnu.org/licenses/>.
 //
 // See COPYRIGHT and LICENSE files for more details.
 //++
 
-import { Component, OnDestroy, OnInit } from '@angular/core';
-import { InjectField } from 'core-app/shared/helpers/angular/inject-field.decorator';
-import { OpModalService } from 'core-app/shared/components/modal/modal.service';
-import { take } from 'rxjs/operators';
-import { DateEditFieldComponent } from 'core-app/shared/components/fields/edit/field-types/date-edit-field/date-edit-field.component';
-import { OpModalComponent } from 'core-app/shared/components/modal/modal.component';
-import { DatePickerModalComponent } from 'core-app/shared/components/datepicker/datepicker.modal';
-import { TimezoneService } from 'core-app/core/datetime/timezone.service';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnInit,
+} from '@angular/core';
+import { DatePickerEditFieldComponent } from 'core-app/shared/components/fields/edit/field-types/date-picker-edit-field.component';
+import { WorkPackageResource } from 'core-app/features/hal/resources/work-package-resource';
 
 @Component({
-  template: `
-    <input [value]="dates"
-           (click)="handleClick()"
-           class="op-input"
-           type="text" />
-  `,
+  templateUrl: './combined-date-edit-field.component.html',
+  standalone: false,
+  // TODO: This component has been partially migrated to be zoneless-compatible.
+  // After testing, this should be updated to ChangeDetectionStrategy.OnPush.
+  // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+  changeDetection: ChangeDetectionStrategy.Eager,
 })
-export class CombinedDateEditFieldComponent extends DateEditFieldComponent implements OnInit, OnDestroy {
-  @InjectField() readonly timezoneService:TimezoneService;
-
-  @InjectField() opModalService:OpModalService;
-
+export class CombinedDateEditFieldComponent extends DatePickerEditFieldComponent implements OnInit {
   dates = '';
 
-  text_no_start_date = this.I18n.t('js.label_no_start_date');
+  opened = false;
 
-  text_no_due_date = this.I18n.t('js.label_no_due_date');
-
-  private modal:OpModalComponent;
+  text = {
+    placeholder: {
+      startDate: this.I18n.t('js.label_no_start_date'),
+      dueDate: this.I18n.t('js.label_no_due_date'),
+      date: this.I18n.t('js.label_no_date'),
+    },
+  };
 
   ngOnInit() {
     super.ngOnInit();
-
-    this.handler
-      .$onUserActivate
-      .pipe(
-        this.untilDestroyed(),
-      )
-      .subscribe(() => {
-        this.showDatePickerModal();
-      });
   }
 
-  ngOnDestroy() {
-    super.ngOnDestroy();
-    this.modal?.closeMe();
+  public onInputClick(event:MouseEvent) {
+    event.stopPropagation();
   }
 
-  public handleClick() {
-    this.showDatePickerModal();
+  public onModalClosed():void {
+    super.onModalClosed();
+    this.resetDates();
   }
 
-  private showDatePickerModal():void {
-    const modal = this.modal = this
-      .opModalService
-      .show(DatePickerModalComponent, this.injector, { changeset: this.change, fieldName: this.name }, true);
-
-    setTimeout(() => {
-      const modalElement = jQuery(modal.elementRef.nativeElement).find('.datepicker-modal');
-      const field = jQuery(this.elementRef.nativeElement);
-      modal.reposition(modalElement, field);
-    });
-
-    modal
-      .onDataUpdated
-      .subscribe((dates:string) => {
-        this.dates = dates;
-        this.cdRef.detectChanges();
-      });
-
-    modal
-      .closingEvent
-      .pipe(take(1))
-      .subscribe(() => {
-        this.handler.handleUserSubmit();
-      });
+  public save():void {
+    void this.handler.handleUserSubmit();
   }
 
-  // Overwrite super in order to set the inital dates.
-  protected initialize() {
+  public cancel():void {
+    if (!this.handler.inEditMode) {
+      this.handler.reset();
+    }
+    this.onModalClosed();
+  }
+
+  // Overwrite super in order to set the initial dates.
+  protected initialize():void {
     super.initialize();
-
-    // this breaks the preceived abstraction of the edit fields. But the date picker
-    // is already highly specific to start and due Date.
-    this.dates = `${this.currentStartDate} - ${this.currentDueDate}`;
+    this.resetDates();
   }
 
-  protected get currentStartDate():string {
-    return this.resource.startDate || this.text_no_start_date;
+  protected resetDates():void {
+    switch (this.name) {
+      case 'combinedDate':
+        this.dates = `${this.current('startDate')} - ${this.current('dueDate')}`;
+        break;
+
+      case 'startDate':
+        this.dates = `${this.current('startDate')}`;
+        break;
+
+      case 'dueDate':
+        this.dates = `${this.current('dueDate')}`;
+        break;
+
+      case 'date':
+        this.dates = `${this.current('date')}`;
+        break;
+
+      default:
+        break;
+    }
   }
 
-  protected get currentDueDate():string {
-    return this.resource.dueDate || this.text_no_due_date;
+  protected current(dateAttribute:'startDate' | 'dueDate' | 'date'):string {
+    const value = (this.resource && (this.resource as WorkPackageResource)[dateAttribute]) as string|null;
+    return (value ?? this.text.placeholder[dateAttribute]);
   }
 }

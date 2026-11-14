@@ -1,6 +1,8 @@
+# frozen_string_literal: true
+
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,27 +22,34 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe 'robots.txt', type: :feature do
-  let!(:project) { FactoryBot.create(:public_project) }
-
+RSpec.describe "robots.txt" do
   before do
-    visit '/robots.txt'
+    visit "/robots.txt"
   end
 
-  it 'disallows global paths and paths from public project' do
-    expect(page).to have_content('Disallow: /work_packages/calendar')
-    expect(page).to have_content('Disallow: /activity')
+  context "when login_required", with_settings: { login_required: true } do
+    it "disallows everything" do
+      expect(page).to have_text("Disallow: /")
+    end
+  end
 
-    expect(page).to have_content("Disallow: /projects/#{project.identifier}/repository")
-    expect(page).to have_content("Disallow: /projects/#{project.identifier}/work_packages")
-    expect(page).to have_content("Disallow: /projects/#{project.identifier}/activity")
+  context "when not login_required", with_settings: { login_required: false } do
+    it "disallows global paths and paths from projects" do
+      expect(page).to have_text("Disallow: /activity")
+      expect(page).to have_text("Disallow: /activities")
+      expect(page).to have_text("Disallow: /search")
+
+      expect(page).to have_text("Disallow: /projects/*/repository")
+      expect(page).to have_text("Disallow: /projects/*/work_packages")
+      expect(page).to have_text("Disallow: /projects/*/activity")
+      expect(page).to have_text("Disallow: /projects/*/search")
+    end
   end
 end

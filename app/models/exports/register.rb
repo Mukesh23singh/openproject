@@ -1,8 +1,8 @@
-#-- encoding: UTF-8
+# frozen_string_literal: true
 
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,8 +22,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -33,8 +32,8 @@ module Exports
     class << self
       attr_reader :lists, :singles, :formatters
 
-      def register(&block)
-        instance_exec(&block)
+      def register(&)
+        instance_exec(&)
       end
 
       def list(model, exporter)
@@ -66,7 +65,7 @@ module Exports
           hash[model_key] = []
         end
 
-        @formatters[model.to_s] << formatter
+        @formatters[model.to_s] << formatter unless @formatters[model.to_s].include?(formatter)
       end
 
       def list_exporter(model, format)
@@ -77,8 +76,8 @@ module Exports
         singles[model.to_s].detect { |exporter| exporter.key == format }
       end
 
-      def formatter_for(model, attribute)
-        formatter = formatters[model.to_s].find { |f| f.apply? attribute } || ::Exports::Formatters::Default
+      def formatter_for(model, attribute, export_format)
+        formatter = formatters[model.to_s].find { |f| f.apply? attribute, export_format } || ::Exports::Formatters::Default
         formatter.new(attribute)
       end
     end

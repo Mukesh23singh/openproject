@@ -1,3 +1,30 @@
+#-- copyright
+# OpenProject is an open source project management software.
+# Copyright (C) the OpenProject GmbH
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License version 3.
+#
+# OpenProject is a fork of ChiliProject, which is a fork of Redmine. The copyright follows:
+# Copyright (C) 2006-2013 Jean-Philippe Lang
+# Copyright (C) 2010-2013 the ChiliProject Team
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
+#
+# See COPYRIGHT and LICENSE files for more details.
+#++
+
 # The code in here, with the exception of the error handling has been copied from the
 # activerecord_json_validator gem.
 
@@ -34,7 +61,7 @@ class JsonValidator < ActiveModel::EachValidator
   # catch JSON parsing errors.
   def inject_setter_method(klass, attributes)
     attributes.each do |attribute|
-      # rubocop:disable Style/DocumentDynamicEvalDefinition
+      # rubocop:disable-next Style/DocumentDynamicEvalDefinition
       klass.class_eval <<-RUBY, __FILE__, __LINE__ + 1
         attr_reader :"#{attribute}_invalid_json"
         define_method "#{attribute}=" do |args|
@@ -48,7 +75,6 @@ class JsonValidator < ActiveModel::EachValidator
           end
         end
       RUBY
-      # rubocop:enable Style/DocumentDynamicEvalDefinition
     end
   end
 
@@ -65,19 +91,19 @@ class JsonValidator < ActiveModel::EachValidator
   end
 
   def add_error(record, error)
-    data_pointer, type, schema = error.values_at('data_pointer', 'type', 'schema')
-    path = data_pointer.split('/', 3)[1..]
+    data_pointer, type, schema = error.values_at("data_pointer", "type", "schema")
+    path = data_pointer.split("/", 3)[1..]
 
     case type
-    when 'required'
+    when "required"
       add_blank_error(record, error, path)
-    when 'null', 'string', 'boolean', 'integer', 'number', 'array', 'object'
+    when "null", "string", "boolean", "integer", "number", "array", "object"
       add_type_mismatch_error(record, path, type)
-    when 'schema'
+    when "schema"
       add_schema_violated_error(record, path)
-    when 'format'
-      add_format_error(record, path, schema.fetch('format'))
-    when 'enum'
+    when "format"
+      add_format_error(record, path, schema.fetch("format"))
+    when "enum"
       add_enum_error(record, path)
     else
       add_invalid_error(record, path)
@@ -85,22 +111,22 @@ class JsonValidator < ActiveModel::EachValidator
   end
 
   def add_blank_error(record, error, path)
-    keys = error.dig('details', 'missing_keys')
+    keys = error.dig("details", "missing_keys")
 
     keys.each do |key|
       if path.nil?
         record.errors.add(key, :blank)
       else
-        record.errors.add(path[0], :blank_nested, property: (path[1..] + [key]).join('/'))
+        record.errors.add(path[0], :blank_nested, property: (path[1..] + [key]).join("/"))
       end
     end
   end
 
   def add_type_mismatch_error(record, path, type)
     if path.length == 1
-      record.errors.add(path[0], :type_mismatch, type: type)
+      record.errors.add(path[0], :type_mismatch, type:)
     else
-      record.errors.add(path[0], :type_mismatch_nested, type: type, path: path[1])
+      record.errors.add(path[0], :type_mismatch_nested, type:, path: path[1])
     end
   end
 
@@ -114,9 +140,9 @@ class JsonValidator < ActiveModel::EachValidator
 
   def add_format_error(record, path, expected)
     if path.length == 1
-      record.errors.add(path[0], :format, expected: expected)
+      record.errors.add(path[0], :format, expected:)
     else
-      record.errors.add(path[0], :format_nested, expected: expected, path: path[1])
+      record.errors.add(path[0], :format_nested, expected:, path: path[1])
     end
   end
 

@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,18 +20,17 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe ::OpenProject::Bim::BcfXml::Exporter do
-  let(:query) { FactoryBot.build(:global_query) }
-  let(:work_package) { FactoryBot.create :work_package }
-  let(:admin) { FactoryBot.create(:admin) }
+RSpec.describe OpenProject::Bim::BcfXml::Exporter do
+  let(:query) { build(:global_query) }
+  let(:work_package) { create(:work_package) }
+  let(:admin) { create(:admin) }
   let(:current_user) { admin }
 
   before do
@@ -42,20 +41,40 @@ describe ::OpenProject::Bim::BcfXml::Exporter do
   subject { described_class.new(query) }
 
   context "one WP without BCF issue associated" do
-    it '#work_packages' do
-      expect(subject.work_packages.count).to eql(0)
+    it "#work_packages" do
+      expect(subject.work_packages.count).to be(0)
     end
   end
 
   context "one WP with BCF issue associated" do
-    let(:bcf_issue) { FactoryBot.create(:bcf_issue_with_comment, work_package: work_package) }
+    let(:bcf_issue) { create(:bcf_issue_with_comment, work_package:) }
 
     before do
       bcf_issue
     end
 
-    it '#work_packages' do
-      expect(subject.work_packages.count).to eql(1)
+    it "#work_packages" do
+      expect(subject.work_packages.count).to be(1)
+    end
+  end
+
+  describe "#topic_folder_for" do
+    let(:dir) { Dir.mktmpdir }
+
+    after { FileUtils.remove_entry(dir) }
+
+    it "creates a folder for a valid uuid" do
+      issue = instance_double(Bim::Bcf::Issue, uuid: SecureRandom.uuid)
+      folder = subject.send(:topic_folder_for, dir, issue)
+      expect(File.directory?(folder)).to be(true)
+      expect(folder).to eq(File.join(dir, issue.uuid))
+    end
+
+    it "raises rather than creating a folder for an invalid uuid" do
+      issue = instance_double(Bim::Bcf::Issue, uuid: "../../../../tmp/")
+      expect { subject.send(:topic_folder_for, dir, issue) }
+        .to raise_error(ArgumentError, /invalid uuid/)
+      expect(Dir.children(dir)).to be_empty
     end
   end
 end

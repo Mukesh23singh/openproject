@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,14 +20,13 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'roar/decorator'
-require 'roar/json/hal'
+require "roar/decorator"
+require "roar/json/hal"
 
 module API
   module Decorators
@@ -49,19 +46,25 @@ module API
                      writable: true,
                      attribute_group: nil,
                      current_user: nil,
-                     allowed_values_getter: nil)
+                     allowed_values_getter: nil,
+                     deprecated: nil,
+                     description: nil,
+                     options: nil)
         @value_representer = value_representer
         @link_factory = link_factory
         @allowed_values_getter = allowed_values_getter
 
-        super(type: type,
-              name: name,
-              required: required,
-              has_default: has_default,
-              writable: writable,
-              attribute_group: attribute_group,
-              location: location,
-              current_user: current_user)
+        super(type:,
+              name:,
+              required:,
+              has_default:,
+              writable:,
+              attribute_group:,
+              location:,
+              current_user:,
+              deprecated:,
+              description:,
+              options:)
       end
 
       links :allowedValues do
@@ -95,7 +98,7 @@ module API
                           value_representer
                         end
 
-          representer.new(value, current_user: current_user)
+          representer.create(value, current_user:)
         end
       end
     end

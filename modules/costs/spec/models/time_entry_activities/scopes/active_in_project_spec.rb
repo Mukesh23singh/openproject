@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,94 +20,93 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-require 'spec_helper'
+require "spec_helper"
 
-describe TimeEntryActivities::Scopes::ActiveInProject, type: :model do
-  let!(:activity) { FactoryBot.create(:time_entry_activity) }
-  let!(:other_activity) { FactoryBot.create(:time_entry_activity) }
-  let(:project) { FactoryBot.create(:project) }
-  let(:other_project) { FactoryBot.create(:project) }
+RSpec.describe TimeEntryActivities::Scopes::ActiveInProject do
+  let!(:activity) { create(:time_entry_activity) }
+  let!(:other_activity) { create(:time_entry_activity) }
+  let(:project) { create(:project) }
+  let(:other_project) { create(:project) }
 
-  describe '.active_in_project' do
+  describe ".active_in_project" do
     subject { TimeEntryActivity.active_in_project(project) }
 
-    context 'without a project configuration' do
-      context 'with the activity being active' do
-        it 'includes the activity' do
-          is_expected
-            .to match_array [activity, other_activity]
+    context "without a project configuration" do
+      context "with the activity being active" do
+        it "includes the activity" do
+          expect(subject)
+            .to contain_exactly(activity, other_activity)
         end
       end
 
-      context 'with the activity being inactive' do
+      context "with the activity being inactive" do
         before do
           activity.update_attribute(:active, false)
         end
 
-        it 'excludes the activity' do
-          is_expected
-            .to match_array([other_activity])
+        it "excludes the activity" do
+          expect(subject)
+            .to contain_exactly(other_activity)
         end
       end
     end
 
-    context 'with a project configuration configured to true' do
+    context "with a project configuration configured to true" do
       before do
-        activity.time_entry_activities_projects.create(project: project, active: true)
+        activity.time_entry_activities_projects.create(project:, active: true)
       end
 
-      it 'includes the activity' do
-        is_expected
-          .to match_array [activity, other_activity]
+      it "includes the activity" do
+        expect(subject)
+          .to contain_exactly(activity, other_activity)
       end
 
-      context 'with the activity being inactive' do
+      context "with the activity being inactive" do
         before do
           activity.update_attribute(:active, false)
         end
 
-        it 'includes the activity' do
-          is_expected
-            .to match_array [activity, other_activity]
+        it "includes the activity" do
+          expect(subject)
+            .to contain_exactly(activity, other_activity)
         end
       end
     end
 
-    context 'with a project configuration configured to false but for a different project' do
+    context "with a project configuration configured to false but for a different project" do
       before do
         activity.time_entry_activities_projects.create(project: other_project, active: false)
       end
 
-      it 'includes the activity' do
-        is_expected
-          .to match_array [activity, other_activity]
+      it "includes the activity" do
+        expect(subject)
+          .to contain_exactly(activity, other_activity)
       end
     end
 
-    context 'with a project configuration configured to false' do
+    context "with a project configuration configured to false" do
       before do
-        activity.time_entry_activities_projects.create(project: project, active: false)
+        activity.time_entry_activities_projects.create(project:, active: false)
       end
 
-      it 'excludes the activity' do
-        is_expected
-          .to match_array [other_activity]
+      it "excludes the activity" do
+        expect(subject)
+          .to contain_exactly(other_activity)
       end
 
-      context 'with a project configuration configured to true but for a different project' do
+      context "with a project configuration configured to true but for a different project" do
         before do
           activity.time_entry_activities_projects.create(project: other_project, active: true)
         end
 
-        it 'excludes the activity' do
-          is_expected
-            .to match_array [other_activity]
+        it "excludes the activity" do
+          expect(subject)
+            .to contain_exactly(other_activity)
         end
       end
     end

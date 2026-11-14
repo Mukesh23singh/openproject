@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,8 +20,7 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
@@ -30,18 +29,19 @@ module API
   module V3
     module Memberships
       class MembershipsAPI < ::API::OpenProjectAPI
-        helpers ::API::Utilities::PageSizeHelper
+        helpers ::API::Utilities::UrlPropsParsingHelper
 
         resources :memberships do
           get &::API::V3::Utilities::Endpoints::Index
                  .new(model: Member,
-                      scope: -> { Member.includes(MembershipRepresenter.to_eager_load) },
-                      api_name: 'Membership')
+                      # excluding entity memberships. Those can be requested via the Shares API
+                      scope: -> { Member.where(entity: nil).includes(MembershipRepresenter.to_eager_load) },
+                      api_name: "Membership")
                  .mount
 
           post &::API::V3::Utilities::Endpoints::Create
                   .new(model: Member,
-                       api_name: 'Membership',
+                       api_name: "Membership",
                        params_modifier: ->(params) {
                          params.except(:meta).merge(params.fetch(:meta, {}).to_h)
                        })
@@ -51,22 +51,22 @@ module API
           mount ::API::V3::Memberships::Schemas::MembershipSchemaAPI
           mount ::API::V3::Memberships::CreateFormAPI
 
-          route_param :id, type: Integer, desc: 'Member ID' do
+          route_param :id, type: Integer, desc: "Member ID" do
             after_validation do
               @member = ::Queries::Members::MemberQuery
                         .new(user: current_user)
                         .results
-                        .find(params['id'])
+                        .find(params["id"])
             end
 
             get &::API::V3::Utilities::Endpoints::Show
                    .new(model: Member,
-                        api_name: 'Membership')
+                        api_name: "Membership")
                    .mount
 
             patch &::API::V3::Utilities::Endpoints::Update
                      .new(model: Member,
-                          api_name: 'Membership',
+                          api_name: "Membership",
                           params_modifier: ->(params) {
                             params.except(:meta).merge(params.fetch(:meta, {}).to_h)
                           })

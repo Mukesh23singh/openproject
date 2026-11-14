@@ -1,8 +1,6 @@
-#-- encoding: UTF-8
-
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -22,13 +20,12 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
-class Grids::SetAttributesService < ::BaseServices::SetAttributes
+class Grids::SetAttributesService < BaseServices::SetAttributes
   include Attachments::SetReplacements
 
   private
@@ -36,7 +33,7 @@ class Grids::SetAttributesService < ::BaseServices::SetAttributes
   def set_attributes(attributes)
     widget_attributes = attributes.delete(:widgets)
 
-    ret = super(attributes)
+    ret = super
 
     update_widgets(widget_attributes)
 
@@ -65,11 +62,11 @@ class Grids::SetAttributesService < ::BaseServices::SetAttributes
     to_destroy.each(&:mark_for_destruction)
 
     to_create.each do |widget|
-      model.widgets.build widget.attributes.except('id')
+      model.widgets.build widget.attributes.except("id")
     end
 
     update_map.each do |existing, provided|
-      existing.attributes = provided.attributes.except('id', 'grid_id')
+      existing.attributes = provided.attributes.except("id", "grid_id")
     end
   end
 
@@ -86,7 +83,7 @@ class Grids::SetAttributesService < ::BaseServices::SetAttributes
   end
 
   def classify_preserve_existing(widgets)
-    widget_map = model.widgets.map { |w| [w, nil] }.to_h
+    widget_map = model.widgets.index_with { |_w| nil }
     to_create = []
 
     widgets.each do |widget|
@@ -122,7 +119,7 @@ class Grids::SetAttributesService < ::BaseServices::SetAttributes
     return if widgets&.any? || model.persisted?
 
     # As it is a new record, we can do direct assignments without risking saving.
-    model.widgets = model.widgets.select(&method(:allowed_widget?))
+    model.widgets = model.widgets.select { |widget| allowed_widget?(widget) }
   end
 
   def allowed_widget?(widget)

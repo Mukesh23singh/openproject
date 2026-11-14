@@ -1,6 +1,6 @@
 #-- copyright
 # OpenProject is an open source project management software.
-# Copyright (C) 2012-2021 the OpenProject GmbH
+# Copyright (C) the OpenProject GmbH
 #
 # This program is free software; you can redistribute it and/or
 # modify it under the terms of the GNU General Public License version 3.
@@ -20,19 +20,44 @@
 # GNU General Public License for more details.
 #
 # You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+# along with this program. If not, see <https://www.gnu.org/licenses/>.
 #
 # See COPYRIGHT and LICENSE files for more details.
 #++
 
 FactoryBot.define do
   factory :time_entry do
-    project
     user
-    work_package
-    spent_on { Date.today }
+    entity factory: :work_package
+    spent_on { Time.zone.today }
     activity factory: :time_entry_activity
     hours { 1.0 }
+    logged_by { user }
+
+    after(:build) do |time_entry|
+      time_entry.project ||= time_entry.entity.project
+    end
+
+    after(:create) do |time_entry|
+      if time_entry.entity.present?
+        time_entry.update(project: time_entry.entity.project)
+      end
+
+      # ensure user is member of project
+      unless Member.exists?(principal: time_entry.user, project: time_entry.project)
+        role = create(:project_role, permissions: [:view_project])
+        create(:member, principal: time_entry.user, project: time_entry.project, roles: [role])
+      end
+    end
+
+    trait :with_start_and_end_time do
+      time_zone { "Asia/Tokyo" }
+      start_time { 390 } # 6:30 AM
+      hours { 2.5 }
+    end
+
+    trait :on_meeting do
+      entity factory: :meeting
+    end
   end
 end

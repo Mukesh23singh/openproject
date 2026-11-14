@@ -1,12 +1,8 @@
-$tree-menu-item-height: 30px
-
-.tree-menu--container
-  padding-top: 10px
+$tree-menu-item-height: 36px
 
 #main-menu ul ul.main-menu--children ul.pages-hierarchy,
 div.wiki ul.pages-hierarchy,
 .pages-hierarchy
-  line-height: $tree-menu-item-height
   margin-left: 0
   padding-left: 0
   overflow-x: hidden
@@ -14,14 +10,16 @@ div.wiki ul.pages-hierarchy,
   .tree-menu--title
     display: inline-block
     width: inherit
-    vertical-align: bottom
+    vertical-align: middle
     height: $tree-menu-item-height
     line-height: $tree-menu-item-height
     text-decoration: none !important
 
+    &.-parent-node
+      font-weight: var(--base-text-weight-bold)
+
   .tree-menu--hierarchy-span
     display: inline-block
-    line-height: $tree-menu-item-height
 
   .tree-menu--hierarchy-indicator-icon,
   .tree-menu--leaf-indicator
@@ -32,7 +30,8 @@ div.wiki ul.pages-hierarchy,
   // default: open arrow down
   // collapsed: right arrow
   .tree-menu--hierarchy-indicator
-    color: var(--content-link-color)
+    color: var(--accent-color)
+    display: block
     height: $tree-menu-item-height
     line-height: $tree-menu-item-height
     text-decoration: none !important
@@ -55,6 +54,9 @@ div.wiki ul.pages-hierarchy,
   .tree-menu--hierarchy-indicator-icon
     @include icon-common
     @extend .icon-arrow-down1
+    display: flex
+    align-items: center
+    line-height: $tree-menu-item-height
     font-size: 0.6rem
     padding-right: 10px
 
@@ -66,6 +68,9 @@ div.wiki ul.pages-hierarchy,
     > .tree-menu--item > .tree-menu--hierarchy-span > .tree-menu--hierarchy-indicator > .tree-menu--hierarchy-indicator-icon
       @include icon-common
       @extend .icon-arrow-right2
+      display: flex
+      align-items: center
+      line-height: $tree-menu-item-height
       font-size: 0.6rem
     > ul.-with-hierarchy
       display: none
@@ -76,25 +81,21 @@ div.wiki ul.pages-hierarchy,
     list-style-type: none
 
   .tree-menu--item
-    display: inline-block
+    display: flex
+    align-items: center
     width: 100%
-    border-radius: 3px
+    border-radius: var(--borderRadius-medium)
     line-height: $tree-menu-item-height
-    padding: 0 10px
-    overflow-x: hidden
+    padding: 0
     white-space: nowrap
+    margin-bottom: 2px
     &.-selected
-      background: var(--main-menu-bg-hover-background)
+      background: var(--control-transparent-bgColor-hover)
       .tree-menu--title
-        color: var(--main-menu-hover-font-color)
+        padding-left: 7px
+        border-left: 0px
+        color: var(--main-menu-font-color)
     &:hover
-      background: var(--main-menu-bg-hover-background)
+      background: var(--control-transparent-bgColor-hover)
       .tree-menu--title
-        color: var(--main-menu-hover-font-color)
-
-
-
-
-
-
-
+        color: var(--main-menu-font-color)
